@@ -63,6 +63,27 @@ func runBox(stdout, stderr io.Writer, args []string) int {
 		fmt.Fprintf(stdout, "  working set        %d shards at a time on %s\n", p.ShardsResident, p.Largest.Name)
 	}
 
+	fmt.Fprint(stdout, "\nwhat each box can run, after leaving ")
+	fmt.Fprintf(stdout, "%s of reserve alone\n", may.GB(may.ReserveBytes))
+	tw = tabwriter.NewWriter(stdout, 0, 0, 2, ' ', 0)
+	fmt.Fprint(tw, "box\tscratch\tshards\tworkers\n")
+	for _, pl := range may.Placements() {
+		if !pl.Holds {
+			fmt.Fprintf(tw, "%s\t%s\tnone\tno corpus bytes land here\n", pl.Box.Name, may.GB(pl.Scratch))
+			continue
+		}
+		fmt.Fprintf(tw, "%s\t%s\t%d\t%d\n", pl.Box.Name, may.GB(pl.Scratch), pl.Shards, pl.Workers)
+	}
+	fmt.Fprintf(tw, "fleet\t\t\t%d\n", may.FleetWorkers())
+	_ = tw.Flush()
+
+	fmt.Fprintf(stdout, "\nstore of record: an S3-compatible object store, from %s\n", may.StoreEnv)
+	if store, ok := may.Store(); ok {
+		fmt.Fprintf(stdout, "  %s\n", store)
+	} else {
+		fmt.Fprintf(stdout, "  unset, so no stage would know where to write\n")
+	}
+
 	fmt.Fprintf(stdout, "\nthis process is running on %s\n", may.Label())
 	return 0
 }
