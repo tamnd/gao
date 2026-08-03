@@ -202,3 +202,20 @@ func Label() string {
 func GB(n int64) string {
 	return fmt.Sprintf("%.1f GB", float64(n)/1e9)
 }
+
+// Size formats a byte count at whatever unit keeps it readable, decimal for the
+// same reason [GB] is. It is for numbers whose size is not known in advance,
+// such as one shard of a snapshot that might hold a hundred documents or half a
+// billion.
+func Size(n int64) string {
+	switch {
+	case n < 1_000:
+		return fmt.Sprintf("%d B", n)
+	case n < 1_000_000:
+		return fmt.Sprintf("%.1f kB", float64(n)/1e3)
+	case n < 1_000_000_000:
+		return fmt.Sprintf("%.1f MB", float64(n)/1e6)
+	default:
+		return GB(n)
+	}
+}
