@@ -1,0 +1,142 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  # The binary is static and cross-compilable; the race job overrides this.
+  CGO_ENABLED: "0"
+
+jobs:
+  build-test:
+    name: build & test (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+          check-latest: true
+
+      - name: Build
+        run: go build ./...
+
+      - name: Test
+        run: go test ./...
+
+  tidy:
+    name: modules are tidy
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+          check-latest: true
+      - name: go mod tidy leaves no diff
+        run: |
+          go mod tidy
+          git diff --exit-code -- go.mod go.sum
+      - name: go mod verify
+        run: go mod verify
+
+  vet:
+    name: vet
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+          check-latest: true
+      - run: go vet ./...
+
+  lint:
+    name: lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+          check-latest: true
+      - name: gofmt
+        run: |
+          unformatted=$(gofmt -s -l .)
+          if [ -n "$unformatted" ]; then
+            echo "::error::these files need gofmt -s:"
+            echo "$unformatted"
+            exit 1
+          fi
+      - uses: golangci/golangci-lint-action@v9
+        with:
+          version: latest
+
+  race:
+    name: race detector
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+          check-latest: true
+      - name: Test under -race
+        env:
+          CGO_ENABLED: "1"
+        run: go test -race ./...
+
+  coverage:
+    name: coverage
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+          check-latest: true
+      - name: Test with coverage
+        run: go test -coverprofile=cover.out -covermode=atomic ./...
+      - name: Report total
+        run: |
+          total=$(go tool cover -func=cover.out | tail -1 | awk '{print $3}')
+          echo "total coverage: $total"
+          echo "### Coverage: $total" >> "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@v7
+        with:
+          name: coverage
+          path: cover.out
+          retention-days: 7
+
+  ci-complete:
+    name: ci-complete
+    if: always()
+    needs: [build-test, tidy, vet, lint, race, coverage]
+    runs-on: ubuntu-latest
+    steps:
+      - name: gate on every job
+        run: |
+          results="${{ needs.build-test.result }} ${{ needs.tidy.result }} ${{ needs.vet.result }} ${{ needs.lint.result }} ${{ needs.race.result }} ${{ needs.coverage.result }}"
+          echo "results: $results"
+          for r in $results; do
+            if [ "$r" != "success" ]; then
+              echo "::error::one or more CI jobs failed"
+              exit 1
+            fi
+          done
+          echo "all CI jobs passed"

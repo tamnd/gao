@@ -1,0 +1,32 @@
+# build output
+/bin/
+/dist/
+/gao
+/gao.exe
+
+# coverage and profiles
+cover.out
+*.prof
+*.test
+
+# corpus working directories, never committed
+/raw/
+/normalized/
+/kept/
+/milled/
+/snapshots/
+/tmp/
+*.jsonl
+*.jsonl.zst
+*.parquet
+*.warc.gz
+
+# local config and credentials
+.env
+*.local.toml
+
+# editor and OS noise
+.DS_Store
+*.swp
+.idea/
+.vscode/
