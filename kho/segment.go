@@ -25,6 +25,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"math"
 
 	"github.com/klauspost/compress/zstd"
 	"github.com/tamnd/gao/doc"
@@ -260,9 +261,19 @@ func (w *Writer[P, T]) Close() error {
 	payload = append(payload, body...)
 	payload = binary.LittleEndian.AppendUint64(payload, uint64(len(body)))
 
+	// A skippable frame declares its payload length in a uint32. An index that
+	// large would take tens of millions of frames in one segment, which is well
+	// past the point where the writer should have rolled over to a new segment,
+	// so this is an error rather than a length that silently wraps and produces a
+	// file that reads as valid and is not.
+	if uint64(len(payload)) > math.MaxUint32 {
+		return fmt.Errorf("kho: the index is %d bytes, which does not fit in a skippable frame", len(payload))
+	}
+	payloadLen := uint32(len(payload))
+
 	header := make([]byte, skippableHeaderSize)
 	binary.LittleEndian.PutUint32(header[0:4], skippableMagic)
-	binary.LittleEndian.PutUint32(header[4:8], uint32(len(payload)))
+	binary.LittleEndian.PutUint32(header[4:8], payloadLen)
 
 	if _, err := w.emit(header); err != nil {
 		return err
