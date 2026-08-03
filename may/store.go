@@ -13,9 +13,8 @@ import (
 // corpus on the largest single pool, 330 GB on gamingpc, leaves no room to
 // process it, because a stage reads a shard and writes a shard.
 //
-// So the bytes live off-box, in an S3-compatible object store, and the fleet
-// holds a working set. Three parts of that sentence are the decision and the
-// fourth is deliberately not.
+// So the bytes live off-box and the fleet holds a working set. Three parts of
+// that are the decision.
 //
 // Off-box rather than on more disk. Buying disks for four rented machines is
 // buying disks that cannot be moved, cannot be shared between the boxes, and
@@ -30,25 +29,31 @@ import (
 // semantics we do not use in exchange for a mount that breaks a crawl at three
 // in the morning.
 //
-// S3-compatible rather than one vendor's API. The protocol is the commitment
-// and the provider is not: the code addresses the store by URI and the endpoint
-// comes from the environment, so moving between providers when the egress bill
-// says to is a configuration change. The provider is chosen in S1 on measured
-// price for the actual access pattern, and until then no code depends on the
-// answer. That is the part left open on purpose, and leaving it open costs
-// nothing because the interface is the same either way.
+// Dataset repos on the Hugging Face Hub rather than a bucket. This is the part
+// that was left open, and it turned out to have a better answer than a
+// provider. The bytes are already going to the Hub, because that is where a
+// published Vietnamese corpus has to be for anybody to use it, and a bucket
+// would mean paying to store the same data twice and paying egress to move it
+// between the two. Parquet under a snapshot prefix is queryable in place, so a
+// question about a column costs one column rather than a download, and the same
+// path serves the fleet, the release, and the reader. The layout lives in kho
+// and the pattern comes from ccrawl-cli, which already publishes down it.
 //
 // What lives on the fleet is scratch: the shards a stage is working on right
-// now, plus the WARCs server1 has fetched and not yet uploaded. Nothing on the
-// fleet is authoritative and nothing on the fleet is backed up, because
-// everything on it can be refetched from the store or, in the crawl's case, is
-// uploaded before it is deleted.
+// now, plus the WARCs server1 has fetched and not yet uploaded. A worker writes
+// a shard, pushes it, and deletes it, so peak disk is two shards per worker no
+// matter how large the corpus gets, and that is what lets a box with 98 GB free
+// take part in processing a terabyte. Nothing on the fleet is authoritative and
+// nothing on the fleet is backed up, because everything on it can be refetched
+// from the store or, in the crawl's case, is uploaded before it is deleted.
 
 const (
 	// StoreEnv names the environment variable holding the store of record, as a
-	// URI such as s3://gao-store or file:///mnt/gao for a local run. Nothing in
-	// the code has a default, because a stage that silently wrote to the wrong
-	// place is worse than a stage that refused to start.
+	// URI such as hf://open-index for a real run or file:///mnt/gao for a local
+	// one. Nothing in the code has a default, because a stage that silently
+	// wrote to the wrong place is worse than a stage that refused to start, and
+	// naming the Hub as the answer is a decision rather than a value to fall
+	// back on.
 	StoreEnv = "GAO_STORE"
 
 	// ReserveBytes is disk left alone on every box, no matter what the numbers
@@ -60,6 +65,12 @@ const (
 	// two shards in, two shards out. Below this a box can still run the control
 	// plane and cannot run a stage.
 	MinScratchBytes = 4 * ShardBytes
+
+	// ShardsPerWorker is the disk one worker holds at once, which is the shard
+	// it is reading and the shard it is writing. It is a constant rather than a
+	// function of the corpus size, and that is the entire consequence of pushing
+	// a finished shard off-box before starting the next one.
+	ShardsPerWorker = 2
 )
 
 // Scratch is the disk a box can spend on corpus work, which is its free disk
@@ -97,10 +108,21 @@ func Workers(b Box) int {
 	if !HoldsCorpus(b) {
 		return 0
 	}
-	if n := WorkingShards(b) / 2; n < b.Threads {
+	if n := WorkingShards(b) / ShardsPerWorker; n < b.Threads {
 		return n
 	}
 	return b.Threads
+}
+
+// PeakBytes is the most disk a box holds at once while a stage is running, which
+// is [ShardsPerWorker] shards for every worker it runs.
+//
+// It does not depend on the size of the corpus, and that is the whole point:
+// every stage pushes a finished shard to the store and deletes it before it
+// takes the next one, so the number below is what a box needs to process a
+// terabyte and it is also what it needs to process ten.
+func PeakBytes(b Box) int64 {
+	return int64(Workers(b)) * ShardsPerWorker * ShardBytes
 }
 
 // Placement is what one box can contribute to a pipeline run.
@@ -148,4 +170,4 @@ func Store() (string, bool) {
 }
 
 // ErrNoStore is what a command reports when the store of record is not set.
-var ErrNoStore = fmt.Errorf("may: the store of record is not set, so nothing knows where the corpus lives: set %s to a URI such as s3://gao-store", StoreEnv)
+var ErrNoStore = fmt.Errorf("may: the store of record is not set, so nothing knows where the corpus lives: set %s to a URI such as hf://open-index", StoreEnv)

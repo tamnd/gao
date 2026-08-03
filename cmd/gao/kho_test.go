@@ -10,6 +10,7 @@ import (
 
 	"github.com/tamnd/gao/doc"
 	"github.com/tamnd/gao/kho"
+	"github.com/tamnd/gao/may"
 )
 
 // buildSnapshot writes a small signed snapshot and returns the directory and the
@@ -248,5 +249,62 @@ func TestKhoHelpIsNotAnError(t *testing.T) {
 		if !strings.Contains(out, want) {
 			t.Errorf("the help does not mention %s:\n%s", want, out)
 		}
+	}
+}
+
+func TestKhoDatasetsPrintsEveryRepoAndHowToReadIt(t *testing.T) {
+	out, _, code := exec(t, "kho", "datasets")
+	if code != 0 {
+		t.Fatalf("gao kho datasets: exit %d, want 0", code)
+	}
+	if !strings.Contains(out, kho.HubStore) {
+		t.Error("gao kho datasets did not print the store of record")
+	}
+	for _, d := range kho.Datasets() {
+		if !strings.Contains(out, d.Repo()) {
+			t.Errorf("gao kho datasets did not print %s", d.Repo())
+		}
+		if !strings.Contains(out, d.Holds) {
+			t.Errorf("gao kho datasets did not say what is in %s", d.Name)
+		}
+		// A working repo is private, so printing a query that reads it would be
+		// printing a query that fails for everybody except us.
+		q := d.Query("gao-v1.0")
+		if d.Public() != strings.Contains(out, q) {
+			t.Errorf("gao kho datasets printed the wrong thing for %s, which is %s", d.Name, d.Tier)
+		}
+	}
+}
+
+func TestKhoDatasetsTakesASnapshot(t *testing.T) {
+	out, _, code := exec(t, "kho", "datasets", "-snapshot", "gao-v0.2")
+	if code != 0 {
+		t.Fatalf("gao kho datasets -snapshot: exit %d, want 0", code)
+	}
+	if !strings.Contains(out, "snapshot=gao-v0.2") {
+		t.Error("gao kho datasets ignored the snapshot it was given")
+	}
+	if strings.Contains(out, "snapshot=gao-v1.0") {
+		t.Error("gao kho datasets printed the default snapshot as well as the one it was given")
+	}
+}
+
+// The store of record is a decision and GAO_STORE is where a run overrides it,
+// so a run pointed somewhere else has to say so rather than printing the
+// decision and writing elsewhere.
+func TestKhoDatasetsSaysWhenTheRunIsPointedElsewhere(t *testing.T) {
+	t.Setenv(may.StoreEnv, "file:///mnt/gao")
+	out, _, code := exec(t, "kho", "datasets")
+	if code != 0 {
+		t.Fatalf("gao kho datasets: exit %d, want 0", code)
+	}
+	if !strings.Contains(out, "file:///mnt/gao") {
+		t.Error("gao kho datasets did not print the store this run is actually pointed at")
+	}
+}
+
+func TestKhoDatasetsTakesNoArguments(t *testing.T) {
+	if _, _, code := exec(t, "kho", "datasets", "extra"); code != 2 {
+		t.Errorf("gao kho datasets extra: exit %d, want 2", code)
 	}
 }

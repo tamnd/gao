@@ -55,6 +55,59 @@ func TestWorkersRespectBothThreadsAndDisk(t *testing.T) {
 	}
 }
 
+// Peak disk is a constant times the worker count and has nothing to do with how
+// large the corpus is. That is the claim offload buys, and it is the reason the
+// numbers in this file describe a fleet that can process a corpus fourteen times
+// the size of its disk.
+func TestPeakDiskDoesNotGrowWithTheCorpus(t *testing.T) {
+	for _, p := range Placements() {
+		peak := PeakBytes(p.Box)
+		if peak > p.Scratch {
+			t.Errorf("%s peaks at %s of scratch and has %s", p.Box.Name, GB(peak), GB(p.Scratch))
+		}
+		if !p.Holds && peak != 0 {
+			t.Errorf("%s holds no corpus bytes and peaks at %s", p.Box.Name, GB(peak))
+		}
+	}
+
+	// The whole fleet at once, against a corpus ten times the size of the one
+	// it is built for. The peak is the same number both times, because it is
+	// the worker count and not the corpus that sets it.
+	var peak int64
+	for _, b := range Boxes {
+		peak += PeakBytes(b)
+	}
+	if want := int64(FleetWorkers()) * ShardsPerWorker * ShardBytes; peak != want {
+		t.Errorf("the fleet peaks at %s, and %d workers holding %d shards each is %s",
+			GB(peak), FleetWorkers(), ShardsPerWorker, GB(want))
+	}
+	if ten := Plan(10 * TargetTokens); peak >= ten.Compressed/10 {
+		t.Errorf("the fleet peaks at %s against a %s corpus, which is not a working set",
+			GB(peak), GB(ten.Compressed))
+	}
+}
+
+// The S1 gate says ingestion on server1 stays under 90 GB. That is a claim about
+// a real box and it is checked here before the run rather than during it.
+func TestIngestionFitsServer1sBudget(t *testing.T) {
+	const budget int64 = 90_000_000_000
+
+	b, ok := Lookup("server1")
+	if !ok {
+		t.Fatal("server1 is not in the inventory")
+	}
+	peak := PeakBytes(b)
+	if peak == 0 {
+		t.Fatal("server1 runs no workers, and it is the box that fetches")
+	}
+	if peak > budget {
+		t.Errorf("ingestion peaks at %s on server1, over the %s the gate allows", GB(peak), GB(budget))
+	}
+	if peak > Scratch(b) {
+		t.Errorf("ingestion peaks at %s on server1, which has %s of scratch", GB(peak), GB(Scratch(b)))
+	}
+}
+
 func TestScratchLeavesTheReserveAlone(t *testing.T) {
 	for _, p := range Placements() {
 		if p.Scratch > p.Box.FreeDisk-ReserveBytes && p.Scratch != 0 {

@@ -22,6 +22,8 @@ func runKho(stdout, stderr io.Writer, args []string) int {
 		return runKhoVerify(stdout, stderr, args[1:])
 	case "keygen":
 		return runKhoKeygen(stdout, stderr, args[1:])
+	case "datasets":
+		return runKhoDatasets(stdout, stderr, args[1:])
 	case "help", "-h", "--help":
 		khoUsage(stdout)
 		return 0
@@ -36,8 +38,9 @@ func khoUsage(w io.Writer) {
 	fmt.Fprint(w, `usage: gao kho <subcommand> [flags]
 
 subcommands:
-  verify  check a snapshot against its manifest
-  keygen  generate a snapshot signing key
+  verify    check a snapshot against its manifest
+  keygen    generate a snapshot signing key
+  datasets  print the dataset repos processed data is written to
 
 run 'gao kho <subcommand> -h' for the flags of a single subcommand.
 `)
@@ -181,4 +184,57 @@ flags:
 	fmt.Fprintf(stdout, "public key %x\n", []byte(pub))
 	fmt.Fprintln(stdout, "\npublish the public key with the corpus and keep the private key off every box that runs a crawler")
 	return 0
+}
+
+func runKhoDatasets(stdout, stderr io.Writer, args []string) int {
+	fs := flag.NewFlagSet("kho datasets", flag.ContinueOnError)
+	fs.SetOutput(stderr)
+	snapshot := fs.String("snapshot", "gao-v1.0", "the snapshot to print read queries for")
+	fs.Usage = func() {
+		fmt.Fprint(stderr, "usage: gao kho datasets [-snapshot NAME]\n\nPrints the dataset repos processed data is written to, what each one holds, and\nthe query that reads one snapshot of it straight off the Hub.\n\nflags:\n")
+		fs.PrintDefaults()
+	}
+	if err := fs.Parse(args); err != nil {
+		return 2
+	}
+	if fs.NArg() != 0 {
+		fs.Usage()
+		return 2
+	}
+
+	fmt.Fprintf(stdout, "store of record: %s\n", kho.HubStore)
+	if store, ok := may.Store(); ok && store != kho.HubStore {
+		fmt.Fprintf(stdout, "%s is set to %s, so this run writes there instead\n", may.StoreEnv, store)
+	}
+
+	fmt.Fprint(stdout, "\npublished\n")
+	printDatasets(stdout, kho.Published, *snapshot)
+	fmt.Fprint(stdout, "\nworking, private, and deleted when the snapshot that consumed it seals\n")
+	printDatasets(stdout, kho.Working, *snapshot)
+
+	fmt.Fprintf(stdout, "\none parquet file per shard, at %s\n", kho.DataPath(*snapshot, 1, 774))
+	fmt.Fprint(stdout, "the path is a function of the snapshot and the shard, so pushing a shard twice\noverwrites rather than duplicates and a retry after a dropped connection is safe\n")
+	return 0
+}
+
+func printDatasets(w io.Writer, tier kho.Tier, snapshot string) {
+	for _, d := range kho.Datasets() {
+		if d.Tier != tier {
+			continue
+		}
+		carries := "url and metadata, no text"
+		if d.Text {
+			carries = "text"
+		}
+		fmt.Fprintf(w, "\n  %s\n", d.Repo())
+		fmt.Fprintf(w, "    %s\n", d.Holds)
+		fmt.Fprintf(w, "    carries %s, admits", carries)
+		for _, c := range d.Classes {
+			fmt.Fprintf(w, " %s", c)
+		}
+		fmt.Fprintln(w)
+		if d.Public() {
+			fmt.Fprintf(w, "    %s\n", d.Query(snapshot))
+		}
+	}
 }
