@@ -1,0 +1,975 @@
+{
+ "version": 1,
+ "pinned_on": "2026-08-03",
+ "sources": [
+  {
+   "source": "hplt3",
+   "order": 0,
+   "origin": "direct",
+   "repo": "https://data.hplt-project.org/three/sorted",
+   "revision": "sha256:5b2785d5b11c576f98e4f5df4e6918ab1ebebae1f3aad353c39d856928a77cf2",
+   "revision_url": "https://data.hplt-project.org/three/sorted/vie_Latn.map",
+   "config": "vie_Latn",
+   "gated": false,
+   "license_class": "open",
+   "note": "HPLT v3 is not hosted on the Hub. The dataset card there is a pointer, and the data is on the Sigma2 NIRD datalake behind a per-language map file. There is no commit to pin, so the revision above is the sha256 of vie_Latn.map, which is the list of shards, and every shard carries its own byte count below. HPLT publishes no per-shard digest, so gao computes one on first download and records it in the ingest manifest for the snapshot.",
+   "files": [
+    {
+     "path": "vie_Latn/10_1.jsonl.zst",
+     "bytes": 294598179,
+     "digest": ""
+    },
+    {
+     "path": "vie_Latn/5_1.jsonl.zst",
+     "bytes": 15049231912,
+     "digest": ""
+    },
+    {
+     "path": "vie_Latn/6_1.jsonl.zst",
+     "bytes": 25221053724,
+     "digest": ""
+    },
+    {
+     "path": "vie_Latn/7_1.jsonl.zst",
+     "bytes": 26555021262,
+     "digest": ""
+    },
+    {
+     "path": "vie_Latn/7_2.jsonl.zst",
+     "bytes": 26333057545,
+     "digest": ""
+    },
+    {
+     "path": "vie_Latn/7_3.jsonl.zst",
+     "bytes": 9808096842,
+     "digest": ""
+    },
+    {
+     "path": "vie_Latn/8_1.jsonl.zst",
+     "bytes": 26205468588,
+     "digest": ""
+    },
+    {
+     "path": "vie_Latn/8_2.jsonl.zst",
+     "bytes": 26267064998,
+     "digest": ""
+    },
+    {
+     "path": "vie_Latn/8_3.jsonl.zst",
+     "bytes": 26430374284,
+     "digest": ""
+    },
+    {
+     "path": "vie_Latn/8_4.jsonl.zst",
+     "bytes": 16045366519,
+     "digest": ""
+    },
+    {
+     "path": "vie_Latn/9_1.jsonl.zst",
+     "bytes": 26320991139,
+     "digest": ""
+    },
+    {
+     "path": "vie_Latn/9_2.jsonl.zst",
+     "bytes": 9960740669,
+     "digest": ""
+    }
+   ],
+   "excluded": [],
+   "excluded_because": ""
+  },
+  {
+   "source": "finepdfs",
+   "order": 1,
+   "origin": "hub",
+   "repo": "HuggingFaceFW/finepdfs",
+   "revision": "220bac3acbf07789502c621d2d33952f51ac7f86",
+   "revision_url": "https://huggingface.co/api/datasets/HuggingFaceFW/finepdfs",
+   "config": "vie_Latn",
+   "gated": false,
+   "license_class": "permissive-attribution",
+   "note": "Text extracted from PDFs, which is the one Tier 1 source that is not web HTML and the one whose extraction gao does not have to redo.",
+   "files": [
+    {
+     "path": "data/vie_Latn/train/000_00000.parquet",
+     "bytes": 4360963347,
+     "digest": "sha256:776ad6c2f705d48611a1edb43de828ebad4fe0008a45cf6e4b83663b421cce8c"
+    },
+    {
+     "path": "data/vie_Latn/train/000_00001.parquet",
+     "bytes": 4393328475,
+     "digest": "sha256:9ba7df5829246dc92c56ab65cd3db0f75ff5b967352ae0df5aab689f778b573e"
+    },
+    {
+     "path": "data/vie_Latn/train/000_00002.parquet",
+     "bytes": 4281585460,
+     "digest": "sha256:4a8d0fdf988d1996f7cc59a25c9969ebcfea93b66b0a3fc8569aa921dbe2519d"
+    }
+   ],
+   "excluded": [
+    {
+     "path": "data/vie_Latn/test/000_00000.parquet",
+     "bytes": 10472066,
+     "digest": "sha256:f533a87766651eae9ca791dffaa631e48db4827444257350027727a54ac1fe72"
+    }
+   ],
+   "excluded_because": "the upstream evaluation holdout, kept out so that a model trained on gao can still be scored against it"
+  },
+  {
+   "source": "fineweb2",
+   "order": 2,
+   "origin": "hub",
+   "repo": "HuggingFaceFW/fineweb-2",
+   "revision": "af9c13333eb981300149d5ca60a8e9d659b276b9",
+   "revision_url": "https://huggingface.co/api/datasets/HuggingFaceFW/fineweb-2",
+   "config": "vie_Latn",
+   "gated": false,
+   "license_class": "permissive-attribution",
+   "note": "The second largest public Vietnamese web corpus and the one whose overlap with HPLT v3 the S1 measurement is most interested in.",
+   "files": [
+    {
+     "path": "data/vie_Latn/train/000_00000.parquet",
+     "bytes": 4840313001,
+     "digest": "sha256:337df3c387a7d5bc854059605acb9382e3887dc7ab0da958ecfe3f73d6219acf"
+    },
+    {
+     "path": "data/vie_Latn/train/000_00001.parquet",
+     "bytes": 4840175525,
+     "digest": "sha256:8ea63a6d509953495155dddfbce42c91bec69cb845d4b8db1cf4635399a1355e"
+    },
+    {
+     "path": "data/vie_Latn/train/000_00002.parquet",
+     "bytes": 4840867143,
+     "digest": "sha256:623b77d3d8f420fc35d155a29dafc4c4ff7742de859ce8ef65bea243da385a2e"
+    },
+    {
+     "path": "data/vie_Latn/train/000_00003.parquet",
+     "bytes": 4841338455,
+     "digest": "sha256:05db65c775430378e3987c5610805ec375fa2fd67f194f69db4fc24c8384a9b8"
+    },
+    {
+     "path": "data/vie_Latn/train/000_00004.parquet",
+     "bytes": 4841460989,
+     "digest": "sha256:42ffa3d3efb0cce8d6736e95030155476899fddb7e470f2d20328e02834170c6"
+    },
+    {
+     "path": "data/vie_Latn/train/000_00005.parquet",
+     "bytes": 4841100535,
+     "digest": "sha256:fe9a9babd504582e0457224702d1b88fae06123ec108aa1dd9f41c4c94f8be44"
+    },
+    {
+     "path": "data/vie_Latn/train/001_00000.parquet",
+     "bytes": 4841453285,
+     "digest": "sha256:9fdade7bed943053794eac71038ebfaaec31a57f74da2d2236cdeeb0f63453cc"
+    },
+    {
+     "path": "data/vie_Latn/train/001_00001.parquet",
+     "bytes": 4840460341,
+     "digest": "sha256:411ee6a101f2304bb078d15f936c5c824b00b8e6a11ebe41632ff7773f7d50ab"
+    },
+    {
+     "path": "data/vie_Latn/train/001_00002.parquet",
+     "bytes": 4841630153,
+     "digest": "sha256:d6db3ef051e1b793f6dd81211f348eff3d80008e4d5a91d3aace1645a532b8a7"
+    },
+    {
+     "path": "data/vie_Latn/train/001_00003.parquet",
+     "bytes": 4840797137,
+     "digest": "sha256:3c64ebde18f15dcf3ded8128c800fe2643db3e21e76c32e2bcf9e040741e929a"
+    },
+    {
+     "path": "data/vie_Latn/train/001_00004.parquet",
+     "bytes": 4841437527,
+     "digest": "sha256:89258ec9c7797fb930dc0c7afac2d66ce222bc717653813f7b8b80232f2f98d8"
+    },
+    {
+     "path": "data/vie_Latn/train/001_00005.parquet",
+     "bytes": 4841685955,
+     "digest": "sha256:d91139a63a406ec3009b5f44762ac0bf8e836eb1b75bd8b856b85b0e86851b6b"
+    },
+    {
+     "path": "data/vie_Latn/train/002_00000.parquet",
+     "bytes": 4840861158,
+     "digest": "sha256:6cae348065ae1289270724c49cc0f6719202846c63f5d8b4635f742a32abb937"
+    },
+    {
+     "path": "data/vie_Latn/train/002_00001.parquet",
+     "bytes": 4839798929,
+     "digest": "sha256:c0c74f7db3ee676d3b83f8155523972fd43f67ecd374be25897a4f6516bb8c55"
+    },
+    {
+     "path": "data/vie_Latn/train/002_00002.parquet",
+     "bytes": 4840324130,
+     "digest": "sha256:fae82483521f6543292528117bdd3ec28700528843995433e15c829604c73269"
+    },
+    {
+     "path": "data/vie_Latn/train/002_00003.parquet",
+     "bytes": 4841144200,
+     "digest": "sha256:557a9251b6b04d7adae5a59a951e8399a06111243614c5ea85e8618ed3071ee1"
+    },
+    {
+     "path": "data/vie_Latn/train/002_00004.parquet",
+     "bytes": 4840084390,
+     "digest": "sha256:ae88307d384e335f5768720a2ee78f0366dab1e422ef7687cfc17b9f70bbdaa2"
+    },
+    {
+     "path": "data/vie_Latn/train/002_00005.parquet",
+     "bytes": 4841123130,
+     "digest": "sha256:0a2eef2c39aa2e6357f0e63da6437055cd159a30387bf7df2a2f8c32715b3176"
+    },
+    {
+     "path": "data/vie_Latn/train/003_00000.parquet",
+     "bytes": 4840524369,
+     "digest": "sha256:0e0a766bc44390de0cce08ec78efcfe0bbe0385c3304e4aebe2cd09f4b142d5c"
+    },
+    {
+     "path": "data/vie_Latn/train/003_00001.parquet",
+     "bytes": 4840532828,
+     "digest": "sha256:b3a0deeecff98934f7d0faa2e97c40b1eb80c4921d08500d9e08c9a38b035513"
+    },
+    {
+     "path": "data/vie_Latn/train/003_00002.parquet",
+     "bytes": 4840011969,
+     "digest": "sha256:f74eb75e65ec420e77a50d2463dc4270b676b18fb8decdb02f52018c3e0f3a70"
+    },
+    {
+     "path": "data/vie_Latn/train/003_00003.parquet",
+     "bytes": 4841872466,
+     "digest": "sha256:9da679733d86606c5d0ffc3a347c97382ea3f989fd1a8dc10cd21c0037de9666"
+    },
+    {
+     "path": "data/vie_Latn/train/003_00004.parquet",
+     "bytes": 4841007451,
+     "digest": "sha256:2aac394584b87ce617a51ecc6e7547f227c3a7f983d69ba1c1995921dc54f914"
+    },
+    {
+     "path": "data/vie_Latn/train/003_00005.parquet",
+     "bytes": 4841778612,
+     "digest": "sha256:0067a444cde932fffaf7ae8b44bea6ca7a7018e3340c951b7309c5efbcfa76a5"
+    },
+    {
+     "path": "data/vie_Latn/train/004_00000.parquet",
+     "bytes": 2568024079,
+     "digest": "sha256:57b162617c00f7df2c547cc2a9735b15cdaef2cb223c9cdf856c22560eb48bc1"
+    },
+    {
+     "path": "data/vie_Latn/train/004_00001.parquet",
+     "bytes": 2475535780,
+     "digest": "sha256:e1d4bdf0fd719802306b4cca4ebb8127447de5db96e6f75866922893b9894790"
+    },
+    {
+     "path": "data/vie_Latn/train/004_00002.parquet",
+     "bytes": 2404545371,
+     "digest": "sha256:3898703d3ec7056c1ad08f0ffa1d6f751aacf93398f8fb342d9215edb48fa0b8"
+    },
+    {
+     "path": "data/vie_Latn/train/004_00003.parquet",
+     "bytes": 2303277394,
+     "digest": "sha256:89a55873991d260e15e58618ac50fcfe38ca70ef473cd12529427d7cf5ed93b8"
+    },
+    {
+     "path": "data/vie_Latn/train/004_00004.parquet",
+     "bytes": 2147850974,
+     "digest": "sha256:986e5b833087f8507ae4bfb273994dde25bed67fceb3815704e93473a847a124"
+    },
+    {
+     "path": "data/vie_Latn/train/004_00005.parquet",
+     "bytes": 2050707602,
+     "digest": "sha256:84f578ed543a08c67acad1eebd289d03617482c5d24c30d608eb8378aeddf186"
+    }
+   ],
+   "excluded": [
+    {
+     "path": "data/vie_Latn/test/000_00000.parquet",
+     "bytes": 61615389,
+     "digest": "sha256:7011cf38e32636245a65735433d8afdcb0e71cb24ff621b49fd7244a7821b2bf"
+    }
+   ],
+   "excluded_because": "the upstream evaluation holdout, kept out so that a model trained on gao can still be scored against it"
+  },
+  {
+   "source": "culturax",
+   "order": 3,
+   "origin": "hub",
+   "repo": "uonlp/CulturaX",
+   "revision": "6a8734bc69fefcbb7735f4f9250f43e4cd7a442e",
+   "revision_url": "https://huggingface.co/api/datasets/uonlp/CulturaX",
+   "config": "vi",
+   "gated": true,
+   "license_class": "permissive-attribution",
+   "note": "Gated on the Hub, auto approved on accepting the terms. The gate is an access control formality rather than a redistribution term, so the class is unchanged, but it has one consequence the manifest has to carry: the Hub masks LFS digests for a gated repo until access is granted, so the digests below are empty and get filled in from the authenticated listing when the grant lands. It is also the number the Vietnamese NLP community treats as the Vietnamese corpus, which is why it is here to be measured against the rest rather than because it is expected to add much.",
+   "files": [
+    {
+     "path": "vi/vi_part_00000.parquet",
+     "bytes": 1599383836,
+     "digest": ""
+    },
+    {
+     "path": "vi/vi_part_00001.parquet",
+     "bytes": 1600702497,
+     "digest": ""
+    },
+    {
+     "path": "vi/vi_part_00002.parquet",
+     "bytes": 1604980713,
+     "digest": ""
+    },
+    {
+     "path": "vi/vi_part_00003.parquet",
+     "bytes": 1607035698,
+     "digest": ""
+    },
+    {
+     "path": "vi/vi_part_00004.parquet",
+     "bytes": 1601162020,
+     "digest": ""
+    },
+    {
+     "path": "vi/vi_part_00005.parquet",
+     "bytes": 1601368400,
+     "digest": ""
+    },
+    {
+     "path": "vi/vi_part_00006.parquet",
+     "bytes": 1602607323,
+     "digest": ""
+    },
+    {
+     "path": "vi/vi_part_00007.parquet",
+     "bytes": 1601651930,
+     "digest": ""
+    },
+    {
+     "path": "vi/vi_part_00008.parquet",
+     "bytes": 1602072048,
+     "digest": ""
+    },
+    {
+     "path": "vi/vi_part_00009.parquet",
+     "bytes": 1603543098,
+     "digest": ""
+    },
+    {
+     "path": "vi/vi_part_00010.parquet",
+     "bytes": 1601680729,
+     "digest": ""
+    },
+    {
+     "path": "vi/vi_part_00011.parquet",
+     "bytes": 1600846699,
+     "digest": ""
+    },
+    {
+     "path": "vi/vi_part_00012.parquet",
+     "bytes": 1603660498,
+     "digest": ""
+    },
+    {
+     "path": "vi/vi_part_00013.parquet",
+     "bytes": 1604530561,
+     "digest": ""
+    },
+    {
+     "path": "vi/vi_part_00014.parquet",
+     "bytes": 1603326312,
+     "digest": ""
+    },
+    {
+     "path": "vi/vi_part_00015.parquet",
+     "bytes": 1604121422,
+     "digest": ""
+    },
+    {
+     "path": "vi/vi_part_00016.parquet",
+     "bytes": 1607095247,
+     "digest": ""
+    },
+    {
+     "path": "vi/vi_part_00017.parquet",
+     "bytes": 1603689564,
+     "digest": ""
+    },
+    {
+     "path": "vi/vi_part_00018.parquet",
+     "bytes": 1605102886,
+     "digest": ""
+    },
+    {
+     "path": "vi/vi_part_00019.parquet",
+     "bytes": 1601173218,
+     "digest": ""
+    },
+    {
+     "path": "vi/vi_part_00020.parquet",
+     "bytes": 1603944346,
+     "digest": ""
+    },
+    {
+     "path": "vi/vi_part_00021.parquet",
+     "bytes": 1599819983,
+     "digest": ""
+    },
+    {
+     "path": "vi/vi_part_00022.parquet",
+     "bytes": 1598659398,
+     "digest": ""
+    },
+    {
+     "path": "vi/vi_part_00023.parquet",
+     "bytes": 1601462739,
+     "digest": ""
+    },
+    {
+     "path": "vi/vi_part_00024.parquet",
+     "bytes": 1598830654,
+     "digest": ""
+    },
+    {
+     "path": "vi/vi_part_00025.parquet",
+     "bytes": 1600792280,
+     "digest": ""
+    },
+    {
+     "path": "vi/vi_part_00026.parquet",
+     "bytes": 1604562376,
+     "digest": ""
+    },
+    {
+     "path": "vi/vi_part_00027.parquet",
+     "bytes": 1605567223,
+     "digest": ""
+    },
+    {
+     "path": "vi/vi_part_00028.parquet",
+     "bytes": 1600816776,
+     "digest": ""
+    },
+    {
+     "path": "vi/vi_part_00029.parquet",
+     "bytes": 1603096402,
+     "digest": ""
+    },
+    {
+     "path": "vi/vi_part_00030.parquet",
+     "bytes": 1601629501,
+     "digest": ""
+    },
+    {
+     "path": "vi/vi_part_00031.parquet",
+     "bytes": 1606055048,
+     "digest": ""
+    },
+    {
+     "path": "vi/vi_part_00032.parquet",
+     "bytes": 1604824936,
+     "digest": ""
+    },
+    {
+     "path": "vi/vi_part_00033.parquet",
+     "bytes": 1599601925,
+     "digest": ""
+    },
+    {
+     "path": "vi/vi_part_00034.parquet",
+     "bytes": 1600731927,
+     "digest": ""
+    },
+    {
+     "path": "vi/vi_part_00035.parquet",
+     "bytes": 1603796251,
+     "digest": ""
+    },
+    {
+     "path": "vi/vi_part_00036.parquet",
+     "bytes": 1601056993,
+     "digest": ""
+    },
+    {
+     "path": "vi/vi_part_00037.parquet",
+     "bytes": 1597788580,
+     "digest": ""
+    },
+    {
+     "path": "vi/vi_part_00038.parquet",
+     "bytes": 1602825517,
+     "digest": ""
+    },
+    {
+     "path": "vi/vi_part_00039.parquet",
+     "bytes": 1602143466,
+     "digest": ""
+    },
+    {
+     "path": "vi/vi_part_00040.parquet",
+     "bytes": 1598489729,
+     "digest": ""
+    },
+    {
+     "path": "vi/vi_part_00041.parquet",
+     "bytes": 1596894316,
+     "digest": ""
+    },
+    {
+     "path": "vi/vi_part_00042.parquet",
+     "bytes": 1603845580,
+     "digest": ""
+    },
+    {
+     "path": "vi/vi_part_00043.parquet",
+     "bytes": 1600000426,
+     "digest": ""
+    },
+    {
+     "path": "vi/vi_part_00044.parquet",
+     "bytes": 1601582591,
+     "digest": ""
+    },
+    {
+     "path": "vi/vi_part_00045.parquet",
+     "bytes": 1596832162,
+     "digest": ""
+    },
+    {
+     "path": "vi/vi_part_00046.parquet",
+     "bytes": 1605221325,
+     "digest": ""
+    },
+    {
+     "path": "vi/vi_part_00047.parquet",
+     "bytes": 1600245688,
+     "digest": ""
+    },
+    {
+     "path": "vi/vi_part_00048.parquet",
+     "bytes": 1605542616,
+     "digest": ""
+    },
+    {
+     "path": "vi/vi_part_00049.parquet",
+     "bytes": 1603505431,
+     "digest": ""
+    }
+   ],
+   "excluded": [],
+   "excluded_because": ""
+  },
+  {
+   "source": "madlad400",
+   "order": 4,
+   "origin": "hub",
+   "repo": "allenai/MADLAD-400",
+   "revision": "9d886a76bd8fa69b294f2dd3843dacb8388ee5a5",
+   "revision_url": "https://huggingface.co/api/datasets/allenai/MADLAD-400",
+   "config": "vi",
+   "gated": false,
+   "license_class": "permissive-attribution",
+   "note": "Ships as gzipped JSONL rather than parquet, which is the reason it ingests late: it streams fine and it does not answer a column question until gao has rewritten it.",
+   "files": [
+    {
+     "path": "data/vi/vi_clean_0000.jsonl.gz",
+     "bytes": 2997042924,
+     "digest": "sha256:51cd7bce3a8c825cf74bd0a0683bf645c1f6af0e6c5f9a776fefac5bb09eb634"
+    },
+    {
+     "path": "data/vi/vi_clean_0001.jsonl.gz",
+     "bytes": 2999265585,
+     "digest": "sha256:cf20e15e4b894bd1298f8d629b3adf7f33e475ad3bba4787d6b39a78a9cef3a9"
+    },
+    {
+     "path": "data/vi/vi_clean_0002.jsonl.gz",
+     "bytes": 2999739688,
+     "digest": "sha256:cf36a7d15c5b2464664d1b3aa1064e83af253e106112057894aa71cd548acb97"
+    },
+    {
+     "path": "data/vi/vi_clean_0003.jsonl.gz",
+     "bytes": 2992161141,
+     "digest": "sha256:2ba9a79186041fc52bb44540d057e86638ece94ede76f2e4ca24c6760ae617da"
+    },
+    {
+     "path": "data/vi/vi_clean_0004.jsonl.gz",
+     "bytes": 2979996798,
+     "digest": "sha256:25d1044c139a5d46de1499ec72ac203f1f03a0663a1abab997daf8cad7cd99e9"
+    },
+    {
+     "path": "data/vi/vi_clean_0005.jsonl.gz",
+     "bytes": 2974199479,
+     "digest": "sha256:4f67ec382636e8e6f74949c1cd4997ac4e45efc3c0916a9fb65185f2b18d291a"
+    },
+    {
+     "path": "data/vi/vi_clean_0006.jsonl.gz",
+     "bytes": 2972123731,
+     "digest": "sha256:e1044934966b706e4ca58b0b2d67b90e2f2bbf52c01c9705aef056a097cebc3f"
+    },
+    {
+     "path": "data/vi/vi_clean_0007.jsonl.gz",
+     "bytes": 2967691219,
+     "digest": "sha256:1d613dc63029fe690336d1e46e0cb966afecea2ad02f5b1009626be1a601eaab"
+    },
+    {
+     "path": "data/vi/vi_clean_0008.jsonl.gz",
+     "bytes": 2958823504,
+     "digest": "sha256:b95391aebda58cbf3e4046610277e4bc918487d5cb4155a073678f50894a9a21"
+    },
+    {
+     "path": "data/vi/vi_clean_0009.jsonl.gz",
+     "bytes": 2999757129,
+     "digest": "sha256:718ee9abc58b69c13a85ed77e0daebf4a078db9e3ab8bd6c43c432df02223765"
+    },
+    {
+     "path": "data/vi/vi_clean_0010.jsonl.gz",
+     "bytes": 2997195587,
+     "digest": "sha256:78e653d971de94c7acedc754476769ad7db6b599515abe5e6a8247adff946b07"
+    },
+    {
+     "path": "data/vi/vi_clean_0011.jsonl.gz",
+     "bytes": 2993113588,
+     "digest": "sha256:78511bd1cd4b1bb3b030a5c65b2cf137a31ae4e4a5eaf6c1c9471a355a1332c8"
+    },
+    {
+     "path": "data/vi/vi_clean_0012.jsonl.gz",
+     "bytes": 2995557512,
+     "digest": "sha256:3d6a1a67822b880c4e33a15922c203f60cadc8620b85d9bcc54486d3b9d51049"
+    },
+    {
+     "path": "data/vi/vi_clean_0013.jsonl.gz",
+     "bytes": 2995915525,
+     "digest": "sha256:394e397963493c98c6c524a5da2c60761bf0c2fbef0c90a1cb7b2fa0b3572c78"
+    },
+    {
+     "path": "data/vi/vi_clean_0014.jsonl.gz",
+     "bytes": 2999970263,
+     "digest": "sha256:b467281661c670c69669f30fdf9cb252eb5da3dbf36a83da5bfebddf1625786f"
+    },
+    {
+     "path": "data/vi/vi_clean_0015.jsonl.gz",
+     "bytes": 2957907422,
+     "digest": "sha256:fe5dcb33a0027fafc3eb90aea0adf7322fef83adb4d143cca8284c50ea92955d"
+    },
+    {
+     "path": "data/vi/vi_clean_0016.jsonl.gz",
+     "bytes": 2995918129,
+     "digest": "sha256:957ea7208606d752c452a68197247c776b84ffc9dd7be4253443a5f061c27ef5"
+    },
+    {
+     "path": "data/vi/vi_clean_0017.jsonl.gz",
+     "bytes": 2994376814,
+     "digest": "sha256:5fbb98e66803f218ad83ce5740f5b97044247ea77f8e1d1704a96340b4c0fea6"
+    },
+    {
+     "path": "data/vi/vi_clean_0018.jsonl.gz",
+     "bytes": 2999914201,
+     "digest": "sha256:6dda6487f47142e9573eee35d32162f8bc53acb2986f98ce1d0d8499481253c6"
+    },
+    {
+     "path": "data/vi/vi_clean_0019.jsonl.gz",
+     "bytes": 2995724508,
+     "digest": "sha256:6a3cd03d68fab45a28ea5f64aa607dd4a8952ee06ea065445be7447694ab7705"
+    },
+    {
+     "path": "data/vi/vi_clean_0020.jsonl.gz",
+     "bytes": 2990745863,
+     "digest": "sha256:6f6290d22df2cc6c609367e06450832f20b3b7f73d3851306711a161a49a86cb"
+    },
+    {
+     "path": "data/vi/vi_clean_0021.jsonl.gz",
+     "bytes": 2994796447,
+     "digest": "sha256:c0e65f812501652f9467852cc6c27cfc781e8981e94277cfa54062dfbf822c4a"
+    },
+    {
+     "path": "data/vi/vi_clean_0022.jsonl.gz",
+     "bytes": 2995110397,
+     "digest": "sha256:cbb7487091ade5f7361ba8213d9853d5f20b36262025baaa4114f4c489215a27"
+    },
+    {
+     "path": "data/vi/vi_clean_0023.jsonl.gz",
+     "bytes": 2996078648,
+     "digest": "sha256:1eb5081127d4a620cab4ea8f97d52fcc89a3e10c9c577295cb1a78c92ffa6616"
+    },
+    {
+     "path": "data/vi/vi_clean_0024.jsonl.gz",
+     "bytes": 2998740444,
+     "digest": "sha256:c29f457095a7be3c8a3c8f0069be6690f1fde9ce8af9e9be9d1b7fe26fed69df"
+    },
+    {
+     "path": "data/vi/vi_clean_0025.jsonl.gz",
+     "bytes": 2998019957,
+     "digest": "sha256:b9080fa6afe337bb483beb9c03606c645db0de8decb7cc0a9b8c52e1d9bc156c"
+    },
+    {
+     "path": "data/vi/vi_clean_0026.jsonl.gz",
+     "bytes": 2998510104,
+     "digest": "sha256:3468887a840561d97ee2d8c6a0d62dbbbf9e9953afc309c87ad17a7afc4bc152"
+    },
+    {
+     "path": "data/vi/vi_clean_0027.jsonl.gz",
+     "bytes": 2982394649,
+     "digest": "sha256:c6c5ad9c0dd055b38221dfb7a160dbf049b7bd25fe2be259caa978c75bf1889e"
+    },
+    {
+     "path": "data/vi/vi_clean_0028.jsonl.gz",
+     "bytes": 2995441895,
+     "digest": "sha256:96e22a9620bbde92849ac792de116ee5802d08334e9ca1785d227ae1aef16431"
+    },
+    {
+     "path": "data/vi/vi_clean_0029.jsonl.gz",
+     "bytes": 2979150385,
+     "digest": "sha256:577e87bb4caee15546cb27b20794c933d6282aadc7204cc70feef074b1bc9a4f"
+    },
+    {
+     "path": "data/vi/vi_clean_0030.jsonl.gz",
+     "bytes": 2997336870,
+     "digest": "sha256:bcd451190fe22dcf1266b27ce87c4bec0bcbc56fb948fff5bce1a54ef48fcded"
+    },
+    {
+     "path": "data/vi/vi_clean_0031.jsonl.gz",
+     "bytes": 2620064932,
+     "digest": "sha256:b7a14a0183d68baa8090dbab6da0facac60c2252cb162052d65b963bf231a656"
+    }
+   ],
+   "excluded": [
+    {
+     "path": "data/vi/vi_noisy_0000.jsonl.gz",
+     "bytes": 2955882039,
+     "digest": "sha256:beb15e87d32d9b5fe404f5dd7dfec1b65f5ac8d65af515034bb2642f9b2a2839"
+    },
+    {
+     "path": "data/vi/vi_noisy_0001.jsonl.gz",
+     "bytes": 2949287022,
+     "digest": "sha256:a7cb0fdb2780c4278a3a3546ce695de21dafaae89c9c8bcb18f27070aaa4f583"
+    },
+    {
+     "path": "data/vi/vi_noisy_0002.jsonl.gz",
+     "bytes": 2945767419,
+     "digest": "sha256:ededc0cdb88d39765135e63c597817f9968ed1e7763910406aeadd6fdabcf193"
+    },
+    {
+     "path": "data/vi/vi_noisy_0003.jsonl.gz",
+     "bytes": 2999890832,
+     "digest": "sha256:807efa7d9254b9127a7777d58c47b6734459b385c2e0a40078679ca264f19100"
+    },
+    {
+     "path": "data/vi/vi_noisy_0004.jsonl.gz",
+     "bytes": 2941287319,
+     "digest": "sha256:8cd98a9ca16dc697c454470c2153d70472cd3c51ca920eb47a99a2afeb5bf854"
+    },
+    {
+     "path": "data/vi/vi_noisy_0005.jsonl.gz",
+     "bytes": 2999336847,
+     "digest": "sha256:fe492c29d0a79b77736840ac3d2afad1add81c81c42955dc56311ee270c556aa"
+    },
+    {
+     "path": "data/vi/vi_noisy_0006.jsonl.gz",
+     "bytes": 2993776370,
+     "digest": "sha256:9eed495cb232d77b10c4b39cec39e6e16ff9f621872b57e1f169b5ca710ef083"
+    },
+    {
+     "path": "data/vi/vi_noisy_0007.jsonl.gz",
+     "bytes": 2982696882,
+     "digest": "sha256:0102ffccfb3a73fc9a7abee68c3b22380bda493a40b8326d14768be30662dfc4"
+    },
+    {
+     "path": "data/vi/vi_noisy_0008.jsonl.gz",
+     "bytes": 2999724230,
+     "digest": "sha256:b77f7ab25211b15f5e49211ea1bf94baf32aff73826242b87fee6708a0c38f0c"
+    },
+    {
+     "path": "data/vi/vi_noisy_0009.jsonl.gz",
+     "bytes": 2992395891,
+     "digest": "sha256:64f808c091b4fd6b3498dff635290a2e2756e5fa4e6db31b96ca6fc2baca29f4"
+    },
+    {
+     "path": "data/vi/vi_noisy_0010.jsonl.gz",
+     "bytes": 2993835105,
+     "digest": "sha256:e7c7a3386b8f03f674bec5c649bbe4320de11d598668fdcf75bc495dc5a86b3b"
+    },
+    {
+     "path": "data/vi/vi_noisy_0011.jsonl.gz",
+     "bytes": 2998134497,
+     "digest": "sha256:51158a60480873dc7aceaef369074338e0848604ab1767b40923f5a8b76d2e02"
+    },
+    {
+     "path": "data/vi/vi_noisy_0012.jsonl.gz",
+     "bytes": 2999744258,
+     "digest": "sha256:8ccd2bf21d0481a3dd8512c12d25bad07d88e097ff4e105808a55e8d7132a210"
+    },
+    {
+     "path": "data/vi/vi_noisy_0013.jsonl.gz",
+     "bytes": 2999177313,
+     "digest": "sha256:4d6c4a5f41e8e72372fe341c27d37938ecfde91bdaafaf0deedc0872cd990814"
+    },
+    {
+     "path": "data/vi/vi_noisy_0014.jsonl.gz",
+     "bytes": 2999363314,
+     "digest": "sha256:1a461ea037f6bac97776a1cbc1de016b1b113ecfdb30193f1bbde56437f3239f"
+    },
+    {
+     "path": "data/vi/vi_noisy_0015.jsonl.gz",
+     "bytes": 2998448876,
+     "digest": "sha256:200ebdd1fe33a3db124b8c8737e50ed967fcee75a9d324f95bdea9bcf3f79d70"
+    },
+    {
+     "path": "data/vi/vi_noisy_0016.jsonl.gz",
+     "bytes": 2990400274,
+     "digest": "sha256:fcd73561cbe9e9a55f0afbc68fb31887bb986458aefe4eaee9c5d6e74c8609bb"
+    },
+    {
+     "path": "data/vi/vi_noisy_0017.jsonl.gz",
+     "bytes": 2999939217,
+     "digest": "sha256:cf72114fa67d20647e6afa4c154449adb805dd9f57dfc207f65dd5261858ad2e"
+    }
+   ],
+   "excluded_because": "MADLAD's own pre-filter rejects, pinned rather than dropped: gao runs its own filter and the marginal yield of the noisy split under it is unmeasured, so it stays here until the S1 measurement says whether it is worth 53.7 GB of transfer"
+  },
+  {
+   "source": "glotcc",
+   "order": 5,
+   "origin": "hub",
+   "repo": "cis-lmu/GlotCC-V1",
+   "revision": "9ad140b6be3ac7b539606a2b4809b49d122823de",
+   "revision_url": "https://huggingface.co/api/datasets/cis-lmu/GlotCC-V1",
+   "config": "vie-Latn",
+   "gated": false,
+   "license_class": "open",
+   "note": "The inventory called this one small. It is 55.9 GB, which is the first thing the manifest corrected.",
+   "files": [
+    {
+     "path": "v1.0/vie-Latn/vie-Latn_0.parquet",
+     "bytes": 2086615158,
+     "digest": "sha256:fcba07a333d01a987c0bcea6d1246c7ad02681504483c0cab93e1d40d3706122"
+    },
+    {
+     "path": "v1.0/vie-Latn/vie-Latn_1.parquet",
+     "bytes": 2087440289,
+     "digest": "sha256:e7258a2bd33cc1dcd020a68ce3075a37eb9070e6dc4d468e4e0d3c07f660b332"
+    },
+    {
+     "path": "v1.0/vie-Latn/vie-Latn_10.parquet",
+     "bytes": 2093615609,
+     "digest": "sha256:fd25a293bd8d98b1e581d6a629830f22c78f499fb06beeca76294abdad6bd1c7"
+    },
+    {
+     "path": "v1.0/vie-Latn/vie-Latn_11.parquet",
+     "bytes": 2085546338,
+     "digest": "sha256:7fec5cb6b879351cd7f431b5e4994d21980d3071f8cfb5ed34aaeb5b4fb2c6c1"
+    },
+    {
+     "path": "v1.0/vie-Latn/vie-Latn_12.parquet",
+     "bytes": 2090542576,
+     "digest": "sha256:71325aaadd27be4a2fca1dcfe498a1d3ff1de5e002f85be3386a77f798996739"
+    },
+    {
+     "path": "v1.0/vie-Latn/vie-Latn_13.parquet",
+     "bytes": 2093240183,
+     "digest": "sha256:234efd3e2bc0f07de2e8b3b6c89ed13111d97261b979b5f3b344c954bb1eadc9"
+    },
+    {
+     "path": "v1.0/vie-Latn/vie-Latn_14.parquet",
+     "bytes": 2093446932,
+     "digest": "sha256:087140fe80089401bcf672f95d0938335e83a969afdf36519dbddfd7e9d3257a"
+    },
+    {
+     "path": "v1.0/vie-Latn/vie-Latn_15.parquet",
+     "bytes": 2098384240,
+     "digest": "sha256:7bd3d9e81ade61db8d545a2a43a79cd21315c451c15d73c11cd5dfb59e0f7e50"
+    },
+    {
+     "path": "v1.0/vie-Latn/vie-Latn_16.parquet",
+     "bytes": 2087393320,
+     "digest": "sha256:d6bb91f1cf7dd4c94a3aa5db6c22f636d37ab923cd503981ae11a7462c56c7a9"
+    },
+    {
+     "path": "v1.0/vie-Latn/vie-Latn_17.parquet",
+     "bytes": 2114126227,
+     "digest": "sha256:ca13e3774ac77e01c321169d4592fd11224527a0cfe02c08f2f50192b6fe3288"
+    },
+    {
+     "path": "v1.0/vie-Latn/vie-Latn_18.parquet",
+     "bytes": 2130296481,
+     "digest": "sha256:aa86df46a36f2a08d5d2d5c8a077b61466ca1d7a79c80e0a8b3b83ab03c5f2da"
+    },
+    {
+     "path": "v1.0/vie-Latn/vie-Latn_19.parquet",
+     "bytes": 2126702362,
+     "digest": "sha256:3aa0058c3d57fcf40d2a70deb8b9673cdb016d7406c669839c8899aea71a8aac"
+    },
+    {
+     "path": "v1.0/vie-Latn/vie-Latn_2.parquet",
+     "bytes": 2087727998,
+     "digest": "sha256:acb9973abe8daea7c2683146add03882b936944d860404e0689b5733e30c1438"
+    },
+    {
+     "path": "v1.0/vie-Latn/vie-Latn_20.parquet",
+     "bytes": 2142337289,
+     "digest": "sha256:3a5a82979e062c5422067116a83aaecbedf4e2c9064965a329c5d5382e80c33d"
+    },
+    {
+     "path": "v1.0/vie-Latn/vie-Latn_21.parquet",
+     "bytes": 2160200655,
+     "digest": "sha256:1c030c421e2e11207cf0330d22a0ef0aa6ec2c8ae4596abd7cb3a5c87b566689"
+    },
+    {
+     "path": "v1.0/vie-Latn/vie-Latn_22.parquet",
+     "bytes": 2169521246,
+     "digest": "sha256:cc4c88ce00450e74a25d91fe251bd913e6c74cf6d64382b6122bbcc7eff07f6f"
+    },
+    {
+     "path": "v1.0/vie-Latn/vie-Latn_23.parquet",
+     "bytes": 2161594654,
+     "digest": "sha256:d9481746638b13a2f1b608e7b83531211dae81315462e5e33e0ef2b284f13d90"
+    },
+    {
+     "path": "v1.0/vie-Latn/vie-Latn_24.parquet",
+     "bytes": 2164436849,
+     "digest": "sha256:f684f51783160e6c8111017ee449148441d3682854292e09f8f3bd679fc46b68"
+    },
+    {
+     "path": "v1.0/vie-Latn/vie-Latn_25.parquet",
+     "bytes": 2161977692,
+     "digest": "sha256:58aa7f22ac242c0dce18c395d284df5331c5150d41a6d04ebf3a997958acee39"
+    },
+    {
+     "path": "v1.0/vie-Latn/vie-Latn_26.parquet",
+     "bytes": 1007542493,
+     "digest": "sha256:ff8e0215817abfbcb82159511f8b69f4c27dc047e93488b4671b795ac2d8ffea"
+    },
+    {
+     "path": "v1.0/vie-Latn/vie-Latn_3.parquet",
+     "bytes": 2088367394,
+     "digest": "sha256:11bcf7b41502afe9f62dd91d75f141099e0e55b6886454bfc40a21b2d3292623"
+    },
+    {
+     "path": "v1.0/vie-Latn/vie-Latn_4.parquet",
+     "bytes": 2084090871,
+     "digest": "sha256:c04760ebcc861c7cbbce3a1ed577870571a7660ed96177efcf69196918fe2eaf"
+    },
+    {
+     "path": "v1.0/vie-Latn/vie-Latn_5.parquet",
+     "bytes": 2088458533,
+     "digest": "sha256:aabe5b6025b21f69539caaa6d9d380d8dcc979e413416e5aad8edba0139724c1"
+    },
+    {
+     "path": "v1.0/vie-Latn/vie-Latn_6.parquet",
+     "bytes": 2091622894,
+     "digest": "sha256:015f4318aeca9388b78db10f3f9ecf5f60989ec6fc0329c0a96f8d7ad9f20ebe"
+    },
+    {
+     "path": "v1.0/vie-Latn/vie-Latn_7.parquet",
+     "bytes": 2083558346,
+     "digest": "sha256:54ce7fed6bfc8ffd69d9505ca4f42ed4ace7688e9ab2899b3be3cd2a19e9cf5a"
+    },
+    {
+     "path": "v1.0/vie-Latn/vie-Latn_8.parquet",
+     "bytes": 2090199030,
+     "digest": "sha256:1eff8c8b87d47a4a9d6578a4f4f4e2a4ac6a84353381e5167beb05f4c9e7a004"
+    },
+    {
+     "path": "v1.0/vie-Latn/vie-Latn_9.parquet",
+     "bytes": 2092699257,
+     "digest": "sha256:f192e035a57094a5d03409c79799ce1f105ce1a66918f18fa990386fff3651bd"
+    }
+   ],
+   "excluded": [],
+   "excluded_because": ""
+  }
+ ]
+}
