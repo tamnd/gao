@@ -70,6 +70,14 @@ Pass `-quick` to check the manifest and the signature without rehashing several 
 
 Without `-key` the signature is checked against the key embedded in the manifest, which proves the snapshot was signed by somebody rather than that it was signed by us. The published key goes in the release notes, and a verifier written against it is ten lines in any language: the key file is one line of hex and nothing else.
 
+## Where the corpus lives
+
+gao runs on four real machines with 500 GB of free disk between them, and the corpus is 1188 GB of extracted text, 396 GB compressed. It does not fit, and it does not fit by enough that no amount of tidying changes the answer. `gao box` prints the arithmetic.
+
+So the store of record is an S3-compatible object store and the fleet holds a working set. Off-box rather than more disk, because the corpus outlives the machines and disks bought for a rented box cannot be moved, cannot be shared, and are gone when the box is. Object storage rather than a network filesystem, because every access here is a whole shard read or written by name from several machines at once, with no rename, no partial update, and no locking, which is object storage exactly. S3-compatible rather than one vendor's API, because the protocol is the commitment and the provider is not: the endpoint comes from `GAO_STORE` and switching providers when the egress bill says to is a configuration change.
+
+Nothing on the fleet is authoritative and nothing on it is backed up. Everything there can be refetched from the store, or in the crawl's case is uploaded before it is deleted. One box, `server2`, holds no corpus bytes at all: it has 8 GB free, which is less than the reserve every box keeps, so the arithmetic says no without anybody having to remember to say it.
+
 ## Why this is not just another crawler
 
 Three problems in Vietnamese text processing are load bearing, and general pipelines get all three wrong.
