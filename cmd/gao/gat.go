@@ -26,6 +26,10 @@ func runGat(stdout, stderr io.Writer, args []string) int {
 		return runGatPins(stdout, stderr, args[1:])
 	case "drift":
 		return runGatDrift(stdout, stderr, args[1:])
+	case "hf":
+		return runGatHF(stdout, stderr, args[1:])
+	case "ledger":
+		return runGatLedger(stdout, stderr, args[1:])
 	case "help", "-h", "--help":
 		gatUsage(stdout)
 		return 0
@@ -42,6 +46,8 @@ func gatUsage(w io.Writer) {
 subcommands:
   pins   print the ingest manifest: what gets downloaded and at which revision
   drift  ask every host whether it still serves the revision we pinned
+  hf     fetch the pinned files, resuming from whatever a previous run finished
+  ledger print what an ingest has already finished
 
 run 'gao gat <subcommand> -h' for the flags of a single subcommand.
 `)

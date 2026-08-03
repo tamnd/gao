@@ -43,7 +43,8 @@ One binary, subcommands named for the rice verbs.
 ```
 gao gat pins                                # the ingest manifest: what we download, at which revision
 gao gat drift                               # ask every host whether it still serves what we pinned
-gao gat hf                                  # harvest from Hugging Face
+gao gat hf     -dir ingest/                 # harvest from Hugging Face, resuming where it left off
+gao gat ledger -dir ingest/                 # what the harvest has finished so far
 gao gat cc     --snapshots all              # recover Vietnamese from Common Crawl
 gao gat crawl  --policy crawl.toml          # crawl the Vietnamese web directly
 gao gat media  --from crawl                 # fetch PDFs, audio, video
@@ -98,6 +99,18 @@ Every Hub source is pinned to a commit SHA and never to a branch, because a corp
 Reading the file lists off the hosts rather than copying them from the plan corrected the plan three times. GlotCC's Vietnamese partition was described as small and is 55.9 GB. The whole download was estimated at roughly 490 GB and is 608.9 GB. CulturaX is gated, which nothing had recorded, and a gated repo does not hand its file digests to an unauthenticated caller, so that source pins byte counts and fills in digests when the grant lands.
 
 One number sets the shape of the ingest. The largest pinned file is a 26.6 GB HPLT shard and `server1`'s entire peak disk budget is 4.1 GB, so ingestion decompresses in flight and writes gao shards as it goes rather than downloading a file and then reading it. Streaming is not an optimization here, it is the only thing that fits.
+
+## Getting it in
+
+`gao gat hf` fetches what the manifest pins. Nothing lands on disk except the ledger: a file is streamed through whatever consumes it and the bytes are never all in one place at once, which is what the 26.6 GB against 4.1 GB arithmetic above forces.
+
+A transfer that size will be dropped. When it is, the fetch reconnects at the byte it stopped at with a range request and carries on, and the hash rolls forward across the reconnect because nothing is read twice. A host that answers a range request by starting the file over is a failure rather than a slow path, because taking it would mean hashing the first bytes twice and reporting a file larger than the one that exists.
+
+Progress is the ledger, one JSON line per finished file, synced as it is written. An interrupted run is resumed by running the same command again: files already recorded at their pinned revision are skipped. An entry names the revision it was fetched at, so re-pinning a source invalidates its entries rather than letting a restart mix two revisions into one corpus. `gao gat ledger` reads it without taking it over, so it is safe to run against a box that is fetching.
+
+Every file is checked at the end against the byte count in the manifest, and against the pinned digest where the host publishes one. Where it does not, and HPLT publishes none while the Hub withholds them for gated repos, the fetch computes a digest and records it, so the second fetch of a file has something to compare against even though the first did not.
+
+`-dir` has no default. A command that starts a 608.9 GB download into whichever directory it was run from is a command that does it once by accident.
 
 ## Where the corpus lives
 
