@@ -51,10 +51,24 @@ gao sang       --in normalized/ --out kept/ # sift: language ID, heuristics, qua
 gao xay        --in kept/ --out milled/     # mill: deduplication, boilerplate removal
 
 gao kho release --snapshot gao-v1.0         # store and publish
-gao kho verify  --snapshot gao-v1.0
+gao kho verify  snapshots/gao-v1.0          # check a snapshot against its manifest
 ```
 
 Run `gao help` for the full surface.
+
+## Verifying a snapshot
+
+Every snapshot carries a `manifest.toml` that lists its shards, the hash of each one, a merkle root over those hashes, and an ed25519 signature over the manifest values. Checking all of it is one command.
+
+```
+gao kho verify -key <the published gao key> snapshots/gao-v1.0
+```
+
+That checks four things: the manifest is internally consistent, the merkle root matches the shard hashes, the signature verifies against the key you named, and every shard file on disk hashes to the value recorded for it. A shard file present in the directory but absent from the manifest fails too, because a snapshot with an extra file in it is not the snapshot that was signed.
+
+Pass `-quick` to check the manifest and the signature without rehashing several hundred gigabytes. It answers a different question and it is not enough to accept a download.
+
+Without `-key` the signature is checked against the key embedded in the manifest, which proves the snapshot was signed by somebody rather than that it was signed by us. The published key goes in the release notes, and a verifier written against it is ten lines in any language: the key file is one line of hex and nothing else.
 
 ## Why this is not just another crawler
 

@@ -172,3 +172,24 @@ func TestGB(t *testing.T) {
 		t.Errorf("GB(0) is %q", GB(0))
 	}
 }
+
+func TestSizePicksAReadableUnit(t *testing.T) {
+	cases := []struct {
+		in   int64
+		want string
+	}{
+		{0, "0 B"},
+		{999, "999 B"},
+		{1_000, "1.0 kB"},
+		{512_000, "512.0 kB"},
+		{1_000_000, "1.0 MB"},
+		{512_000_000, "512.0 MB"},
+		{1_000_000_000, "1.0 GB"},
+		{ShardBytes * 750, "384.0 GB"},
+	}
+	for _, tc := range cases {
+		if got := Size(tc.in); got != tc.want {
+			t.Errorf("Size(%d) = %q, want %q", tc.in, got, tc.want)
+		}
+	}
+}
