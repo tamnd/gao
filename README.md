@@ -52,6 +52,9 @@ gao xay        --in kept/ --out milled/     # mill: deduplication, boilerplate r
 
 gao kho release --snapshot gao-v1.0         # store and publish
 gao kho verify  snapshots/gao-v1.0          # check a snapshot against its manifest
+
+gao box                                     # the fleet, and the disk budget it implies
+gao luat                                    # the legal position and what it lets us publish
 ```
 
 Run `gao help` for the full surface.
@@ -78,6 +81,18 @@ So the store of record is an S3-compatible object store and the fleet holds a wo
 
 Nothing on the fleet is authoritative and nothing on it is backed up. Everything there can be refetched from the store, or in the crawl's case is uploaded before it is deleted. One box, `server2`, holds no corpus bytes at all: it has 8 GB free, which is less than the reserve every box keeps, so the arithmetic says no without anybody having to remember to say it.
 
+## What we may publish
+
+A corpus assembled from four acquisition paths and hundreds of thousands of hosts does not have a license, it has a distribution of them, so every document carries its own license class and the evidence that assigned it. `gao luat` prints the whole position: the determination for each source, what ships for a document of each class, and the questions gao has put to counsel.
+
+The rule is that gao publishes what it may publish and publishes the recipe for the rest. Open and permissively licensed documents ship as full text. Restricted documents, which is where most of the crawl lands, ship as a URL and every metadata column with the text withheld, so somebody else can rebuild the same corpus from the same sources under their own lawful access. Material carrying a machine readable text and data mining reservation ships as nothing at all, and the count of what was withheld goes in the release notes, because a number that quietly disappears reads as a number that was never there. Our headline token count therefore includes tokens we cannot ship, and the release notes state both numbers rather than the flattering one. The projection before the corpus exists is 210B publishable of 300B total.
+
+Two sources are worth calling out. Vietnamese statutes, decrees, circulars, and gazettes are outside copyright protection by statute, which makes a complete, deduplicated, normalized Vietnamese legal corpus fully publishable with nothing attached to it. Vietnamese Wikipedia is the opposite case: its share alike term could propagate to anything it is mixed into, so it stays in its own shard rather than being blended, which keeps the question contained to half a billion tokens instead of raising it over three hundred.
+
+Ten questions are with counsel, and each carries the position gao acts on until an answer arrives. That is deliberate. Legal review here is a check rather than a blocker, and the only way that works is if every question has a written default chosen so that acting on it and being wrong is recoverable: exclude rather than include, redact rather than keep, file rather than wait. One of the ten can change what the project ships rather than a detail of it, and the answer to that one is already written down too. If the text and data mining allowance turns out not to cover model training, gao publishes the URL list, every metadata column and score, the classifiers and their reference sets, and the entire pipeline. The corpus becomes a build script rather than a download, and the project continues at reduced scope rather than ending.
+
+There are two things this project will not do for tokens. No pirated sources: not shadow libraries, not book piracy dumps, not mirrors of paywalled journals, however routine their use has become elsewhere. And no quiet inclusion of reserved material: a reservation is honored, and if counsel says the allowance permits training on reserved text anyway, the model card will say that we did, because the model card is where a rightsholder looks.
+
 ## Why this is not just another crawler
 
 Three problems in Vietnamese text processing are load bearing, and general pipelines get all three wrong.
@@ -101,6 +116,8 @@ xay/         milling: deduplication, boilerplate removal
 kho/         the store: records, manifests, snapshots, signing
 vo/          the reject store: dropped documents and why they were dropped
 doc/         schema and contracts shared across stages
+luat/        the legal position: license determinations, publication posture
+may/         the fleet: the four boxes this actually runs on
 ```
 
 Flat packages, no `internal/`, one module, one binary. Crawler code arrives from [openindex](https://github.com/tamnd/openindex) by copy rather than by import, per the standing port discipline.
