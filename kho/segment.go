@@ -257,9 +257,7 @@ func (w *Writer[P, T]) Close() error {
 	// walks past it. The payload is the index followed by its own length, which
 	// is what lets a reader find the frame by seeking backwards from the end of
 	// the file without scanning.
-	payload := make([]byte, 0, len(body)+trailerSize)
-	payload = append(payload, body...)
-	payload = binary.LittleEndian.AppendUint64(payload, uint64(len(body)))
+	payload := binary.LittleEndian.AppendUint64(body, uint64(len(body)))
 
 	// A skippable frame declares its payload length in a uint32. An index that
 	// large would take tens of millions of frames in one segment, which is well
