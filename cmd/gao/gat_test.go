@@ -108,9 +108,16 @@ func TestGatPinsListsEveryFileOnRequest(t *testing.T) {
 func TestGatRejectsWhatItCannotDo(t *testing.T) {
 	for _, args := range [][]string{
 		{"gat"},
-		{"gat", "hf"},
+		{"gat", "sang"},
 		{"gat", "pins", "extra"},
 		{"gat", "drift", "extra"},
+		{"gat", "hf", "extra"},
+		{"gat", "ledger", "extra"},
+		// The one that matters. A bare fetch with no directory would start a
+		// 608.9 GB download into whatever directory it was run from, and it did
+		// exactly that once before this became an error.
+		{"gat", "hf"},
+		{"gat", "ledger"},
 	} {
 		if _, _, code := exec(t, args...); code != 2 {
 			t.Errorf("gao %s: exit %d, want 2", strings.Join(args, " "), code)
@@ -120,7 +127,7 @@ func TestGatRejectsWhatItCannotDo(t *testing.T) {
 	if code != 0 {
 		t.Fatalf("gao gat help: exit %d, want 0", code)
 	}
-	for _, sub := range []string{"pins", "drift"} {
+	for _, sub := range []string{"pins", "drift", "hf", "ledger"} {
 		if !strings.Contains(out, sub) {
 			t.Errorf("gao gat help omits %s", sub)
 		}
