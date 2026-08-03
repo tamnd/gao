@@ -52,6 +52,7 @@ gao xay        --in kept/ --out milled/     # mill: deduplication, boilerplate r
 
 gao kho release --snapshot gao-v1.0         # store and publish
 gao kho verify  snapshots/gao-v1.0          # check a snapshot against its manifest
+gao kho datasets                            # where processed data is written, and how to read it
 
 gao box                                     # the fleet, and the disk budget it implies
 gao luat                                    # the legal position and what it lets us publish
@@ -77,9 +78,17 @@ Without `-key` the signature is checked against the key embedded in the manifest
 
 gao runs on four real machines with 500 GB of free disk between them, and the corpus is 1188 GB of extracted text, 396 GB compressed. It does not fit, and it does not fit by enough that no amount of tidying changes the answer. `gao box` prints the arithmetic.
 
-So the store of record is an S3-compatible object store and the fleet holds a working set. Off-box rather than more disk, because the corpus outlives the machines and disks bought for a rented box cannot be moved, cannot be shared, and are gone when the box is. Object storage rather than a network filesystem, because every access here is a whole shard read or written by name from several machines at once, with no rename, no partial update, and no locking, which is object storage exactly. S3-compatible rather than one vendor's API, because the protocol is the commitment and the provider is not: the endpoint comes from `GAO_STORE` and switching providers when the egress bill says to is a configuration change.
+So the store of record is off-box and the fleet holds a working set. Off-box rather than more disk, because the corpus outlives the machines and disks bought for a rented box cannot be moved, cannot be shared, and are gone when the box is. Object storage rather than a network filesystem, because every access here is a whole shard read or written by name from several machines at once, with no rename, no partial update, and no locking, which is object storage exactly.
 
-Nothing on the fleet is authoritative and nothing on it is backed up. Everything there can be refetched from the store, or in the crawl's case is uploaded before it is deleted. One box, `server2`, holds no corpus bytes at all: it has 8 GB free, which is less than the reserve every box keeps, so the arithmetic says no without anybody having to remember to say it.
+Off-box means dataset repos on the Hugging Face Hub, holding Parquet, under the [open-index](https://huggingface.co/open-index) organization. A published Vietnamese corpus has to be on the Hub for anybody to use it, so a bucket alongside it would mean paying to store the same data twice and paying egress to move it between them. Parquet under a snapshot prefix is queryable where it sits, so a question about a column costs one column instead of a download, and the same path serves the fleet, the release, and the reader. `gao kho datasets` prints the repos, what each one holds, and the query that reads it.
+
+```
+read_parquet('hf://datasets/open-index/vietnamese-legal-text/data/snapshot=gao-v1.0/*.parquet')
+```
+
+The repos are named for the data rather than for the stage that wrote it, because a name like `gao-xay` tells a reader which of our programs ran, which is the one thing they do not care about. Which repo a document lands in is the license position rather than a preference: a public repo carrying text may only carry text the publication posture says ships, and that is checked in code rather than remembered by whoever creates the repo.
+
+Offload is what makes the arithmetic work. A worker writes one shard, pushes it, deletes it, and takes the next, so peak disk is two shards per worker no matter how large the corpus gets. That is 4.1 GB on `server1` against a 90 GB budget, and it is why a fleet with 500 GB of disk can process a corpus several times that size. Nothing on the fleet is authoritative and nothing on it is backed up. Everything there can be refetched from the store, or in the crawl's case is uploaded before it is deleted. One box, `server2`, holds no corpus bytes at all: it has 8 GB free, which is less than the reserve every box keeps, so the arithmetic says no without anybody having to remember to say it.
 
 ## What we may publish
 
