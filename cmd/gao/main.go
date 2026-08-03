@@ -27,6 +27,7 @@ type command struct {
 
 func commands() []command {
 	return []command{
+		{"box", "print the fleet inventory and the disk budget it implies", runBox},
 		{"plan", "print the build plan: slices, gates, and kill criteria", runPlan},
 		{"version", "print the version", runVersion},
 		{"help", "print this help", nil}, // handled in main so it can see the table
