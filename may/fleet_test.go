@@ -18,6 +18,9 @@ func TestEveryBoxIsCompletelyDescribed(t *testing.T) {
 		if b.OS == "" || b.Arch == "" || b.CPU == "" {
 			t.Errorf("%s is missing its platform", b.Name)
 		}
+		if b.Hostname == "" {
+			t.Errorf("%s has no hostname recorded, so a run on it labels itself unmeasured", b.Name)
+		}
 		if b.Cores <= 0 || b.Threads < b.Cores {
 			t.Errorf("%s has %d cores and %d threads", b.Name, b.Cores, b.Threads)
 		}
@@ -114,9 +117,20 @@ func TestHoldsAnswersAgainstTheLargestBox(t *testing.T) {
 	}
 }
 
-func TestLookup(t *testing.T) {
+func TestLookupTakesEitherNameAndIgnoresCase(t *testing.T) {
 	if b, ok := Lookup("server3"); !ok || b.Cores != 8 {
 		t.Errorf("Lookup(server3) gave %+v, %v", b, ok)
+	}
+	// The machines do not call themselves what we call them, and a run on a real
+	// box has to label itself correctly with nothing set in the environment.
+	for _, b := range Boxes {
+		got, ok := Lookup(b.Hostname)
+		if !ok || got.Name != b.Name {
+			t.Errorf("Lookup(%q) gave %q, %v, want %s", b.Hostname, got.Name, ok, b.Name)
+		}
+	}
+	if b, ok := Lookup("GAMINGPC"); !ok || b.Name != "gamingpc" {
+		t.Errorf("Lookup is case sensitive, which breaks the Windows box")
 	}
 	if _, ok := Lookup("laptop"); ok {
 		t.Error("Lookup found a box that is not on the fleet")

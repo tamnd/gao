@@ -34,6 +34,12 @@ type Box struct {
 	// measurement.
 	Name string
 
+	// Hostname is what the machine calls itself, which is not what we call it.
+	// Both are recorded so that a run on a real box labels itself correctly with
+	// nothing set in the environment, since the number that goes unlabeled is
+	// always the one somebody forgot to label.
+	Hostname string
+
 	OS   string
 	Arch string
 	CPU  string
@@ -67,36 +73,38 @@ func (b Box) HasGPU() bool { return b.GPU != "" }
 // the roles are assigned in, so reading the list top to bottom reads as the plan.
 var Boxes = []Box{
 	{
-		Name: "gamingpc", OS: "windows", Arch: "amd64",
+		Name: "gamingpc", Hostname: "GamingPC", OS: "windows", Arch: "amd64",
 		CPU: "13th Gen Intel Core i9-13900K", Cores: 24, Threads: 32,
 		Memory: 68463005696, Disk: 1023249739776, FreeDisk: 329700347904,
 		GPU: "NVIDIA GeForce RTX 4090", GPUMemory: 25769803776,
 		Role: "the only GPU on the fleet: classifiers, tokenizer, OCR, ASR, embeddings, and every evaluation. Also the Windows box of record, which is why Windows is in the CI matrix rather than a courtesy",
 	},
 	{
-		Name: "server3", OS: "linux", Arch: "amd64",
+		Name: "server3", Hostname: "vmi3391933", OS: "linux", Arch: "amd64",
 		CPU: "AMD EPYC", Cores: 8, Threads: 8,
 		Memory: 25199222784, Disk: 414921494528, FreeDisk: 44280352768,
 		Role: "box of record for pipeline throughput and memory: the most Linux memory on the fleet",
 	},
 	{
-		Name: "server2", OS: "linux", Arch: "amd64",
+		Name: "server2", Hostname: "vmi3112167", OS: "linux", Arch: "amd64",
 		CPU: "AMD EPYC", Cores: 6, Threads: 6,
 		Memory: 12541526016, Disk: 206900281344, FreeDisk: 7972212736,
 		Role: "control plane only. Eight gigabytes of free disk means no corpus bytes land here, and that is a rule rather than an accident",
 	},
 	{
-		Name: "server1", OS: "linux", Arch: "amd64",
+		Name: "server1", Hostname: "doge-01", OS: "linux", Arch: "amd64",
 		CPU: "AMD EPYC", Cores: 4, Threads: 4,
 		Memory: 6213033984, Disk: 419491782656, FreeDisk: 118498254848,
 		Role: "fetch and publish: the most free disk of the Linux boxes and a public route, and crawling is network bound rather than memory bound",
 	},
 }
 
-// Lookup returns the box with the given name.
-func Lookup(name string) (Box, bool) {
+// Lookup returns the box with the given label, which may be either the name we
+// use for it or the name it uses for itself. The match is case insensitive
+// because Windows reports its hostname with capitals and nobody types those.
+func Lookup(label string) (Box, bool) {
 	for _, b := range Boxes {
-		if b.Name == name {
+		if strings.EqualFold(b.Name, label) || strings.EqualFold(b.Hostname, label) {
 			return b, true
 		}
 	}
