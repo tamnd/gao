@@ -180,6 +180,14 @@ jobs:
           echo "$plan" | grep -q "S0" || { echo "::error::plan did not list S0"; exit 1; }
           echo "$plan" | grep -q "S9" || { echo "::error::plan did not list S9"; exit 1; }
 
+          # The fleet inventory has to print everywhere, including on Windows,
+          # because the box that runs every model on this project is a Windows
+          # box and a command that only works on Linux is not an inventory.
+          box="$(./gao${ext} box)"
+          for name in gamingpc server1 server2 server3; do
+            echo "$box" | grep -q "$name" || { echo "::error::box did not list $name"; exit 1; }
+          done
+
   build-complete:
     name: build-complete
     if: always()
