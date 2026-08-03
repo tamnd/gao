@@ -41,7 +41,9 @@ The binary is static and cross compiles cleanly. `CGO_ENABLED=0` everywhere.
 One binary, subcommands named for the rice verbs.
 
 ```
-gao gat hf     --manifest ingest.hf.toml    # harvest from Hugging Face
+gao gat pins                                # the ingest manifest: what we download, at which revision
+gao gat drift                               # ask every host whether it still serves what we pinned
+gao gat hf                                  # harvest from Hugging Face
 gao gat cc     --snapshots all              # recover Vietnamese from Common Crawl
 gao gat crawl  --policy crawl.toml          # crawl the Vietnamese web directly
 gao gat media  --from crawl                 # fetch PDFs, audio, video
@@ -73,6 +75,29 @@ That checks four things: the manifest is internally consistent, the merkle root 
 Pass `-quick` to check the manifest and the signature without rehashing several hundred gigabytes. It answers a different question and it is not enough to accept a download.
 
 Without `-key` the signature is checked against the key embedded in the manifest, which proves the snapshot was signed by somebody rather than that it was signed by us. The published key goes in the release notes, and a verifier written against it is ten lines in any language: the key file is one line of hex and nothing else.
+
+## What goes in
+
+Six public corpora go in before gao crawls anything of its own. The ingest manifest is the list of exactly which files, at exactly which revision, and `gao gat pins` prints it.
+
+| order | source | repo | files | download | license |
+|---|---|---|---|---|---|
+| 0 | HPLT v3 `vie_Latn` | `data.hplt-project.org/three/sorted` | 12 | 234.5 GB | CC0 |
+| 1 | FinePDFs `vie_Latn` | `HuggingFaceFW/finepdfs` | 3 | 13.0 GB | ODC-By |
+| 2 | FineWeb2 `vie_Latn` | `HuggingFaceFW/fineweb-2` | 30 | 130.1 GB | ODC-By |
+| 3 | CulturaX `vi` | `uonlp/CulturaX` (gated) | 50 | 80.1 GB | inherits mC4 and OSCAR |
+| 4 | MADLAD-400 `vi` | `allenai/MADLAD-400` | 32 | 95.3 GB | ODC-By |
+| 5 | GlotCC-V1 `vie-Latn` | `cis-lmu/GlotCC-V1` | 27 | 55.9 GB | CC0 |
+
+HPLT v3 ingests first and alone because it is the spine, and every later source dedups against a store that already holds it, which is what makes the retention numbers reproducible rather than dependent on what happened to arrive first.
+
+Every Hub source is pinned to a commit SHA and never to a branch, because a corpus pinned to a moving target cannot be rebuilt from its own manifest. HPLT is the awkward one and it is also the largest: it is not hosted on the Hub, so there is no commit to pin, and what it publishes instead is a per language map file listing the shards. The manifest pins the sha256 of that map, which fixes the shard list, and records each shard's size from a HEAD.
+
+`gao gat drift` asks every host what it serves now and reports the ones that have moved. It never rewrites the manifest. Re-pinning is a commit somebody makes deliberately, with the new file lists and byte counts read at the same time, because a manifest that re-pins itself silently changes what a released corpus was built from.
+
+Reading the file lists off the hosts rather than copying them from the plan corrected the plan three times. GlotCC's Vietnamese partition was described as small and is 55.9 GB. The whole download was estimated at roughly 490 GB and is 608.9 GB. CulturaX is gated, which nothing had recorded, and a gated repo does not hand its file digests to an unauthenticated caller, so that source pins byte counts and fills in digests when the grant lands.
+
+One number sets the shape of the ingest. The largest pinned file is a 26.6 GB HPLT shard and `server1`'s entire peak disk budget is 4.1 GB, so ingestion decompresses in flight and writes gao shards as it goes rather than downloading a file and then reading it. Streaming is not an optimization here, it is the only thing that fits.
 
 ## Where the corpus lives
 
