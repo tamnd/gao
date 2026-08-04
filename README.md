@@ -136,13 +136,15 @@ The cost of reading this way is the digest. A streamed file is hashed as it goes
 
 A Parquet row also has no bytes of its own. It is a slice through as many column chunks as the schema is wide, sitting in separate pages that may not be adjacent in the file, so there is no equivalent of the JSON line whose hash becomes `raw_id`. What gao hashes instead is the row's fields as it read them, in schema order. Two rows identical in every column gao reads hash the same, which is what that identity is for.
 
-Three mapping decisions in this layer are worth stating out loud, because each one is gao asserting something the producer did not.
+Four mapping decisions in this layer are worth stating out loud, because each one is gao asserting something the producer did not.
 
 None of the Parquet sources publishes a media type, and the contract requires one. All of them carry the URL, the fetch date, and the WARC record the document came from, and none of them says what was served at that URL. So it is asserted per source rather than globally: `text/html` for FineWeb2 and GlotCC because they are text extracted from the HTML pages of Common Crawl WARCs, and `application/pdf` for FinePDFs because it is text extracted from PDFs found in the same crawls, which is the whole reason it exists as a separate dataset. Neither is an inference about a particular document, and the extractor column records which mapping made the call at which version.
 
 FineWeb2's language scores come back at 1.0000098943710327, and the contract requires a probability in (0, 1]. Every row in a 130.1 GB source would be rejected on the eighth decimal place. That is a float landing slightly above one rather than a claim to be more certain than certain, so it is clamped to 1.
 
 FinePDFs has its own `extractor` column, holding `docling` or `rolmOCR`, and gao has a column of that name meaning which mapping built the document. The upstream one goes to `upstream_fields` as `pdf_extractor`. Its published `token_count` gets the same treatment for the same reason: it is a count by a different tokenizer, and writing it into `n_tokens` would make a mixture built on token budgets wrong by however much the two disagree.
+
+FinePDFs also writes its dates three ways in one file. The first shard has rows ending in `Z`, rows ending in `+00:00`, and at row 416 a row ending in nothing at all. The zoneless ones are read as UTC. The alternative is failing an unknown share of a 13.0 GB source over a formatting difference rather than over anything about the document, and this particular field is the WARC fetch date, WARC records carry UTC, and every zoned timestamp beside it in the same file is a zero offset. That is a reading of one field in one source and the code says so, because a general rule that a naive timestamp means UTC is how a corpus picks up an hour of drift that nobody can find afterwards.
 
 ## Where the corpus lives
 
