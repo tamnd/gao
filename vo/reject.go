@@ -52,6 +52,17 @@ const (
 	// legacy Vietnamese font encodings that no transcoder recognized.
 	ReasonEncoding Reason = "encoding"
 
+	// ReasonResidue is a document with too many syllables that look like the
+	// keystrokes of a Vietnamese input method rather than its output. The
+	// keystrokes are never repaired, because repairing them guesses at what
+	// somebody meant to type, so a document with enough of them is a document
+	// whose text nobody can recover.
+	ReasonResidue Reason = "residue"
+
+	// ReasonControl is a document carrying more control characters than text
+	// carries. It is almost always a binary that survived a content type sniff.
+	ReasonControl Reason = "control"
+
 	// ReasonContract is a document that failed the ingest contract in doc.
 	ReasonContract Reason = "contract"
 
@@ -100,6 +111,8 @@ var reasons = map[Reason]string{
 	ReasonRobots:        "robots.txt or a mining reservation declined the fetch",
 	ReasonExtract:       "extraction produced no usable text",
 	ReasonEncoding:      "the bytes could not be brought to valid UTF-8",
+	ReasonResidue:       "too much of the document is input method keystrokes",
+	ReasonControl:       "the document carries more control characters than text",
 	ReasonContract:      "the document failed the ingest contract",
 	ReasonLanguage:      "the document is not Vietnamese above threshold",
 	ReasonTranslated:    "the document is machine translated",
@@ -133,6 +146,7 @@ func (r Reason) Describe() string {
 func Reasons() []Reason {
 	return []Reason{
 		ReasonFetch, ReasonRobots, ReasonExtract, ReasonEncoding,
+		ReasonResidue, ReasonControl,
 		ReasonContract, ReasonLanguage, ReasonTranslated, ReasonQuality,
 		ReasonBoilerplate, ReasonDuplicate, ReasonPrivacy, ReasonLicense,
 		ReasonContamination, ReasonTrap, ReasonTakedown,
