@@ -323,9 +323,9 @@ func TestAHostThatKeepsTruncatingIsGivenUpOn(t *testing.T) {
 // a missing agreement and not a bug.
 func TestAGatedSourceReadOutOfOrderSaysWhatToDoAboutIt(t *testing.T) {
 	_, r := serveRanges(t, &ranger{status: http.StatusForbidden}, 4<<10, 4)
-	r.pin.Gated = true
-	r.pin.Source = doc.SourceCulturaX
-	r.pin.Repo = "uonlp/CulturaX"
+	r.remote.Gated = true
+	r.remote.From = string(doc.SourceCulturaX)
+	r.remote.Page = "https://huggingface.co/datasets/uonlp/CulturaX"
 
 	_, err := r.ReadAt(make([]byte, 16), 0)
 	if !errors.Is(err, ErrGated) {

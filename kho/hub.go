@@ -114,7 +114,7 @@ func (d Dataset) URL() string { return "https://huggingface.co/datasets/" + d.Re
 // straight off the Hub. It is here so that the answer to "how do I look at this"
 // is a line somebody can paste rather than a download.
 func (d Dataset) Query(snapshot string) string {
-	return fmt.Sprintf("read_parquet('hf://datasets/%s/%s/*.parquet')", d.Repo(), snapshotDir(snapshot))
+	return fmt.Sprintf("read_parquet('hf://datasets/%s/%s/*.parquet')", d.Repo(), SnapshotDir(snapshot))
 }
 
 var datasets = []Dataset{
@@ -255,7 +255,11 @@ const (
 var dataPathPattern = regexp.MustCompile(
 	`^` + DataDir + `/snapshot=([A-Za-z0-9][A-Za-z0-9._-]*)/part-(\d{5,})-of-(\d{5,})\` + ParquetExt + `$`)
 
-func snapshotDir(snapshot string) string {
+// SnapshotDir is the directory one snapshot's parts live under.
+//
+// The layout partitions by snapshot, so this doubles as the prefix that lists
+// one snapshot and nothing else.
+func SnapshotDir(snapshot string) string {
 	return DataDir + "/snapshot=" + snapshot
 }
 
@@ -263,7 +267,7 @@ func snapshotDir(snapshot string) string {
 //
 //	data/snapshot=gao-v1.0/part-00001-of-00774.parquet
 func DataPath(snapshot string, i, n int) string {
-	return fmt.Sprintf("%s/part-%05d-of-%05d%s", snapshotDir(snapshot), i, n, ParquetExt)
+	return fmt.Sprintf("%s/part-%05d-of-%05d%s", SnapshotDir(snapshot), i, n, ParquetExt)
 }
 
 // ParseDataPath is the inverse of [DataPath]. It reports false for a path that
@@ -315,7 +319,7 @@ var stagePathPattern = regexp.MustCompile(
 // re-pinning a source writes a new snapshot rather than mixing two revisions
 // into one directory.
 func StagePath(snapshot string, file, part int) string {
-	return fmt.Sprintf("%s/file=%05d/part-%05d%s", snapshotDir(snapshot), file, part, ParquetExt)
+	return fmt.Sprintf("%s/file=%05d/part-%05d%s", SnapshotDir(snapshot), file, part, ParquetExt)
 }
 
 // ParseStagePath is the inverse of [StagePath].

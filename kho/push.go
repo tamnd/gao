@@ -69,7 +69,10 @@ const InlineMax = 10 << 20
 // ErrUnauthorized is returned when the Hub refuses the token.
 var ErrUnauthorized = errors.New("kho: the hub refused the token")
 
-// Pusher uploads files into one dataset repo.
+// Pusher is the handle on one dataset repo. It uploads files into it and it
+// lists what is already in it, because the repo, the token and the client are
+// the same either way and a caller that had to hold two of these would only be
+// holding the same four fields twice.
 type Pusher struct {
 	// Repo is the full repo id, org and name.
 	Repo string
@@ -315,8 +318,7 @@ func identify(local string) (fileID, error) {
 // happen: the path is a function of what is in it, so a difference means the
 // file was rewritten and the new one wins.
 func (p *Pusher) present(ctx context.Context, path string, id fileID) (bool, error) {
-	url := fmt.Sprintf("%s/datasets/%s/resolve/%s/%s", p.api(), p.Repo, p.branch(), path)
-	req, err := http.NewRequestWithContext(ctx, http.MethodHead, url, nil)
+	req, err := http.NewRequestWithContext(ctx, http.MethodHead, p.ResolveURL(path), nil)
 	if err != nil {
 		return false, err
 	}

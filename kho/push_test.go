@@ -40,6 +40,7 @@ type hub struct {
 	authed  map[string]bool
 	commits []string
 
+	pageSize  int    // how many entries a listing answers with, zero is [listPage]
 	mode      string // what preupload answers, empty is lfs
 	ignore    bool
 	status    map[string]int // endpoint to status, for making one step fail
@@ -115,6 +116,8 @@ func (h *hub) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		h.create(w, r)
 	case strings.Contains(path, "/resolve/"):
 		h.resolve(w, r)
+	case strings.Contains(path, "/tree/"):
+		h.tree(w, r)
 	default:
 		h.t.Errorf("the pusher called %s %s, which is not part of the protocol", r.Method, path)
 		w.WriteHeader(http.StatusNotFound)

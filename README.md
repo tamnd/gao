@@ -52,6 +52,8 @@ gao gat ledger -dir ingest/ -files          # every finished file, and how each 
 gao dem model  -o tokenizer.model           # fetch the tokenizer that defines a gao token
 gao gat hf     -dir ingest/ -tokenizer tokenizer.model  # and count tokens while harvesting
 gao dem counts ingest/                      # what the harvest counted, per source
+gao dem keys   glotcc-abc1234               # read a snapshot's document identities back out of the store
+gao dem overlap keys/*.keys                 # what the sources have in common, counted rather than sampled
 gao gat cc     --snapshots all              # recover Vietnamese from Common Crawl
 gao gat crawl  --policy crawl.toml          # crawl the Vietnamese web directly
 gao gat media  --from crawl                 # fetch PDFs, audio, video
@@ -202,6 +204,24 @@ Adding `-push` sends each part to the store as it closes and deletes the local c
 Every repo carries a card, and the card is generated. `gao kho card` renders one from the snapshot manifest: the counts, the breakdown by source and by reject reason, the stages that produced the snapshot and the versions they ran at, the merkle root, and who signed it. A release pushes it with `-push`, and a card that already says the same thing is left alone rather than committed again. The reason to generate it is that a card written by hand describes the release before last. It says forty billion tokens because that was true in March, it lists four sources because a fifth was added after somebody last opened the file, and nothing about reading it tells you which of its numbers have gone stale. A generated card that disagrees with the data is a bug with a test to write rather than an oversight nobody can see. What it does not try to generate is the argument for why the corpus is built this way, which lives here and is linked from the card rather than restated in it.
 
 The columns are the contract, so they are written out in `kho/parquet.go` rather than reflected off the record type, with one test pinning the list and another asserting that every field of the record has a column. A rename that a reader would notice fails a test rather than shipping as a silent break. A repo that withholds text withholds it in the schema: there is no `text` column at all rather than an empty one, so a query that selects it fails at plan time instead of returning blanks that read like documents with nothing in them. Every file also carries the snapshot, the stage, and the box that wrote it in its own footer, so a shard somebody downloaded a year ago still says where it came from without the manifest next to it. `gao kho columns` prints the contract, and given a file prints what that file actually holds.
+
+## Measuring a corpus that is not on the box
+
+Pushing each part and deleting it is what lets four machines process a corpus several times their disk, and the bill for it arrives the moment somebody asks a question about the whole thing. The question that matters most is how much of the five sources is the same document twice. FineWeb2 and GlotCC are both extracted from Common Crawl, so some of the overlap is not in doubt, and how much of it there is decides whether the corpus is the sum of its sources or a good deal less. Nobody publishing a number like that should be estimating it, and downloading 900 GB back to count it properly is not available on this fleet.
+
+It does not have to come back. Document identity is one fixed width column, and a part is Parquet, so a pass can open each part over HTTP, read the `doc_id` chunk of every row group, and never ask for the pages the text is in. What crosses the wire is around thirty two bytes per document, which is roughly 13 GB for the whole corpus instead of 900. This is the argument the columnar format was chosen for, applied to a question about the corpus rather than to a query somebody runs against the release.
+
+The identities go to disk sorted, one file per source, because none of these sets fit in memory. HPLT v3 alone is a couple of hundred million documents and the box reading it has 5 GB of RAM. Two sorted files are intersected by walking them together and five are unioned by walking all five, and the memory that costs is the number of open files rather than anything about the size of the corpus. The sort itself spills runs that do fit and merges them, which is the usual answer and the right one here. A key is the first eight bytes of the document's blake3 rather than all thirty two, which is a four times smaller file and a four times cheaper merge for a collision rate that rounds to nothing: at four hundred million documents the expected number of distinct documents that collide is under one in two hundred, so what comes out is a count and not an estimate at any precision anybody quotes.
+
+One walk answers everything. The key files are sorted, so stepping through all of them together yields each distinct document once along with the set of sources holding it, and that set is every pairwise intersection, the union, and what each source contributes that nothing else does. Five sources is ten pairs, and measuring the pairs one at a time would read the same document three times to learn what the first read already said. Overlap is printed from both sides, because it is not symmetric and the single number is the one that misleads: all of a small source can sit inside a large one while very little of the large one sits inside the small one.
+
+A pass over a few hundred parts gets interrupted, so it is resumable at the part rather than at the source. Each part's keys are written under a working directory and a part that already has its file is skipped, so a run killed after a hundred parts reads the rest and merges. Nothing about that is remembered in a ledger, because the files on disk are the record and a second one would be wrong the first time a process died between the rename and the write.
+
+```
+gao dem keys                                # what the store holds, ready to measure
+gao dem keys glotcc-abc1234                 # read one snapshot's identities out of the store
+gao dem overlap keys/*.keys                 # the matrix, counted rather than sampled
+```
 
 ## What we may publish
 

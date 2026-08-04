@@ -181,6 +181,11 @@ func RowOf(d *doc.Document) Row {
 // TextColumn is the column a repo withholds when it does not carry text.
 const TextColumn = "text"
 
+// DocIDColumn is the column that carries document identity, which is what a
+// pass measuring overlap between two sources reads and the only column it
+// needs.
+const DocIDColumn = "doc_id"
+
 // schemaName is the root name of the published schema. It is what a Parquet
 // tool prints above the column list.
 const schemaName = "document"
