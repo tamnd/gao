@@ -1,7 +1,11 @@
 package main
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"fmt"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"strings"
@@ -409,5 +413,85 @@ func TestKhoColumnsRefusesAFileThatIsNotOne(t *testing.T) {
 func TestKhoColumnsTakesOneFileAtMost(t *testing.T) {
 	if _, _, code := exec(t, "kho", "columns", "a.parquet", "b.parquet"); code != 2 {
 		t.Error("gao kho columns took two files")
+	}
+}
+
+// A push from the command line is how a part that an interrupted run left on a
+// disk gets off it, and how the files that are not parts get up there.
+func TestKhoPushSendsAFileAndSaysWhatItDid(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case strings.Contains(r.URL.Path, "/resolve/"):
+			w.WriteHeader(http.StatusNotFound)
+		case strings.Contains(r.URL.Path, "/preupload/"):
+			fmt.Fprint(w, `{"files":[{"uploadMode":"regular"}]}`)
+		default:
+			w.WriteHeader(http.StatusOK)
+		}
+	}))
+	defer srv.Close()
+	t.Setenv(may.StoreEnv, srv.URL)
+
+	path := filepath.Join(t.TempDir(), "README.md")
+	if err := os.WriteFile(path, []byte("# vietnamese-text-staging\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	out, errOut, code := exec(t, "kho", "push", "-as", "README.md", path)
+	if code != 0 {
+		t.Fatalf("gao kho push: exit %d\n%s", code, errOut)
+	}
+	if !strings.Contains(out, kho.Staging().Repo()) {
+		t.Errorf("the push does not say where the file went:\n%s", out)
+	}
+	if !strings.Contains(out, "pushed") {
+		t.Errorf("the push does not say what it did:\n%s", out)
+	}
+}
+
+// The second push of a file already up there should say so rather than report
+// an upload that did not happen, because on a box being cleaned up the
+// difference is the whole question.
+func TestKhoPushSaysWhenThereIsNothingToDo(t *testing.T) {
+	body := []byte("already there\n")
+	sum := sha256.Sum256(body)
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if strings.Contains(r.URL.Path, "/resolve/") {
+			w.Header().Set("X-Linked-Etag", `"`+hex.EncodeToString(sum[:])+`"`)
+		}
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer srv.Close()
+	t.Setenv(may.StoreEnv, srv.URL)
+
+	path := filepath.Join(t.TempDir(), "part-00000.parquet")
+	if err := os.WriteFile(path, body, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	out, errOut, code := exec(t, "kho", "push", "-as", "data/x.parquet", path)
+	if code != 0 {
+		t.Fatalf("gao kho push: exit %d\n%s", code, errOut)
+	}
+	if !strings.Contains(out, "nothing moved") {
+		t.Errorf("a push with nothing to do does not say so:\n%s", out)
+	}
+}
+
+func TestKhoPushRefusesADatasetThatIsNotThere(t *testing.T) {
+	_, errOut, code := exec(t, "kho", "push", "-dataset", "vietnamese-nonsense", "x")
+	if code != 1 {
+		t.Fatalf("exit %d, want 1", code)
+	}
+	if !strings.Contains(errOut, "gao kho datasets") {
+		t.Errorf("the error does not say how to find the list:\n%s", errOut)
+	}
+}
+
+func TestKhoPushIsInTheSubcommandList(t *testing.T) {
+	out, _, code := exec(t, "kho", "help")
+	if code != 0 {
+		t.Fatalf("gao kho help: exit %d", code)
+	}
+	if !strings.Contains(out, "push") {
+		t.Errorf("the subcommand list does not mention push:\n%s", out)
 	}
 }

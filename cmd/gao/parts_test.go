@@ -3,7 +3,10 @@ package main
 import (
 	"bytes"
 	"errors"
+	"fmt"
 	"io"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"strings"
@@ -245,7 +248,7 @@ func TestAPartThatCannotBeHandedOffFailsTheFile(t *testing.T) {
 
 	fail := errors.New("the hub said no")
 	p, f := hpltPin(t)
-	if err := sink.open(p, f); err != nil {
+	if err := sink.open(t.Context(), p, f); err != nil {
 		t.Fatal(err)
 	}
 	sink.roll.Finished = func(kho.PartFile) error { return fail }
@@ -254,5 +257,112 @@ func TestAPartThatCannotBeHandedOffFailsTheFile(t *testing.T) {
 	}
 	if err := sink.close(nil); !errors.Is(err, fail) {
 		t.Errorf("the file was reported as written: %v", err)
+	}
+}
+
+// acceptingHub is enough of the Hub to push at. It says yes to everything,
+// because what is being tested here is what the ingest does with a push that
+// worked, and the protocol itself is tested in kho.
+func acceptingHub(t *testing.T) *kho.Pusher {
+	t.Helper()
+	var srv *httptest.Server
+	srv = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case strings.Contains(r.URL.Path, "/resolve/"):
+			w.WriteHeader(http.StatusNotFound)
+		case strings.Contains(r.URL.Path, "/preupload/"):
+			fmt.Fprint(w, `{"files":[{"uploadMode":"lfs"}]}`)
+		case strings.HasSuffix(r.URL.Path, "/info/lfs/objects/batch"):
+			fmt.Fprintf(w, `{"objects":[{"actions":{"upload":{"href":%q}}}]}`, srv.URL+"/storage")
+		default:
+			w.WriteHeader(http.StatusOK)
+		}
+	}))
+	t.Cleanup(srv.Close)
+	return &kho.Pusher{Repo: kho.Staging().Repo(), API: srv.URL, Client: srv.Client(), Token: "hf_test"}
+}
+
+// The whole point of the push is that the box does not keep what it has
+// finished, so a part still on disk after a successful push is the failure this
+// guards against.
+func TestAPushedPartIsDeletedFromTheBoxThatWroteIt(t *testing.T) {
+	dir := t.TempDir()
+	docs := &gat.Docs{}
+	var out bytes.Buffer
+	sink := newParts(dir, docs, "server1", &out)
+	sink.push = acceptingHub(t)
+	docs.Emit = sink.write
+
+	p, f := hpltPin(t)
+	if _, err := sink.Consume(t.Context(), p, f, zstdOf(t, strings.Repeat(hpltLine+"\n", 3))); err != nil {
+		t.Fatalf("Consume: %v", err)
+	}
+
+	path := filepath.Join(dir, filepath.FromSlash(kho.StagePath(p.Snapshot(), 0, 0)))
+	if _, err := os.Stat(path); !os.IsNotExist(err) {
+		t.Errorf("the part is still on the box that pushed it: %v", err)
+	}
+	if _, err := os.Stat(filepath.Dir(path)); !os.IsNotExist(err) {
+		t.Error("the directory the part sat in was left behind empty")
+	}
+	if !strings.Contains(out.String(), "pushed") {
+		t.Errorf("the run does not say it pushed anything:\n%s", out.String())
+	}
+
+	var w bytes.Buffer
+	sink.summary(&w)
+	if !strings.Contains(w.String(), kho.Staging().Repo()) {
+		t.Errorf("the summary does not say where the parts went:\n%s", w.String())
+	}
+}
+
+// A part that could not be pushed is the one part that has to stay, because the
+// only copy of it is the one on this disk.
+func TestAPartThatFailedToPushIsNotDeleted(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusServiceUnavailable)
+	}))
+	defer srv.Close()
+
+	dir := t.TempDir()
+	docs := &gat.Docs{}
+	sink := newParts(dir, docs, "server1", io.Discard)
+	sink.push = &kho.Pusher{Repo: kho.Staging().Repo(), API: srv.URL, Client: srv.Client(), Token: "hf_test"}
+	docs.Emit = sink.write
+
+	p, f := hpltPin(t)
+	if err := sink.open(t.Context(), p, f); err != nil {
+		t.Fatal(err)
+	}
+	if err := sink.write(document(t, 0)); err != nil {
+		t.Fatal(err)
+	}
+	if err := sink.close(nil); err == nil {
+		t.Fatal("a part that could not be pushed was reported as written")
+	}
+	if _, err := os.Stat(filepath.Join(dir, filepath.FromSlash(kho.StagePath(p.Snapshot(), 0, 0)))); err != nil {
+		t.Errorf("the only copy of an unpushed part was deleted: %v", err)
+	}
+}
+
+// Pushing needs something to push, and a flag combination that cannot work
+// should say so before the download starts rather than after it.
+func TestPushingWithNowhereToWriteIsRefused(t *testing.T) {
+	_, errOut, code := exec(t, "gat", "hf", "-dir", t.TempDir(), "-push")
+	if code != 2 {
+		t.Fatalf("gao gat hf -push with no -out: exit %d, want 2", code)
+	}
+	if !strings.Contains(errOut, "-out") {
+		t.Errorf("the error does not say what is missing:\n%s", errOut)
+	}
+}
+
+func TestThePushFlagIsInTheUsage(t *testing.T) {
+	_, errOut, code := exec(t, "gat", "hf", "-h")
+	if code != 2 {
+		t.Fatalf("gao gat hf -h: exit %d, want 2", code)
+	}
+	if !strings.Contains(errOut, "-push") {
+		t.Errorf("the usage does not mention -push:\n%s", errOut)
 	}
 }

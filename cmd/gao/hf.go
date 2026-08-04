@@ -16,6 +16,7 @@ import (
 	"github.com/tamnd/gao/dem"
 	"github.com/tamnd/gao/doc"
 	"github.com/tamnd/gao/gat"
+	"github.com/tamnd/gao/kho"
 	"github.com/tamnd/gao/may"
 	"github.com/tamnd/gao/vo"
 )
@@ -32,8 +33,9 @@ func runGatHF(stdout, stderr io.Writer, args []string) int {
 	sample := fs.Float64("sample", 0.01, "the share of rejects that keep their text, since the rest outgrow the corpus")
 	tokenizer := fs.String("tokenizer", "", "count tokens with the tokenizer at this path, which implies -decode")
 	out := fs.String("out", "", "write the documents the contract admits under this directory as parquet, which implies -decode")
+	push := fs.Bool("push", false, "push each part to the store as it closes and delete the local copy, which needs -out")
 	fs.Usage = func() {
-		fmt.Fprint(stderr, `usage: gao gat hf -dir DIR [-source NAME] [-limit N] [-plan] [-decode] [-out DIR] [-tokenizer PATH]
+		fmt.Fprint(stderr, `usage: gao gat hf -dir DIR [-source NAME] [-limit N] [-plan] [-decode] [-out DIR] [-push] [-tokenizer PATH]
 
 Fetches the files in the ingest manifest at the revisions they are pinned to.
 
@@ -74,6 +76,15 @@ the input file, and the part number, so a run that is interrupted mid file write
 over what it left rather than beside it. A file whose decode fails leaves no part
 at all.
 
+With -push each part goes to the store as it closes and the local copy is
+deleted before the next one opens. That is what makes a source larger than the
+disk runnable: what the box holds is one part being written rather than the
+corpus. A part that cannot be pushed fails the file it came from, because a run
+that carried on would be filling the disk it was emptying. Pushing the same part
+twice is safe and nearly free: the path is a function of what is in it, and the
+store keys the bytes by their digest, so a run started again after a box reboots
+skips what is already up there without sending it a second time.
+
 A decoding run also counts what it read and writes counts.json beside the ledger:
 documents, text bytes, characters, and syllables per source. With -tokenizer it
 counts tokens too, which is the only number in gao that costs anything to
@@ -84,7 +95,7 @@ Counting happens here rather than in a later pass because the largest source is
 around 700 GB of text, and a design where ingestion writes documents and
 something else reads them back to count is a design that moves 700 GB twice.
 
-Gated sources need a token in `+gat.TokenEnv+`, and CulturaX is the gated one.
+Gated sources need a token in `+may.TokenEnv+`, and CulturaX is the gated one.
 
 There is no default for -dir. A command that starts a 513.6 GB download into
 whichever directory it happened to be run from is a command that will do it once
@@ -114,6 +125,10 @@ flags:
 	}
 	if *rejects != "" || *tokenizer != "" || *out != "" {
 		*decode = true
+	}
+	if *push && *out == "" {
+		fmt.Fprint(stderr, "gao gat hf: -push needs -out, because a part is written before it is pushed\n")
+		return 2
 	}
 
 	// Loaded before anything is fetched. The tokenizer is 4.7 MB and the ingest
@@ -177,7 +192,7 @@ flags:
 	defer stop()
 
 	in := &gat.Ingest{
-		Fetcher:  &gat.Fetcher{Token: gat.TokenFromEnv()},
+		Fetcher:  &gat.Fetcher{Token: may.Token()},
 		Ledger:   ledger,
 		Box:      may.Label(),
 		Progress: func(r gat.Report) { printFetched(stdout, r) },
@@ -209,6 +224,16 @@ flags:
 			written = newParts(*out, docs, in.Box, stdout)
 			docs.Emit = written.write
 			in.Sink = written
+		}
+		if *push {
+			// Before the first byte is fetched. Finding out that the token is
+			// wrong should cost a second rather than the twenty minutes it
+			// takes to fill the first part.
+			written.push = &kho.Pusher{Repo: written.dataset.Repo(), Token: may.Token()}
+			if err := written.push.EnsureRepo(ctx, written.dataset); err != nil {
+				fmt.Fprintf(stderr, "gao gat hf: %v\n", err)
+				return 1
+			}
 		}
 		docs.Emit = tally.Counting(tok, docs.Emit)
 	}

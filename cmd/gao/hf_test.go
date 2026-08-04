@@ -393,8 +393,8 @@ func TestHFIsInTheGatHelpAndTheUsage(t *testing.T) {
 	if code != 2 {
 		t.Errorf("gao gat hf -h: exit %d, want 2", code)
 	}
-	if !strings.Contains(errOut, gat.TokenEnv) {
-		t.Errorf("the usage does not name %s:\n%s", gat.TokenEnv, errOut)
+	if !strings.Contains(errOut, may.TokenEnv) {
+		t.Errorf("the usage does not name %s:\n%s", may.TokenEnv, errOut)
 	}
 
 	// Which sources decode is in the usage rather than only in the error,
