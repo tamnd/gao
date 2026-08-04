@@ -36,6 +36,9 @@ func runGatHF(stdout, stderr io.Writer, args []string) int {
 
 Fetches the files in the ingest manifest at the revisions they are pinned to.
 
+A source the manifest marks dropped is refused by name, with the reason, before
+the ledger is opened. 'gao gat pins' lists them under the download total.
+
 Nothing is written to disk except the ledger. The largest pinned file is 26.6 GB
 and the box that fetches it peaks at 4.1 GB, so a file is streamed through
 whatever consumes it and the bytes are never all in one place at once. A dropped
