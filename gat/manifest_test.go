@@ -589,3 +589,49 @@ func TestAReasonForDroppingASourceThatIsNotDroppedIsRejected(t *testing.T) {
 		t.Error("a reason for dropping a source that is not dropped loaded")
 	}
 }
+
+// The working snapshot is where an ingest of a source writes, and it carries
+// the revision because two revisions of a dataset are two corpora.
+func TestASourceNamesTheSnapshotItWritesUnder(t *testing.T) {
+	seen := make(map[string]doc.Source)
+	for _, p := range AllSources() {
+		name := p.Snapshot()
+		if !strings.HasPrefix(name, string(p.Source)+"-") {
+			t.Errorf("%s writes under %s, which does not name the source", p.Source, name)
+		}
+		if strings.ContainsAny(name, ":/ ") {
+			t.Errorf("%s is not usable as a path partition: %s", p.Source, name)
+		}
+		if other, ok := seen[name]; ok {
+			t.Errorf("%s and %s write under the same snapshot %s", p.Source, other, name)
+		}
+		seen[name] = p.Source
+	}
+}
+
+func TestARepinnedSourceWritesSomewhereElse(t *testing.T) {
+	p, ok := Pin(doc.SourceGlotCC)
+	if !ok {
+		t.Fatal("glotcc is not pinned")
+	}
+	before := p.Snapshot()
+	p.Revision = strings.Repeat("a", 40)
+	if after := p.Snapshot(); after == before {
+		t.Errorf("a re-pinned source still writes under %s, so two revisions land in one directory", after)
+	}
+}
+
+// The file index is the other half of a staging path, and a path that named a
+// file gao does not have would be a path pointing at nothing.
+func TestASourceFindsItsOwnFiles(t *testing.T) {
+	for _, p := range AllSources() {
+		for i, f := range p.Files {
+			if got := p.IndexOf(f); got != i {
+				t.Errorf("%s puts %s at %d, want %d", p.Source, f.Path, got, i)
+			}
+		}
+		if got := p.IndexOf(File{Path: "no/such/file.parquet"}); got != -1 {
+			t.Errorf("%s claims to have a file it does not, at %d", p.Source, got)
+		}
+	}
+}

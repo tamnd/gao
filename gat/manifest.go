@@ -193,6 +193,37 @@ func (p Pinned) ExcludedBytes() int64 {
 	return n
 }
 
+// Snapshot names the working snapshot an ingest of this source writes under.
+//
+// It carries the revision and not only the source, because two revisions of the
+// same dataset are two corpora and a partition that named the source alone would
+// let a re-pinned source write its parts in among the ones the old revision left
+// behind. Twelve hex digits of the commit is enough to tell two revisions apart
+// and short enough to read in a path.
+func (p Pinned) Snapshot() string {
+	rev := p.Revision
+	if _, hash, ok := strings.Cut(rev, ":"); ok {
+		rev = hash
+	}
+	const n = 12
+	if len(rev) > n {
+		rev = rev[:n]
+	}
+	return string(p.Source) + "-" + rev
+}
+
+// IndexOf returns the position of a file in this source's file list, which is
+// the partition an ingest writes that file's output under. It returns -1 for a
+// file the source does not have.
+func (p Pinned) IndexOf(f File) int {
+	for i, have := range p.Files {
+		if have.Path == f.Path {
+			return i
+		}
+	}
+	return -1
+}
+
 // URL returns the address to fetch one file from, at the pinned revision.
 //
 // For a Hub source that is the resolve endpoint with the commit SHA in it, which

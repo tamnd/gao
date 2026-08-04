@@ -206,6 +206,22 @@ func Datasets() []Dataset {
 	return out
 }
 
+// StageRepo is the repo a stage writes its output to while a snapshot is being
+// built. It is named here rather than passed around, because every stage writes
+// to the same place and a stage that took the repo as an argument is a stage
+// somebody can point at a published one by mistake.
+const StageRepo = "vietnamese-text-staging"
+
+// Staging returns that repo. It panics if the table does not have it, which is
+// a broken build rather than a runtime condition, since the table is a constant.
+func Staging() Dataset {
+	d, ok := Lookup(StageRepo)
+	if !ok {
+		panic("kho: " + StageRepo + " is not in the dataset table")
+	}
+	return d
+}
+
 // Lookup returns the dataset with the given name, which may be given bare or as
 // a full repo id.
 func Lookup(name string) (Dataset, bool) {

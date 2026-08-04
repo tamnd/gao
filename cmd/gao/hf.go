@@ -31,8 +31,9 @@ func runGatHF(stdout, stderr io.Writer, args []string) int {
 	rejects := fs.String("rejects", "", "write the documents the contract turned away to this file, which implies -decode")
 	sample := fs.Float64("sample", 0.01, "the share of rejects that keep their text, since the rest outgrow the corpus")
 	tokenizer := fs.String("tokenizer", "", "count tokens with the tokenizer at this path, which implies -decode")
+	out := fs.String("out", "", "write the documents the contract admits under this directory as parquet, which implies -decode")
 	fs.Usage = func() {
-		fmt.Fprint(stderr, `usage: gao gat hf -dir DIR [-source NAME] [-limit N] [-plan] [-decode] [-tokenizer PATH]
+		fmt.Fprint(stderr, `usage: gao gat hf -dir DIR [-source NAME] [-limit N] [-plan] [-decode] [-out DIR] [-tokenizer PATH]
 
 Fetches the files in the ingest manifest at the revisions they are pinned to.
 
@@ -65,6 +66,13 @@ be read forwards. Such a file has no digest in the ledger. It is read in pieces
 and its bytes are never all in one place, so there is nothing to hash, and the
 ledger records how it was read and how much of it moved instead. Without -decode
 those sources are streamed and verified like the others.
+
+With -out the admitted documents are written under that directory as Parquet, in
+the layout the store of record uses, one part per 1.5 GB of text so that a worker
+holds a part rather than a file. The paths are a function of the source revision,
+the input file, and the part number, so a run that is interrupted mid file writes
+over what it left rather than beside it. A file whose decode fails leaves no part
+at all.
 
 A decoding run also counts what it read and writes counts.json beside the ledger:
 documents, text bytes, characters, and syllables per source. With -tokenizer it
@@ -104,7 +112,7 @@ flags:
 		fmt.Fprintf(stderr, "gao gat hf: %v\n", err)
 		return 1
 	}
-	if *rejects != "" || *tokenizer != "" {
+	if *rejects != "" || *tokenizer != "" || *out != "" {
 		*decode = true
 	}
 
@@ -177,6 +185,7 @@ flags:
 
 	var tally dem.Tally
 	var docs *gat.Docs
+	var written *parts
 	if *decode {
 		var closeRejects func() error
 		docs, closeRejects, err = openDocs(*rejects, *sample)
@@ -191,14 +200,26 @@ flags:
 				fmt.Fprintf(stderr, "gao gat hf: closing the reject store: %v\n", err)
 			}
 		}()
-		docs.Emit = tally.Counting(tok, docs.Emit)
 		in.Sink = docs
+
+		// The order matters. What the decoder emits into is the writer, and the
+		// tally wraps it, so a document is counted and written in one pass. The
+		// alternative reads 700 GB of text twice.
+		if *out != "" {
+			written = newParts(*out, docs, in.Box, stdout)
+			docs.Emit = written.write
+			in.Sink = written
+		}
+		docs.Emit = tally.Counting(tok, docs.Emit)
 	}
 	fmt.Fprintln(stdout)
 
 	n, err := in.Run(ctx, todo)
 	fmt.Fprintf(stdout, "\n%d of %d files fetched, %s in the ledger\n", n, len(todo), may.GB(ledger.Bytes()))
 	printAdmitted(stdout, docs)
+	if written != nil {
+		written.summary(stdout)
+	}
 
 	// Written even when the run failed, because the counts up to the failure are
 	// the counts of what actually got read, and a run that dies on file ninety
