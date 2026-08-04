@@ -13,6 +13,7 @@ import (
 	"text/tabwriter"
 	"time"
 
+	"github.com/tamnd/gao/dem"
 	"github.com/tamnd/gao/doc"
 	"github.com/tamnd/gao/gat"
 	"github.com/tamnd/gao/may"
@@ -29,8 +30,9 @@ func runGatHF(stdout, stderr io.Writer, args []string) int {
 	decode := fs.Bool("decode", false, "decode each file into documents and put them to the ingest contract")
 	rejects := fs.String("rejects", "", "write the documents the contract turned away to this file, which implies -decode")
 	sample := fs.Float64("sample", 0.01, "the share of rejects that keep their text, since the rest outgrow the corpus")
+	tokenizer := fs.String("tokenizer", "", "count tokens with the tokenizer at this path, which implies -decode")
 	fs.Usage = func() {
-		fmt.Fprint(stderr, `usage: gao gat hf -dir DIR [-source NAME] [-limit N] [-plan] [-decode]
+		fmt.Fprint(stderr, `usage: gao gat hf -dir DIR [-source NAME] [-limit N] [-plan] [-decode] [-tokenizer PATH]
 
 Fetches the files in the ingest manifest at the revisions they are pinned to.
 
@@ -61,6 +63,16 @@ and its bytes are never all in one place, so there is nothing to hash, and the
 ledger records how it was read and how much of it moved instead. Without -decode
 those sources are streamed and verified like the others.
 
+A decoding run also counts what it read and writes counts.json beside the ledger:
+documents, text bytes, characters, and syllables per source. With -tokenizer it
+counts tokens too, which is the only number in gao that costs anything to
+produce, at roughly 11 MB of text per second per core. Run 'gao dem model' to
+fetch the tokenizer and 'gao dem counts' to read the result.
+
+Counting happens here rather than in a later pass because the largest source is
+around 700 GB of text, and a design where ingestion writes documents and
+something else reads them back to count is a design that moves 700 GB twice.
+
 Gated sources need a token in `+gat.TokenEnv+`, and CulturaX is the gated one.
 
 There is no default for -dir. A command that starts a 608.9 GB download into
@@ -89,8 +101,21 @@ flags:
 		fmt.Fprintf(stderr, "gao gat hf: %v\n", err)
 		return 1
 	}
-	if *rejects != "" {
+	if *rejects != "" || *tokenizer != "" {
 		*decode = true
+	}
+
+	// Loaded before anything is fetched. The tokenizer is 4.7 MB and the ingest
+	// that follows it is measured in days, so finding out that the path was
+	// wrong should not cost a download.
+	var tok *dem.Tokenizer
+	if *tokenizer != "" {
+		tok, err = dem.Open(dem.Gemma3, *tokenizer)
+		if err != nil {
+			fmt.Fprintf(stderr, "gao gat hf: %v\n", err)
+			fmt.Fprint(stderr, "run 'gao dem model -o PATH' to fetch the tokenizer gao counts with\n")
+			return 1
+		}
 	}
 	if *decode {
 		if ok, missing := gat.Decodable(sources); !ok {
@@ -130,6 +155,7 @@ flags:
 		Progress: func(r gat.Report) { printFetched(stdout, r) },
 	}
 
+	var tally dem.Tally
 	var docs *gat.Docs
 	if *decode {
 		var closeRejects func() error
@@ -145,6 +171,7 @@ flags:
 				fmt.Fprintf(stderr, "gao gat hf: closing the reject store: %v\n", err)
 			}
 		}()
+		docs.Emit = tally.Counting(tok, docs.Emit)
 		in.Sink = docs
 	}
 	fmt.Fprintln(stdout)
@@ -152,10 +179,37 @@ flags:
 	n, err := in.Run(ctx, todo)
 	fmt.Fprintf(stdout, "\n%d of %d files fetched, %s in the ledger\n", n, len(todo), may.GB(ledger.Bytes()))
 	printAdmitted(stdout, docs)
+
+	// Written even when the run failed, because the counts up to the failure are
+	// the counts of what actually got read, and a run that dies on file ninety
+	// should not throw away eighty-nine files of measurement.
+	if *decode {
+		if err := tally.Report(in.Box, time.Now()).Write(*dir); err != nil {
+			fmt.Fprintf(stderr, "gao gat hf: writing the counts: %v\n", err)
+		} else {
+			printTally(stdout, &tally)
+		}
+	}
 	if err != nil {
 		return hfError(stderr, err)
 	}
 	return 0
+}
+
+// printTally is the line that says what was in the bytes, as opposed to how many
+// of them there were.
+func printTally(w io.Writer, tally *dem.Tally) {
+	c := tally.Natural()
+	if c.Documents == 0 {
+		return
+	}
+	if c.Tokens == 0 {
+		fmt.Fprintf(w, "%s of text, %d characters, %d syllables, counted in %s\n",
+			may.GB(c.Bytes), c.Chars, c.Syllables, dem.File)
+		return
+	}
+	fmt.Fprintf(w, "%s of text, %d characters, %d syllables, %d %s tokens at %.2f characters each, counted in %s\n",
+		may.GB(c.Bytes), c.Chars, c.Syllables, c.Tokens, tally.Tokenizer, c.CharsPerToken(), dem.File)
 }
 
 // openDocs builds the decoding sink and, when a path was given, the reject store

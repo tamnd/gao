@@ -47,6 +47,10 @@ gao gat hf     -dir ingest/                 # harvest from Hugging Face, resumin
 gao gat hf     -dir ingest/ -decode         # and put every record to the ingest contract as it streams
 gao gat ledger -dir ingest/                 # what the harvest has finished so far
 gao gat ledger -dir ingest/ -files          # every finished file, and how each one was read
+
+gao dem model  -o tokenizer.model           # fetch the tokenizer that defines a gao token
+gao gat hf     -dir ingest/ -tokenizer tokenizer.model  # and count tokens while harvesting
+gao dem counts ingest/                      # what the harvest counted, per source
 gao gat cc     --snapshots all              # recover Vietnamese from Common Crawl
 gao gat crawl  --policy crawl.toml          # crawl the Vietnamese web directly
 gao gat media  --from crawl                 # fetch PDFs, audio, video
@@ -146,6 +150,28 @@ FinePDFs has its own `extractor` column, holding `docling` or `rolmOCR`, and gao
 
 FinePDFs also writes its dates three ways in one file. The first shard has rows ending in `Z`, rows ending in `+00:00`, and at row 416 a row ending in nothing at all. The zoneless ones are read as UTC. The alternative is failing an unknown share of a 13.0 GB source over a formatting difference rather than over anything about the document, and this particular field is the WARC fetch date, WARC records carry UTC, and every zoned timestamp beside it in the same file is a zero offset. That is a reading of one field in one source and the code says so, because a general rule that a naive timestamp means UTC is how a corpus picks up an hour of drift that nobody can find afterwards.
 
+## What a token is
+
+Every headline in this project is a token count, and a token count means nothing until the tokenizer is named. One gao token is one token under the Gemma-3 vocabulary of 262144 pieces. Not a word, not a syllable, and not a token under whatever was installed on the box that ran the count.
+
+That vocabulary lives in a 4.7 MB file, and the file is gated at Google's own repositories: reaching it there means accepting a license in a browser, which a program cannot do. So gao fetches it from a mirror and pins it by sha256. The digest is what makes a mirror acceptable, because it does not matter who serves the bytes if the bytes are known, and four separately uploaded repositories across the Gemma-3 family carry this one identically.
+
+The pin is not ceremony. Ask a gated repository for a file without credentials and the refusal arrives as a body: 129 bytes of English prose written into the file where a protobuf should be. The download succeeded, the file exists, and nothing about it looks wrong to a program that checks only whether the write returned an error. Two of the four mirrors tried while writing this produced exactly that, and the test for it is the error page verbatim.
+
+```
+gao dem model -o tokenizer.model
+```
+
+Counting happens during ingestion rather than after it. The largest source is around 700 GB of text, so a design where ingestion writes documents and a later stage reads them back to count is a design that moves 700 GB twice. Bytes, characters, and syllables are counted on every decoding run because they are free. Tokens are behind `-tokenizer`, because tokenizing runs at about 11 MB of text per second per core, which is faster than any source has arrived over the network so far and slow enough to matter the first time one does not.
+
+The four units are not interchangeable, and the bytes column is the one most often quoted wrong. Bytes here means UTF-8 bytes of extracted text: not the size of the file the text arrived in, not the compressed size, and not the Parquet size. Those are three to ten times apart from each other, and a corpus that quotes whichever was to hand has a size nobody can check. The ingest ledger records transfer sizes and `counts.json` records text sizes, in different files, because they answer different questions.
+
+Two counts produced by different tokenizers are never added up. It is an error rather than a warning: two tokenizers disagree on Vietnamese by something like a third, so their sum is not slightly wrong, it corresponds to no tokenizer at all, and it would be quoted as a corpus size.
+
+The first counted run puts a number on the estimate this project has been quoting, and it is not the estimated number. One GlotCC shard, 500000 documents, 3228869043 characters, 983022920 tokens: **3.28 characters per token**, where `doc/units.go` predicts 3.0 and the plan that wrote it allowed plus or minus 0.15. Tokens per syllable came out at 1.45 against a predicted 1.51 and bytes per character at 1.30 against 1.32, both close enough to leave alone. The character figure is not close, and it runs the same way every time: it means Vietnamese costs fewer tokens than the estimate assumed, so every token headline derived from a character count is about 8 percent high. That is one source of six and one shard of it, so it does not settle the corpus figure and the constants stay where they are, but it is the direction to expect from the rest.
+
+The conversion constants in `doc/units.go` are for estimates and nothing in `dem` multiplies. They answer what a hundred gigabytes is roughly worth before anything has been fetched. They live in a different package from the counting on purpose, because an estimate that reaches a release note becomes a measurement in the reader's mind and there is no way to take it back.
+
 ## Where the corpus lives
 
 gao runs on four real machines with 500 GB of free disk between them, and the corpus is 1188 GB of extracted text, 396 GB compressed. It does not fit, and it does not fit by enough that no amount of tidying changes the answer. `gao box` prints the arithmetic.
@@ -191,6 +217,7 @@ There is a fourth, and it is the reason spaces mislead everyone: Vietnamese writ
 ```
 cmd/gao/     the single binary
 gat/         acquisition: Hugging Face, Common Crawl, crawl, media
+dem/         counting: the tokenizer that defines a gao token, and the counts
 phoi/        normalization: Unicode, orthography, encoding repair
 sang/        filtering: language ID, heuristics, quality classification
 xay/         milling: deduplication, boilerplate removal
@@ -207,7 +234,7 @@ Flat packages, no `internal/`, one module, one binary. Crawler code arrives from
 
 These are fixed and the rest of the code is downstream of them.
 
-1. **The token is defined before anything is counted.** One gao token is one token under a Gemma-3 class 256k multilingual vocabulary, which for Vietnamese is 3.0 characters. Sizes in gigabytes mean UTF-8 bytes of extracted text only, never parquet size and never the archive.
+1. **The token is defined before anything is counted.** One gao token is one token under the Gemma-3 vocabulary of 262144 pieces, which on the first counted material is 3.28 characters of Vietnamese against a predicted 3.0. Sizes in gigabytes mean UTF-8 bytes of extracted text only, never parquet size and never the archive.
 2. **Natural and synthetic never mix in a headline.** Model generated text is a separate artifact with its own name, its own count, and its own generator card. The corpus size of gao is the natural number.
 3. **Provenance is a required column.** Source, URL, crawl timestamp, extraction method and version, every quality score, dedup cluster, and license class. A document that cannot carry provenance is dropped rather than admitted with nulls.
 4. **Deduplication is tuned, not maximized.** It is not monotonically good. gao picks its threshold from a measured ablation curve and publishes the curve.
