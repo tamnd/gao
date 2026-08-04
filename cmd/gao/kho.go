@@ -343,11 +343,11 @@ flags:
 
 	switch {
 	case sent.Skipped():
-		fmt.Fprintf(stdout, "%s already holds %s, %s, so nothing moved\n", d.Repo(), path, may.GB(sent.Bytes))
+		fmt.Fprintf(stdout, "%s already holds %s, %s, so nothing moved\n", d.Repo(), path, may.Size(sent.Bytes))
 	case !sent.Transferred:
-		fmt.Fprintf(stdout, "committed %s to %s, %s, whose bytes the store already held\n", path, d.Repo(), may.GB(sent.Bytes))
+		fmt.Fprintf(stdout, "committed %s to %s, %s, whose bytes the store already held\n", path, d.Repo(), may.Size(sent.Bytes))
 	default:
-		fmt.Fprintf(stdout, "pushed %s to %s, %s\n", path, d.Repo(), may.GB(sent.Bytes))
+		fmt.Fprintf(stdout, "pushed %s to %s, %s\n", path, d.Repo(), may.Size(sent.Bytes))
 	}
 	fmt.Fprintf(stdout, "%s\n", sent.OID)
 	return 0

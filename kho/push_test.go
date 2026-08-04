@@ -1,6 +1,7 @@
 package kho
 
 import (
+	"crypto/sha1" //nolint:gosec // the hub names small files the way git does and this reproduces that
 	"crypto/sha256"
 	"encoding/base64"
 	"encoding/hex"
@@ -32,7 +33,8 @@ type hub struct {
 
 	mu      sync.Mutex
 	objects map[string][]byte // oid to bytes, which is storage
-	files   map[string]string // path to oid, which is the repo
+	files   map[string]string // path to the etag the repo answers with
+	linked  map[string]bool   // whether that etag is an lfs digest or a git blob id
 	created []map[string]any
 	calls   map[string]int
 	authed  map[string]bool
@@ -54,6 +56,7 @@ func newHub(t *testing.T) *hub {
 		t:       t,
 		objects: map[string][]byte{},
 		files:   map[string]string{},
+		linked:  map[string]bool{},
 		calls:   map[string]int{},
 		authed:  map[string]bool{},
 		status:  map[string]int{},
@@ -76,6 +79,9 @@ func (h *hub) count(name string) int {
 func (h *hub) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	path := r.URL.Path
 	switch {
+	case strings.HasPrefix(path, "/cdn/"):
+		w.Header().Set("Etag", `"a-cdn-entity-tag-that-is-nobodys-digest"`)
+		w.WriteHeader(http.StatusOK)
 	case strings.HasPrefix(path, "/storage/"):
 		h.storage(w, r)
 	case strings.HasSuffix(path, "/info/lfs/objects/batch"):
@@ -119,13 +125,25 @@ func (h *hub) resolve(w http.ResponseWriter, r *http.Request) {
 	}
 	_, path, _ := strings.Cut(r.URL.Path, "/resolve/main/")
 	h.mu.Lock()
-	oid, ok := h.files[path]
+	tag, ok := h.files[path]
+	linked := h.linked[path]
 	h.mu.Unlock()
 	if !ok {
 		w.WriteHeader(http.StatusNotFound)
 		return
 	}
-	w.Header().Set("X-Linked-Etag", `"`+oid+`"`)
+	// The Hub names a large file by its lfs digest and a small one by its git
+	// blob id, and which header it comes back in is how a caller can tell. A
+	// large one also answers 302 to a CDN, and the digest is on the redirect
+	// rather than on what it points at, so a client that follows it sees an
+	// entity tag belonging to somebody else's cache.
+	if linked {
+		w.Header().Set("X-Linked-Etag", `"`+tag+`"`)
+		w.Header().Set("Location", h.srv.URL+"/cdn/"+tag)
+		w.WriteHeader(http.StatusFound)
+		return
+	}
+	w.Header().Set("Etag", `"`+tag+`"`)
 	w.WriteHeader(http.StatusOK)
 }
 
@@ -255,15 +273,16 @@ func (h *hub) commit(w http.ResponseWriter, r *http.Request) {
 			h.t.Errorf("%s was committed against %s, which storage does not have", path, oid)
 		}
 		h.files[path] = oid
+		h.linked[path] = true
 	case "file":
 		content, _ := op.Value["content"].(string)
 		raw, err := base64.StdEncoding.DecodeString(content)
 		if err != nil {
 			h.t.Errorf("the inline content is not base64: %v", err)
 		}
-		oid := hex.EncodeToString(sha256sum(raw))
-		h.objects[oid] = raw
-		h.files[path] = oid
+		h.objects[hex.EncodeToString(sha256sum(raw))] = raw
+		h.files[path] = gitBlobID(raw)
+		h.linked[path] = false
 	default:
 		h.t.Errorf("the commit carries a %q, which is not a file", op.Key)
 	}
@@ -289,6 +308,15 @@ func (h *hub) reply(w http.ResponseWriter, v any) {
 	if err := json.NewEncoder(w).Encode(v); err != nil {
 		h.t.Errorf("writing the reply: %v", err)
 	}
+}
+
+// gitBlobID is how git names a small file, which is what the Hub answers with
+// for anything it did not store through lfs.
+func gitBlobID(b []byte) string {
+	h := sha1.New() //nolint:gosec // this reproduces a name git chose, it does not choose one
+	fmt.Fprintf(h, "blob %d\x00", len(b))
+	h.Write(b)
+	return hex.EncodeToString(h.Sum(nil))
 }
 
 func sha256sum(b []byte) []byte {
@@ -499,8 +527,32 @@ func TestASmallFileGoesUpInTheCommitItself(t *testing.T) {
 	}
 	h.mu.Lock()
 	defer h.mu.Unlock()
-	if h.files[path] != oid {
-		t.Errorf("%s points at %q rather than %q", path, h.files[path], oid)
+	if _, ok := h.objects[oid]; !ok {
+		t.Errorf("%s did not put the bytes anywhere", path)
+	}
+}
+
+// A dataset card is pushed on every run and changes on almost none of them, so
+// a check that only understood lfs digests would re-commit it every time and
+// fill the repo history with commits that changed nothing.
+func TestASmallFileAlreadyThereIsNotCommittedAgain(t *testing.T) {
+	h := newHub(t)
+	h.mode = "regular"
+	local, path, _ := partOnDisk(t, "# vietnamese-text-staging\n")
+	p := h.pusher()
+
+	if _, err := p.Push(t.Context(), local, path); err != nil {
+		t.Fatalf("first Push: %v", err)
+	}
+	got, err := p.Push(t.Context(), local, path)
+	if err != nil {
+		t.Fatalf("second Push: %v", err)
+	}
+	if !got.Skipped() {
+		t.Errorf("the second push of an unchanged small file reported %+v", got)
+	}
+	if n := h.count("commit"); n != 1 {
+		t.Errorf("%d commits for two pushes of the same file", n)
 	}
 }
 

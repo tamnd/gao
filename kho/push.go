@@ -28,6 +28,7 @@ package kho
 import (
 	"bytes"
 	"context"
+	"crypto/sha1" //nolint:gosec // git names a blob with sha1 and this reads that name rather than relying on it
 	"crypto/sha256"
 	"encoding/base64"
 	"encoding/hex"
@@ -144,16 +145,17 @@ func (p *Pusher) branch() string {
 // under the directory it was written to, because [Roll] writes the repo layout
 // rather than a local one that has to be translated on the way out.
 func (p *Pusher) Push(ctx context.Context, local, path string) (Pushed, error) {
-	oid, size, sample, err := digest(local)
+	id, err := identify(local)
 	if err != nil {
 		return Pushed{}, err
 	}
+	oid, size := id.sha256, id.size
 	if size > MaxUpload {
 		return Pushed{}, fmt.Errorf("kho: %s is %d bytes and nothing here should be over %d, so this is a bug in whatever wrote it rather than a large file", path, size, int64(MaxUpload))
 	}
 	done := Pushed{Path: path, Bytes: size, OID: oid}
 
-	present, err := p.present(ctx, path, oid)
+	present, err := p.present(ctx, path, id)
 	if err != nil {
 		return done, err
 	}
@@ -161,7 +163,7 @@ func (p *Pusher) Push(ctx context.Context, local, path string) (Pushed, error) {
 		return done, nil
 	}
 
-	mode, err := p.preupload(ctx, path, size, sample)
+	mode, err := p.preupload(ctx, path, size, id.sample)
 	if err != nil {
 		return done, err
 	}
@@ -197,30 +199,62 @@ func (p *Pusher) Push(ctx context.Context, local, path string) (Pushed, error) {
 	return done, nil
 }
 
-// digest returns the sha256 the Hub keys objects by, the size, and the first
-// bytes of the file, which the preupload check wants so it can decide the mode
-// from content rather than from the extension alone.
-func digest(local string) (oid string, size int64, sample []byte, err error) {
+// fileID is a file in the two identities the Hub uses for it.
+//
+// Two rather than one because the Hub stores a file in one of two ways and
+// names it accordingly. A large file is an LFS object keyed by its sha256, and
+// a small one is a git blob keyed by the sha1 git computes over its length and
+// its bytes. A resolve request hands back whichever applies, so an existence
+// check that knew only one of them would work for parts and quietly re-commit
+// everything else on every run.
+type fileID struct {
+	sha256 string
+	gitOID string
+	size   int64
+
+	// sample is the head of the file, which the preupload check wants so it can
+	// decide the mode from content rather than from the extension alone.
+	sample []byte
+}
+
+func identify(local string) (fileID, error) {
 	f, err := os.Open(local) //nolint:gosec // the path is one this process wrote
 	if err != nil {
-		return "", 0, nil, err
+		return fileID{}, err
 	}
 	defer f.Close() //nolint:errcheck // read only
 
-	h := sha256.New()
-	n, err := io.Copy(h, f)
+	st, err := f.Stat()
 	if err != nil {
-		return "", 0, nil, err
+		return fileID{}, err
 	}
+	id := fileID{size: st.Size()}
+
+	// git prefixes the object type and the length before hashing, which is why
+	// a blob id is not the sha1 of the file, and both hashes are fed from one
+	// read because the file is a gigabyte and the disk is the slow part.
+	sum, blob := sha256.New(), sha1.New()
+	fmt.Fprintf(blob, "blob %d\x00", id.size)
+	n, err := io.Copy(io.MultiWriter(sum, blob), f)
+	if err != nil {
+		return fileID{}, err
+	}
+	if n != id.size {
+		return fileID{}, fmt.Errorf("kho: %s was %d bytes and read as %d, so it is being written while it is being pushed", local, id.size, n)
+	}
+	id.sha256 = hex.EncodeToString(sum.Sum(nil))
+	id.gitOID = hex.EncodeToString(blob.Sum(nil))
+
 	if _, err := f.Seek(0, io.SeekStart); err != nil {
-		return "", 0, nil, err
+		return fileID{}, err
 	}
-	sample = make([]byte, 512)
-	m, err := io.ReadFull(f, sample)
+	id.sample = make([]byte, 512)
+	m, err := io.ReadFull(f, id.sample)
 	if err != nil && !errors.Is(err, io.EOF) && !errors.Is(err, io.ErrUnexpectedEOF) {
-		return "", 0, nil, err
+		return fileID{}, err
 	}
-	return hex.EncodeToString(h.Sum(nil)), n, sample[:m], nil
+	id.sample = id.sample[:m]
+	return id, nil
 }
 
 // present reports whether the path is already committed and already points at
@@ -231,21 +265,29 @@ func digest(local string) (oid string, size int64, sample []byte, err error) {
 // something else comes back false and gets overwritten, which is what should
 // happen: the path is a function of what is in it, so a difference means the
 // file was rewritten and the new one wins.
-func (p *Pusher) present(ctx context.Context, path, oid string) (bool, error) {
+func (p *Pusher) present(ctx context.Context, path string, id fileID) (bool, error) {
 	url := fmt.Sprintf("%s/datasets/%s/resolve/%s/%s", p.api(), p.Repo, p.branch(), path)
 	req, err := http.NewRequestWithContext(ctx, http.MethodHead, url, nil)
 	if err != nil {
 		return false, err
 	}
 	p.authorize(req)
-	resp, err := p.client().Do(req)
+
+	// Not following the redirect is the whole request. A resolve for a file the
+	// Hub stores through lfs answers 302 to a CDN, and it is the answer that
+	// carries the digest: the CDN's own reply has an entity tag of its own,
+	// which matches nothing here and would report every file as absent.
+	c := *p.client()
+	c.CheckRedirect = func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }
+	resp, err := c.Do(req)
 	if err != nil {
 		return false, fmt.Errorf("kho: asking %s whether it has %s: %w", p.Repo, path, err)
 	}
 	defer closeBody(resp)
 
 	switch resp.StatusCode {
-	case http.StatusOK:
+	case http.StatusOK, http.StatusFound, http.StatusMovedPermanently,
+		http.StatusTemporaryRedirect, http.StatusPermanentRedirect:
 	case http.StatusNotFound:
 		return false, nil
 	case http.StatusUnauthorized, http.StatusForbidden:
@@ -254,11 +296,10 @@ func (p *Pusher) present(ctx context.Context, path, oid string) (bool, error) {
 		return false, fmt.Errorf("kho: asking %s whether it has %s: %s", p.Repo, path, resp.Status)
 	}
 
-	tag := resp.Header.Get("X-Linked-Etag")
-	if tag == "" {
-		tag = resp.Header.Get("Etag")
+	if tag := resp.Header.Get("X-Linked-Etag"); tag != "" {
+		return strings.Trim(tag, `"`) == id.sha256, nil
 	}
-	return strings.Trim(tag, `"`) == oid, nil
+	return strings.Trim(resp.Header.Get("Etag"), `"`) == id.gitOID, nil
 }
 
 type preuploadFile struct {
