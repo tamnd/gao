@@ -28,6 +28,7 @@ type command struct {
 func commands() []command {
 	return []command{
 		{"box", "print the fleet inventory and the disk budget it implies", runBox},
+		{"dem", "count: fetch the tokenizer that defines a gao token, print what an ingest counted", runDem},
 		{"gat", "work with acquisition: print the ingest manifest, check it for drift", runGat},
 		{"kho", "work with the store: verify a snapshot, generate a signing key", runKho},
 		{"luat", "print the legal position: counsel questions, license determinations, what ships", runLuat},
