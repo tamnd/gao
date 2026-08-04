@@ -92,13 +92,8 @@ type Decoder interface {
 	Decode(p Pinned, f File, r io.Reader, emit func(*doc.Document) error) error
 }
 
-// DecoderFor returns the decoder for a source.
-//
-// The four Parquet sources have none yet. Parquet keeps its schema and its row
-// group index in a footer at the end of the file, so it cannot be read from a
-// stream that only goes forwards, and reading one off the Hub means a reader
-// that answers random access with range requests. That is the next change and it
-// is deliberately not this one.
+// DecoderFor returns the decoder for a source whose files are read as a stream,
+// which is the ones that ship JSON lines.
 func DecoderFor(s doc.Source) (Decoder, bool) {
 	switch s {
 	case doc.SourceHPLT3:
@@ -109,11 +104,46 @@ func DecoderFor(s doc.Source) (Decoder, bool) {
 	return nil, false
 }
 
-// Decodable reports whether every source in the list has a decoder, and returns
-// the ones that do not.
+// Access says how a source's files have to be read.
+//
+// It is a property of the format and not a preference. A stream is hashed as it
+// goes and checked at the end against the pinned digest, so it is what a source
+// gets unless its format makes it impossible, and Parquet's footer at the end of
+// the file makes it impossible.
+type Access int
+
+const (
+	// Stream reads the file forwards, once, verifying it.
+	Stream Access = iota
+
+	// Random reads the parts of the file that are wanted, by range request,
+	// verifying nothing but the pinned length of what it asked for.
+	Random
+)
+
+// String implements [fmt.Stringer], and the values are what the ledger records.
+func (a Access) String() string {
+	if a == Random {
+		return "random"
+	}
+	return "stream"
+}
+
+// AccessFor returns how a source's files have to be read.
+func AccessFor(s doc.Source) Access {
+	if _, ok := RandomDecoderFor(s); ok {
+		return Random
+	}
+	return Stream
+}
+
+// Decodable reports whether every source in the list has a decoder by either
+// route, and returns the ones that do not.
 func Decodable(sources []Pinned) (ok bool, missing []doc.Source) {
 	for _, p := range sources {
-		if _, have := DecoderFor(p.Source); !have {
+		_, stream := DecoderFor(p.Source)
+		_, random := RandomDecoderFor(p.Source)
+		if !stream && !random {
 			missing = append(missing, p.Source)
 		}
 	}

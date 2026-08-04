@@ -337,30 +337,56 @@ func TestADecoderRefusesAFileItCannotOpen(t *testing.T) {
 func TestOnlyTheSourcesWithAMappingHaveADecoder(t *testing.T) {
 	for _, s := range []doc.Source{doc.SourceHPLT3, doc.SourceMADLAD400} {
 		if _, ok := DecoderFor(s); !ok {
-			t.Errorf("%s has no decoder", s)
+			t.Errorf("%s has no streaming decoder", s)
 		}
 	}
-	// The four Parquet sources are not decodable yet and the command has to be
-	// able to say so before it starts a 279 GB download that ends in an error.
+	for _, s := range []doc.Source{doc.SourceFineWeb2, doc.SourceFinePDFs, doc.SourceGlotCC} {
+		if _, ok := RandomDecoderFor(s); !ok {
+			t.Errorf("%s has no random decoder", s)
+		}
+		if _, ok := DecoderFor(s); ok {
+			t.Errorf("%s has a streaming decoder, and Parquet cannot be streamed", s)
+		}
+	}
+
+	// CulturaX is gated, its terms have not been granted, and nobody has read a
+	// byte of it. The command has to be able to say so before it starts a 149 GB
+	// download that ends in an error.
 	ok, missing := Decodable(Sources())
 	if ok {
-		t.Fatal("Decodable reports every source, and four of them ship Parquet")
+		t.Fatal("Decodable reports every source, and CulturaX has no mapping")
 	}
-	want := map[doc.Source]bool{
-		doc.SourceFineWeb2: true, doc.SourceFinePDFs: true,
-		doc.SourceCulturaX: true, doc.SourceGlotCC: true,
-	}
-	if len(missing) != len(want) {
-		t.Fatalf("Decodable reports %v", missing)
-	}
-	for _, s := range missing {
-		if !want[s] {
-			t.Errorf("Decodable reports %s as missing a decoder", s)
-		}
+	if len(missing) != 1 || missing[0] != doc.SourceCulturaX {
+		t.Fatalf("Decodable reports %v, want culturax alone", missing)
 	}
 
 	if ok, missing := Decodable([]Pinned{mustPin(t, doc.SourceHPLT3)}); !ok {
 		t.Errorf("Decodable reports %v for a source that has one", missing)
+	}
+}
+
+// Which route a source takes is decided by its format, and the manifest is the
+// only place that says which format a source ships.
+func TestTheParquetSourcesAreTheOnesReadOutOfOrder(t *testing.T) {
+	for _, tc := range []struct {
+		source doc.Source
+		want   Access
+	}{
+		{doc.SourceHPLT3, Stream},
+		{doc.SourceMADLAD400, Stream},
+		{doc.SourceFineWeb2, Random},
+		{doc.SourceFinePDFs, Random},
+		{doc.SourceGlotCC, Random},
+	} {
+		if got := AccessFor(tc.source); got != tc.want {
+			t.Errorf("%s is read %s, want %s", tc.source, got, tc.want)
+		}
+	}
+	if got := Stream.String(); got != "stream" {
+		t.Errorf("Stream prints as %q", got)
+	}
+	if got := Random.String(); got != "random" {
+		t.Errorf("Random prints as %q", got)
 	}
 }
 

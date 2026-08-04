@@ -48,10 +48,26 @@ type Entry struct {
 	Revision string     `json:"revision"`
 	Path     string     `json:"path"`
 
-	// Bytes and Digest are what was actually received, not what was expected.
-	// For a host that publishes no digest they are the only record there is.
-	Bytes  int64  `json:"bytes"`
+	// Bytes is the length of the file this entry accounts for. A streamed file
+	// counts it on the way past, so it is what was received rather than what was
+	// expected, and for a host that publishes no digest it is the only check
+	// there is. A file read out of order is never received as a whole, so it
+	// carries the pinned length and Moved says what actually crossed the wire.
+	Bytes int64 `json:"bytes"`
+
+	// Digest is the sha256 of the file as it arrived, and it is empty for a file
+	// read out of order. Such a file never has all of its bytes in one place, so
+	// there is nothing to hash, and the empty field is the record of what
+	// reading Parquet costs rather than an oversight.
 	Digest string `json:"digest"`
+
+	// Access is how the file was read, "stream" or "random", and it is empty for
+	// a stream. Moved and Requests are what a random read cost, and they are the
+	// numbers that answer whether reading a 4.8 GB file in pieces was cheaper
+	// than fetching it, which is the whole premise of doing it that way.
+	Access   string `json:"access,omitempty"`
+	Moved    int64  `json:"moved,omitempty"`
+	Requests int64  `json:"requests,omitempty"`
 
 	// Documents is how many documents the file yielded, which is the number the
 	// measurement section is eventually built out of.
