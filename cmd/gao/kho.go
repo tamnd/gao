@@ -5,9 +5,12 @@ import (
 	"flag"
 	"fmt"
 	"io"
+	"maps"
 	"os"
 	"path/filepath"
+	"slices"
 
+	"github.com/tamnd/gao/doc"
 	"github.com/tamnd/gao/kho"
 	"github.com/tamnd/gao/may"
 )
@@ -24,6 +27,8 @@ func runKho(stdout, stderr io.Writer, args []string) int {
 		return runKhoKeygen(stdout, stderr, args[1:])
 	case "datasets":
 		return runKhoDatasets(stdout, stderr, args[1:])
+	case "columns":
+		return runKhoColumns(stdout, stderr, args[1:])
 	case "help", "-h", "--help":
 		khoUsage(stdout)
 		return 0
@@ -41,6 +46,7 @@ subcommands:
   verify    check a snapshot against its manifest
   keygen    generate a snapshot signing key
   datasets  print the dataset repos processed data is written to
+  columns   print the columns a published parquet file carries
 
 run 'gao kho <subcommand> -h' for the flags of a single subcommand.
 `)
@@ -214,6 +220,86 @@ func runKhoDatasets(stdout, stderr io.Writer, args []string) int {
 
 	fmt.Fprintf(stdout, "\none parquet file per shard, at %s\n", kho.DataPath(*snapshot, 1, 774))
 	fmt.Fprint(stdout, "the path is a function of the snapshot and the shard, so pushing a shard twice\noverwrites rather than duplicates and a retry after a dropped connection is safe\n")
+	return 0
+}
+
+func runKhoColumns(stdout, stderr io.Writer, args []string) int {
+	fs := flag.NewFlagSet("kho columns", flag.ContinueOnError)
+	fs.SetOutput(stderr)
+	name := fs.String("dataset", "vietnamese-web-text", "the dataset repo whose columns to print")
+	fs.Usage = func() {
+		fmt.Fprint(stderr, `usage: gao kho columns [-dataset NAME] [file.parquet]
+
+Prints the columns a parquet file in that repo carries, which is the contract a
+reader gets to depend on. Adding a column is a minor version and removing or
+retyping one is a major version, so the list is worth reading before writing a
+query against it.
+
+A repo that withholds text has no text column rather than an empty one, so a
+query that selects it fails at plan time instead of returning blanks that read
+like documents with nothing in them. Pass -dataset to see that difference.
+
+Given a file, the columns are read out of that file's footer along with the
+snapshot, stage, and box that wrote it, which is how you check what you actually
+have rather than what the current build would write.
+
+flags:
+`)
+		fs.PrintDefaults()
+	}
+	if err := fs.Parse(args); err != nil {
+		return 2
+	}
+	if fs.NArg() > 1 {
+		fs.Usage()
+		return 2
+	}
+	if fs.NArg() == 1 {
+		return printFileColumns(stdout, stderr, fs.Arg(0))
+	}
+
+	d, ok := kho.Lookup(*name)
+	if !ok {
+		fmt.Fprintf(stderr, "gao kho columns: no dataset named %q\n", *name)
+		fmt.Fprintln(stderr, "run 'gao kho datasets' for the list")
+		return 1
+	}
+
+	columns := kho.Columns(kho.SchemaFor(d))
+	fmt.Fprintf(stdout, "%s\n", d.Repo())
+	fmt.Fprintf(stdout, "%d columns, schema version %d\n\n", len(columns), doc.SchemaVersion)
+	for _, c := range columns {
+		fmt.Fprintf(stdout, "  %s\n", c)
+	}
+	if !d.Text {
+		fmt.Fprintf(stdout, "\nthis repo withholds %s, so the column is absent and not empty\n", kho.TextColumn)
+	}
+	return 0
+}
+
+func printFileColumns(stdout, stderr io.Writer, path string) int {
+	columns, err := kho.PartColumns(path)
+	if err != nil {
+		fmt.Fprintf(stderr, "gao kho columns: %v\n", err)
+		return 1
+	}
+	meta, err := kho.PartMetadata(path)
+	if err != nil {
+		fmt.Fprintf(stderr, "gao kho columns: %v\n", err)
+		return 1
+	}
+
+	fmt.Fprintf(stdout, "%s\n", path)
+	for _, k := range slices.Sorted(maps.Keys(meta)) {
+		fmt.Fprintf(stdout, "  %-18s %s\n", k, meta[k])
+	}
+	fmt.Fprintf(stdout, "\n%d columns\n\n", len(columns))
+	for _, c := range columns {
+		fmt.Fprintf(stdout, "  %s\n", c)
+	}
+	if !slices.Contains(columns, kho.TextColumn) {
+		fmt.Fprintf(stdout, "\nthis file withholds %s, so the column is absent and not empty\n", kho.TextColumn)
+	}
 	return 0
 }
 
