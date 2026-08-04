@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"crypto/ed25519"
 	"flag"
 	"fmt"
@@ -9,6 +10,7 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
+	"strings"
 
 	"github.com/tamnd/gao/doc"
 	"github.com/tamnd/gao/kho"
@@ -29,6 +31,8 @@ func runKho(stdout, stderr io.Writer, args []string) int {
 		return runKhoDatasets(stdout, stderr, args[1:])
 	case "columns":
 		return runKhoColumns(stdout, stderr, args[1:])
+	case "push":
+		return runKhoPush(stdout, stderr, args[1:])
 	case "help", "-h", "--help":
 		khoUsage(stdout)
 		return 0
@@ -47,6 +51,7 @@ subcommands:
   keygen    generate a snapshot signing key
   datasets  print the dataset repos processed data is written to
   columns   print the columns a published parquet file carries
+  push      upload a file to a dataset repo at the path it belongs at
 
 run 'gao kho <subcommand> -h' for the flags of a single subcommand.
 `)
@@ -275,6 +280,94 @@ flags:
 		fmt.Fprintf(stdout, "\nthis repo withholds %s, so the column is absent and not empty\n", kho.TextColumn)
 	}
 	return 0
+}
+
+func runKhoPush(stdout, stderr io.Writer, args []string) int {
+	fs := flag.NewFlagSet("kho push", flag.ContinueOnError)
+	fs.SetOutput(stderr)
+	name := fs.String("dataset", kho.StageRepo, "the dataset repo to push to")
+	as := fs.String("as", "", "the path inside the repo, which defaults to the path given")
+	fs.Usage = func() {
+		fmt.Fprint(stderr, `usage: gao kho push [-dataset NAME] [-as PATH] <file>
+
+Uploads one file to a dataset repo. An ingest pushes its own parts as it writes
+them, so this is for the files that are not parts: a dataset card, a manifest, or
+a part an interrupted run left on a disk somebody is about to reclaim.
+
+The path inside the repo defaults to the path given, in slashes, so pushing from
+the directory an ingest wrote to puts a part back where it belongs without
+anybody having to retype the layout. Use -as for anything else.
+
+Pushing the same file twice is safe and nearly free. The store keys the bytes by
+their digest, so the second push of a file that is already there sends nothing,
+and it says so rather than reporting an upload that did not happen.
+
+Writing needs a token in `+may.TokenEnv+` with write access to the `+kho.Org+`
+organization.
+
+flags:
+`)
+		fs.PrintDefaults()
+	}
+	if err := fs.Parse(args); err != nil {
+		return 2
+	}
+	if fs.NArg() != 1 {
+		fs.Usage()
+		return 2
+	}
+	local := fs.Arg(0)
+
+	d, ok := kho.Lookup(*name)
+	if !ok {
+		fmt.Fprintf(stderr, "gao kho push: no dataset named %q\n", *name)
+		fmt.Fprintln(stderr, "run 'gao kho datasets' for the list")
+		return 1
+	}
+	path := *as
+	if path == "" {
+		path = filepath.ToSlash(local)
+	}
+
+	p := &kho.Pusher{Repo: d.Repo(), Token: may.Token(), API: pushAPI()}
+	ctx := context.Background()
+	if err := p.EnsureRepo(ctx, d); err != nil {
+		fmt.Fprintf(stderr, "gao kho push: %v\n", err)
+		return 1
+	}
+	sent, err := p.Push(ctx, local, path)
+	if err != nil {
+		fmt.Fprintf(stderr, "gao kho push: %v\n", err)
+		return 1
+	}
+
+	switch {
+	case sent.Skipped():
+		fmt.Fprintf(stdout, "%s already holds %s, %s, so nothing moved\n", d.Repo(), path, may.GB(sent.Bytes))
+	case !sent.Transferred:
+		fmt.Fprintf(stdout, "committed %s to %s, %s, whose bytes the store already held\n", path, d.Repo(), may.GB(sent.Bytes))
+	default:
+		fmt.Fprintf(stdout, "pushed %s to %s, %s\n", path, d.Repo(), may.GB(sent.Bytes))
+	}
+	fmt.Fprintf(stdout, "%s\n", sent.OID)
+	return 0
+}
+
+// pushAPI is the endpoint a push goes to.
+//
+// It is the Hub, unless the store of record names an http endpoint instead of
+// an hf:// one, in which case it is that. A store URI is already the answer to
+// where the corpus lives, so a hub that is not the public one belongs there
+// rather than in a flag on one subcommand, and it is what the tests point at.
+func pushAPI() string {
+	store, ok := may.Store()
+	if !ok {
+		return ""
+	}
+	if strings.HasPrefix(store, "http://") || strings.HasPrefix(store, "https://") {
+		return strings.TrimSuffix(store, "/")
+	}
+	return ""
 }
 
 func printFileColumns(stdout, stderr io.Writer, path string) int {
