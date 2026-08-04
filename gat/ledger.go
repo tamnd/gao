@@ -14,7 +14,7 @@ import (
 
 // What an ingest has already done.
 //
-// A full pull is 154 files and 608.9 GB, which is days of transfer, and it will
+// A full pull is 122 files and 513.6 GB, which is days of transfer, and it will
 // be interrupted. The question a restart has to answer is which files are
 // already through, and the ledger is that answer: one line per finished file,
 // appended and fsynced the moment the file finishes, so a kill loses at most the
@@ -24,7 +24,7 @@ import (
 // connection is resumed by [Body] without anybody hearing about it, and a
 // process that dies takes its in flight file with it because gao never wrote
 // those bytes to disk in the first place. Restarting one shard is at worst
-// 26.6 GB of the 608.9, and the alternative is a partial file on disk that has
+// 26.6 GB of the 513.6, and the alternative is a partial file on disk that has
 // to be trusted, which is the thing streaming exists to avoid.
 //
 // An entry names the revision it was fetched at, so re-pinning a source

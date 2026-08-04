@@ -36,6 +36,9 @@ func runGatHF(stdout, stderr io.Writer, args []string) int {
 
 Fetches the files in the ingest manifest at the revisions they are pinned to.
 
+A source the manifest marks dropped is refused by name, with the reason, before
+the ledger is opened. 'gao gat pins' lists them under the download total.
+
 Nothing is written to disk except the ledger. The largest pinned file is 26.6 GB
 and the box that fetches it peaks at 4.1 GB, so a file is streamed through
 whatever consumes it and the bytes are never all in one place at once. A dropped
@@ -75,7 +78,7 @@ something else reads them back to count is a design that moves 700 GB twice.
 
 Gated sources need a token in `+gat.TokenEnv+`, and CulturaX is the gated one.
 
-There is no default for -dir. A command that starts a 608.9 GB download into
+There is no default for -dir. A command that starts a 513.6 GB download into
 whichever directory it happened to be run from is a command that will do it once
 by accident, and the ledger it leaves behind is the record of an ingest nobody
 meant to start.
@@ -289,11 +292,16 @@ func hfSources(name string) ([]gat.Pinned, error) {
 	if !ok {
 		return nil, fmt.Errorf("%q is not a pinned source", name)
 	}
+	// Asking for it by name is deliberate, so the answer is the reason rather
+	// than an empty plan and a clean exit.
+	if p.Dropped {
+		return nil, fmt.Errorf("%s is pinned and dropped from the ingest: %s", name, p.DroppedBecause)
+	}
 	return []gat.Pinned{p}, nil
 }
 
 // printPlan says what is left before anything is fetched, because the first
-// question about a 608.9 GB pull is how much of it is still to come.
+// question about a 513.6 GB pull is how much of it is still to come.
 func printPlan(w io.Writer, sources []gat.Pinned, todo []gat.Work, doneFiles int, doneBytes int64) {
 	total := 0
 	var totalBytes int64
@@ -309,7 +317,7 @@ func printPlan(w io.Writer, sources []gat.Pinned, todo []gat.Work, doneFiles int
 	fmt.Fprintf(w, "%d files to fetch, %s to move\n", len(todo), may.GB(gat.Remaining(todo)))
 }
 
-// printFetched is one line per file, which over 154 files and several days is
+// printFetched is one line per file, which over 122 files and several days is
 // the only thing anybody watches.
 func printFetched(w io.Writer, r gat.Report) {
 	if r.Err != nil {
@@ -426,7 +434,9 @@ func printLedger(w io.Writer, entries []gat.Entry, files bool) {
 	if files {
 		tw := tabwriter.NewWriter(w, 0, 0, 2, ' ', 0)
 		fmt.Fprint(tw, "source\tfile\tsize\tdigest\tbox\n")
-		for _, p := range gat.Sources() {
+		// AllSources rather than Sources, so a ledger written before a source
+		// was dropped still lists what it fetched instead of losing the lines.
+		for _, p := range gat.AllSources() {
 			for _, e := range entries {
 				if e.Source != p.Source {
 					continue
@@ -462,7 +472,7 @@ func printLedger(w io.Writer, entries []gat.Entry, files bool) {
 
 	tw := tabwriter.NewWriter(w, 0, 0, 2, ' ', 0)
 	fmt.Fprint(tw, "source\tfiles\tof\tfetched\tdocuments\treconnects\n")
-	for _, p := range gat.Sources() {
+	for _, p := range gat.AllSources() {
 		t, ok := by[p.Source]
 		if !ok {
 			continue

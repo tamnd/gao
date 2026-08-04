@@ -564,6 +564,8 @@
    "gated": false,
    "license_class": "permissive-attribution",
    "note": "Ships as gzipped JSONL rather than parquet, which is the reason it ingests late: it streams fine and it does not answer a column question until gao has rewritten it.",
+   "dropped": true,
+   "dropped_because": "Every record is a JSON object with one field in it, text. No URL, no timestamp, no media type, because Allen AI did not publish them, so every document fails design rule 3 and the contract turns all of them away. Checked against the real files rather than the dataset card: a full decode of 228 records rejected 228, and 400 records sampled from each of vi_clean_0000, vi_clean_0011 and vi_clean_0031 carry the same single key. The pin stays here with its file list and digests so that re-admitting it is one field rather than a re-pin, and re-admitting it means either Allen AI publishing provenance or gao changing a design rule.",
    "files": [
     {
      "path": "data/vi/vi_clean_0000.jsonl.gz",

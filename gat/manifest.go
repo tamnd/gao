@@ -16,7 +16,8 @@
 // The revisions and byte counts here were read from the hosts on the pinned date
 // rather than copied from the inventory, and reading them corrected the inventory
 // three times. GlotCC's Vietnamese partition was described as small and is
-// 55.9 GB. The full pull was estimated at roughly 490 GB and is 608.9 GB.
+// 55.9 GB. The full pull was estimated at roughly 490 GB and is 608.9 GB, of
+// which 513.6 GB is fetched and 95.3 GB is pinned and dropped.
 // CulturaX is gated, which the inventory did not say, and a gated repo does not
 // hand its file digests to an unauthenticated caller. All three corrections are
 // in the numbers below rather than in a note about them, which is the point of
@@ -144,6 +145,22 @@ type Pinned struct {
 	// Note is why this source is in the manifest and anything about it that
 	// would otherwise be discovered the hard way.
 	Note string `json:"note"`
+
+	// Dropped reports whether this source is pinned and not fetched.
+	//
+	// It stays in the manifest with its full file list, its byte counts and its
+	// digests, because deleting it would leave a reader asking why a dataset
+	// every Vietnamese corpus cites is missing, and the answer would be in a
+	// commit message nobody reads. Design rule 3 is the vocabulary: a document
+	// that cannot carry provenance is dropped rather than admitted with nulls,
+	// and a source where that is true of every document is dropped the same way.
+	// Re-admitting one is flipping this field back.
+	Dropped bool `json:"dropped,omitempty"`
+
+	// DroppedBecause is why, and it is required whenever Dropped is set. It
+	// carries the evidence rather than the conclusion, because the next person
+	// to consider re-admitting the source needs to know what was checked.
+	DroppedBecause string `json:"dropped_because,omitempty"`
 
 	// Files is what gets downloaded, in path order.
 	Files []File `json:"files"`
@@ -282,6 +299,12 @@ func validate(m manifest) error {
 		if len(p.Excluded) == 0 && p.ExcludedBecause != "" {
 			return fmt.Errorf("%s gives a reason for holding back files and holds back none", p.Source)
 		}
+		if p.Dropped && p.DroppedBecause == "" {
+			return fmt.Errorf("%s is dropped from the ingest without saying why", p.Source)
+		}
+		if !p.Dropped && p.DroppedBecause != "" {
+			return fmt.Errorf("%s gives a reason for being dropped and is not dropped", p.Source)
+		}
 		if err := validateFiles(p); err != nil {
 			return err
 		}
@@ -327,8 +350,23 @@ func validateFiles(p Pinned) error {
 	return nil
 }
 
-// Sources returns every pinned source in ingest order.
+// Sources returns the sources an ingest fetches, in ingest order.
+//
+// A dropped source is not one of them. Use [AllSources] for the table a person
+// reads, which has to show what was dropped and why, and this for the work a
+// machine does.
 func Sources() []Pinned {
+	out := make([]Pinned, 0, len(pinned.Sources))
+	for _, p := range pinned.Sources {
+		if !p.Dropped {
+			out = append(out, p.clone())
+		}
+	}
+	return out
+}
+
+// AllSources returns every pinned source in ingest order, dropped ones included.
+func AllSources() []Pinned {
 	out := make([]Pinned, 0, len(pinned.Sources))
 	for _, p := range pinned.Sources {
 		out = append(out, p.clone())
@@ -360,10 +398,11 @@ func (p Pinned) clone() Pinned {
 func PinnedOn() string { return pinned.PinnedOn }
 
 // TotalBytes is the whole download, which is the number that decides whether
-// ingestion fits in server1's disk budget a shard at a time.
+// ingestion fits in server1's disk budget a shard at a time. Dropped sources
+// are not downloaded and are not in it.
 func TotalBytes() int64 {
 	var n int64
-	for _, p := range pinned.Sources {
+	for _, p := range Sources() {
 		n += p.Bytes()
 	}
 	return n
@@ -373,8 +412,21 @@ func TotalBytes() int64 {
 // resume points it has.
 func Files() int {
 	var n int
-	for _, p := range pinned.Sources {
+	for _, p := range Sources() {
 		n += len(p.Files)
+	}
+	return n
+}
+
+// DroppedBytes is what the manifest pins and does not fetch. It is printed
+// beside the download rather than subtracted quietly, because a plan that got
+// smaller and does not say so reads as a plan that was always that size.
+func DroppedBytes() int64 {
+	var n int64
+	for _, p := range pinned.Sources {
+		if p.Dropped {
+			n += p.Bytes()
+		}
 	}
 	return n
 }

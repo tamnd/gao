@@ -251,3 +251,61 @@ func TestARevisionShortensWithoutLosingWhatItIs(t *testing.T) {
 		}
 	}
 }
+
+// A source that is pinned and not fetched is in the table with the reason, not
+// missing from it. A reader comparing the manifest against the dataset list
+// should find an answer rather than a gap.
+func TestPinsShowsADroppedSourceAndSaysWhy(t *testing.T) {
+	out, _, code := exec(t, "gat", "pins")
+	if code != 0 {
+		t.Fatalf("exit %d, want 0", code)
+	}
+	if !strings.Contains(out, "madlad400") {
+		t.Errorf("the dropped source is missing from the table:\n%s", out)
+	}
+	if !strings.Contains(out, "dropped") {
+		t.Errorf("the table does not say the source is dropped:\n%s", out)
+	}
+	if !strings.Contains(out, may.GB(gat.DroppedBytes())) {
+		t.Errorf("the header does not say how much is pinned and not fetched:\n%s", out)
+	}
+
+	out, _, code = exec(t, "gat", "pins", "-source", "madlad400")
+	if code != 0 {
+		t.Fatalf("exit %d, want 0", code)
+	}
+	for _, want := range []string{"dropped", "text"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("the pin does not mention %q:\n%s", want, out)
+		}
+	}
+}
+
+// Asking for a dropped source by name is deliberate, so the answer is the
+// reason rather than an empty plan and a clean exit.
+func TestHFRefusesADroppedSourceWithTheReason(t *testing.T) {
+	_, errOut, code := exec(t, "gat", "hf", "-dir", t.TempDir(), "-source", "madlad400", "-plan")
+	if code != 1 {
+		t.Fatalf("exit %d, want 1", code)
+	}
+	for _, want := range []string{"madlad400", "dropped", "text"} {
+		if !strings.Contains(errOut, want) {
+			t.Errorf("the refusal does not mention %q: %q", want, errOut)
+		}
+	}
+}
+
+// The default plan is the sources that are fetched, and a dropped source is not
+// one of them.
+func TestTheDefaultPlanLeavesOutADroppedSource(t *testing.T) {
+	out, _, code := exec(t, "gat", "hf", "-dir", t.TempDir(), "-plan")
+	if code != 0 {
+		t.Fatalf("exit %d, want 0", code)
+	}
+	if !strings.Contains(out, may.GB(gat.TotalBytes())) {
+		t.Errorf("the plan is not the download total:\n%s", out)
+	}
+	if strings.Contains(out, may.GB(gat.TotalBytes()+gat.DroppedBytes())) {
+		t.Errorf("the plan includes a source that is not fetched:\n%s", out)
+	}
+}

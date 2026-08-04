@@ -73,9 +73,18 @@ func TestTheSpineIngestsFirst(t *testing.T) {
 	if srcs[0].Source != doc.SourceHPLT3 {
 		t.Errorf("the first source to ingest is %s", srcs[0].Source)
 	}
-	for i, p := range srcs {
+	// Order is dense over the whole manifest rather than over the plan, because
+	// dropping a source leaves its order behind rather than renumbering the
+	// ones after it.
+	for i, p := range AllSources() {
 		if p.Order != i {
-			t.Errorf("%s is at index %d with order %d, so Sources does not return ingest order", p.Source, i, p.Order)
+			t.Errorf("%s is at index %d with order %d, so AllSources does not return ingest order", p.Source, i, p.Order)
+		}
+	}
+	for i := 1; i < len(srcs); i++ {
+		if srcs[i].Order <= srcs[i-1].Order {
+			t.Errorf("%s at order %d follows %s at order %d, so Sources is not in ingest order",
+				srcs[i].Source, srcs[i].Order, srcs[i-1].Source, srcs[i-1].Order)
 		}
 	}
 	if srcs[0].Bytes() < srcs[1].Bytes() {
@@ -121,8 +130,8 @@ func TestEveryPublicCorpusPathIsPinned(t *testing.T) {
 			t.Errorf("%s is an acquisition path with nothing pinned to it", s)
 		}
 	}
-	if got := len(Sources()); got != len(want) {
-		t.Errorf("the manifest pins %d sources and this milestone ingests %d", got, len(want))
+	if got := len(AllSources()); got != len(want) {
+		t.Errorf("the manifest pins %d sources and this milestone considers %d", got, len(want))
 	}
 	if _, ok := Pin(doc.SourceCrawl); ok {
 		t.Error("the crawl is pinned in the ingest manifest, and it has no upstream revision to pin to")
@@ -489,4 +498,94 @@ func source(m map[string]any, name string) map[string]any {
 
 func files(m map[string]any) []any {
 	return first(m)["files"].([]any)
+}
+
+// A dropped source is pinned and not fetched. It keeps its file list, its byte
+// counts and its digests, so re-admitting it is one field rather than a re-pin,
+// and the reason it was dropped is in the manifest rather than in a commit
+// message nobody reads.
+func TestADroppedSourceIsPinnedAndNotInThePlan(t *testing.T) {
+	p, ok := Pin(doc.SourceMADLAD400)
+	if !ok {
+		t.Fatal("madlad400 is not pinned")
+	}
+	if !p.Dropped {
+		t.Fatal("madlad400 is not dropped, and every one of its records fails the provenance rule")
+	}
+	if len(p.Files) == 0 || p.Bytes() == 0 {
+		t.Error("a dropped source lost its file list, so re-admitting it means pinning it again")
+	}
+	if !strings.Contains(p.DroppedBecause, "text") {
+		t.Errorf("the reason does not say what is missing: %q", p.DroppedBecause)
+	}
+
+	for _, s := range Sources() {
+		if s.Source == doc.SourceMADLAD400 {
+			t.Error("a dropped source is in the plan an ingest fetches")
+		}
+	}
+	var found bool
+	for _, s := range AllSources() {
+		if s.Source == doc.SourceMADLAD400 {
+			found = true
+		}
+	}
+	if !found {
+		t.Error("a dropped source is not in the manifest a person reads")
+	}
+}
+
+// The download total is what an ingest moves, and what it does not move is
+// printed beside it rather than subtracted quietly.
+func TestTheDownloadTotalLeavesOutWhatIsNotFetched(t *testing.T) {
+	var plan, dropped int64
+	var planFiles int
+	for _, p := range AllSources() {
+		if p.Dropped {
+			dropped += p.Bytes()
+			continue
+		}
+		plan += p.Bytes()
+		planFiles += len(p.Files)
+	}
+	if TotalBytes() != plan {
+		t.Errorf("TotalBytes is %d, want %d, the sources that are actually fetched", TotalBytes(), plan)
+	}
+	if Files() != planFiles {
+		t.Errorf("Files is %d, want %d", Files(), planFiles)
+	}
+	if DroppedBytes() != dropped {
+		t.Errorf("DroppedBytes is %d, want %d", DroppedBytes(), dropped)
+	}
+	if dropped == 0 {
+		t.Error("nothing is dropped, so this test proves nothing")
+	}
+}
+
+func TestAManifestThatDropsASourceWithoutSayingWhyIsRejected(t *testing.T) {
+	b := []byte(`{"version":1,"pinned_on":"2026-08-03","sources":[{
+	  "source":"glotcc","order":0,"origin":"hub","repo":"cis-lmu/GlotCC-V1",
+	  "revision":"9ad140b6be3ac7b539606a2b4809b49d122823de",
+	  "revision_url":"https://huggingface.co/api/datasets/cis-lmu/GlotCC-V1",
+	  "config":"vie-Latn","gated":false,"license_class":"open","note":"a note",
+	  "dropped":true,
+	  "files":[{"path":"a.parquet","bytes":1,"digest":"sha256:` + strings.Repeat("a", 64) + `"}]}]}`)
+	if _, err := load(b); err == nil {
+		t.Error("a source dropped with no reason loaded")
+	} else if !strings.Contains(err.Error(), "without saying why") {
+		t.Errorf("the error does not say what is missing: %v", err)
+	}
+}
+
+func TestAReasonForDroppingASourceThatIsNotDroppedIsRejected(t *testing.T) {
+	b := []byte(`{"version":1,"pinned_on":"2026-08-03","sources":[{
+	  "source":"glotcc","order":0,"origin":"hub","repo":"cis-lmu/GlotCC-V1",
+	  "revision":"9ad140b6be3ac7b539606a2b4809b49d122823de",
+	  "revision_url":"https://huggingface.co/api/datasets/cis-lmu/GlotCC-V1",
+	  "config":"vie-Latn","gated":false,"license_class":"open","note":"a note",
+	  "dropped_because":"a reason for something that did not happen",
+	  "files":[{"path":"a.parquet","bytes":1,"digest":"sha256:` + strings.Repeat("a", 64) + `"}]}]}`)
+	if _, err := load(b); err == nil {
+		t.Error("a reason for dropping a source that is not dropped loaded")
+	}
 }
