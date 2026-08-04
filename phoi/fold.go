@@ -74,7 +74,8 @@ func hasY(text string) bool {
 }
 
 // base is the letter under the marks. Vietnamese vowels carry up to two of them
-// and the neighbour test is about the letter rather than the tone on it.
+// and the test on the letters around one is about the letter rather than the
+// tone on it.
 func base(c rune) rune {
 	for _, b := range norm.NFD.String(string(c)) {
 		return b

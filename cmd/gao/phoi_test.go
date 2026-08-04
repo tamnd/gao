@@ -71,12 +71,13 @@ func TestPhoiSaysWhyADocumentDoesNotGoOn(t *testing.T) {
 
 func TestPhoiReportsSeveralDocumentsWithATotal(t *testing.T) {
 	dir := t.TempDir()
-	var paths []string
-	for name, text := range map[string]string{
+	documents := map[string]string{
 		"a.txt": "Hoà bình\n",
 		"b.txt": "Thuỷ chung\n",
 		"c.txt": "Hà Nội\n",
-	} {
+	}
+	paths := make([]string, 0, len(documents))
+	for name, text := range documents {
 		path := filepath.Join(dir, name)
 		if err := os.WriteFile(path, []byte(text), 0o644); err != nil {
 			t.Fatal(err)
