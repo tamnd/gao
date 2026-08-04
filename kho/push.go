@@ -199,6 +199,33 @@ func (p *Pusher) Push(ctx context.Context, local, path string) (Pushed, error) {
 	return done, nil
 }
 
+// PushCard renders the dataset card and puts it at [CardName], and reports that
+// it did nothing when the card up there already says the same thing.
+//
+// A card is a page of text rather than a part, so it goes up in the commit
+// itself and never through LFS. That is also why it takes the bytes rather than
+// a path: the card is generated, and writing it to a temporary file so that
+// [Pusher.Push] could read it back would be a round trip through the disk for
+// no reason.
+func (p *Pusher) PushCard(ctx context.Context, d Dataset, m *Manifest) (Pushed, error) {
+	body := []byte(Card(d, m))
+	id := identifyBytes(body)
+	done := Pushed{Path: CardName, Bytes: id.size, OID: id.gitOID}
+
+	present, err := p.present(ctx, CardName, id)
+	if err != nil {
+		return done, err
+	}
+	if present {
+		return done, nil
+	}
+	if err := p.commit(ctx, commitFile(CardName, body)); err != nil {
+		return done, err
+	}
+	done.Committed, done.Transferred = true, true
+	return done, nil
+}
+
 // fileID is a file in the two identities the Hub uses for it.
 //
 // Two rather than one because the Hub stores a file in one of two ways and
@@ -215,6 +242,28 @@ type fileID struct {
 	// sample is the head of the file, which the preupload check wants so it can
 	// decide the mode from content rather than from the extension alone.
 	sample []byte
+}
+
+// identifyBytes is [identify] for something already in memory. It is a separate
+// function rather than a shared path because the two have opposite constraints:
+// a part is a gigabyte and must be hashed in one pass off the disk, and a card
+// is a page that is being generated anyway.
+func identifyBytes(b []byte) fileID {
+	sum := sha256.Sum256(b)
+	blob := sha1.New()
+	fmt.Fprintf(blob, "blob %d\x00", len(b))
+	_, _ = blob.Write(b)
+
+	sample := b
+	if len(sample) > 512 {
+		sample = sample[:512]
+	}
+	return fileID{
+		sha256: hex.EncodeToString(sum[:]),
+		gitOID: hex.EncodeToString(blob.Sum(nil)),
+		size:   int64(len(b)),
+		sample: sample,
+	}
 }
 
 func identify(local string) (fileID, error) {
@@ -461,10 +510,28 @@ func opPath(op commitOp) string {
 // The tier decides visibility rather than an argument, because a working repo
 // that got created public would be publishing unfiltered text and the decision
 // is not one a caller should be able to make differently on a Tuesday.
+//
+// A repo it creates gets a card, because a repo with no README is a repo whose
+// front page is a file listing, and the first person to find it should not have
+// to guess. A repo that was already there keeps the card it has, since that one
+// may have been generated from a manifest this caller does not have and
+// replacing it with the empty version would be losing the release notes.
 func (p *Pusher) EnsureRepo(ctx context.Context, d Dataset) error {
+	made, err := p.createRepo(ctx, d)
+	if err != nil || !made {
+		return err
+	}
+	if _, err := p.PushCard(ctx, d, nil); err != nil {
+		return fmt.Errorf("kho: putting a card on %s: %w", d.Repo(), err)
+	}
+	return nil
+}
+
+// createRepo makes the repo and reports whether it was this call that made it.
+func (p *Pusher) createRepo(ctx context.Context, d Dataset) (bool, error) {
 	org, name, ok := strings.Cut(d.Repo(), "/")
 	if !ok {
-		return fmt.Errorf("kho: %s is not an org and a name", d.Repo())
+		return false, fmt.Errorf("kho: %s is not an org and a name", d.Repo())
 	}
 	in := map[string]any{
 		"type":         "dataset",
@@ -475,12 +542,12 @@ func (p *Pusher) EnsureRepo(ctx context.Context, d Dataset) error {
 	url := p.api() + "/api/repos/create"
 	err := p.post(ctx, url, "application/json", in, nil)
 	if err != nil && strings.Contains(err.Error(), "409") {
-		return nil
+		return false, nil
 	}
 	if err != nil {
-		return fmt.Errorf("kho: creating %s: %w", d.Repo(), err)
+		return false, fmt.Errorf("kho: creating %s: %w", d.Repo(), err)
 	}
-	return nil
+	return true, nil
 }
 
 // post marshals in, sends it, and decodes the response into out if out is not
