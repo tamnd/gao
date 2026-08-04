@@ -7,6 +7,7 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/parquet-go/parquet-go"
 
@@ -198,6 +199,36 @@ func TestAFinePDFsRowBecomesADocumentTheContractAdmits(t *testing.T) {
 	// FinePDFs uses for some of its rows and not others.
 	if got := d.FetchedAt.Format("2006-01-02T15:04:05Z"); got != "2023-01-31T06:34:48Z" {
 		t.Errorf("fetched_at is %q", got)
+	}
+}
+
+// FinePDFs writes its dates three ways in one file. The third turned up 416 rows
+// into the first shard, on a box, after the mapping had been written and the
+// tests were passing.
+func TestTheThreeWaysFinePDFsWritesADate(t *testing.T) {
+	for _, in := range []string{
+		"2023-01-31T06:34:48+00:00",
+		"2019-01-18T22:02:13Z",
+		"2019-11-18T18:50:20",
+	} {
+		row := finepdfsFixture()
+		row.Date = in
+
+		d := decodeAllAt(t, doc.SourceFinePDFs, []finepdfs{row})[0]
+		if err := d.Admit(); err != nil {
+			t.Errorf("a row dated %q was turned away: %v", in, err)
+		}
+		if d.FetchedAt.Location() != time.UTC {
+			t.Errorf("a row dated %q is in %s", in, d.FetchedAt.Location())
+		}
+	}
+
+	// Not a rule about naive timestamps, a reading of this producer's field. A
+	// date that is not a date at all still fails the row.
+	row := finepdfsFixture()
+	row.Date = "18/11/2019"
+	if _, err := tryDecodeAt(t, doc.SourceFinePDFs, []finepdfs{row}); !errors.Is(err, ErrBadRow) {
+		t.Errorf("a date that is not one returned %v", err)
 	}
 }
 

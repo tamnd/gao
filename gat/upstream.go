@@ -357,14 +357,31 @@ func glotccRow(r row, in *glotcc) (*doc.Document, error) {
 	return d, nil
 }
 
-// when parses a producer's timestamp. All four Parquet sources write RFC 3339
-// and two of them use both spellings of the zero offset, which the parser takes
-// either way.
+// naiveTime is RFC 3339 with the zone left off, which is not RFC 3339 and is
+// what FinePDFs writes for some of its rows.
+const naiveTime = "2006-01-02T15:04:05"
+
+// when parses a producer's timestamp.
+//
+// FinePDFs writes its fetch dates three ways in one file: 2023-01-31T06:34:48Z,
+// 2019-01-18T22:02:13+00:00, and 2019-11-18T18:50:20. The first two are the two
+// spellings of the same zero offset and the parser takes either. The third has
+// no zone at all, and it turned up 416 rows into the first shard.
+//
+// It is read as UTC. The alternative is to fail the row, and that would throw
+// away an unknown share of a 13.0 GB source over a formatting difference rather
+// than over anything about the document. Reading it as UTC is safe here for a
+// reason specific to this data: the field is the WARC fetch date, WARC records
+// carry UTC, and every zoned timestamp in the same file is a zero offset. It is
+// not a general rule about naive timestamps and it should not become one.
 func when(s string) (time.Time, error) {
 	if s == "" {
 		return time.Time{}, nil
 	}
-	at, err := time.Parse(time.RFC3339, s)
+	if at, err := time.Parse(time.RFC3339, s); err == nil {
+		return at.UTC(), nil
+	}
+	at, err := time.Parse(naiveTime, s)
 	if err != nil {
 		return time.Time{}, fmt.Errorf("date %q is not a timestamp: %w", s, err)
 	}
