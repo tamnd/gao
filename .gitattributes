@@ -1,0 +1,6 @@
+# Golden files are byte exact fixtures, and some of them carry the line endings
+# they exist to test. Git rewrites line endings on checkout on Windows, which
+# would turn a fixture into a different document than the one that was recorded,
+# so these are checked out exactly as they were committed.
+phoi/testdata/*.in  -text
+phoi/testdata/*.out -text

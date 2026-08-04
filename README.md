@@ -58,7 +58,8 @@ gao gat cc     --snapshots all              # recover Vietnamese from Common Cra
 gao gat crawl  --policy crawl.toml          # crawl the Vietnamese web directly
 gao gat media  --from crawl                 # fetch PDFs, audio, video
 
-gao phoi       --in raw/ --out normalized/  # dry: Unicode and orthographic normalization
+gao phoi       doc.txt                      # dry: normalize a document and write it out
+gao phoi -report ingest/*.txt               # what normalizing did, per document, with a total
 gao sang       --in normalized/ --out kept/ # sift: language ID, heuristics, quality
 gao xay        --in kept/ --out milled/     # mill: deduplication, boilerplate removal
 
@@ -178,6 +179,36 @@ Two counts produced by different tokenizers are never added up. It is an error r
 The first counted run puts a number on the estimate this project has been quoting, and it is not the estimated number. One GlotCC shard, 500000 documents, 3228869043 characters, 983022920 tokens: **3.28 characters per token**, where `doc/units.go` predicts 3.0 and the plan that wrote it allowed plus or minus 0.15. Tokens per syllable came out at 1.45 against a predicted 1.51 and bytes per character at 1.30 against 1.32, both close enough to leave alone. The character figure is not close, and it runs the same way every time: it means Vietnamese costs fewer tokens than the estimate assumed, so every token headline derived from a character count is about 8 percent high. That is one source of six and one shard of it, so it does not settle the corpus figure and the constants stay where they are, but it is the direction to expect from the rest.
 
 The conversion constants in `doc/units.go` are for estimates and nothing in `dem` multiplies. They answer what a hundred gigabytes is roughly worth before anything has been fetched. They live in a different package from the counting on purpose, because an estimate that reaches a release note becomes a measurement in the reader's mind and there is no way to take it back.
+
+## Normalizing before anything reads a character
+
+Two spellings of one word are two documents. `hoà` and `hòa` are the same word written under two conventions, they hash to different values, and a document that reaches the corpus from two sources under two conventions survives deduplication as two, trains as two, and takes two rows in the embedding table. That is why normalization runs before anything else reads a character, and why it is a correctness problem rather than tidying.
+
+Composition comes first and it is not enough on its own. NFC reorders combining marks by canonical class, and the acute of `ế` and the circumflex of `ê` are both of class 230, so it will not reorder them: an `e` followed by an acute followed by a circumflex is a permanently different string from `ế` and no amount of normalizing makes it one. It renders close enough that nobody notices. So `phoi` moves a tone mark that was typed ahead of the letter's own mark back on top of it and composes after that, which is a rule about Vietnamese rather than about Unicode and lives with the rest of the Vietnamese.
+
+Then tone mark placement, toward the convention that puts the mark on the first vowel of the pair: `hoà` becomes `hòa`, `khoẻ` becomes `khỏe`, `thuỷ` becomes `thủy`. It fires on the rhymes `oa`, `oe` and `uy` with no final consonant, and nowhere else. Not on `hoàn` or `nguyệt`, where the coda decides which vowel carries the mark. Not on `quý` or `quỳ`, because after `qu` the u belongs to the consonant and is not part of the rhyme at all. Not on `hoài` or `nguyễn`, whose nuclei are three letters. Both conventions are correct Vietnamese and choosing between them is arbitrary. Choosing neither is what costs.
+
+The look-alike letters are a question about the word rather than about the character. Eth for `đ` and the caron for the breve are repaired wherever they appear, because neither is a letter of any language this corpus holds, and the eth is the most common wrong codepoint in Vietnamese text by a distance. The Cyrillic and Greek letters drawn like Latin ones are a different case: a Cyrillic o inside `công ty` is damage, and a Cyrillic o inside a Russian word is a Russian word. So those are folded only inside a run of letters that is otherwise Latin, and a Vietnamese page quoting a line of Russian comes back byte for byte. The version of that table which did not ask turned `Пример` into `Пpимep`, which is the failure it was written to prevent arriving through the other door.
+
+Invisible characters come out and are counted. A zero width space inside a syllable is not a typo a reader corrects, it makes that syllable a different string from every other copy of it through tokenization and into the embedding table, and it arrives by the thousand from pages laid out for print. The bidirectional controls come out for a second reason: they reorder what is displayed without touching what is stored, so a line can read one way to a person and mean another to everything that consumes it, which is a known attack on source code and the same trick in prose. Control characters come out too, and their rate is the useful part. Text carries none of them, so a file above 0.1 percent was sniffed as text and is really a font or an archive.
+
+Input method residue is flagged and never repaired. `dduwowngj` is somebody's Telex keystrokes that never went through the input method, and `d9u7o7ng2` is the same accident in VNI. Repairing either means guessing which word was meant, and a guess written into a corpus is indistinguishable from a fact afterwards, so `phoi` counts them and sends a document above 2 percent to the reject store with `residue` as the reason, which is also where a file above the control character limit goes, as `control`. The detector is built for precision rather than recall, because a false positive throws away a good document over a word that merely looks like keystrokes, and English words ending in a Telex tone key are everywhere. What it misses is written down in a test rather than left to be rediscovered: `veef`, `lamf`, `minhf` and `khoongr` all go through.
+
+The `i` and `y` variation is deliberately not normalized. `Mĩ` and `Mỹ`, `kĩ thuật` and `kỹ thuật`, both spellings are correct and the choice carries region and register, so rewriting one into the other is editing the corpus rather than cleaning it. Instead the two fold into one key, deduplication compares keys, and both spellings survive in the text. The fold applies only to the y that is a syllable's whole vowel, since `tay` and `tai` are different words and so are `hay` and `hai`. `quy` folds, because there the u belongs to the consonant.
+
+Normalizing twice changes nothing, and a test says so. Documents pass through this stage every time the corpus is rebuilt, so a rule that kept finding work would invalidate every hash taken on the pass before. The rest of the tests are golden files over real Vietnamese from five kinds of source rather than lorem ipsum with diacritics: an encyclopedia article, a page laid out for print, a news article, a document written under the older tone convention, and a forum post full of keystrokes. Each one carries the damage its kind of source actually carries, and `phoi/testdata/README.md` says which document is there for what.
+
+```
+document                      changed  homoglyphs  invisible  controls  composed  tones  residue  syllables  kept
+phoi/testdata/bach-khoa.in    yes      2           1          0         0         0      0        88         yes
+phoi/testdata/ban-in.in       yes      9           1          0         0         0      0        52         yes
+phoi/testdata/bao-dien-tu.in  yes      0           1          0         0         0      0        76         yes
+phoi/testdata/dau-cu.in       yes      0           0          0         0         6      0        90         yes
+phoi/testdata/dien-dan.in     no       0           0          0         0         0      3        66         no, residue
+5 documents                   4        11          3          0         0         6      3        372        1 rejected
+```
+
+What the stage does not do yet is the legacy font encodings. TCVN3, VNI, VPS and BK HCM pages hold Vietnamese as bytes that are only Vietnamese under one particular font, and the older Vietnamese web still serves them in quantity. Detecting and transcoding those is the open item here, and until it lands such a page arrives as text this stage has nothing to say about.
 
 ## Where the corpus lives
 
