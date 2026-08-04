@@ -400,3 +400,75 @@ func TestHFIsInTheGatHelpAndTheUsage(t *testing.T) {
 		}
 	}
 }
+
+// One ingest at a time in one directory. Two of them do not corrupt the ledger,
+// which dedupes on read, they double the bytes and the document totals in it
+// while the file count still looks right, and they interleave writes into the
+// same document segment.
+func TestHFRefusesADirectoryAnotherIngestIsHolding(t *testing.T) {
+	dir := t.TempDir()
+	lock, err := gat.LockDir(dir, "gao gat hf")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = lock.Release() }()
+
+	_, errOut, code := exec(t, "gat", "hf", "-dir", dir, "-source", "glotcc", "-limit", "1")
+	if code != 1 {
+		t.Fatalf("exit %d, want 1", code)
+	}
+	for _, want := range []string{"another ingest", may.Label(), gat.LockName} {
+		if !strings.Contains(errOut, want) {
+			t.Errorf("the refusal does not mention %q: %q", want, errOut)
+		}
+	}
+}
+
+// A plan writes nothing, so it stays readable while an ingest is running. That
+// is the moment somebody most wants to read it.
+func TestHFCanStillPrintThePlanWhileAnIngestHoldsTheDirectory(t *testing.T) {
+	dir := t.TempDir()
+	lock, err := gat.LockDir(dir, "gao gat hf")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = lock.Release() }()
+
+	out, _, code := exec(t, "gat", "hf", "-dir", dir, "-source", "glotcc", "-plan")
+	if code != 0 {
+		t.Fatalf("exit %d, want 0, a plan should not need the lock", code)
+	}
+	if !strings.Contains(out, "files to fetch") {
+		t.Errorf("the plan did not print:\n%s", out)
+	}
+}
+
+// Whether an ingest is running changes what the ledger totals mean, so the
+// read only command says so rather than leaving it to be guessed at.
+func TestTheLedgerCommandSaysWhenAnIngestIsRunning(t *testing.T) {
+	dir := t.TempDir()
+	out, _, code := exec(t, "gat", "ledger", "-dir", dir)
+	if code != 0 {
+		t.Fatalf("exit %d, want 0", code)
+	}
+	if strings.Contains(out, "an ingest is running") {
+		t.Errorf("an unlocked directory reported a running ingest:\n%s", out)
+	}
+
+	lock, err := gat.LockDir(dir, "gao gat hf")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = lock.Release() }()
+
+	out, _, code = exec(t, "gat", "ledger", "-dir", dir)
+	if code != 0 {
+		t.Fatalf("exit %d with a lock held, want 0, this command claims nothing", code)
+	}
+	if !strings.Contains(out, "an ingest is running") {
+		t.Errorf("a locked directory did not report the ingest:\n%s", out)
+	}
+	if !strings.Contains(out, may.Label()) {
+		t.Errorf("the report does not say which box is holding it:\n%s", out)
+	}
+}
