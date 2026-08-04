@@ -73,9 +73,30 @@ func (d *Docs) Consume(ctx context.Context, p Pinned, f File, r io.Reader) (int6
 	if !ok {
 		return 0, fmt.Errorf("%w: %s", ErrNoDecoder, p.Source)
 	}
+	take, done := d.taking(ctx)
+	return done(p, f, dec.Decode(p, f, r, take))
+}
 
+// ConsumeAt implements [RandomSink], for the sources whose files are Parquet.
+//
+// Everything after the decoder is the same as [Docs.Consume]. The contract does
+// not know how a document's bytes reached it and it does not get a second set of
+// rules for the sources that could not be streamed.
+func (d *Docs) ConsumeAt(ctx context.Context, p Pinned, f File, r io.ReaderAt, size int64) (int64, error) {
+	dec, ok := RandomDecoderFor(p.Source)
+	if !ok {
+		return 0, fmt.Errorf("%w: %s", ErrNoDecoder, p.Source)
+	}
+	take, done := d.taking(ctx)
+	return done(p, f, dec.DecodeAt(p, f, r, size, take))
+}
+
+// taking returns the function a decoder emits into and the function that turns
+// what it did into the sink's answer.
+func (d *Docs) taking(ctx context.Context) (take func(*doc.Document) error, done func(Pinned, File, error) (int64, error)) {
 	var admitted, rejected int64
-	err := dec.Decode(p, f, r, func(rec *doc.Document) error {
+
+	take = func(rec *doc.Document) error {
 		// Checked per document rather than per file. A 26.6 GB shard is several
 		// million records and an hour of work, and a ctrl-C that waits for the
 		// end of the file is a ctrl-C that does not work.
@@ -92,14 +113,18 @@ func (d *Docs) Consume(ctx context.Context, p Pinned, f File, r io.Reader) (int6
 			return nil
 		}
 		return d.Emit(rec)
-	})
-	if err != nil {
-		return admitted, err
 	}
-	if admitted == 0 && rejected > 0 {
-		return 0, fmt.Errorf("%w: %s from %s, %d rejected", ErrNothingAdmitted, f.Path, p.Source, rejected)
+
+	done = func(p Pinned, f File, err error) (int64, error) {
+		if err != nil {
+			return admitted, err
+		}
+		if admitted == 0 && rejected > 0 {
+			return 0, fmt.Errorf("%w: %s from %s, %d rejected", ErrNothingAdmitted, f.Path, p.Source, rejected)
+		}
+		return admitted, nil
 	}
-	return admitted, nil
+	return take, done
 }
 
 // record writes a rejection and returns an error only if the reject store itself

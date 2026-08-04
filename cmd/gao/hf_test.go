@@ -250,7 +250,7 @@ func TestAnInterruptedRunIsNotAFailedOne(t *testing.T) {
 func TestHFRefusesToDecodeASourceItCannotDecode(t *testing.T) {
 	for _, args := range [][]string{
 		{"gat", "hf", "-dir", t.TempDir(), "-decode", "-plan"},
-		{"gat", "hf", "-dir", t.TempDir(), "-source", "fineweb2", "-decode", "-plan"},
+		{"gat", "hf", "-dir", t.TempDir(), "-source", "culturax", "-decode", "-plan"},
 		// -rejects implies -decode, so it is refused on the same grounds.
 		{"gat", "hf", "-dir", t.TempDir(), "-rejects", filepath.Join(t.TempDir(), "vo.jsonl.zst"), "-plan"},
 	} {
@@ -258,7 +258,7 @@ func TestHFRefusesToDecodeASourceItCannotDecode(t *testing.T) {
 		if code != 1 {
 			t.Fatalf("%v: exit %d, want 1", args, code)
 		}
-		if !strings.Contains(errOut, "no decoder") || !strings.Contains(errOut, "fineweb2") {
+		if !strings.Contains(errOut, "no decoder") || !strings.Contains(errOut, "culturax") {
 			t.Errorf("%v: the error does not name what cannot be decoded: %q", args, errOut)
 		}
 		// The way out is in the message, because the person who hit this wants to
@@ -273,7 +273,7 @@ func TestHFRefusesToDecodeASourceItCannotDecode(t *testing.T) {
 }
 
 func TestHFDecodesTheSourcesItHasAMappingFor(t *testing.T) {
-	for _, name := range []string{"hplt3", "madlad400"} {
+	for _, name := range []string{"hplt3", "madlad400", "fineweb2", "finepdfs", "glotcc"} {
 		out, errOut, code := exec(t, "gat", "hf", "-dir", t.TempDir(), "-source", name, "-decode", "-plan")
 		if code != 0 {
 			t.Fatalf("%s: exit %d, want 0: %s", name, code, errOut)
@@ -394,7 +394,7 @@ func TestHFIsInTheGatHelpAndTheUsage(t *testing.T) {
 
 	// Which sources decode is in the usage rather than only in the error,
 	// because it decides whether a run is worth starting.
-	for _, want := range []string{"-decode", "-rejects", "HPLT v3", "MADLAD-400", "Parquet"} {
+	for _, want := range []string{"-decode", "-rejects", "CulturaX", "Parquet", "range request"} {
 		if !strings.Contains(errOut, want) {
 			t.Errorf("the usage does not mention %q:\n%s", want, errOut)
 		}

@@ -39,6 +39,21 @@ type Sink interface {
 	Consume(ctx context.Context, p Pinned, f File, r io.Reader) (documents int64, err error)
 }
 
+// A RandomSink also consumes a file that cannot be streamed.
+//
+// Only the Parquet sources need it, and they need it because of where the format
+// puts its footer rather than because of anything about their contents. A sink
+// that does not implement this fails on those sources rather than being handed a
+// stream it cannot use, since the alternative is a decoder reading a columnar
+// file forwards and reporting that it is corrupt.
+type RandomSink interface {
+	Sink
+
+	// ConsumeAt reads whichever parts of the file it needs and returns the
+	// number of documents it found. The size is the pinned length.
+	ConsumeAt(ctx context.Context, p Pinned, f File, r io.ReaderAt, size int64) (documents int64, err error)
+}
+
 // SinkFunc adapts a function to a [Sink].
 type SinkFunc func(ctx context.Context, p Pinned, f File, r io.Reader) (int64, error)
 
@@ -77,6 +92,13 @@ type Report struct {
 	Reconnects int
 	Elapsed    time.Duration
 	Err        error
+
+	// Access is how the file was read. A randomly read file has no digest, and
+	// Moved and Requests are what it cost instead: how many bytes crossed the
+	// wire and how many requests it took to move them.
+	Access   Access
+	Moved    int64
+	Requests int64
 }
 
 // Ingest fetches the files in a plan and feeds each one to a sink.
@@ -139,6 +161,15 @@ func (in *Ingest) Run(ctx context.Context, todo []Work) (int, error) {
 
 // one fetches and consumes a single file, and records it if it finished.
 func (in *Ingest) one(ctx context.Context, fetcher *Fetcher, sink Sink, w Work) (Report, error) {
+	// Out of order only when the format requires it and the sink can use it.
+	// Verifying a source is still a stream, Parquet included: the footer at the
+	// end of the file stops a decoder from reading forwards, it does not stop a
+	// digest, and a run that is checking the manifest rather than decoding it
+	// should still come away with one.
+	if rs, ok := sink.(RandomSink); ok && AccessFor(w.Pin.Source) == Random {
+		return in.random(ctx, fetcher, rs, w)
+	}
+
 	start := time.Now()
 	rep := Report{Pin: w.Pin, File: w.File}
 
@@ -177,6 +208,56 @@ func (in *Ingest) one(ctx context.Context, fetcher *Fetcher, sink Sink, w Work) 
 		Documents:  documents,
 		Reconnects: body.Reconnects(),
 		Box:        in.Box,
+	}
+	if err := in.Ledger.Record(entry); err != nil {
+		rep.Err = err
+		return rep, err
+	}
+	return rep, nil
+}
+
+// random reads a single file out of order and records it if it finished.
+//
+// There is no equivalent of the truncation check that ends [Ingest.one]. A
+// streamed file that a sink abandoned early is caught by comparing what was read
+// against what was pinned, and a file read in pieces has no such position: the
+// decoder is meant to skip the parts it does not want, so a small number of bytes
+// moved is the intended outcome rather than a short read. What replaces the check
+// is the decoder itself, which reads the row groups the footer declares and fails
+// if the file does not have them.
+func (in *Ingest) random(ctx context.Context, fetcher *Fetcher, sink RandomSink, w Work) (Report, error) {
+	start := time.Now()
+	rep := Report{Pin: w.Pin, File: w.File, Access: Random}
+
+	r, err := fetcher.OpenAt(ctx, w.Pin, w.File)
+	if err != nil {
+		rep.Elapsed, rep.Err = time.Since(start), err
+		return rep, err
+	}
+
+	documents, err := sink.ConsumeAt(ctx, w.Pin, w.File, r, r.Size())
+	rep.Documents = documents
+	rep.Moved = r.Bytes()
+	rep.Requests = r.Requests()
+	rep.Elapsed = time.Since(start)
+	if err != nil {
+		rep.Err = fmt.Errorf("gat: %s from %s: %w", w.File.Path, w.Pin.Source, err)
+		return rep, rep.Err
+	}
+
+	entry := Entry{
+		Source:   w.Pin.Source,
+		Revision: w.Pin.Revision,
+		Path:     w.File.Path,
+		// The pinned length, because that is what this entry accounts for and
+		// what a restart must not fetch again. What actually crossed the wire is
+		// Moved, and the two being different is the point of reading this way.
+		Bytes:     w.File.Bytes,
+		Documents: documents,
+		Access:    Random.String(),
+		Moved:     rep.Moved,
+		Requests:  rep.Requests,
+		Box:       in.Box,
 	}
 	if err := in.Ledger.Record(entry); err != nil {
 		rep.Err = err

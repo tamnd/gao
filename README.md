@@ -46,6 +46,7 @@ gao gat drift                               # ask every host whether it still se
 gao gat hf     -dir ingest/                 # harvest from Hugging Face, resuming where it left off
 gao gat hf     -dir ingest/ -decode         # and put every record to the ingest contract as it streams
 gao gat ledger -dir ingest/                 # what the harvest has finished so far
+gao gat ledger -dir ingest/ -files          # every finished file, and how each one was read
 gao gat cc     --snapshots all              # recover Vietnamese from Common Crawl
 gao gat crawl  --policy crawl.toml          # crawl the Vietnamese web directly
 gao gat media  --from crawl                 # fetch PDFs, audio, video
@@ -123,7 +124,25 @@ Documents that fail the contract go to `-rejects` with the reason and the specif
 
 That has already found something. MADLAD-400's clean split is a JSON object with one field in it, `text`, and there is no URL, no timestamp, and no media type, because Allen AI did not publish them. Every record decodes and every record is rejected for provenance it does not have. It is 95.3 GB and 32 files of the plan, and what to do about it is a decision to make deliberately rather than a default to fall into.
 
-Two sources decode today, HPLT v3 and MADLAD-400. The four that ship Parquet do not, because Parquet keeps its schema and its row group index in a footer at the end of the file and cannot be read from a stream that only goes forwards. Reading one off the Hub means a reader that answers random access with range requests, and that is the next change. `gao gat hf -decode` refuses a source it cannot decode before it opens the ledger, because finding this out two hundred gigabytes into a download is not finding it out.
+Five sources decode today. The sixth is CulturaX, which is gated and whose terms have not been granted, so nobody has read a byte of it. The other five mappings were each written against the real file, and one written from a dataset card alone would be a guess with a version number on it. `gao gat hf -decode` refuses a source it cannot decode before it opens the ledger, because finding this out two hundred gigabytes into a download is not finding it out.
+
+## Reading Parquet without downloading it
+
+Four of the six ship Parquet, three of them have mappings, and Parquet keeps its schema and its row group index in a footer at the end of the file. A reader has to know where the end is before it can read the beginning, so the format cannot be decoded from a stream that only goes forwards, and the files run 1.6 to 4.8 GB against a box that peaks at 4.1 GB for everything it is doing at once. Downloading one to read it is not available and neither is buffering it.
+
+What is left is to read the parts that are wanted, over the network, by range request. The reader fetches in 4 MB windows rather than in whatever size it was asked for, because a Parquet reader asks for a page header, then a page, then the next page header, and one request per ask is tens of thousands of round trips for one file. It keeps 24 windows rather than one, because a row group is read one column at a time with as many live read positions as the schema is wide, and a single cached window would be evicted by every column in turn and hit nothing. GlotCC settles the number: its 2.1 GB file is one row group of half a million rows across thirteen columns.
+
+The cost of reading this way is the digest. A streamed file is hashed as it goes and checked at the end against what was pinned. A file read in pieces never has all of its bytes in one place, so there is nothing to hash, and the ledger records that rather than papering over it: the entry says the file was read at random, carries no digest, and records how many bytes actually crossed the wire and how many requests it took. `gao gat ledger -files` prints "read in pieces" in the digest column, because an empty cell reads as a bug. Without `-decode` those sources are streamed and verified like the others, since the footer stops a decoder from reading forwards and does not stop a hash.
+
+A Parquet row also has no bytes of its own. It is a slice through as many column chunks as the schema is wide, sitting in separate pages that may not be adjacent in the file, so there is no equivalent of the JSON line whose hash becomes `raw_id`. What gao hashes instead is the row's fields as it read them, in schema order. Two rows identical in every column gao reads hash the same, which is what that identity is for.
+
+Three mapping decisions in this layer are worth stating out loud, because each one is gao asserting something the producer did not.
+
+None of the Parquet sources publishes a media type, and the contract requires one. All of them carry the URL, the fetch date, and the WARC record the document came from, and none of them says what was served at that URL. So it is asserted per source rather than globally: `text/html` for FineWeb2 and GlotCC because they are text extracted from the HTML pages of Common Crawl WARCs, and `application/pdf` for FinePDFs because it is text extracted from PDFs found in the same crawls, which is the whole reason it exists as a separate dataset. Neither is an inference about a particular document, and the extractor column records which mapping made the call at which version.
+
+FineWeb2's language scores come back at 1.0000098943710327, and the contract requires a probability in (0, 1]. Every row in a 130.1 GB source would be rejected on the eighth decimal place. That is a float landing slightly above one rather than a claim to be more certain than certain, so it is clamped to 1.
+
+FinePDFs has its own `extractor` column, holding `docling` or `rolmOCR`, and gao has a column of that name meaning which mapping built the document. The upstream one goes to `upstream_fields` as `pdf_extractor`. Its published `token_count` gets the same treatment for the same reason: it is a count by a different tokenizer, and writing it into `n_tokens` would make a mixture built on token budgets wrong by however much the two disagree.
 
 ## Where the corpus lives
 

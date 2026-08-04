@@ -50,9 +50,16 @@ Without -decode the bytes are counted and thrown away, which is what checks that
 a source can be fetched at all. With it, every record is mapped onto a gao
 document and put to the ingest contract: the ones that carry their provenance
 are admitted and counted, and the ones that do not go to -rejects with the reason
-they failed. Two sources decode today, HPLT v3 and MADLAD-400. The four that ship
-Parquet do not, because Parquet keeps its schema in a footer at the end of the
-file and cannot be read from a stream that only goes forwards.
+they failed. Five sources decode today. The sixth is CulturaX, which is gated and
+whose terms have not been granted, so nobody has read a byte of it to write a
+mapping against.
+
+The three that ship Parquet are decoded by range request rather than by streaming,
+because the format keeps its schema in a footer at the end of the file and cannot
+be read forwards. Such a file has no digest in the ledger. It is read in pieces
+and its bytes are never all in one place, so there is nothing to hash, and the
+ledger records how it was read and how much of it moved instead. Without -decode
+those sources are streamed and verified like the others.
 
 Gated sources need a token in `+gat.TokenEnv+`, and CulturaX is the gated one.
 
@@ -245,6 +252,12 @@ func printFetched(w io.Writer, r gat.Report) {
 	if r.Reconnects > 0 {
 		line += fmt.Sprintf("  %d reconnects", r.Reconnects)
 	}
+	if r.Access == gat.Random {
+		// The size column is the size of the file, and a file read this way was
+		// not moved, so what it cost is printed next to it rather than left to
+		// be inferred from a number that means something else.
+		line += fmt.Sprintf("  %s in %d requests", may.GB(r.Moved), r.Requests)
+	}
 	fmt.Fprintln(w, line)
 }
 
@@ -309,6 +322,18 @@ flags:
 	return 0
 }
 
+// verified is what the digest column says about one entry.
+//
+// A file read out of order has no digest, and printing an empty cell would read
+// as a bug in the ledger rather than as the thing it is. Naming it says which of
+// the two happened.
+func verified(e gat.Entry) string {
+	if e.Digest == "" {
+		return "read in pieces"
+	}
+	return shortRevision(e.Digest)
+}
+
 // printLedger is separate from the command so the formatting can be tested
 // without a directory on disk.
 func printLedger(w io.Writer, entries []gat.Entry, files bool) {
@@ -326,7 +351,7 @@ func printLedger(w io.Writer, entries []gat.Entry, files bool) {
 					continue
 				}
 				fmt.Fprintf(tw, "%s\t%s\t%s\t%s\t%s\n",
-					e.Source, e.Path, may.GB(e.Bytes), shortRevision(e.Digest), e.Box)
+					e.Source, e.Path, may.GB(e.Bytes), verified(e), e.Box)
 			}
 		}
 		_ = tw.Flush()
