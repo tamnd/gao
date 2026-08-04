@@ -45,6 +45,7 @@ gao gat pins                                # the ingest manifest: what we downl
 gao gat drift                               # ask every host whether it still serves what we pinned
 gao gat hf     -dir ingest/                 # harvest from Hugging Face, resuming where it left off
 gao gat hf     -dir ingest/ -decode         # and put every record to the ingest contract as it streams
+gao gat hf     -dir ingest/ -out parts/ -push  # and write parquet, push it, and free the disk as it goes
 gao gat ledger -dir ingest/                 # what the harvest has finished so far
 gao gat ledger -dir ingest/ -files          # every finished file, and how each one was read
 
@@ -62,6 +63,7 @@ gao xay        --in kept/ --out milled/     # mill: deduplication, boilerplate r
 gao kho release --snapshot gao-v1.0         # store and publish
 gao kho verify  snapshots/gao-v1.0          # check a snapshot against its manifest
 gao kho datasets                            # where processed data is written, and how to read it
+gao kho push  part.parquet                  # send one file to the store, skipping what is already there
 
 gao box                                     # the fleet, and the disk budget it implies
 gao luat                                    # the legal position and what it lets us publish
