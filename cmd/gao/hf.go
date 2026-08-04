@@ -125,6 +125,23 @@ flags:
 		}
 	}
 
+	// Taken before the ledger is read, because the plan a second ingest builds
+	// from that ledger is the thing being prevented. A -plan run writes nothing
+	// and takes no lock, so the plan stays readable while an ingest is running,
+	// which is when somebody most wants to read it.
+	if !*plan {
+		lock, err := gat.LockDir(*dir, "gao gat hf")
+		if err != nil {
+			fmt.Fprintf(stderr, "gao gat hf: %v\n", err)
+			return 1
+		}
+		defer func() {
+			if err := lock.Release(); err != nil {
+				fmt.Fprintf(stderr, "gao gat hf: %v\n", err)
+			}
+		}()
+	}
+
 	ledger, err := gat.OpenLedger(*dir)
 	if err != nil {
 		fmt.Fprintf(stderr, "gao gat hf: %v\n", err)
@@ -373,6 +390,16 @@ flags:
 		return 1
 	}
 	printLedger(stdout, entries, *files)
+
+	// Whether an ingest is running changes what these totals mean, so the
+	// holder is printed after them rather than left for the reader to guess at.
+	// A lock that cannot be read is a note and not a failure, because this
+	// command claims nothing and the numbers above it are still the numbers.
+	if h, err := gat.ReadHolder(*dir); err != nil {
+		fmt.Fprintf(stderr, "gao gat ledger: %v\n", err)
+	} else if h.PID != 0 {
+		fmt.Fprintf(stdout, "\nan ingest is running here: %s\n", h)
+	}
 	return 0
 }
 
