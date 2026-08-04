@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/tamnd/gao/doc"
+	"github.com/tamnd/gao/may"
 )
 
 // ranger is a host that answers closed range requests, which is the only kind a
@@ -330,7 +331,7 @@ func TestAGatedSourceReadOutOfOrderSaysWhatToDoAboutIt(t *testing.T) {
 	if !errors.Is(err, ErrGated) {
 		t.Fatalf("ReadAt returned %v, want ErrGated", err)
 	}
-	if !strings.Contains(err.Error(), TokenEnv) {
+	if !strings.Contains(err.Error(), may.TokenEnv) {
 		t.Errorf("the error does not name the token variable: %v", err)
 	}
 }

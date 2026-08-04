@@ -38,6 +38,8 @@ import (
 	"net/http"
 	"sync"
 	"time"
+
+	"github.com/tamnd/gao/may"
 )
 
 // DefaultWindow is how much a [RangeAt] fetches when it has to go to the host.
@@ -276,7 +278,7 @@ func (r *RangeAt) once(p []byte, off int64) (int, error) {
 		drain(resp)
 		if r.pin.Gated {
 			return 0, fmt.Errorf("%w: %s answered %s for %s, so accept the terms at %s and set %s",
-				ErrGated, r.pin.Repo, resp.Status, r.file.Path, r.pin.Page(), TokenEnv)
+				ErrGated, r.pin.Repo, resp.Status, r.file.Path, r.pin.Page(), may.TokenEnv)
 		}
 		return 0, fmt.Errorf("gat: reading %s from %s: %s", r.file.Path, r.pin.Source, resp.Status)
 

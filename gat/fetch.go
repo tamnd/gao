@@ -9,9 +9,9 @@ import (
 	"hash"
 	"io"
 	"net/http"
-	"os"
-	"strings"
 	"time"
+
+	"github.com/tamnd/gao/may"
 )
 
 // The download half of acquisition.
@@ -35,12 +35,6 @@ import (
 // HPLT publishes none while the Hub withholds them for gated repos, the fetcher
 // computes one and hands it back for the ledger to record, so the second fetch
 // of a file has something to compare against even though the first did not.
-
-// TokenEnv names the environment variable holding a Hugging Face access token.
-// It is only needed for gated sources, and CulturaX is the one that is gated, so
-// an ingest without it gets through four of the five fetched sources before it
-// stops.
-const TokenEnv = "HF_TOKEN"
 
 // DefaultRetries is how many times a fetch reconnects after a dropped
 // connection before it gives up on the file.
@@ -85,10 +79,6 @@ type Fetcher struct {
 	// [DefaultRetryWait].
 	RetryWait time.Duration
 }
-
-// TokenFromEnv returns a fetcher configured from the environment, which is the
-// one a command builds.
-func TokenFromEnv() string { return strings.TrimSpace(os.Getenv(TokenEnv)) }
 
 func (f *Fetcher) client() *http.Client {
 	if f.Client != nil {
@@ -176,7 +166,7 @@ func (b *Body) connect() error {
 		drain(resp)
 		if b.pin.Gated {
 			return fmt.Errorf("%w: %s answered %s for %s, so accept the terms at %s and set %s",
-				ErrGated, b.pin.Repo, resp.Status, b.file.Path, b.pin.Page(), TokenEnv)
+				ErrGated, b.pin.Repo, resp.Status, b.file.Path, b.pin.Page(), may.TokenEnv)
 		}
 		return fmt.Errorf("gat: fetching %s from %s: %s", b.file.Path, b.pin.Source, resp.Status)
 

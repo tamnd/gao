@@ -18,6 +18,7 @@ import (
 	"time"
 
 	"github.com/tamnd/gao/doc"
+	"github.com/tamnd/gao/may"
 )
 
 // body is the content the test hosts serve. It is large enough that a cut can
@@ -329,8 +330,8 @@ func TestAGatedSourceSaysWhatToDoAboutIt(t *testing.T) {
 	}
 	// The message has to carry the two things somebody needs to act: the page
 	// where the terms are accepted and the variable the token goes in.
-	if !strings.Contains(err.Error(), TokenEnv) {
-		t.Errorf("the error does not name %s: %v", TokenEnv, err)
+	if !strings.Contains(err.Error(), may.TokenEnv) {
+		t.Errorf("the error does not name %s: %v", may.TokenEnv, err)
 	}
 	if !strings.Contains(err.Error(), p.Page()) {
 		t.Errorf("the error does not link the page with the terms on it: %v", err)
@@ -517,16 +518,5 @@ func TestTheFetcherDefaultsAreUsableOnTheirOwn(t *testing.T) {
 	}
 	if (&Fetcher{Retries: 3}).retries() != 3 {
 		t.Error("an explicit retry count is not honored")
-	}
-}
-
-func TestTheTokenComesFromTheEnvironmentWithoutItsWhitespace(t *testing.T) {
-	t.Setenv(TokenEnv, "  hf_padded\n")
-	if got := TokenFromEnv(); got != "hf_padded" {
-		t.Errorf("TokenFromEnv = %q", got)
-	}
-	t.Setenv(TokenEnv, "")
-	if got := TokenFromEnv(); got != "" {
-		t.Errorf("TokenFromEnv with nothing set = %q", got)
 	}
 }
