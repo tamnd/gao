@@ -60,7 +60,8 @@ gao gat media  --from crawl                 # fetch PDFs, audio, video
 
 gao phoi       doc.txt                      # dry: normalize a document and write it out
 gao phoi -report ingest/*.txt               # what normalizing did, per document, with a total
-gao sang       --in normalized/ --out kept/ # sift: language ID, heuristics, quality
+gao sang       parts/*.parquet              # sift: which documents are Vietnamese prose, and why the rest are not
+gao sang -min-syllables 40 parts/*.parquet  # and what a different length floor would keep
 gao xay        parts/*.parquet              # mill: what the corpus holds more than one copy of
 gao xay -curve parts/*.parquet              # and what every deduplication threshold would cost
 
@@ -210,6 +211,40 @@ phoi/testdata/dien-dan.in     no       0           0          0         0       
 ```
 
 What the stage does not do yet is the legacy font encodings. TCVN3, VNI, VPS and BK HCM pages hold Vietnamese as bytes that are only Vietnamese under one particular font, and the older Vietnamese web still serves them in quantity. Detecting and transcoding those is the open item here, and until it lands such a page arrives as text this stage has nothing to say about.
+
+## Deciding what is a document
+
+Every quality pipeline published in the last few years applies roughly the same dozen heuristics, and every one of them counts space separated tokens and calls the result words. Vietnamese puts a space between syllables. A word is one syllable or two, sometimes three, and the space carries no information about which. That single fact makes the inherited thresholds wrong by construction rather than by a little, and the one that matters most is Gopher's lower bound on mean word length, which removes a document whose mean falls under 3 characters.
+
+The five golden documents in `phoi/testdata` average 3.36 letters per syllable: 3.07, 3.56, 3.45, 3.29 and 3.58. The news article the `sang` tests run against measures 3.32. So the bound that was written to remove gibberish sits a third of a letter under the middle of the Vietnamese distribution, and a pipeline that inherited it would be removing the language a document at a time and reporting a retention figure that looked reasonable. gao's window is 2.0 to 5.5, and the upper bound is the load bearing one, since the longest Vietnamese syllable is seven letters and a document averaging more than five is not made of them. That is what the English fixture fails on, at 4.69.
+
+The n-gram measures needed the same treatment for the same reason. Gopher takes its top gram over 2 to 4 words and its repeated grams over 5 to 10, so `sang` takes 3, 5 and 7 syllables and 8, 12 and 17, which is the same span of language rather than the same count of tokens. Two other things about that measure did not survive being run against real pages. Gopher's formulation multiplies an occurrence count by a gram length, which double counts overlapping occurrences and can report that more than all of a document sits inside one gram: a flattened gold price table measured 1.08. And it returns a large number when every gram occurs exactly once, which is the normal state of a short document, so a 13 syllable photograph caption measured 0.27 with nothing repeated anywhere in it. `sang` measures the share of positions a gram covers, and returns zero when the most frequent gram occurs once. Both departures are written into the package documentation next to the numbers that forced them.
+
+Vietnamese typed without its tone marks is a register and not a defect. It is most of what gets typed on a phone, it is normal in comments and forums, and putting the marks back means guessing which word was meant, which is the same guess `phoi` refuses to make about input method residue. So a document is labeled `present`, `mixed` or `absent` and goes on either way, and the count is in the report because how much of the corpus is unmarked is worth knowing before anybody decides what to do about it. The cost of that decision is that the function word list has to be written with its marks and matched without them, which is a loosening, and the package says so where the list is defined.
+
+The order the checks run in decides which reason a document that fails several of them is filed under, and the reject store's whole value is being able to ask how many documents went for what. Length comes first, because every other measure is a ratio over almost nothing on a 13 syllable caption. Then the checks that say what shape the page is, before the ones that say what language it is in: a navigation bar holds no Vietnamese sentence and no English one either, so filing it under language would be true by accident and useless on purpose. It is a menu, and boilerplate is what a menu is.
+
+```
+document      syllables  mean  stop  alpha   bullets  ellipses  duplicate  repeat  diacritics  kept
+article.txt   180        3.32  21    100.0%  0%       0%        0%         0%      present     yes
+unmarked.txt  180        3.32  21    100.0%  0%       0%        0%         0%      absent      yes
+caption.txt   13         3.77  1     86.7%   0%       0%        0%         0%      present     no, short
+menu.txt      63         3.63  0     67.7%   100.0%   0%        0%         0%      present     no, boilerplate
+listing.txt   135        3.48  14    94.4%   0%       100.0%    0%         0%      present     no, boilerplate
+looped.txt    384        3.35  8     100.0%  0%       0%        87.5%      100.0%  present     no, repetition
+chanted.txt   238        3.55  3     100.0%  0%       0%        0%         90.4%   present     no, repetition
+english.txt   118        4.69  0     100.0%  0%       0%        0%         0%      absent      no, language
+prices.txt    20         3.20  0     38.5%   0%       0%        0%         100.0%  mixed       no, short
+9 documents   1331                                                                             2 kept
+
+22.2% of the documents go on to the next stage.
+The reject store records the rest as 2 short, 2 boilerplate, 1 language, 2 repetition.
+3 of them carry few or no tone marks, which is a label on the row rather than a rejection.
+```
+
+The row carries the measurements rather than the verdicts. A corpus that recorded only that a document passed the length filter cannot be refiltered at a different threshold later without going back to text that is no longer on the box, and every threshold here is one the ablation is expected to move. All of them live in one struct for that reason, the length floor is on the command line, and none of them is claimed to be right yet. Two are properties of the language and will not move much. The rest are Gopher's numbers at Vietnamese sizes, which is to say they are the wrong numbers until a curve says otherwise, in exactly the way the deduplication threshold is.
+
+Nothing in this stage identifies the language or judges quality. A document that goes through has been found to be Vietnamese prose of some length, which is the floor and not the bar. The Vietnamese tuned language identifier is the open item, along with the set of negatives it has to be tested against, which is the hard half: Muong and Tay and Nung are close enough to be confused with Vietnamese by a model trained on distant languages, and unmarked Vietnamese looks like nothing else at all to a classifier that has only seen the marked kind.
 
 ## Finding the same document twice
 

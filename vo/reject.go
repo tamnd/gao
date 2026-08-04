@@ -66,6 +66,21 @@ const (
 	// ReasonContract is a document that failed the ingest contract in doc.
 	ReasonContract Reason = "contract"
 
+	// ReasonShort is a document with too little text to be one: a caption, a
+	// headline on its own, a cookie notice that survived extraction. It is
+	// separate from quality because it is the one rejection where nothing else
+	// about the document could be measured, since every rate a filter looks at
+	// is a ratio over almost nothing.
+	ReasonShort Reason = "short"
+
+	// ReasonRepetition is a document that is mostly the same text over and
+	// over: a page of one repeated line, a generated listing, a transcript
+	// whose extractor looped. It is separate from boilerplate because the
+	// repetition is inside the document rather than shared with the rest of the
+	// site, and separate from duplicate because there is no other document
+	// involved.
+	ReasonRepetition Reason = "repetition"
+
 	// ReasonLanguage is a document that is not Vietnamese, or is Vietnamese
 	// below the language identification threshold.
 	ReasonLanguage Reason = "language"
@@ -114,6 +129,8 @@ var reasons = map[Reason]string{
 	ReasonResidue:       "too much of the document is input method keystrokes",
 	ReasonControl:       "the document carries more control characters than text",
 	ReasonContract:      "the document failed the ingest contract",
+	ReasonShort:         "the document holds too little text to be one",
+	ReasonRepetition:    "the document is mostly the same text repeated",
 	ReasonLanguage:      "the document is not Vietnamese above threshold",
 	ReasonTranslated:    "the document is machine translated",
 	ReasonQuality:       "the document is below the quality threshold",
@@ -147,7 +164,8 @@ func Reasons() []Reason {
 	return []Reason{
 		ReasonFetch, ReasonRobots, ReasonExtract, ReasonEncoding,
 		ReasonResidue, ReasonControl,
-		ReasonContract, ReasonLanguage, ReasonTranslated, ReasonQuality,
+		ReasonContract, ReasonShort, ReasonRepetition,
+		ReasonLanguage, ReasonTranslated, ReasonQuality,
 		ReasonBoilerplate, ReasonDuplicate, ReasonPrivacy, ReasonLicense,
 		ReasonContamination, ReasonTrap, ReasonTakedown,
 	}

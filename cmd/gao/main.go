@@ -34,6 +34,7 @@ func commands() []command {
 		{"luat", "print the legal position: counsel questions, license determinations, what ships", runLuat},
 		{"phoi", "normalize Vietnamese text, or report what normalizing it would do", runPhoi},
 		{"plan", "print the build plan: slices, gates, and kill criteria", runPlan},
+		{"sang", "sift: measure documents and say which of them are Vietnamese prose", runSang},
 		{"version", "print the version", runVersion},
 		{"xay", "mill: find the documents a corpus holds more than one copy of", runXay},
 		{"help", "print this help", nil}, // handled in main so it can see the table
