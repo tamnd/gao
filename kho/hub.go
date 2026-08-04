@@ -270,6 +270,55 @@ func ParseDataPath(path string) (snapshot string, i, n int, ok bool) {
 	return m[1], i, n, true
 }
 
+// The layout inside a working repo, which is not the layout inside a published
+// one and should not be.
+//
+// A published snapshot knows how many shards it has, so its files are named
+// part-i-of-n and a directory listing says whether it is complete. An ingest
+// does not. It is reading a 26.6 GB source file, writing parts as it goes, and
+// rolling over to the next one whenever the current one has taken enough text
+// to keep peak disk bounded, so the part count for a source is not known until
+// the source finishes. Naming a file for a total nobody has yet would mean
+// either guessing it or renaming every part at the end, and both of those are
+// worse than a layout that does not claim to know.
+//
+// What the path does carry is the input file it came from, as its own Hive
+// partition, which makes an upload idempotent. The same input file decoded
+// twice with the same part size produces the same parts at the same paths, so
+// a retry after a dropped connection overwrites rather than duplicates, and a
+// resumed ingest skips a file whose parts are already there.
+var stagePathPattern = regexp.MustCompile(
+	`^` + DataDir + `/snapshot=([A-Za-z0-9][A-Za-z0-9._-]*)/file=(\d{5,})/part-(\d{5,})\` + ParquetExt + `$`)
+
+// StagePath returns the path inside a working repo for one part of one input
+// file.
+//
+//	data/snapshot=glotcc-9ad140b6be3a/file=00003/part-00000.parquet
+//
+// The snapshot names the source and the revision it was pinned at, so that
+// re-pinning a source writes a new snapshot rather than mixing two revisions
+// into one directory.
+func StagePath(snapshot string, file, part int) string {
+	return fmt.Sprintf("%s/file=%05d/part-%05d%s", snapshotDir(snapshot), file, part, ParquetExt)
+}
+
+// ParseStagePath is the inverse of [StagePath].
+func ParseStagePath(path string) (snapshot string, file, part int, ok bool) {
+	m := stagePathPattern.FindStringSubmatch(path)
+	if m == nil {
+		return "", 0, 0, false
+	}
+	file, err := strconv.Atoi(m[2])
+	if err != nil {
+		return "", 0, 0, false
+	}
+	part, err = strconv.Atoi(m[3])
+	if err != nil {
+		return "", 0, 0, false
+	}
+	return m[1], file, part, true
+}
+
 // carries reports whether a dataset is allowed to hold documents of a class.
 func (d Dataset) carries(c doc.LicenseClass) bool {
 	for _, have := range d.Classes {

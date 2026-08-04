@@ -308,3 +308,106 @@ func TestKhoDatasetsTakesNoArguments(t *testing.T) {
 		t.Errorf("gao kho datasets extra: exit %d, want 2", code)
 	}
 }
+
+func TestKhoColumnsPrintsTheContract(t *testing.T) {
+	out, _, code := exec(t, "kho", "columns")
+	if code != 0 {
+		t.Fatalf("gao kho columns: exit %d, want 0", code)
+	}
+	d, ok := kho.Lookup("vietnamese-web-text")
+	if !ok {
+		t.Fatal("the default dataset is not in the table")
+	}
+	if !strings.Contains(out, d.Repo()) {
+		t.Error("gao kho columns did not say which repo it printed")
+	}
+	for _, c := range kho.Columns(kho.SchemaFor(d)) {
+		if !strings.Contains(out, c) {
+			t.Errorf("gao kho columns left out %s", c)
+		}
+	}
+}
+
+// The point of the flag is that the difference between a repo that carries text
+// and one that withholds it is visible without downloading a file.
+func TestKhoColumnsShowsTheWithheldText(t *testing.T) {
+	out, _, code := exec(t, "kho", "columns", "-dataset", "vietnamese-web-urls")
+	if code != 0 {
+		t.Fatalf("gao kho columns -dataset: exit %d, want 0", code)
+	}
+	for _, line := range strings.Split(out, "\n") {
+		if strings.TrimSpace(line) == kho.TextColumn {
+			t.Error("gao kho columns listed text for a repo that withholds it")
+		}
+	}
+	if !strings.Contains(out, "absent and not empty") {
+		t.Error("gao kho columns did not say why the column is missing")
+	}
+	if !strings.Contains(out, "url") {
+		t.Error("gao kho columns printed no columns at all")
+	}
+}
+
+func TestKhoColumnsRefusesADatasetThatIsNotOne(t *testing.T) {
+	_, errOut, code := exec(t, "kho", "columns", "-dataset", "vietnamese-everything")
+	if code != 1 {
+		t.Fatalf("gao kho columns -dataset vietnamese-everything: exit %d, want 1", code)
+	}
+	if !strings.Contains(errOut, "vietnamese-everything") {
+		t.Error("the error does not name the dataset that was asked for")
+	}
+	if !strings.Contains(errOut, "gao kho datasets") {
+		t.Error("the error does not say where the list of real ones is")
+	}
+}
+
+// Reading the file rather than the build is the whole point when the file is
+// one somebody downloaded a year ago.
+func TestKhoColumnsReadsAFile(t *testing.T) {
+	d, ok := kho.Lookup("vietnamese-web-text")
+	if !ok {
+		t.Fatal("the dataset is not in the table")
+	}
+	dir := t.TempDir()
+	part, err := kho.CreatePart(dir, "part-00000", d, kho.Stamp{
+		Snapshot: "gao-v1.0", Stage: "test@0.1.0", Box: "server1",
+	})
+	if err != nil {
+		t.Fatalf("CreatePart: %v", err)
+	}
+	if err := part.Append(document(t, 0)); err != nil {
+		t.Fatalf("Append: %v", err)
+	}
+	file, err := part.Close()
+	if err != nil {
+		t.Fatalf("Close: %v", err)
+	}
+
+	// PartFile.Path is the path inside the repo, so a reader on disk joins it
+	// with the directory the part was written under.
+	out, errOut, code := exec(t, "kho", "columns", filepath.Join(dir, file.Path))
+	if code != 0 {
+		t.Fatalf("gao kho columns FILE: exit %d, want 0: %s", code, errOut)
+	}
+	for _, want := range []string{"gao-v1.0", "test@0.1.0", "server1", "doc_id", kho.TextColumn} {
+		if !strings.Contains(out, want) {
+			t.Errorf("gao kho columns FILE did not print %s", want)
+		}
+	}
+}
+
+func TestKhoColumnsRefusesAFileThatIsNotOne(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "not-a-part.parquet")
+	if err := os.WriteFile(path, []byte("this is not parquet"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, code := exec(t, "kho", "columns", path); code != 1 {
+		t.Errorf("gao kho columns on a file that is not parquet: exit %d, want 1", code)
+	}
+}
+
+func TestKhoColumnsTakesOneFileAtMost(t *testing.T) {
+	if _, _, code := exec(t, "kho", "columns", "a.parquet", "b.parquet"); code != 2 {
+		t.Error("gao kho columns took two files")
+	}
+}

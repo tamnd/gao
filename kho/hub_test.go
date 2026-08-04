@@ -277,3 +277,83 @@ func TestDatasetsHandsOutACopy(t *testing.T) {
 		t.Error("editing the returned slice edited the table")
 	}
 }
+
+// A working repo's path is a function of the input file and the part number,
+// which is what makes an ingest idempotent without knowing how many parts a
+// source will produce before it has produced them.
+func TestAStagePathRoundTrips(t *testing.T) {
+	for _, tc := range []struct {
+		snapshot   string
+		file, part int
+	}{
+		{"glotcc-9ad140b6be3a", 0, 0},
+		{"glotcc-9ad140b6be3a", 26, 3},
+		{"hplt3-5b2785d5b11c", 11, 412},
+		{"fineweb2-af9c13333eb9", 99999, 99999},
+	} {
+		path := StagePath(tc.snapshot, tc.file, tc.part)
+		snapshot, file, part, ok := ParseStagePath(path)
+		if !ok {
+			t.Errorf("ParseStagePath(%q) failed", path)
+			continue
+		}
+		if snapshot != tc.snapshot || file != tc.file || part != tc.part {
+			t.Errorf("ParseStagePath(%q) = %q %d %d", path, snapshot, file, part)
+		}
+		if again := StagePath(snapshot, file, part); again != path {
+			t.Errorf("the path is not stable: %q became %q", path, again)
+		}
+	}
+}
+
+func TestAStagePathRejectsWhatIsNotOne(t *testing.T) {
+	for _, path := range []string{
+		"",
+		"data/snapshot=glotcc-9ad140b6be3a/file=00003/part-00000.jsonl.zst",
+		"data/snapshot=glotcc-9ad140b6be3a/part-00000.parquet",
+		"data/file=00003/part-00000.parquet",
+		"data/snapshot=/file=00003/part-00000.parquet",
+		"data/snapshot=glotcc-9ad140b6be3a/file=3/part-0.parquet",
+		"../data/snapshot=glotcc-9ad140b6be3a/file=00003/part-00000.parquet",
+		"data/snapshot=glotcc-9ad140b6be3a/file=00003/nested/part-00000.parquet",
+		// A published path is not a staging path. They are different layouts
+		// for different tiers and neither should read as the other.
+		"data/snapshot=gao-v1.0/part-00001-of-00774.parquet",
+	} {
+		if _, _, _, ok := ParseStagePath(path); ok {
+			t.Errorf("ParseStagePath(%q) accepted it", path)
+		}
+	}
+}
+
+// The two layouts do not overlap, so a reader that finds a file under a
+// snapshot knows which tier wrote it from the path alone.
+func TestTheTwoLayoutsDoNotReadAsEachOther(t *testing.T) {
+	published := DataPath("gao-v1.0", 1, 774)
+	staged := StagePath("glotcc-9ad140b6be3a", 1, 0)
+
+	if _, _, _, ok := ParseStagePath(published); ok {
+		t.Errorf("a published path parses as a staging one: %s", published)
+	}
+	if _, _, _, ok := ParseDataPath(staged); ok {
+		t.Errorf("a staging path parses as a published one: %s", staged)
+	}
+}
+
+// Everything an ingest writes for one source sits under one prefix, which is
+// what lets a resumed run list what is already there without listing the repo.
+func TestOneSourceIsOnePrefix(t *testing.T) {
+	const snapshot = "glotcc-9ad140b6be3a"
+	prefix := "data/snapshot=" + snapshot + "/"
+	for _, path := range []string{
+		StagePath(snapshot, 0, 0),
+		StagePath(snapshot, 26, 7),
+	} {
+		if !strings.HasPrefix(path, prefix) {
+			t.Errorf("%s is not under %s", path, prefix)
+		}
+	}
+	if strings.HasPrefix(StagePath("glotcc-0000000000aa", 0, 0), prefix) {
+		t.Error("a different revision writes under the same prefix, so two revisions mix in one directory")
+	}
+}
