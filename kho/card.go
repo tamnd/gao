@@ -2,6 +2,7 @@ package kho
 
 import (
 	"fmt"
+	"regexp"
 	"sort"
 	"strings"
 
@@ -63,9 +64,7 @@ func cardFrontMatter(b *strings.Builder, d Dataset, m *Manifest) {
 	// repo tagged cc-by-4.0 because most of it is would be telling a reader
 	// something false about the rest.
 	b.WriteString("license: other\n")
-	// Quoted, because the value names the classes and a bare YAML scalar cannot
-	// carry a colon.
-	fmt.Fprintf(b, "license_name: %q\n", cardLicenseName(d))
+	fmt.Fprintf(b, "license_name: %s\n", cardLicenseName(d))
 	fmt.Fprintf(b, "license_link: %s/blob/main/luat/posture.go\n", Repository)
 
 	if m != nil {
@@ -221,14 +220,22 @@ func cardReading(b *strings.Builder, d Dataset, m *Manifest) {
 	b.WriteString("```\n\n")
 }
 
-// cardLicenseName is the license_name field, which is free text and is the one
-// place a mixed repo can say what it actually holds.
+// LicenseNamePattern is what the Hub requires a license_name to match. It is
+// written down here because it is not free text, which is what it looks like
+// until a commit comes back 400, and because the test that keeps the card
+// loadable needs something to check against.
+var LicenseNamePattern = regexp.MustCompile(`^[a-z0-9-.]+$`)
+
+// cardLicenseName is the license_name field. It is a slug rather than a
+// sentence, so the sentence it wants to be lives in the body: which classes a
+// repo carries, and what happens to the text of each, are a table under what
+// ships rather than a value the Hub will not accept.
 func cardLicenseName(d Dataset) string {
 	names := make([]string, 0, len(d.Classes))
 	for _, c := range d.Classes {
 		names = append(names, c.String())
 	}
-	return "per-document: " + strings.Join(names, ", ")
+	return "per-document-" + strings.Join(names, "-")
 }
 
 // cardSize is the Hub's bucket for a document count. The buckets are theirs

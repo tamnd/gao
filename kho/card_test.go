@@ -273,3 +273,36 @@ func TestATitleReadsAsATitle(t *testing.T) {
 		}
 	}
 }
+
+// The Hub validates the front matter and refuses a commit whose license_name is
+// not a slug, which no fake found and one 400 from the real thing did. A card
+// the Hub will not take is a card nobody sees.
+func TestALicenseNameIsSomethingTheHubWillAccept(t *testing.T) {
+	for _, d := range Datasets() {
+		got := cardLicenseName(d)
+		if !LicenseNamePattern.MatchString(got) {
+			t.Errorf("%s: license_name %q does not match %s", d.Name, got, LicenseNamePattern)
+		}
+	}
+}
+
+// A front matter value with a colon in it parses as a nested mapping, so a card
+// that carried one would load as something other than what it says.
+func TestNoFrontMatterValueCarriesAColon(t *testing.T) {
+	for _, d := range Datasets() {
+		card := Card(d, released(t))
+		front, _, ok := strings.Cut(strings.TrimPrefix(card, "---\n"), "\n---\n")
+		if !ok {
+			t.Fatalf("%s: the card has no front matter", d.Name)
+		}
+		for _, line := range strings.Split(front, "\n") {
+			_, value, isKey := strings.Cut(line, ": ")
+			if !isKey {
+				continue
+			}
+			if strings.Contains(value, ": ") {
+				t.Errorf("%s: %q carries a colon, so it does not parse as one value", d.Name, line)
+			}
+		}
+	}
+}
