@@ -6,7 +6,9 @@ import (
 	"flag"
 	"fmt"
 	"io"
+	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 	"text/tabwriter"
 	"time"
@@ -14,6 +16,7 @@ import (
 	"github.com/tamnd/gao/doc"
 	"github.com/tamnd/gao/gat"
 	"github.com/tamnd/gao/may"
+	"github.com/tamnd/gao/vo"
 )
 
 func runGatHF(stdout, stderr io.Writer, args []string) int {
@@ -23,8 +26,11 @@ func runGatHF(stdout, stderr io.Writer, args []string) int {
 	source := fs.String("source", "", "fetch one source rather than all of them, by name")
 	limit := fs.Int("limit", 0, "stop after this many files, which is how a new box is tried out")
 	plan := fs.Bool("plan", false, "print what would be fetched and fetch nothing")
+	decode := fs.Bool("decode", false, "decode each file into documents and put them to the ingest contract")
+	rejects := fs.String("rejects", "", "write the documents the contract turned away to this file, which implies -decode")
+	sample := fs.Float64("sample", 0.01, "the share of rejects that keep their text, since the rest outgrow the corpus")
 	fs.Usage = func() {
-		fmt.Fprint(stderr, `usage: gao gat hf -dir DIR [-source NAME] [-limit N] [-plan]
+		fmt.Fprint(stderr, `usage: gao gat hf -dir DIR [-source NAME] [-limit N] [-plan] [-decode]
 
 Fetches the files in the ingest manifest at the revisions they are pinned to.
 
@@ -39,6 +45,14 @@ run that is interrupted is resumed by running the same command again: files
 already in the ledger at their pinned revision are skipped, and re-pinning a
 source invalidates its entries rather than letting a restart mix two revisions
 into one corpus.
+
+Without -decode the bytes are counted and thrown away, which is what checks that
+a source can be fetched at all. With it, every record is mapped onto a gao
+document and put to the ingest contract: the ones that carry their provenance
+are admitted and counted, and the ones that do not go to -rejects with the reason
+they failed. Two sources decode today, HPLT v3 and MADLAD-400. The four that ship
+Parquet do not, because Parquet keeps its schema in a footer at the end of the
+file and cannot be read from a stream that only goes forwards.
 
 Gated sources need a token in `+gat.TokenEnv+`, and CulturaX is the gated one.
 
@@ -67,6 +81,16 @@ flags:
 	if err != nil {
 		fmt.Fprintf(stderr, "gao gat hf: %v\n", err)
 		return 1
+	}
+	if *rejects != "" {
+		*decode = true
+	}
+	if *decode {
+		if ok, missing := gat.Decodable(sources); !ok {
+			fmt.Fprintf(stderr, "gao gat hf: %v: %s\n", gat.ErrNoDecoder, sourceList(missing))
+			fmt.Fprint(stderr, "pick a source with -source, or drop -decode to fetch and count the bytes\n")
+			return 1
+		}
 	}
 
 	ledger, err := gat.OpenLedger(*dir)
@@ -98,14 +122,84 @@ flags:
 		Box:      may.Label(),
 		Progress: func(r gat.Report) { printFetched(stdout, r) },
 	}
+
+	var docs *gat.Docs
+	if *decode {
+		var closeRejects func() error
+		docs, closeRejects, err = openDocs(*rejects, *sample)
+		if err != nil {
+			fmt.Fprintf(stderr, "gao gat hf: %v\n", err)
+			return 1
+		}
+		// Closed here rather than deferred, so that the segment is finished and
+		// its error reported before the summary claims the run went well.
+		defer func() {
+			if err := closeRejects(); err != nil {
+				fmt.Fprintf(stderr, "gao gat hf: closing the reject store: %v\n", err)
+			}
+		}()
+		in.Sink = docs
+	}
 	fmt.Fprintln(stdout)
 
 	n, err := in.Run(ctx, todo)
 	fmt.Fprintf(stdout, "\n%d of %d files fetched, %s in the ledger\n", n, len(todo), may.GB(ledger.Bytes()))
+	printAdmitted(stdout, docs)
 	if err != nil {
 		return hfError(stderr, err)
 	}
 	return 0
+}
+
+// openDocs builds the decoding sink and, when a path was given, the reject store
+// under it. The returned function closes both the segment and the file, in that
+// order, because a segment that is not closed has no index and a reject store
+// with no index cannot be read.
+func openDocs(path string, sample float64) (*gat.Docs, func() error, error) {
+	if path == "" {
+		return &gat.Docs{}, func() error { return nil }, nil
+	}
+	if sample < 0 || sample > 1 {
+		return nil, nil, fmt.Errorf("-sample %v is not a share between 0 and 1", sample)
+	}
+	f, err := os.Create(path)
+	if err != nil {
+		return nil, nil, err
+	}
+	w, err := vo.NewWriter(f, sample)
+	if err != nil {
+		_ = f.Close()
+		return nil, nil, err
+	}
+	return &gat.Docs{Rejects: w}, func() error {
+		return errors.Join(w.Close(), f.Close())
+	}, nil
+}
+
+// printAdmitted is the part of a decoding run that the byte counts do not say:
+// how many of the records in those bytes gao is allowed to keep.
+func printAdmitted(w io.Writer, docs *gat.Docs) {
+	if docs == nil {
+		return
+	}
+	admitted, rejected := docs.Admitted(), docs.Rejected()
+	fmt.Fprintf(w, "%d documents admitted, %d turned away\n", admitted, rejected)
+
+	reasons := docs.Reasons()
+	for _, r := range vo.Reasons() {
+		if n := reasons[r]; n > 0 {
+			fmt.Fprintf(w, "  %-14s %d\n", r, n)
+		}
+	}
+}
+
+// sourceList is a readable list of source names for an error message.
+func sourceList(sources []doc.Source) string {
+	names := make([]string, len(sources))
+	for i, s := range sources {
+		names[i] = string(s)
+	}
+	return strings.Join(names, ", ")
 }
 
 // hfSources returns the sources to fetch, which is all of them or the one named.

@@ -44,6 +44,7 @@ One binary, subcommands named for the rice verbs.
 gao gat pins                                # the ingest manifest: what we download, at which revision
 gao gat drift                               # ask every host whether it still serves what we pinned
 gao gat hf     -dir ingest/                 # harvest from Hugging Face, resuming where it left off
+gao gat hf     -dir ingest/ -decode         # and put every record to the ingest contract as it streams
 gao gat ledger -dir ingest/                 # what the harvest has finished so far
 gao gat cc     --snapshots all              # recover Vietnamese from Common Crawl
 gao gat crawl  --policy crawl.toml          # crawl the Vietnamese web directly
@@ -111,6 +112,18 @@ Progress is the ledger, one JSON line per finished file, synced as it is written
 Every file is checked at the end against the byte count in the manifest, and against the pinned digest where the host publishes one. Where it does not, and HPLT publishes none while the Hub withholds them for gated repos, the fetch computes a digest and records it, so the second fetch of a file has something to compare against even though the first did not.
 
 `-dir` has no default. A command that starts a 608.9 GB download into whichever directory it was run from is a command that does it once by accident.
+
+## What a record becomes
+
+Without `-decode` the bytes are counted and thrown away, which is the check that a source can be fetched at all. With it, every upstream record is mapped onto a gao document and put to the ingest contract.
+
+A decoder is a mapping and not a parser. It says which upstream field is the URL, which one is the fetch time, and which of the producer's own measurements are worth keeping, and then it hands over a document for the contract to rule on. It decides nothing about quality. Two things happen at decode time anyway, and both because they are part of a document's identity rather than its quality. The text goes into NFC, since `doc_id` is a hash of it and a hash of two encodings of the same string is two documents. And the diacritic verdict is computed, since Vietnamese typed without tone marks is real Vietnamese and a different distribution, and a mixture that wants one and not the other cannot separate them after the fact. It is judged per line rather than per document, because the case worth catching is a page whose article carries tone marks and whose comments do not, and over a whole document that reads as a weak present.
+
+Documents that fail the contract go to `-rejects` with the reason and the specific value that failed, so a rejection rate is a number somebody can look up rather than a thing somebody suspects. The store keeps a sample of the text and every measurement for all of it, which is what retuning a threshold actually needs. A file that produces documents and admits none of them stops the run rather than being reported: it means either the mapping is wrong or the source cannot satisfy the contract, and either way the next sixty files will do the same thing.
+
+That has already found something. MADLAD-400's clean split is a JSON object with one field in it, `text`, and there is no URL, no timestamp, and no media type, because Allen AI did not publish them. Every record decodes and every record is rejected for provenance it does not have. It is 95.3 GB and 32 files of the plan, and what to do about it is a decision to make deliberately rather than a default to fall into.
+
+Two sources decode today, HPLT v3 and MADLAD-400. The four that ship Parquet do not, because Parquet keeps its schema and its row group index in a footer at the end of the file and cannot be read from a stream that only goes forwards. Reading one off the Hub means a reader that answers random access with range requests, and that is the next change. `gao gat hf -decode` refuses a source it cannot decode before it opens the ledger, because finding this out two hundred gigabytes into a download is not finding it out.
 
 ## Where the corpus lives
 

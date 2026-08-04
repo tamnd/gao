@@ -3,14 +3,18 @@ package main
 import (
 	"bytes"
 	"context"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 
+	"github.com/klauspost/compress/gzip"
+
 	"github.com/tamnd/gao/doc"
 	"github.com/tamnd/gao/gat"
 	"github.com/tamnd/gao/may"
+	"github.com/tamnd/gao/vo"
 )
 
 // The tests here never fetch anything. What a real fetch does is settled in the
@@ -240,6 +244,133 @@ func TestAnInterruptedRunIsNotAFailedOne(t *testing.T) {
 	}
 }
 
+// The refusal has to come before the ledger is opened and before a byte moves,
+// because the alternative is finding out that a source cannot be decoded after
+// two hundred gigabytes of somebody else's bandwidth.
+func TestHFRefusesToDecodeASourceItCannotDecode(t *testing.T) {
+	for _, args := range [][]string{
+		{"gat", "hf", "-dir", t.TempDir(), "-decode", "-plan"},
+		{"gat", "hf", "-dir", t.TempDir(), "-source", "fineweb2", "-decode", "-plan"},
+		// -rejects implies -decode, so it is refused on the same grounds.
+		{"gat", "hf", "-dir", t.TempDir(), "-rejects", filepath.Join(t.TempDir(), "vo.jsonl.zst"), "-plan"},
+	} {
+		out, errOut, code := exec(t, args...)
+		if code != 1 {
+			t.Fatalf("%v: exit %d, want 1", args, code)
+		}
+		if !strings.Contains(errOut, "no decoder") || !strings.Contains(errOut, "fineweb2") {
+			t.Errorf("%v: the error does not name what cannot be decoded: %q", args, errOut)
+		}
+		// The way out is in the message, because the person who hit this wants to
+		// know what to run next and not what went wrong.
+		if !strings.Contains(errOut, "-source") {
+			t.Errorf("%v: the error does not say what to do instead: %q", args, errOut)
+		}
+		if strings.Contains(out, "files to fetch") {
+			t.Errorf("%v: a plan was printed for a run that cannot happen:\n%s", args, out)
+		}
+	}
+}
+
+func TestHFDecodesTheSourcesItHasAMappingFor(t *testing.T) {
+	for _, name := range []string{"hplt3", "madlad400"} {
+		out, errOut, code := exec(t, "gat", "hf", "-dir", t.TempDir(), "-source", name, "-decode", "-plan")
+		if code != 0 {
+			t.Fatalf("%s: exit %d, want 0: %s", name, code, errOut)
+		}
+		if !strings.Contains(out, "files to fetch") {
+			t.Errorf("%s: no plan was printed:\n%s", name, out)
+		}
+	}
+}
+
+// A share outside zero to one is a typo, and the one it usually is turns a one
+// percent sample into every reject keeping its text.
+func TestARejectSampleThatIsNotAShareIsRefused(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "vo.jsonl.zst")
+	for _, sample := range []float64{-0.5, 1.5} {
+		if _, _, err := openDocs(path, sample); err == nil {
+			t.Errorf("-sample %v was accepted", sample)
+		}
+	}
+	if _, err := os.Stat(path); !os.IsNotExist(err) {
+		t.Error("the reject store was created before the share was checked")
+	}
+
+	docs, closeFn, err := openDocs(path, 1)
+	if err != nil {
+		t.Fatalf("openDocs: %v", err)
+	}
+	if docs.Rejects == nil {
+		t.Error("a reject path produced a sink with nowhere to put rejects")
+	}
+	if err := closeFn(); err != nil {
+		t.Errorf("closing the reject store: %v", err)
+	}
+	// The segment has to be finished on the way out, since one with no index
+	// cannot be read back.
+	seg, err := vo.Open(path)
+	if err != nil {
+		t.Fatalf("the reject store cannot be read: %v", err)
+	}
+	if err := seg.Close(); err != nil {
+		t.Errorf("closing the segment: %v", err)
+	}
+}
+
+// The byte counts do not say the thing a decoding run exists to find out, which
+// is how many of the records in those bytes gao is allowed to keep.
+func TestADecodingRunReportsWhatItKeptAndWhatItTurnedAway(t *testing.T) {
+	var w bytes.Buffer
+
+	// A run without -decode has no counts, and printing zeroes for it would read
+	// as a run that admitted nothing.
+	printAdmitted(&w, nil)
+	if w.Len() != 0 {
+		t.Errorf("a run that only counted bytes reported documents:\n%s", w.String())
+	}
+
+	docs := &gat.Docs{}
+	p, ok := gat.Pin(doc.SourceMADLAD400)
+	if !ok {
+		t.Fatal("madlad400 is not pinned")
+	}
+	if _, err := docs.Consume(t.Context(), p, p.Files[0], gzipOf(t, madladRecord)); err == nil {
+		t.Fatal("a file that admitted nothing was reported as fine")
+	}
+
+	printAdmitted(&w, docs)
+	for _, want := range []string{"0 documents admitted", "2 turned away", "contract", "2"} {
+		if !strings.Contains(w.String(), want) {
+			t.Errorf("the summary does not mention %q:\n%s", want, w.String())
+		}
+	}
+	// Only the reasons that happened, because a column of zeroes is how the one
+	// number that matters stops being visible.
+	if strings.Contains(w.String(), "language") {
+		t.Errorf("a reason nothing hit was printed:\n%s", w.String())
+	}
+}
+
+// madladRecord is two records of the clean split, which is a text field and
+// nothing else, so neither of them can satisfy the ingest contract.
+const madladRecord = `{"text":"Lực lượng Công an sẽ lập được những chiến công mới trong năm nay."}
+{"text":"Theo ông Tạ Văn Thắng, đây là kết quả của rất nhiều năm làm việc."}
+`
+
+func gzipOf(t *testing.T, s string) io.Reader {
+	t.Helper()
+	var buf bytes.Buffer
+	w := gzip.NewWriter(&buf)
+	if _, err := io.WriteString(w, s); err != nil {
+		t.Fatal(err)
+	}
+	if err := w.Close(); err != nil {
+		t.Fatal(err)
+	}
+	return &buf
+}
+
 func TestHFIsInTheGatHelpAndTheUsage(t *testing.T) {
 	out, _, code := exec(t, "gat", "help")
 	if code != 0 {
@@ -259,5 +390,13 @@ func TestHFIsInTheGatHelpAndTheUsage(t *testing.T) {
 	}
 	if !strings.Contains(errOut, gat.TokenEnv) {
 		t.Errorf("the usage does not name %s:\n%s", gat.TokenEnv, errOut)
+	}
+
+	// Which sources decode is in the usage rather than only in the error,
+	// because it decides whether a run is worth starting.
+	for _, want := range []string{"-decode", "-rejects", "HPLT v3", "MADLAD-400", "Parquet"} {
+		if !strings.Contains(errOut, want) {
+			t.Errorf("the usage does not mention %q:\n%s", want, errOut)
+		}
 	}
 }
