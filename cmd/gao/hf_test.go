@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"context"
+	"fmt"
 	"io"
 	"os"
 	"path/filepath"
@@ -29,9 +30,9 @@ func TestTheHFPlanSaysWhatIsLeftAndFetchesNothing(t *testing.T) {
 		t.Fatalf("gao gat hf -plan: exit %d, want 0", code)
 	}
 	for _, want := range []string{
-		"0 of 154 files done",
+		fmt.Sprintf("0 of %d files done", gat.Files()),
 		may.GB(gat.TotalBytes()),
-		"154 files to fetch",
+		fmt.Sprintf("%d files to fetch", gat.Files()),
 	} {
 		if !strings.Contains(out, want) {
 			t.Errorf("the plan does not mention %q:\n%s", want, out)
@@ -79,10 +80,11 @@ func TestTheHFPlanSkipsWhatTheLedgerAlreadyHas(t *testing.T) {
 	if code != 0 {
 		t.Fatalf("exit %d, want 0", code)
 	}
-	if !strings.Contains(out, "12 of 154 files done") {
+	done := len(p.Files)
+	if !strings.Contains(out, fmt.Sprintf("%d of %d files done", done, gat.Files())) {
 		t.Errorf("the plan does not count the finished source:\n%s", out)
 	}
-	if !strings.Contains(out, "142 files to fetch") {
+	if !strings.Contains(out, fmt.Sprintf("%d files to fetch", gat.Files()-done)) {
 		t.Errorf("the plan does not subtract the finished source:\n%s", out)
 	}
 }
@@ -272,8 +274,11 @@ func TestHFRefusesToDecodeASourceItCannotDecode(t *testing.T) {
 	}
 }
 
+// madlad400 is not in this list because it is dropped, not because it has no
+// decoder. It has one, it decodes every record, and every record is then turned
+// away for provenance it does not carry, which is the reason it is dropped.
 func TestHFDecodesTheSourcesItHasAMappingFor(t *testing.T) {
-	for _, name := range []string{"hplt3", "madlad400", "fineweb2", "finepdfs", "glotcc"} {
+	for _, name := range []string{"hplt3", "fineweb2", "finepdfs", "glotcc"} {
 		out, errOut, code := exec(t, "gat", "hf", "-dir", t.TempDir(), "-source", name, "-decode", "-plan")
 		if code != 0 {
 			t.Fatalf("%s: exit %d, want 0: %s", name, code, errOut)

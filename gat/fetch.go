@@ -38,7 +38,8 @@ import (
 
 // TokenEnv names the environment variable holding a Hugging Face access token.
 // It is only needed for gated sources, and CulturaX is the one that is gated, so
-// an ingest without it gets through five of the six sources before it stops.
+// an ingest without it gets through four of the five fetched sources before it
+// stops.
 const TokenEnv = "HF_TOKEN"
 
 // DefaultRetries is how many times a fetch reconnects after a dropped

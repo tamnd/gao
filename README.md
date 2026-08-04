@@ -93,7 +93,7 @@ Six public corpora go in before gao crawls anything of its own. The ingest manif
 | 1 | FinePDFs `vie_Latn` | `HuggingFaceFW/finepdfs` | 3 | 13.0 GB | ODC-By |
 | 2 | FineWeb2 `vie_Latn` | `HuggingFaceFW/fineweb-2` | 30 | 130.1 GB | ODC-By |
 | 3 | CulturaX `vi` | `uonlp/CulturaX` (gated) | 50 | 80.1 GB | inherits mC4 and OSCAR |
-| 4 | MADLAD-400 `vi` | `allenai/MADLAD-400` | 32 | 95.3 GB | ODC-By |
+| 4 | MADLAD-400 `vi` | `allenai/MADLAD-400` | 32 | 95.3 GB, dropped | ODC-By |
 | 5 | GlotCC-V1 `vie-Latn` | `cis-lmu/GlotCC-V1` | 27 | 55.9 GB | CC0 |
 
 HPLT v3 ingests first and alone because it is the spine, and every later source dedups against a store that already holds it, which is what makes the retention numbers reproducible rather than dependent on what happened to arrive first.
@@ -102,7 +102,7 @@ Every Hub source is pinned to a commit SHA and never to a branch, because a corp
 
 `gao gat drift` asks every host what it serves now and reports the ones that have moved. It never rewrites the manifest. Re-pinning is a commit somebody makes deliberately, with the new file lists and byte counts read at the same time, because a manifest that re-pins itself silently changes what a released corpus was built from.
 
-Reading the file lists off the hosts rather than copying them from the plan corrected the plan three times. GlotCC's Vietnamese partition was described as small and is 55.9 GB. The whole download was estimated at roughly 490 GB and is 608.9 GB. CulturaX is gated, which nothing had recorded, and a gated repo does not hand its file digests to an unauthenticated caller, so that source pins byte counts and fills in digests when the grant lands.
+Reading the file lists off the hosts rather than copying them from the plan corrected the plan three times. GlotCC's Vietnamese partition was described as small and is 55.9 GB. The whole download was estimated at roughly 490 GB and is 608.9 GB, of which 513.6 GB is fetched and 95.3 GB is pinned and dropped for the reason below. CulturaX is gated, which nothing had recorded, and a gated repo does not hand its file digests to an unauthenticated caller, so that source pins byte counts and fills in digests when the grant lands.
 
 One number sets the shape of the ingest. The largest pinned file is a 26.6 GB HPLT shard and `server1`'s entire peak disk budget is 4.1 GB, so ingestion decompresses in flight and writes gao shards as it goes rather than downloading a file and then reading it. Streaming is not an optimization here, it is the only thing that fits.
 
@@ -118,7 +118,7 @@ One ingest at a time in one directory, enforced by a lock file. Two of them do n
 
 Every file is checked at the end against the byte count in the manifest, and against the pinned digest where the host publishes one. Where it does not, and HPLT publishes none while the Hub withholds them for gated repos, the fetch computes a digest and records it, so the second fetch of a file has something to compare against even though the first did not.
 
-`-dir` has no default. A command that starts a 608.9 GB download into whichever directory it was run from is a command that does it once by accident.
+`-dir` has no default. A command that starts a 513.6 GB download into whichever directory it was run from is a command that does it once by accident.
 
 ## What a record becomes
 
@@ -128,9 +128,9 @@ A decoder is a mapping and not a parser. It says which upstream field is the URL
 
 Documents that fail the contract go to `-rejects` with the reason and the specific value that failed, so a rejection rate is a number somebody can look up rather than a thing somebody suspects. The store keeps a sample of the text and every measurement for all of it, which is what retuning a threshold actually needs. A file that produces documents and admits none of them stops the run rather than being reported: it means either the mapping is wrong or the source cannot satisfy the contract, and either way the next sixty files will do the same thing.
 
-That has already found something. MADLAD-400's clean split is a JSON object with one field in it, `text`, and there is no URL, no timestamp, and no media type, because Allen AI did not publish them. Every record decodes and every record is rejected for provenance it does not have. It is 95.3 GB and 32 files of the plan, and what to do about it is a decision to make deliberately rather than a default to fall into.
+That has already found something, and it cost a source. MADLAD-400's clean split is a JSON object with one field in it, `text`, and there is no URL, no timestamp, and no media type, because Allen AI did not publish them. Every record decodes and every record is rejected for provenance it does not have. Four hundred records read from each of three shards spread across the partition, `vi_clean_0000`, `vi_clean_0011` and `vi_clean_0031`, carry that single key in all twelve hundred, so this is the shape of the split and not one bad file. Design rule 3 settles it: a document that cannot carry provenance is dropped rather than admitted with nulls, and a source where that holds for every document is dropped the same way. So MADLAD-400 is marked dropped in the manifest, which takes 95.3 GB and 32 files out of the download and leaves the pinned revision, the file list, the byte counts and the digests where they are, next to the reason. Deleting the entry would leave the next reader asking why a dataset every Vietnamese corpus cites is absent, and the answer would be in a commit message nobody reads. Re-admitting it takes either Allen AI publishing the provenance or gao changing a design rule.
 
-Five sources decode today. The sixth is CulturaX, which is gated and whose terms have not been granted, so nobody has read a byte of it. The other five mappings were each written against the real file, and one written from a dataset card alone would be a guess with a version number on it. `gao gat hf -decode` refuses a source it cannot decode before it opens the ledger, because finding this out two hundred gigabytes into a download is not finding it out.
+Five sources have a decoder today. The sixth is CulturaX, which is gated and whose terms have not been granted, so nobody has read a byte of it. Each of the five was written against the real file, and one written from a dataset card alone would be a guess with a version number on it. MADLAD-400's is among them and is what found the gap that dropped it, which is the argument for writing them that way. `gao gat hf -decode` refuses a source it cannot decode before it opens the ledger, and refuses a dropped one on the same terms, because finding either out two hundred gigabytes into a download is not finding it out.
 
 ## Reading Parquet without downloading it
 

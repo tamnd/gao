@@ -89,10 +89,16 @@ flags:
 	}
 
 	fmt.Fprintf(stdout, "ingest manifest, pinned %s\n", gat.PinnedOn())
-	fmt.Fprintf(stdout, "%d sources, %d files, %s to download\n\n", len(gat.Sources()), gat.Files(), may.GB(gat.TotalBytes()))
+	fmt.Fprintf(stdout, "%d sources, %d files, %s to download\n", len(gat.Sources()), gat.Files(), may.GB(gat.TotalBytes()))
+	// Printed rather than subtracted quietly. A plan that got smaller and does
+	// not say so reads as a plan that was always this size.
+	if n := gat.DroppedBytes(); n > 0 {
+		fmt.Fprintf(stdout, "%s more is pinned and dropped, listed below with the reason\n", may.GB(n))
+	}
+	fmt.Fprintln(stdout)
 
 	if *files {
-		for i, p := range gat.Sources() {
+		for i, p := range gat.AllSources() {
 			if i > 0 {
 				fmt.Fprintln(stdout)
 			}
@@ -103,13 +109,17 @@ flags:
 
 	tw := tabwriter.NewWriter(stdout, 0, 0, 2, ' ', 0)
 	fmt.Fprint(tw, "order\tsource\trepo\trevision\tconfig\tfiles\tsize\tclass\n")
-	for _, p := range gat.Sources() {
+	for _, p := range gat.AllSources() {
 		repo := p.Repo
 		if p.Gated {
 			repo += " (gated)"
 		}
+		size := may.GB(p.Bytes())
+		if p.Dropped {
+			size += ", dropped"
+		}
 		fmt.Fprintf(tw, "%d\t%s\t%s\t%s\t%s\t%d\t%s\t%s\n",
-			p.Order, p.Source, repo, shortRevision(p.Revision), p.Config, len(p.Files), may.GB(p.Bytes()), p.Class)
+			p.Order, p.Source, repo, shortRevision(p.Revision), p.Config, len(p.Files), size, p.Class)
 	}
 	_ = tw.Flush()
 	fmt.Fprint(stdout, "\nrun 'gao gat pins -source NAME' for one source in full.\n")
@@ -128,7 +138,12 @@ func printPin(w io.Writer, p gat.Pinned, verbose bool) {
 	if p.Gated {
 		fmt.Fprint(w, "  gated:     yes, and the ingest fails at the first fetch without an accepted agreement\n")
 	}
-	fmt.Fprintf(w, "  download:  %d files, %s\n", len(p.Files), may.GB(p.Bytes()))
+	if p.Dropped {
+		fmt.Fprintf(w, "  dropped:   %d files, %s, pinned and not fetched\n", len(p.Files), may.GB(p.Bytes()))
+		fmt.Fprintf(w, "             %s\n", p.DroppedBecause)
+	} else {
+		fmt.Fprintf(w, "  download:  %d files, %s\n", len(p.Files), may.GB(p.Bytes()))
+	}
 	if len(p.Excluded) > 0 {
 		fmt.Fprintf(w, "  held back: %d files, %s\n", len(p.Excluded), may.GB(p.ExcludedBytes()))
 		fmt.Fprintf(w, "             %s\n", p.ExcludedBecause)
@@ -200,8 +215,8 @@ flags:
 	ctx, cancel := context.WithTimeout(ctx, *timeout)
 	defer cancel()
 
-	results := make([]driftResult, 0, len(gat.Sources()))
-	for _, p := range gat.Sources() {
+	results := make([]driftResult, 0, len(gat.AllSources()))
+	for _, p := range gat.AllSources() {
 		d, err := gat.Check(ctx, nil, p)
 		results = append(results, driftResult{Source: p.Source, Drift: d, Err: err})
 	}
