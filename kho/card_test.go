@@ -165,7 +165,7 @@ func TestACardPointsAtTheSnapshotItDescribes(t *testing.T) {
 	m := released(t)
 	card := Card(published(t), m)
 
-	want := snapshotDir(m.Snapshot) + "/*" + ParquetExt
+	want := SnapshotDir(m.Snapshot) + "/*" + ParquetExt
 	if !strings.Contains(card, want) {
 		t.Errorf("the front matter does not point at %s", want)
 	}

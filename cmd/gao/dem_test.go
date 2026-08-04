@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"strings"
@@ -28,7 +29,7 @@ func TestDemIsInTheHelpAndHasItsOwnUsage(t *testing.T) {
 	if code != 2 {
 		t.Errorf("gao dem with no subcommand: exit %d, want 2", code)
 	}
-	for _, want := range []string{"model", "counts", "tokenizer"} {
+	for _, want := range []string{"model", "counts", "keys", "overlap", "tokenizer"} {
 		if !strings.Contains(errOut, want) {
 			t.Errorf("the dem usage does not mention %q:\n%s", want, errOut)
 		}
@@ -249,6 +250,127 @@ func TestHFMentionsCountingInItsUsage(t *testing.T) {
 	for _, want := range []string{"-tokenizer", "counts.json", "gao dem"} {
 		if !strings.Contains(errOut, want) {
 			t.Errorf("the hf usage does not mention %q:\n%s", want, errOut)
+		}
+	}
+}
+
+// keyFile writes a key file the way a pass over the store would, so the command
+// is tested against the format rather than against a fixture that agrees with it.
+func keyFile(t *testing.T, name string, texts ...string) string {
+	t.Helper()
+	dir := t.TempDir()
+	b := dem.NewBuilder(dir)
+	for _, s := range texts {
+		if err := b.Add(doc.SumString(s)); err != nil {
+			t.Fatalf("Add: %v", err)
+		}
+	}
+	path := filepath.Join(dir, name+dem.KeysExt)
+	if _, err := b.Write(path); err != nil {
+		t.Fatalf("Write: %v", err)
+	}
+	return path
+}
+
+func TestDemOverlapNeedsKeyFiles(t *testing.T) {
+	_, errOut, code := exec(t, "dem", "overlap")
+	if code != 2 {
+		t.Errorf("gao dem overlap with no files: exit %d, want 2", code)
+	}
+	if !strings.Contains(errOut, "FILE") {
+		t.Errorf("the usage does not say what it wants:\n%s", errOut)
+	}
+}
+
+func TestDemOverlapPrintsWhatTheSourcesHaveInCommon(t *testing.T) {
+	a := keyFile(t, "glotcc", "một", "hai", "ba", "bốn")
+	b := keyFile(t, "fineweb2", "ba", "bốn", "năm")
+
+	out, errOut, code := exec(t, "dem", "overlap", a, b)
+	if code != 0 {
+		t.Fatalf("gao dem overlap: exit %d, want 0\n%s", code, errOut)
+	}
+	for _, want := range []string{"glotcc", "fineweb2", "glotcc and fineweb2", "50.0%", "66.7%"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("the table does not carry %q:\n%s", want, out)
+		}
+	}
+}
+
+// The matrix is something a release note quotes, so it has to come out in a form
+// something other than a terminal can read.
+func TestDemOverlapPrintsJSON(t *testing.T) {
+	a := keyFile(t, "a", "một", "hai")
+	b := keyFile(t, "b", "hai")
+
+	out, errOut, code := exec(t, "dem", "overlap", "-json", a, b)
+	if code != 0 {
+		t.Fatalf("gao dem overlap -json: exit %d, want 0\n%s", code, errOut)
+	}
+	var m dem.Matrix
+	if err := json.Unmarshal([]byte(out), &m); err != nil {
+		t.Fatalf("the output is not json: %v\n%s", err, out)
+	}
+	if m.Distinct != 2 || m.Both("a", "b") != 1 {
+		t.Errorf("the matrix came out as %+v", m)
+	}
+}
+
+func TestDemOverlapSaysWhenAKeyFileIsNotOne(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "notkeys"+dem.KeysExt)
+	if err := os.WriteFile(path, []byte("this is not a key file, and it is long enough to look like one"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	_, errOut, code := exec(t, "dem", "overlap", path)
+	if code != 1 {
+		t.Errorf("gao dem overlap on a file that is not one: exit %d, want 1", code)
+	}
+	if !strings.Contains(errOut, "key file") {
+		t.Errorf("the error does not say what is wrong:\n%s", errOut)
+	}
+}
+
+func TestPrintOverlapWithOneSourceSaysThereIsNothingToCompare(t *testing.T) {
+	m, err := dem.Measure(keyFile(t, "only", "một", "hai"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var b bytes.Buffer
+	printOverlap(&b, m)
+	if !strings.Contains(b.String(), "nothing to compare") {
+		t.Errorf("one source printed as if it had a pair:\n%s", b.String())
+	}
+}
+
+// A share of nothing prints as a zero rather than as a rounded nothing, because
+// 0.0% reads as small and 0% reads as none.
+func TestPercentPrintsZeroAsZero(t *testing.T) {
+	if got := percent(0); got != "0%" {
+		t.Errorf("percent(0) = %q, want %q", got, "0%")
+	}
+	if got := percent(0.125); got != "12.5%" {
+		t.Errorf("percent(0.125) = %q, want %q", got, "12.5%")
+	}
+}
+
+func TestDemKeysSaysWhenThereIsNoSuchRepo(t *testing.T) {
+	_, errOut, code := exec(t, "dem", "keys", "-repo", "vietnamese-nothing", "snapshot")
+	if code != 1 {
+		t.Errorf("gao dem keys on an unknown repo: exit %d, want 1", code)
+	}
+	if !strings.Contains(errOut, "vietnamese-nothing") {
+		t.Errorf("the error does not name the repo:\n%s", errOut)
+	}
+}
+
+func TestDemKeysExplainsWhatItMovesAndWhatItDoesNot(t *testing.T) {
+	_, errOut, code := exec(t, "dem", "keys", "-h")
+	if code != 2 && code != 0 {
+		t.Errorf("gao dem keys -h: exit %d", code)
+	}
+	for _, want := range []string{"doc_id", "resumable", "SNAPSHOT"} {
+		if !strings.Contains(errOut, want) {
+			t.Errorf("the usage does not mention %q:\n%s", want, errOut)
 		}
 	}
 }

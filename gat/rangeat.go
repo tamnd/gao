@@ -68,37 +68,93 @@ var ErrShortRange = errors.New("gat: the host answered a range request with less
 // four megabytes, once per window, so it is a failure rather than a slow path.
 var ErrNoRange = errors.New("gat: the host does not answer range requests")
 
-// OpenAt returns a reader over a pinned file that can be read out of order.
+// Remote is a file somewhere else, described well enough to read it out of
+// order and to say what went wrong when that fails.
 //
-// The size comes from the manifest rather than from a HEAD request, because the
-// manifest is what the file is pinned to and a host that now serves a different
-// length is drift rather than a fact to adopt. `gao gat drift` is where that is
-// asked about.
+// The length is the caller's rather than a HEAD request's, because a length that
+// has to be asked for is a length that can change between the ask and the read,
+// and upstream the pinned size is the one the file is pinned to. A host now
+// serving a different one is drift rather than a fact to adopt, and
+// `gao gat drift` is where that is asked about.
+type Remote struct {
+	// Name is the path of the file and From is who is serving it. Neither is
+	// used to find anything. They are what turns a failed read into a sentence
+	// naming the file and the source rather than a byte offset.
+	Name string
+	From string
+
+	URL   string
+	Bytes int64
+
+	// Auth sends the fetcher's token with every request.
+	Auth bool
+
+	// Gated marks a source whose terms have to be accepted, and Page is where to
+	// accept them. A 403 on a gated source is somebody missing a grant rather
+	// than a broken URL, and it is worth saying so.
+	Gated bool
+	Page  string
+
+	// Window is how much is fetched at a time and Windows is how many of those
+	// are kept. Zero for either is [DefaultWindow] and [DefaultWindows], which
+	// are sized for a reader assembling whole rows out of an interleaved
+	// schema. A caller reading one column has one live read position rather
+	// than thirteen and has no use for the other twenty three windows.
+	Window  int
+	Windows int
+}
+
+// OpenAt returns a reader over a pinned file that can be read out of order.
 func (f *Fetcher) OpenAt(ctx context.Context, p Pinned, file File) (*RangeAt, error) {
 	if file.Bytes <= 0 {
 		return nil, fmt.Errorf("gat: %s from %s has no pinned size, so it cannot be read out of order", file.Path, p.Source)
 	}
+	return f.OpenRemote(ctx, Remote{
+		Name:  file.Path,
+		From:  string(p.Source),
+		URL:   p.URL(file),
+		Bytes: file.Bytes,
+		Auth:  p.Origin == Hub && f.Token != "",
+		Gated: p.Gated,
+		Page:  p.Page(),
+	})
+}
+
+// Open returns a reader over any file of a known length that can be read out of
+// order.
+//
+// It is exported because the same problem comes back on the way out. A part in
+// the store is Parquet as well, and a pass that wants one column of a 2 GB part
+// has the same reason not to move the other twenty two columns that an ingest
+// has not to download a source to read it.
+func (f *Fetcher) OpenRemote(ctx context.Context, r Remote) (*RangeAt, error) {
+	if r.Bytes <= 0 {
+		return nil, fmt.Errorf("gat: %s from %s has no known size, so it cannot be read out of order", r.Name, r.From)
+	}
+	window, keep := r.Window, r.Windows
+	if window <= 0 {
+		window = DefaultWindow
+	}
+	if keep <= 0 {
+		keep = DefaultWindows
+	}
 	return &RangeAt{
 		fetcher: f,
 		ctx:     ctx,
-		pin:     p,
-		file:    file,
-		url:     p.URL(file),
-		size:    file.Bytes,
-		window:  DefaultWindow,
-		keep:    DefaultWindows,
+		remote:  r,
+		size:    r.Bytes,
+		window:  window,
+		keep:    keep,
 	}, nil
 }
 
-// RangeAt reads a pinned file out of order over HTTP. It is safe for concurrent
+// RangeAt reads a remote file out of order over HTTP. It is safe for concurrent
 // use, which it has to be, because a Parquet reader reads its columns from
 // several goroutines at once.
 type RangeAt struct {
 	fetcher *Fetcher
 	ctx     context.Context
-	pin     Pinned
-	file    File
-	url     string
+	remote  Remote
 	size    int64
 
 	window int
@@ -139,7 +195,7 @@ func (r *RangeAt) Bytes() int64 {
 func (r *RangeAt) ReadAt(p []byte, off int64) (int, error) {
 	switch {
 	case off < 0:
-		return 0, fmt.Errorf("gat: reading %s at %d: negative offset", r.file.Path, off)
+		return 0, fmt.Errorf("gat: reading %s at %d: negative offset", r.remote.Name, off)
 	case off >= r.size:
 		return 0, io.EOF
 	case len(p) == 0:
@@ -248,7 +304,7 @@ func (r *RangeAt) fetch(p []byte, off int64) (int, error) {
 		last = err
 		if try >= r.fetcher.retries() {
 			return 0, fmt.Errorf("gat: reading %s from %s at byte %d: gave up after %d attempts: %w",
-				r.file.Path, r.pin.Source, off, try+1, last)
+				r.remote.Name, r.remote.From, off, try+1, last)
 		}
 		if waitErr := sleep(r.ctx, time.Duration(try+1)*r.fetcher.retryWait()); waitErr != nil {
 			return 0, waitErr
@@ -258,38 +314,38 @@ func (r *RangeAt) fetch(p []byte, off int64) (int, error) {
 
 // once issues one Range request and reads the whole answer.
 func (r *RangeAt) once(p []byte, off int64) (int, error) {
-	req, err := http.NewRequestWithContext(r.ctx, http.MethodGet, r.url, nil)
+	req, err := http.NewRequestWithContext(r.ctx, http.MethodGet, r.remote.URL, nil)
 	if err != nil {
-		return 0, fmt.Errorf("gat: reading %s from %s: %w", r.file.Path, r.pin.Source, err)
+		return 0, fmt.Errorf("gat: reading %s from %s: %w", r.remote.Name, r.remote.From, err)
 	}
 	req.Header.Set("Range", fmt.Sprintf("bytes=%d-%d", off, off+int64(len(p))-1))
-	if r.pin.Origin == Hub && r.fetcher.Token != "" {
+	if r.remote.Auth {
 		req.Header.Set("Authorization", "Bearer "+r.fetcher.Token)
 	}
 
 	resp, err := r.fetcher.client().Do(req)
 	if err != nil {
-		return 0, fmt.Errorf("gat: reading %s from %s at byte %d: %w", r.file.Path, r.pin.Source, off, err)
+		return 0, fmt.Errorf("gat: reading %s from %s at byte %d: %w", r.remote.Name, r.remote.From, off, err)
 	}
 	defer func() { _ = resp.Body.Close() }()
 
 	switch {
 	case resp.StatusCode == http.StatusUnauthorized || resp.StatusCode == http.StatusForbidden:
 		drain(resp)
-		if r.pin.Gated {
+		if r.remote.Gated {
 			return 0, fmt.Errorf("%w: %s answered %s for %s, so accept the terms at %s and set %s",
-				ErrGated, r.pin.Repo, resp.Status, r.file.Path, r.pin.Page(), may.TokenEnv)
+				ErrGated, r.remote.From, resp.Status, r.remote.Name, r.remote.Page, may.TokenEnv)
 		}
-		return 0, fmt.Errorf("gat: reading %s from %s: %s", r.file.Path, r.pin.Source, resp.Status)
+		return 0, fmt.Errorf("gat: reading %s from %s: %s", r.remote.Name, r.remote.From, resp.Status)
 
 	case resp.StatusCode == http.StatusOK:
 		drain(resp)
 		return 0, fmt.Errorf("%w: %s answered a request for %d bytes of %s with the whole file",
-			ErrNoRange, r.pin.Repo, len(p), r.file.Path)
+			ErrNoRange, r.remote.From, len(p), r.remote.Name)
 
 	case resp.StatusCode != http.StatusPartialContent:
 		drain(resp)
-		return 0, fmt.Errorf("gat: reading %s from %s at byte %d: %s", r.file.Path, r.pin.Source, off, resp.Status)
+		return 0, fmt.Errorf("gat: reading %s from %s at byte %d: %s", r.remote.Name, r.remote.From, off, resp.Status)
 	}
 
 	n, err := io.ReadFull(resp.Body, p)
@@ -299,8 +355,8 @@ func (r *RangeAt) once(p []byte, off int64) (int, error) {
 	case errors.Is(err, io.ErrUnexpectedEOF) || errors.Is(err, io.EOF):
 		// Inside the pinned length, so this is a truncated answer rather than
 		// the end of the file, and it is worth retrying.
-		return n, fmt.Errorf("%w: %s at byte %d, %d of %d bytes", ErrShortRange, r.file.Path, off, n, len(p))
+		return n, fmt.Errorf("%w: %s at byte %d, %d of %d bytes", ErrShortRange, r.remote.Name, off, n, len(p))
 	default:
-		return n, fmt.Errorf("gat: reading %s from %s at byte %d: %w", r.file.Path, r.pin.Source, off, err)
+		return n, fmt.Errorf("gat: reading %s from %s at byte %d: %w", r.remote.Name, r.remote.From, off, err)
 	}
 }

@@ -79,7 +79,7 @@ func cardFrontMatter(b *strings.Builder, d Dataset, m *Manifest) {
 	}
 	if m != nil {
 		b.WriteString("configs:\n  - config_name: default\n    data_files:\n")
-		fmt.Fprintf(b, "      - split: train\n        path: %s/*%s\n", snapshotDir(m.Snapshot), ParquetExt)
+		fmt.Fprintf(b, "      - split: train\n        path: %s/*%s\n", SnapshotDir(m.Snapshot), ParquetExt)
 	}
 	b.WriteString("---\n\n")
 }
