@@ -70,6 +70,27 @@ func (h *hub) pusher() *Pusher {
 	return &Pusher{Repo: testRepo, Token: "hf_test", API: h.srv.URL, Client: h.srv.Client()}
 }
 
+// stored returns what the repo holds at a path. It needs both maps because the
+// repo names a file by its lfs digest or its git blob id and storage names the
+// bytes by their sha256, which is the same two identities the pusher deals with.
+func (h *hub) stored(path string) []byte {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	tag, ok := h.files[path]
+	if !ok {
+		return nil
+	}
+	if h.linked[path] {
+		return h.objects[tag]
+	}
+	for _, b := range h.objects {
+		if gitBlobID(b) == tag {
+			return b
+		}
+	}
+	return nil
+}
+
 func (h *hub) count(name string) int {
 	h.mu.Lock()
 	defer h.mu.Unlock()
@@ -642,5 +663,99 @@ func TestNoPartTheRollWritesCanBeTooLargeToPush(t *testing.T) {
 	if TextPerPart >= MaxUpload {
 		t.Errorf("a part holds %d bytes of text and an upload takes %d, so a part can be refused by its own uploader",
 			TextPerPart, int64(MaxUpload))
+	}
+}
+
+func TestANewRepoGetsACardSoItsFrontPageIsNotAFileListing(t *testing.T) {
+	h := newHub(t)
+	if err := h.pusher().EnsureRepo(t.Context(), Staging()); err != nil {
+		t.Fatalf("EnsureRepo: %v", err)
+	}
+
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	if _, ok := h.files[CardName]; !ok {
+		t.Fatalf("a repo was created with no %s on it", CardName)
+	}
+	if len(h.commits) != 1 {
+		t.Errorf("%d commits, want the card and nothing else", len(h.commits))
+	}
+}
+
+// A repo that is already there keeps the card it has. That card may have been
+// generated from a manifest this caller does not have, and replacing it with the
+// empty one would be deleting the release notes on every ingest.
+func TestARepoThatAlreadyExistsKeepsTheCardItHas(t *testing.T) {
+	h := newHub(t)
+	h.status["create"] = http.StatusConflict
+	if err := h.pusher().EnsureRepo(t.Context(), Staging()); err != nil {
+		t.Fatalf("EnsureRepo: %v", err)
+	}
+	if got := h.count("commit"); got != 0 {
+		t.Errorf("%d commits against a repo that was already there", got)
+	}
+}
+
+func TestACardGoesUpAsTheReadme(t *testing.T) {
+	h := newHub(t)
+	d := Staging()
+
+	sent, err := h.pusher().PushCard(t.Context(), d, nil)
+	if err != nil {
+		t.Fatalf("PushCard: %v", err)
+	}
+	if sent.Path != CardName {
+		t.Errorf("the card went to %s", sent.Path)
+	}
+	if !sent.Committed {
+		t.Error("the card was not committed")
+	}
+
+	// A card is a page of text and goes up in the commit itself. Sending it
+	// through lfs would work and would put a page of markdown in object storage
+	// where nothing can read it as text.
+	if h.count("batch") != 0 {
+		t.Error("the card went through lfs")
+	}
+
+	if body := h.stored(CardName); string(body) != Card(d, nil) {
+		t.Errorf("what landed is not the card:\n%s", body)
+	}
+}
+
+func TestACardThatSaysTheSameThingIsNotCommittedAgain(t *testing.T) {
+	h := newHub(t)
+	d := Staging()
+	p := h.pusher()
+
+	if _, err := p.PushCard(t.Context(), d, nil); err != nil {
+		t.Fatalf("PushCard: %v", err)
+	}
+	sent, err := p.PushCard(t.Context(), d, nil)
+	if err != nil {
+		t.Fatalf("PushCard again: %v", err)
+	}
+	if !sent.Skipped() {
+		t.Error("the same card was pushed twice")
+	}
+	if got := h.count("commit"); got != 1 {
+		t.Errorf("%d commits for one card", got)
+	}
+}
+
+func TestACardWithNewCountsReplacesTheOneUpThere(t *testing.T) {
+	h := newHub(t)
+	d, p := published(t), h.pusher()
+
+	if _, err := p.PushCard(t.Context(), d, nil); err != nil {
+		t.Fatalf("PushCard: %v", err)
+	}
+	m := released(t)
+	if _, err := p.PushCard(t.Context(), d, m); err != nil {
+		t.Fatalf("PushCard with a snapshot: %v", err)
+	}
+
+	if body := string(h.stored(CardName)); !strings.Contains(body, "412000000") {
+		t.Errorf("the card up there is not the one with the counts:\n%s", body)
 	}
 }

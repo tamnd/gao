@@ -33,6 +33,8 @@ func runKho(stdout, stderr io.Writer, args []string) int {
 		return runKhoColumns(stdout, stderr, args[1:])
 	case "push":
 		return runKhoPush(stdout, stderr, args[1:])
+	case "card":
+		return runKhoCard(stdout, stderr, args[1:])
 	case "help", "-h", "--help":
 		khoUsage(stdout)
 		return 0
@@ -52,6 +54,7 @@ subcommands:
   datasets  print the dataset repos processed data is written to
   columns   print the columns a published parquet file carries
   push      upload a file to a dataset repo at the path it belongs at
+  card      generate a dataset card from a snapshot manifest
 
 run 'gao kho <subcommand> -h' for the flags of a single subcommand.
 `)
@@ -350,6 +353,83 @@ flags:
 		fmt.Fprintf(stdout, "pushed %s to %s, %s\n", path, d.Repo(), may.Size(sent.Bytes))
 	}
 	fmt.Fprintf(stdout, "%s\n", sent.OID)
+	return 0
+}
+
+func runKhoCard(stdout, stderr io.Writer, args []string) int {
+	fs := flag.NewFlagSet("kho card", flag.ContinueOnError)
+	fs.SetOutput(stderr)
+	name := fs.String("dataset", "", "the dataset repo the card is for")
+	from := fs.String("from", "", "the snapshot directory holding the manifest the card is generated from")
+	push := fs.Bool("push", false, "put the card on the repo instead of printing it")
+	fs.Usage = func() {
+		fmt.Fprint(stderr, `usage: gao kho card -dataset NAME [-from DIR] [-push]
+
+Generates the dataset card for a repo and prints it. Every number in it comes
+out of the manifest of the snapshot named by -from: the counts, the breakdown by
+source, the stages that produced it and the versions they ran at, the merkle root
+and who signed it. Without -from the card is the one a repo carries before its
+first release, which says so rather than printing zeros.
+
+A card is generated rather than written because a card written by hand describes
+the release before last, and there is no way to tell by reading one which of its
+numbers have gone stale.
+
+With -push the card is committed to the repo as `+kho.CardName+`, which is what
+a release does after it seals a snapshot. A card that already says the same thing
+is left alone. Writing needs a token in `+may.TokenEnv+` with write access to the
+`+kho.Org+` organization.
+
+flags:
+`)
+		fs.PrintDefaults()
+	}
+	if err := fs.Parse(args); err != nil {
+		return 2
+	}
+	if fs.NArg() != 0 || *name == "" {
+		fs.Usage()
+		return 2
+	}
+
+	d, ok := kho.Lookup(*name)
+	if !ok {
+		fmt.Fprintf(stderr, "gao kho card: no dataset named %q\n", *name)
+		fmt.Fprintln(stderr, "run 'gao kho datasets' for the list")
+		return 1
+	}
+
+	var m *kho.Manifest
+	if *from != "" {
+		loaded, err := kho.ReadManifest(*from)
+		if err != nil {
+			fmt.Fprintf(stderr, "gao kho card: %v\n", err)
+			return 1
+		}
+		m = loaded
+	}
+
+	if !*push {
+		fmt.Fprint(stdout, kho.Card(d, m))
+		return 0
+	}
+
+	p := &kho.Pusher{Repo: d.Repo(), Token: may.Token(), API: pushAPI()}
+	ctx := context.Background()
+	if err := p.EnsureRepo(ctx, d); err != nil {
+		fmt.Fprintf(stderr, "gao kho card: %v\n", err)
+		return 1
+	}
+	sent, err := p.PushCard(ctx, d, m)
+	if err != nil {
+		fmt.Fprintf(stderr, "gao kho card: %v\n", err)
+		return 1
+	}
+	if sent.Skipped() {
+		fmt.Fprintf(stdout, "%s already carries this card, so nothing moved\n", d.Repo())
+		return 0
+	}
+	fmt.Fprintf(stdout, "pushed the card to %s, %s\n", d.Repo(), may.Size(sent.Bytes))
 	return 0
 }
 

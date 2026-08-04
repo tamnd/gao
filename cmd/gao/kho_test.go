@@ -495,3 +495,98 @@ func TestKhoPushIsInTheSubcommandList(t *testing.T) {
 		t.Errorf("the subcommand list does not mention push:\n%s", out)
 	}
 }
+
+// A card printed rather than pushed is what somebody reads before a release,
+// which is why the default is to print it.
+func TestKhoCardPrintsTheCardForADataset(t *testing.T) {
+	out, errOut, code := exec(t, "kho", "card", "-dataset", "vietnamese-web-text")
+	if code != 0 {
+		t.Fatalf("gao kho card: exit %d\n%s", code, errOut)
+	}
+	if !strings.HasPrefix(out, "---\n") {
+		t.Errorf("the card has no front matter:\n%s", out)
+	}
+	if !strings.Contains(out, "# Vietnamese Web Text") {
+		t.Errorf("the card has no title:\n%s", out)
+	}
+}
+
+func TestKhoCardReadsTheCountsFromASnapshotManifest(t *testing.T) {
+	dir := t.TempDir()
+	m := &kho.Manifest{
+		ManifestVersion: kho.ManifestVersion,
+		SchemaVersion:   doc.SchemaVersion,
+		Snapshot:        "2026-09",
+		CreatedAt:       time.Date(2026, 9, 1, 0, 0, 0, 0, time.UTC),
+		Pipeline:        "0.4.1",
+		Counts:          kho.Counts{Documents: 7, Bytes: 70, Chars: 700},
+		Shards: []kho.Shard{
+			{Name: "part-00000.parquet", Index: 0, Documents: 7, Bytes: 70, Hash: doc.SumString("x")},
+		},
+	}
+	m.Root = m.ComputeRoot()
+	if err := kho.WriteManifest(dir, m); err != nil {
+		t.Fatalf("WriteManifest: %v", err)
+	}
+
+	out, errOut, code := exec(t, "kho", "card", "-dataset", "vietnamese-web-text", "-from", dir)
+	if code != 0 {
+		t.Fatalf("gao kho card -from: exit %d\n%s", code, errOut)
+	}
+	for _, want := range []string{"| documents | 7 |", "snapshot=2026-09", "not a release"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("the card does not carry %q:\n%s", want, out)
+		}
+	}
+}
+
+func TestKhoCardPushesTheCardAndSaysWhereItWent(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case strings.Contains(r.URL.Path, "/resolve/"):
+			w.WriteHeader(http.StatusNotFound)
+		case strings.Contains(r.URL.Path, "/preupload/"):
+			fmt.Fprint(w, `{"files":[{"uploadMode":"regular"}]}`)
+		default:
+			w.WriteHeader(http.StatusOK)
+		}
+	}))
+	defer srv.Close()
+	t.Setenv(may.StoreEnv, srv.URL)
+
+	out, errOut, code := exec(t, "kho", "card", "-dataset", kho.StageRepo, "-push")
+	if code != 0 {
+		t.Fatalf("gao kho card -push: exit %d\n%s", code, errOut)
+	}
+	if !strings.Contains(out, "pushed the card") || !strings.Contains(out, kho.Staging().Repo()) {
+		t.Errorf("the push does not say what it did or where:\n%s", out)
+	}
+}
+
+func TestKhoCardRefusesADatasetThatIsNotThere(t *testing.T) {
+	_, errOut, code := exec(t, "kho", "card", "-dataset", "vietnamese-nonsense")
+	if code != 1 {
+		t.Fatalf("exit %d, want 1", code)
+	}
+	if !strings.Contains(errOut, "gao kho datasets") {
+		t.Errorf("the error does not say how to find the list:\n%s", errOut)
+	}
+}
+
+// Without a dataset there is nothing to generate a card for, and guessing one
+// would be putting the wrong repo's card on somebody's screen.
+func TestKhoCardNeedsADataset(t *testing.T) {
+	if _, _, code := exec(t, "kho", "card"); code != 2 {
+		t.Error("gao kho card ran without a dataset")
+	}
+}
+
+func TestKhoCardIsInTheSubcommandList(t *testing.T) {
+	out, _, code := exec(t, "kho", "help")
+	if code != 0 {
+		t.Fatalf("gao kho help: exit %d", code)
+	}
+	if !strings.Contains(out, "card") {
+		t.Errorf("the subcommand list does not mention card:\n%s", out)
+	}
+}
