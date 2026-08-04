@@ -61,7 +61,8 @@ gao gat media  --from crawl                 # fetch PDFs, audio, video
 gao phoi       doc.txt                      # dry: normalize a document and write it out
 gao phoi -report ingest/*.txt               # what normalizing did, per document, with a total
 gao sang       --in normalized/ --out kept/ # sift: language ID, heuristics, quality
-gao xay        --in kept/ --out milled/     # mill: deduplication, boilerplate removal
+gao xay        parts/*.parquet              # mill: what the corpus holds more than one copy of
+gao xay -curve parts/*.parquet              # and what every deduplication threshold would cost
 
 gao kho release --snapshot gao-v1.0         # store and publish
 gao kho verify  snapshots/gao-v1.0          # check a snapshot against its manifest
@@ -209,6 +210,36 @@ phoi/testdata/dien-dan.in     no       0           0          0         0       
 ```
 
 What the stage does not do yet is the legacy font encodings. TCVN3, VNI, VPS and BK HCM pages hold Vietnamese as bytes that are only Vietnamese under one particular font, and the older Vietnamese web still serves them in quantity. Detecting and transcoding those is the open item here, and until it lands such a page arrives as text this stage has nothing to say about.
+
+## Finding the same document twice
+
+The web republishes. A news agency writes an article and forty sites carry it, a forum quotes a post inside a reply to it, a legal notice sits at the foot of every page of a ministry site, and a scraper that took a site twice took the front page twice. None of that is rare and all of it trains. A model sees the duplicated text as many times as the corpus holds it, and what it learns from the repetition is to reproduce it.
+
+Exact copies cost nothing to find. The document id is already blake3 over the normalized text, so two documents that are the same bytes are the same id and a hash table finds every one of them. That is the easy half and it is not the half that matters, because a republisher almost never publishes the same bytes. The headline changes, a credit line goes on the end, and the content management system that received the piece gives it different quotes and different capitals.
+
+The other half is minhash over character five-grams, with a banded index. Each document becomes 128 numbers that stand in for its set of shingles, two documents that share most of their text agree on most of those numbers, and the bands turn "agree on most" into a lookup. The alternative is every pair against every other pair, and at a hundred million documents that is not a slow program, it is a program that does not finish. The shingles are taken over the deduplication key rather than over the text, so everything `phoi` decided a republisher can change is invisible here too: case, punctuation, spacing, and the `i` and `y` spellings that both survive in the text. Digits are kept, because a table of figures with different figures is a different table.
+
+The banding is the threshold, and this is the part that is usually left implicit. A pair whose similarity is `s` agrees on one row with probability `s`, on a band of `r` rows with probability `s^r`, and on at least one of `b` bands with probability `1 - (1 - s^r)^b`. That curve is a step with its knee near `(1/b)^(1/r)`. gao runs 16 bands of 8 rows, which puts the knee at 0.707, and moving the knee means choosing different numbers rather than filtering harder afterwards. The knee is where it is because of what a Vietnamese near duplicate looks like: a syndicated article that kept the body and changed the furniture lands between 0.7 and 0.9, and a forum post quoting two sentences of it lands near 0.3.
+
+Recall is a number rather than an assumption, so the report prints it. At the operating point a pair at 0.9 is proposed as a candidate essentially always, a pair at 0.5 essentially never, and a pair sitting exactly on the knee is proposed about two thirds of the time, which is what a knee means and is worth seeing rather than being surprised by later.
+
+```
+documents  exact  near  kept  retention  clusters  largest
+7          0      3     4     57.1%      1         4
+
+Two documents are copies of each other at 0.71 similarity or more, over 16 bands of 8 rows.
+A pair at 0.71 is found 65.6% of the time and a pair at 0.5 is found 6.1% of the time.
+```
+
+The threshold itself is not chosen here. Removing more duplicates is not better past some point, since the corpus starts losing documents that were merely similar, and removing fewer leaves the repetition in. Where that point is, is a question about this corpus and it is answered by training on both sides of it. So `gao xay -curve` produces what each threshold would retain and nothing in the package decides which one to use. The curve is built at 32 bands of 4 rows rather than at the operating point, because its knee is at 0.42 and a pair that was never proposed as a candidate cannot be scored at any threshold. A curve built at the operating banding would report that a threshold of 0.5 keeps exactly what 0.7 keeps, which is a statement about the index rather than about the corpus.
+
+Inside a bucket the members are compared against the first member rather than against each other. Boilerplate produces buckets of thousands, and the quadratic version of that comparison is the run not finishing. What it costs is a pair that lands in one bucket without either of them resembling the member that got there first, and that pair is caught in another band or through a third document, which is the same mechanism the bands are already relying on. The clusters are then closed with union find, the survivor is the longest document with the lowest id as the tiebreak, and the cluster id is the survivor's own id. Keeping the longest is deliberate: near duplicates usually differ by what one of them is missing, a page an extractor truncated or a copy that lost its last paragraph, and the longest is the one the others are missing something from.
+
+The answer does not depend on the order the documents arrived in. Union attaches the lower root, the representative is chosen by a total order rather than by whichever was seen first, and there is a test that runs the same documents forwards and backwards and requires the same clusters with the same identities. A stage without that property produces a different corpus on every rebuild, and every number anybody published about the last one becomes unreproducible.
+
+What is here is a shard, not the corpus. A signature is 1 KB, so four hundred million documents is 400 GB of signatures against a fleet whose largest box has 64 GB. Holding them is what lets one pass over a shard answer at every threshold the ablation asks about, and it is exactly why it does not scale to the whole thing. The corpus scale pass keeps only the band hashes, 128 bytes per document, and works one band at a time from a file sorted on disk in the way `gao dem overlap` sorts document keys. That pass is not written yet. The arithmetic that says it is needed is in the package documentation rather than waiting to be discovered on the box.
+
+The paragraph level boilerplate pass is the other open item here. A legal footer repeated on every page of a site is not a duplicate document, it is a duplicate paragraph inside documents that are otherwise distinct, and removing it is a host aware pass over paragraphs rather than a threshold over documents.
 
 ## Where the corpus lives
 
