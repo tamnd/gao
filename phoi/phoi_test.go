@@ -70,6 +70,7 @@ func TestTheTallyAddsUpARun(t *testing.T) {
 	want := Tally{
 		Documents:  4,
 		Changed:    3,
+		Repaired:   3,
 		Homoglyphs: 1,
 		Invisible:  1,
 		Tones:      1,
@@ -83,10 +84,37 @@ func TestTheTallyAddsUpARun(t *testing.T) {
 	}
 }
 
+// The first run over real parts came back saying normalization changed every
+// document it saw, which is true and is a fact about the final newline rather
+// than about Vietnamese. What the material is like is the other count.
+func TestALayoutChangeIsNotARepair(t *testing.T) {
+	var got Tally
+	for _, doc := range []string{
+		"Hà Nội mùa này trời trở lạnh.",     // no final newline, nothing else
+		"Hà Nội mùa này   trời trở lạnh.\n", // a run of spaces
+		"Hoà bình.\n", // one tone mark
+	} {
+		got.Add(Normalize(doc))
+	}
+
+	if got.Changed != 3 {
+		t.Errorf("%d of the three documents changed, and all of them did", got.Changed)
+	}
+	if got.Repaired != 1 {
+		t.Errorf("%d of them were repaired, and one was", got.Repaired)
+	}
+	if share := got.RepairedShare(); share > 0.34 || share < 0.33 {
+		t.Errorf("repaired share %v, want a third", share)
+	}
+}
+
 func TestAnEmptyTallyHasNoShare(t *testing.T) {
 	var t0 Tally
 	if got := t0.ChangedShare(); got != 0 {
 		t.Errorf("changed share of nothing is %v, want 0", got)
+	}
+	if got := t0.RepairedShare(); got != 0 {
+		t.Errorf("repaired share of nothing is %v, want 0", got)
 	}
 }
 

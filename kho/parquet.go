@@ -486,39 +486,68 @@ func (p *Part) Abandon() {
 
 // ReadPart reads a Parquet file back as rows, which is what the tests and
 // verification use and what a reader outside gao would write for itself.
+//
+// It holds the whole file. That is what a test wants and it is not what a run
+// over the corpus wants, so anything that walks real parts should be reaching
+// for [ScanPart] instead.
 func ReadPart(path string) ([]Row, error) {
+	var rows []Row
+	err := ScanPart(path, func(r Row) error {
+		rows = append(rows, r)
+		return nil
+	})
+	return rows, err
+}
+
+// ScanPart reads a Parquet file back a row at a time and hands each row to fn.
+//
+// It exists because [ReadPart] holds the whole file in memory, and the parts the
+// fleet writes are around 700 MB of compressed text that come back as several
+// gigabytes of strings. A box that has to hold a part to measure it is a box
+// that cannot measure the corpus, which is the opposite of what pushing the
+// parts off the disk was for. A run over a stage's output should cost the same
+// whether there is one part or four hundred.
+//
+// Returning an error from fn stops the read and comes back out of here
+// unwrapped, so a caller can stop early on its own terms.
+func ScanPart(path string, fn func(Row) error) error {
 	f, err := os.Open(path)
 	if err != nil {
-		return nil, err
+		return err
 	}
 	defer func() { _ = f.Close() }()
 
 	stat, err := f.Stat()
 	if err != nil {
-		return nil, err
+		return err
 	}
-	pf, err := parquet.OpenFile(f, stat.Size())
-	if err != nil {
-		return nil, fmt.Errorf("kho: opening %s: %w", path, err)
+	// Opened once so that a file that is not Parquet at all is reported as this
+	// file rather than as a read error somewhere inside the reader.
+	if _, err := parquet.OpenFile(f, stat.Size()); err != nil {
+		return fmt.Errorf("kho: opening %s: %w", path, err)
 	}
+
 	// Read against the Row schema rather than the file's own. They name the same
 	// columns, and the file's is a group schema built from the footer, which
 	// reconstructs into a map and not into a Go struct.
-	rows := make([]Row, 0, pf.NumRows())
 	r := parquet.NewGenericReader[Row](f)
 	defer func() { _ = r.Close() }()
 	buf := make([]Row, 64)
 	for {
 		n, err := r.Read(buf)
-		rows = append(rows, buf[:n]...)
-		if errors.Is(err, io.EOF) {
-			return rows, nil
+		for i := range buf[:n] {
+			if err := fn(buf[i]); err != nil {
+				return err
+			}
+			// The reader reuses the backing array, and a row left in it keeps a
+			// string alive that the caller is done with.
+			buf[i] = Row{}
+		}
+		if errors.Is(err, io.EOF) || n == 0 {
+			return nil
 		}
 		if err != nil {
-			return rows, fmt.Errorf("kho: reading %s: %w", path, err)
-		}
-		if n == 0 {
-			return rows, nil
+			return fmt.Errorf("kho: reading %s: %w", path, err)
 		}
 	}
 }

@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"path/filepath"
 	"text/tabwriter"
 
 	"github.com/tamnd/gao/phoi"
@@ -15,9 +16,10 @@ func runPhoi(stdout, stderr io.Writer, args []string) int {
 	fs := flag.NewFlagSet("phoi", flag.ContinueOnError)
 	fs.SetOutput(stderr)
 	report := fs.Bool("report", false, "print what normalization did instead of the normalized text")
+	total := fs.Bool("total", false, "with -report, print the total and not a line per document")
 	asJSON := fs.Bool("json", false, "with -report, print JSON")
 	fs.Usage = func() {
-		fmt.Fprint(stderr, `usage: gao phoi [-report [-json]] [file...]
+		fmt.Fprint(stderr, `usage: gao phoi [-report [-total] [-json]] [file...]
 
 Normalize Vietnamese text, which is the first thing done to a document and the
 thing every stage after it assumes has been done. With no file it reads standard
@@ -31,6 +33,15 @@ alone. The last column says whether the document goes on to the next stage, and
 names the reason when it does not. Several files are reported one to a line with
 a total.
 
+A report takes parquet parts as well as text files, and every row in a part is a
+document. A part off the fleet holds a few hundred thousand of them, which is
+more rows than anybody reads, so -total prints the summary and drops the lines.
+That is also what makes the report cost the same memory on a part as on a file,
+which is what running it over the whole corpus needs.
+
+The number the report exists for is the last one: the share of documents this
+stage changed by at least one byte.
+
 flags:
 `)
 		fs.PrintDefaults()
@@ -42,6 +53,10 @@ flags:
 		fmt.Fprintln(stderr, "gao phoi: -json only means something with -report")
 		return 2
 	}
+	if *total && !*report {
+		fmt.Fprintln(stderr, "gao phoi: -total only means something with -report")
+		return 2
+	}
 
 	files := fs.Args()
 	if len(files) == 0 {
@@ -51,21 +66,49 @@ flags:
 	var tally phoi.Tally
 	lines := make([]phoiLine, 0, len(files))
 	for _, name := range files {
-		text, err := readDocument(name)
-		if err != nil {
-			fmt.Fprintf(stderr, "gao phoi: %v\n", err)
-			return 1
-		}
-		r := phoi.Normalize(string(text))
-		tally.Add(r)
 		if !*report {
+			// A part holds many documents and running them onto one stream
+			// loses where each one ended, which is the one thing a normalizer
+			// must not do.
+			if filepath.Ext(name) == ".parquet" {
+				fmt.Fprintf(stderr, "gao phoi: %s holds many documents, and normalizing them onto one stream loses where each one ended. Use -report\n", name)
+				return 2
+			}
+			text, err := readDocument(name)
+			if err != nil {
+				fmt.Fprintf(stderr, "gao phoi: %v\n", err)
+				return 1
+			}
+			r := phoi.Normalize(string(text))
+			tally.Add(r)
 			if _, err := io.WriteString(stdout, r.Text); err != nil {
 				fmt.Fprintf(stderr, "gao phoi: %v\n", err)
 				return 1
 			}
 			continue
 		}
-		lines = append(lines, phoiLine{Name: name, Result: r})
+
+		// A row of a part is named by the part and its number in it. A text file
+		// is one document and is named by itself.
+		part := filepath.Ext(name) == ".parquet"
+		row := 0
+		err := eachDocument(name, func(text string) error {
+			r := phoi.Normalize(text)
+			tally.Add(r)
+			if !*total {
+				named := name
+				if part {
+					named = fmt.Sprintf("%s#%d", name, row)
+				}
+				lines = append(lines, phoiLine{Name: named, Result: r})
+			}
+			row++
+			return nil
+		})
+		if err != nil {
+			fmt.Fprintf(stderr, "gao phoi: %v\n", err)
+			return 1
+		}
 	}
 	if !*report {
 		return 0
@@ -105,20 +148,24 @@ func readDocument(name string) ([]byte, error) {
 
 func printPhoi(w io.Writer, lines []phoiLine, total phoi.Tally) {
 	tw := tabwriter.NewWriter(w, 0, 0, 2, ' ', 0)
-	fmt.Fprint(tw, "document\tchanged\thomoglyphs\tinvisible\tcontrols\tcomposed\ttones\tresidue\tsyllables\tkept\n")
+	fmt.Fprint(tw, "document\tchanged\trepaired\thomoglyphs\tinvisible\tcontrols\tcomposed\ttones\tresidue\tsyllables\tkept\n")
 	for _, l := range lines {
-		fmt.Fprintf(tw, "%s\t%s\t%d\t%d\t%d\t%d\t%d\t%d\t%d\t%s\n",
-			l.Name, yesNo(l.Changed), l.Homoglyphs, l.Invisible, l.Controls,
-			l.Composed, l.Tones, l.Residue, l.Syllables, kept(l.Result))
+		fmt.Fprintf(tw, "%s\t%s\t%s\t%d\t%d\t%d\t%d\t%d\t%d\t%d\t%s\n",
+			l.Name, yesNo(l.Changed), yesNo(l.Repaired()), l.Homoglyphs, l.Invisible,
+			l.Controls, l.Composed, l.Tones, l.Residue, l.Syllables, kept(l.Result))
 	}
-	if len(lines) > 1 {
-		fmt.Fprintf(tw, "%d documents\t%d\t%d\t%d\t%d\t%d\t%d\t%d\t%d\t%d rejected\n",
-			total.Documents, total.Changed, total.Homoglyphs, total.Invisible,
-			total.Controls, total.Composed, total.Tones, total.Residue,
-			total.Syllables, total.Rejected)
+	if total.Documents > 1 {
+		fmt.Fprintf(tw, "%d documents\t%d\t%d\t%d\t%d\t%d\t%d\t%d\t%d\t%d\t%d rejected\n",
+			total.Documents, total.Changed, total.Repaired, total.Homoglyphs,
+			total.Invisible, total.Controls, total.Composed, total.Tones,
+			total.Residue, total.Syllables, total.Rejected)
 	}
 	_ = tw.Flush()
 
+	if total.Documents > 1 {
+		fmt.Fprintf(w, "\nNormalization changed %s of the documents by at least one byte, and %s of them by something other than layout.\n",
+			percent(total.ChangedShare()), percent(total.RepairedShare()))
+	}
 	if len(lines) == 1 {
 		r := lines[0].Result
 		if r.Residue > 0 {

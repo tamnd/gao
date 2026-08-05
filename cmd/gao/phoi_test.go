@@ -7,6 +7,9 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/tamnd/gao/doc"
+	"github.com/tamnd/gao/kho"
 )
 
 func writeDocument(t *testing.T, text string) string {
@@ -135,6 +138,127 @@ func TestPhoiSaysWhichFileItCouldNotRead(t *testing.T) {
 	}
 	if !strings.Contains(stderr.String(), "gone.txt") {
 		t.Errorf("the error does not name the file: %q", stderr.String())
+	}
+}
+
+// writePart writes a parquet part holding one row per text, which is the shape
+// the ingest writes and the shape a stage is pointed at.
+func writePart(t *testing.T, texts ...string) string {
+	t.Helper()
+	d, ok := kho.Lookup("vietnamese-web-text")
+	if !ok {
+		t.Fatal("the dataset is not in the table")
+	}
+	dir := t.TempDir()
+	part, err := kho.CreatePart(dir, "part-00000.parquet", d, kho.Stamp{
+		Snapshot: "gao-v1.0", Stage: "test@0.1.0", Box: "server1",
+	})
+	if err != nil {
+		t.Fatalf("CreatePart: %v", err)
+	}
+	for i, text := range texts {
+		row := document(t, i)
+		row.Text = text
+		row.DocID = doc.SumString(text)
+		row.NChars = uint32(len([]rune(text)))
+		if err := part.Append(row); err != nil {
+			t.Fatalf("Append: %v", err)
+		}
+	}
+	file, err := part.Close()
+	if err != nil {
+		t.Fatalf("Close: %v", err)
+	}
+	return filepath.Join(dir, file.Path)
+}
+
+// The material this stage runs on arrives as parts, so a report that only reads
+// text files can be run on the fixtures and not on the corpus.
+func TestPhoiReportsEveryRowOfAPart(t *testing.T) {
+	path := writePart(t, "Hoà bình\n", "Hà Nội\n", "Thuỷ chung\n")
+
+	var stdout, stderr bytes.Buffer
+	if code := runPhoi(&stdout, &stderr, []string{"-report", "-json", path}); code != 0 {
+		t.Fatalf("gao phoi -report PART = %d, want 0\n%s", code, stderr.String())
+	}
+	var got phoiReport
+	if err := json.Unmarshal(stdout.Bytes(), &got); err != nil {
+		t.Fatalf("the report is not JSON: %v\n%s", err, stdout.String())
+	}
+	if len(got.Documents) != 3 {
+		t.Fatalf("the part holds three rows and the report has %d", len(got.Documents))
+	}
+	if got.Total.Changed != 2 {
+		t.Errorf("the report says %d of the rows changed, want the two with a moved tone mark", got.Total.Changed)
+	}
+	if !strings.HasSuffix(got.Documents[1].Name, "#1") {
+		t.Errorf("the second row is named %q, and a row of a part needs its number", got.Documents[1].Name)
+	}
+}
+
+// A part off the fleet holds a few hundred thousand rows. Printing a line each
+// is not a report, it is the corpus again, and holding those lines to print
+// them is what a run over the whole corpus cannot afford.
+func TestPhoiPrintsATotalWithoutALinePerDocument(t *testing.T) {
+	path := writePart(t, "Hoà bình\n", "Hà Nội\n", "Thuỷ chung\n")
+
+	var stdout, stderr bytes.Buffer
+	if code := runPhoi(&stdout, &stderr, []string{"-report", "-total", path}); code != 0 {
+		t.Fatalf("gao phoi -report -total = %d, want 0\n%s", code, stderr.String())
+	}
+	out := stdout.String()
+	if !strings.Contains(out, "3 documents") {
+		t.Errorf("the total line is not there:\n%s", out)
+	}
+	if strings.Contains(out, "#0") {
+		t.Errorf("-total printed a line per document anyway:\n%s", out)
+	}
+	if !strings.Contains(out, "changed 66.7% of the documents") {
+		t.Errorf("the report does not say what share changed:\n%s", out)
+	}
+}
+
+// Layout runs on every document, so the share that changed at all is a fact
+// about trailing whitespace and the share that had a character repaired is a
+// fact about the material. A report that gave only the first would be quoted as
+// if it were the second.
+func TestPhoiSeparatesRepairFromLayout(t *testing.T) {
+	path := writePart(t, "Hoà bình\n", "Thuỷ chung\n", "Hà Nội  \n", "Hà Nội\n")
+
+	var stdout, stderr bytes.Buffer
+	if code := runPhoi(&stdout, &stderr, []string{"-report", "-total", path}); code != 0 {
+		t.Fatalf("gao phoi -report -total = %d, want 0\n%s", code, stderr.String())
+	}
+	out := stdout.String()
+	if !strings.Contains(out, "changed 75.0% of the documents by at least one byte, and 50.0% of them by something other than layout") {
+		t.Errorf("the report does not separate the two:\n%s", out)
+	}
+}
+
+func TestPhoiRefusesTotalWithoutReport(t *testing.T) {
+	var stdout, stderr bytes.Buffer
+	if code := runPhoi(&stdout, &stderr, []string{"-total"}); code != 2 {
+		t.Fatalf("gao phoi -total = %d, want 2", code)
+	}
+	if !strings.Contains(stderr.String(), "-report") {
+		t.Errorf("the error does not say what to do about it: %q", stderr.String())
+	}
+}
+
+// As a filter it writes the normalized text, and many documents down one stream
+// is a file that has lost where each of them ended.
+func TestPhoiRefusesToNormalizeAPartOntoOneStream(t *testing.T) {
+	path := writePart(t, "Hoà bình\n", "Hà Nội\n")
+
+	var stdout, stderr bytes.Buffer
+	if code := runPhoi(&stdout, &stderr, []string{path}); code != 2 {
+		t.Fatalf("gao phoi PART = %d, want 2\n%s", code, stderr.String())
+	}
+	if !strings.Contains(stderr.String(), "-report") {
+		t.Errorf("the error does not say what to do instead: %q", stderr.String())
+	}
+	if stdout.Len() > 0 {
+		t.Errorf("it wrote text before refusing:\n%s", stdout.String())
 	}
 }
 

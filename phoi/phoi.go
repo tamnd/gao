@@ -50,6 +50,12 @@ type Result struct {
 
 	// Changed says whether the document differs from what came in by at least
 	// one byte.
+	//
+	// Nearly every document does. Layout runs on all of them and a document that
+	// arrived without a final newline leaves with one, so this counts what the
+	// stage touched rather than what it found, and [Result.Repaired] is the half
+	// of it that is about the text. Both are worth having: this one is what a
+	// hash taken before this stage is worth, which is nothing.
 	Changed bool
 
 	// Homoglyphs is characters that were wrong rather than variant: eth for đ,
@@ -82,6 +88,19 @@ type Result struct {
 	// It counts the input rather than the output, because what makes a document
 	// a binary is what was in it before the control characters came out.
 	Runes int
+}
+
+// Repaired says the document changed by something other than its layout: a
+// character was wrong, or invisible, or in the wrong composition, or carried its
+// tone mark on the wrong vowel.
+//
+// The distinction is the difference between a measurement and a tautology.
+// Whitespace and a final newline are settled on every document that goes past,
+// so the share of documents that changed at all is close to all of them and says
+// nothing about the material. The share that had a character repaired says which
+// upstreams produce damaged Vietnamese and how much.
+func (r Result) Repaired() bool {
+	return r.Homoglyphs+r.Invisible+r.Controls+r.Composed+r.Tones > 0
 }
 
 // ControlRate is the share of the incoming runes that were control characters.
@@ -229,6 +248,7 @@ func hasLetter(s string) bool {
 type Tally struct {
 	Documents  int64 `json:"documents"`
 	Changed    int64 `json:"changed"`
+	Repaired   int64 `json:"repaired"`
 	Homoglyphs int64 `json:"homoglyphs"`
 	Invisible  int64 `json:"invisible"`
 	Controls   int64 `json:"controls"`
@@ -244,6 +264,9 @@ func (t *Tally) Add(r Result) {
 	t.Documents++
 	if r.Changed {
 		t.Changed++
+	}
+	if r.Repaired() {
+		t.Repaired++
 	}
 	if _, ok := Reject(r); ok {
 		t.Rejected++
@@ -264,4 +287,13 @@ func (t Tally) ChangedShare() float64 {
 		return 0
 	}
 	return float64(t.Changed) / float64(t.Documents)
+}
+
+// RepairedShare is the share of documents that changed by something other than
+// their layout, between 0 and 1.
+func (t Tally) RepairedShare() float64 {
+	if t.Documents == 0 {
+		return 0
+	}
+	return float64(t.Repaired) / float64(t.Documents)
 }

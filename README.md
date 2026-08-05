@@ -60,6 +60,7 @@ gao gat media  --from crawl                 # fetch PDFs, audio, video
 
 gao phoi       doc.txt                      # dry: normalize a document and write it out
 gao phoi -report ingest/*.txt               # what normalizing did, per document, with a total
+gao phoi -report -total parts/*.parquet     # and over parts, where the total is the part anybody reads
 gao sang       parts/*.parquet              # sift: which documents are Vietnamese prose, and why the rest are not
 gao sang -min-syllables 40 parts/*.parquet  # and what a different length floor would keep
 gao xay        parts/*.parquet              # mill: what the corpus holds more than one copy of
@@ -205,14 +206,31 @@ The `i` and `y` variation is deliberately not normalized. `Mĩ` and `Mỹ`, `kĩ
 Normalizing twice changes nothing, and a test says so. Documents pass through this stage every time the corpus is rebuilt, so a rule that kept finding work would invalidate every hash taken on the pass before. The rest of the tests are golden files over real Vietnamese from five kinds of source rather than lorem ipsum with diacritics: an encyclopedia article, a page laid out for print, a news article, a document written under the older tone convention, and a forum post full of keystrokes. Each one carries the damage its kind of source actually carries, and `phoi/testdata/README.md` says which document is there for what.
 
 ```
-document                      changed  homoglyphs  invisible  controls  composed  tones  residue  syllables  kept
-phoi/testdata/bach-khoa.in    yes      2           1          0         0         0      0        88         yes
-phoi/testdata/ban-in.in       yes      9           1          0         0         0      0        52         yes
-phoi/testdata/bao-dien-tu.in  yes      0           1          0         0         0      0        76         yes
-phoi/testdata/dau-cu.in       yes      0           0          0         0         6      0        90         yes
-phoi/testdata/dien-dan.in     no       0           0          0         0         0      3        66         no, residue
-5 documents                   4        11          3          0         0         6      3        372        1 rejected
+document                      changed  repaired  homoglyphs  invisible  controls  composed  tones  residue  syllables  kept
+phoi/testdata/bach-khoa.in    yes      yes       2           1          0         0         0      0        88         yes
+phoi/testdata/ban-in.in       yes      yes       9           1          0         0         0      0        52         yes
+phoi/testdata/bao-dien-tu.in  yes      yes       0           1          0         0         0      0        76         yes
+phoi/testdata/dau-cu.in       yes      yes       0           0          0         0         6      0        90         yes
+phoi/testdata/dien-dan.in     no       no        0           0          0         0         0      3        66         no, residue
+5 documents                   4        4         11          3          0         0         6      3        372        1 rejected
 ```
+
+Fixtures say the rules fire. What they cannot say is how much of the corpus this stage is doing anything to, which is the one claim about it that was written down in advance, so the report reads Parquet parts as well as text files and `-total` prints the summary instead of a line for each of a few hundred thousand documents. Reading a part costs 50 MB of resident memory whatever size the part is, because the rows come out of it one at a time and the run holds one. Four parts, one from each source, read back out of the store onto `server2` and measured there while that box was fetching:
+
+```
+part                documents  changed  repaired  homoglyphs  invisible  controls  composed  tones   residue  syllables
+glotcc/00000        183514     183514   52769     41941       37961      2362      19        136562  24562    248461212
+fineweb2/00000      273460     273460   40619     48160       3          0         151       125833  9942     253067746
+finepdfs/00000      54676      54676    19494     85842       23289      0         11        178560  17835    214453351
+hplt3/00000         54131      54129    17030     7216        1          0         329       85367   8752     160542119
+four parts          565781     565779   129912    183159      61254      2362      510       526322  61091    876524428
+```
+
+That is four runs of `gao phoi -report -total`, one per part, with the total rows put beside each other. Normalization changed every document in all four, give or take the two HPLT documents that arrived in exactly the form this stage writes. That is true and it is a fact about the final newline rather than about Vietnamese: layout runs on every document that goes past, one that arrives without a trailing newline leaves with one, and a share that rounds to all of them is not telling you anything about the material. So the number to read is the second one, the share of documents where a character was repaired rather than the whitespace settled. It is 23.0 percent across the four parts, and it runs from 14.9 percent on FineWeb2 to 35.7 percent on FinePDFs. The prediction on the board was 3 percent or more, which the stage clears seven times over and which it would also have cleared by touching nothing but whitespace. Splitting the two counts is the fix for a prediction that was too easy to satisfy, and it is a property of the result rather than a note in a release, so the next person to quote the number gets the one that means something.
+
+What the four sources disagree about is the cleaning somebody else already did. FineWeb2 arrives with 3 invisible characters in 273460 documents and HPLT v3 with 1 in 54131, and neither carries a single control character. GlotCC arrives with 37961 invisible characters and 2362 controls in 183514 documents, and FinePDFs with 23289 invisible characters in 54676. Homoglyphs follow the extraction rather than the source, at 85842 in one FinePDFs part against 7216 in one HPLT part, which is what text recovered from a PDF looks like next to text recovered from HTML. Tone mark placement is the one thing all four carry in quantity, from 85367 syllables in the HPLT part to 178560 in the FinePDFs one, because it is a convention of Vietnamese writing rather than damage, and no pipeline built for English would have had a reason to touch it. That is the argument for this stage in one table: the sources have been cleaned, and none of them has been cleaned for Vietnamese.
+
+The four parts took two hours and one minute of one core between them, for 565781 documents and 876 million syllables, on a box that was fetching a different source at the same time. That is the number to multiply when the corpus goes through rather than four parts of it, and it is why running this on the fleet is a milestone item rather than a footnote.
 
 What the stage does not do yet is the legacy font encodings. TCVN3, VNI, VPS and BK HCM pages hold Vietnamese as bytes that are only Vietnamese under one particular font, and the older Vietnamese web still serves them in quantity. Detecting and transcoding those is the open item here, and until it lands such a page arrives as text this stage has nothing to say about.
 

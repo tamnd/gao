@@ -422,3 +422,68 @@ func TestAnEmptyPartIsStillAParquetFile(t *testing.T) {
 		t.Errorf("an empty part read back %d rows", len(rows))
 	}
 }
+
+// A part off the fleet is around 700 MB of compressed text, which comes back as
+// several gigabytes of strings. Reading one to measure it has to cost what one
+// row costs and not what the file costs, or the boxes can only ever measure the
+// parts that happen to be small.
+func TestScanPartHandsOverEveryRowInOrder(t *testing.T) {
+	docs := make([]*doc.Document, 5)
+	for i := range docs {
+		docs[i] = sample(i)
+	}
+	path, _ := writePart(t, textDataset(t), docs...)
+
+	var got []string
+	if err := ScanPart(path, func(r Row) error {
+		got = append(got, r.Text)
+		return nil
+	}); err != nil {
+		t.Fatalf("ScanPart: %v", err)
+	}
+	if len(got) != len(docs) {
+		t.Fatalf("the scan saw %d rows, want %d", len(got), len(docs))
+	}
+	for i, rec := range docs {
+		if got[i] != rec.Text {
+			t.Errorf("row %d came back as %q, want %q", i, got[i], rec.Text)
+		}
+	}
+}
+
+// A caller that has seen enough should be able to stop, and what it stopped for
+// is what it wants back rather than something wrapped around it.
+func TestScanPartStopsWhenTheCallerDoes(t *testing.T) {
+	docs := make([]*doc.Document, 200)
+	for i := range docs {
+		docs[i] = sample(i)
+	}
+	path, _ := writePart(t, textDataset(t), docs...)
+
+	enough := errors.New("enough")
+	seen := 0
+	err := ScanPart(path, func(Row) error {
+		seen++
+		if seen == 3 {
+			return enough
+		}
+		return nil
+	})
+	if !errors.Is(err, enough) {
+		t.Fatalf("ScanPart returned %v, want the caller's own error", err)
+	}
+	if seen != 3 {
+		t.Errorf("the scan carried on to row %d after being told to stop", seen)
+	}
+}
+
+func TestScanPartSaysWhichFileIsNotAPart(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "not-a-part.parquet")
+	if err := os.WriteFile(path, []byte("this is not parquet"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	err := ScanPart(path, func(Row) error { return nil })
+	if err == nil || !strings.Contains(err.Error(), "not-a-part.parquet") {
+		t.Errorf("scanning a file that is not a part returned %v, and it should name the file", err)
+	}
+}
