@@ -64,6 +64,8 @@ gao sang       parts/*.parquet              # sift: which documents are Vietname
 gao sang -min-syllables 40 parts/*.parquet  # and what a different length floor would keep
 gao xay        parts/*.parquet              # mill: what the corpus holds more than one copy of
 gao xay -curve parts/*.parquet              # and what every deduplication threshold would cost
+gao che        doc.txt                      # cover: tag over the personal data in a document
+gao che -level L2 -report parts/*.parquet   # and what a corpus holds, per kind, before covering it
 
 gao kho release --snapshot gao-v1.0         # store and publish
 gao kho verify  snapshots/gao-v1.0          # check a snapshot against its manifest
@@ -276,6 +278,50 @@ What is here is a shard, not the corpus. A signature is 1 KB, so four hundred mi
 
 The paragraph level boilerplate pass is the other open item here. A legal footer repeated on every page of a site is not a duplicate document, it is a duplicate paragraph inside documents that are otherwise distinct, and removing it is a host aware pass over paragraphs rather than a threshold over documents.
 
+## Covering what belongs to somebody
+
+Every identifier a person in Vietnam carries is a run of digits, and so is every price, date, document number, flight number and lottery result on the same page. A detector that matches digit runs has enormous recall and no precision at all, and what it produces is not a private corpus, it is a corpus with holes punched through the middle of ordinary Vietnamese sentences. So `che` validates the structure of what it matched. A national ID is twelve digits opening with one of the sixty three province codes the numbering was built on. A mobile number is ten or eleven digits whose first two after the leading zero were assigned to a carrier, and the ones that were never assigned are the reason a ten digit number is not automatically a phone number. A tax code carries a check digit over the weights 31, 29, 23, 19, 17, 13, 7, 5, 3. A plate has a letter series wedged between a two digit province prefix and its tail, which no ordinary number in Vietnamese text does.
+
+The polarity of every one of those rules is chosen the same way, and it is the only design rule in this package that matters. A rule that is wrong should cost precision, which means a number that was not personal gets covered and one sentence reads slightly worse. A rule that is wrong the other way costs recall, which means a real national ID stays in a published corpus and stays there permanently. So a validator is never the only thing standing between an identifier and publication: a cue in the text is sufficient on its own, and the validator only decides whether a bare number with nothing around it is covered as well. The tax check digit can add coverage and can never remove it. The old nine digit CMND has no province table worth defending, so it is found by its cue and nothing else, and that is written down as a known gap rather than papered over with a length test that would cover every nine digit number in the corpus.
+
+Names are not redacted wholesale, and that is a decision rather than an omission. A Vietnamese corpus with no Vietnamese names in it is not a Vietnamese corpus: it cannot say who wrote Truyện Kiều, it has never seen the name of a president, and the names it does not know are exactly the ones a model needs in order to write Vietnamese about Vietnamese people. Half the country is named Nguyễn and redacting Nguyễn is not privacy work. What is actually private is a name beside a way of reaching the person it belongs to, so a name is covered when the paragraph it sits in also holds an identifier that was covered, and left alone otherwise. A news story about Hồ Chí Minh and Nguyễn Du comes back untouched. A classified advertisement loses the seller.
+
+Two things break that rule if nobody guards them, and both are ordinary in Vietnamese. Streets, wards and schools are named after people, so an address is not allowed to donate its street name to the name detector. Companies are routinely named after whoever founded them, and a company is not a natural person, so a business marker suppresses the name that follows it, scoped to the line it appears on. That last scope is the whole difference between a contract whose first line reads Công ty TNHH Thương mại Hoàng Long and whose fourth line names a person: the company keeps its name, and Trần Thị Hương four lines down does not.
+
+Text typed without tone marks is handled the same way `sang` handles it, because it is the same half of the corpus and it is the half with phone numbers in it. A contact block that reads `lien he anh Nguyen Van Minh` is personal data written by somebody in a hurry, and a surname list matching only Nguyễn would find nobody in it. So every word list here is held twice, once as it is written and once with the marks off, and `phoi.Bare` is shared with `sang` rather than reimplemented. The cost is stated where the list is defined: a bare form matches every marked word it could have come from, which is acceptable for a name list already guarded by co-occurrence and would not be acceptable anywhere else.
+
+The address gazetteer holds sixty three provinces and thirty four. Vietnam merged its provincial units on 1 July 2025, and most of the text in the corpus was written before that, so a gazetteer holding only the current thirty four would fail to close an address chain on the majority of the addresses it meets. Holding both costs a longer list and nothing else. The CCCD province codes are the separate case and they stay at the pre 2025 sixty three, because an ID that has been issued does not renumber when the provinces do.
+
+```
+document      spans  covered  cued  email  phone  cccd  cmnd  tax  plate  name  address
+advert.txt    5      5        0     1      1      0     0     0    1      1     1
+contract.txt  5      5        3     0      1      1     1     1    0      1     0
+article.txt   0      0        0     0      0      0     0     0    0      0     0
+prices.txt    0      0        0     0      0      0     0     0    0      0     0
+forum.txt     3      3        0     0      1      0     0     0    0      1     1
+5 documents   13     13       3     1      3      1     1     1    1      3     2
+
+60.0% of the documents hold personal data of some kind.
+L2 covers all 13 of them.
+3 of them were found because the text named what they were, and the other 10 from their own structure.
+```
+
+The two documents with nothing in them are the ones that decide whether this stage is usable. `article.txt` is a news story quoting a population figure, a gold price and a year of birth, and naming three people. `prices.txt` is five lines of nothing but numbers, including a ten digit sum of money that a tax detector without a money check would have tagged. Both come back byte for byte identical. The last line of the report is the one worth watching over a real corpus: three of thirteen spans were found because somebody wrote `Mã số thuế` or `CMND` in front of their own number, which means the other ten depend entirely on the structure rules, and it is the number that says what the recall would collapse to if the cue lists were all there was.
+
+What is covered is a level, and the level is recorded per document rather than per run, because a corpus assembled from sources at different levels is a corpus where "what was removed from this document" has a per document answer. L0 finds everything and covers nothing, which is what a source gets measured with before anybody decides what to do about it. L1 covers identifiers and is the level for text whose upstream already published it under its own terms. L2 adds street addresses and the names beside an identifier, and is the level for anything that came out of our own crawl, where nobody upstream made the decision on our behalf.
+
+Nothing found is deleted. A phone number replaced by zeros teaches a model that phone numbers are zeros, a phone number replaced by nothing teaches it that sentences about calling somebody end in the middle, and a phone number replaced by `[SODIENTHOAI]` teaches it that a phone number goes there, which is the only one of the three that is true. The tags are uppercase Vietnamese without tone marks in brackets, so they survive normalization unchanged and cannot be produced by ordinary text.
+
+```
+Bán căn hộ 2 phòng ngủ, diện tích 68m2, tại [DIACHI].
+Giá 5.200.000.000 đồng, có thương lượng cho khách thiện chí.
+
+Liên hệ chính chủ anh [HOTEN], điện thoại [SODIENTHOAI], hoặc email [EMAIL].
+Xe đưa đón xem nhà biển số [BIENSO], đi lại thuận tiện trong nội thành.
+```
+
+The open item is recall, measured per detector against a labelled set rather than against the fixtures the detectors were written beside. Precision can be read off a run over real pages, which is what `-spans` is for, and it prints the matched text to the terminal on purpose because reading the matches is the only way to see a detector firing on something it should not. Recall cannot be read off anything, and until there is a labelled set the honest statement is that the cue lists and the structure rules are as good as the sources they were built from, which for the province codes and the carrier prefixes is a published table, and for the surname list is a decision to keep it short.
+
 ## Where the corpus lives
 
 gao runs on four real machines with 500 GB of free disk between them, and the corpus is 1188 GB of extracted text, 396 GB compressed. It does not fit, and it does not fit by enough that no amount of tidying changes the answer. `gao box` prints the arithmetic.
@@ -353,6 +399,7 @@ dem/         counting: the tokenizer that defines a gao token, and the counts
 phoi/        normalization: Unicode, orthography, encoding repair
 sang/        filtering: language ID, heuristics, quality classification
 xay/         milling: deduplication, boilerplate removal
+che/         covering: Vietnamese personal data, found and tagged over
 kho/         the store: records, manifests, snapshots, signing
 vo/          the reject store: dropped documents and why they were dropped
 doc/         schema and contracts shared across stages

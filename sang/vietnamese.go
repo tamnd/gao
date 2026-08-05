@@ -4,10 +4,11 @@ package sang
 
 import (
 	"slices"
-	"strings"
 	"unicode"
 
 	"golang.org/x/text/unicode/norm"
+
+	"github.com/tamnd/gao/phoi"
 )
 
 // isDiacritic reports whether a letter carries a Vietnamese diacritic: any of
@@ -84,28 +85,10 @@ var stopWords = map[string]bool{
 var bareStopWords = func() map[string]bool {
 	out := make(map[string]bool, len(stopWords))
 	for w := range stopWords {
-		out[bare(w)] = true
+		out[phoi.Bare(w)] = true
 	}
 	return out
 }()
-
-// bare strips the tone marks and the stroke off a syllable, so that va and the
-// properly written form are one word.
-func bare(s string) string {
-	var b strings.Builder
-	for _, c := range norm.NFD.String(s) {
-		switch {
-		case unicode.Is(unicode.Mn, c):
-		case c == 'đ':
-			b.WriteRune('d')
-		case c == 'Đ':
-			b.WriteRune('D')
-		default:
-			b.WriteRune(c)
-		}
-	}
-	return b.String()
-}
 
 // countStopWords returns how many distinct function words the document holds.
 //
@@ -115,7 +98,7 @@ func bare(s string) string {
 func countStopWords(syllables []string) int {
 	seen := make(map[string]bool)
 	for _, s := range syllables {
-		if w := bare(s); bareStopWords[w] {
+		if w := phoi.Bare(s); bareStopWords[w] {
 			seen[w] = true
 		}
 	}
