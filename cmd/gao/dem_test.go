@@ -11,6 +11,7 @@ import (
 
 	"github.com/tamnd/gao/dem"
 	"github.com/tamnd/gao/doc"
+	"github.com/tamnd/gao/kho"
 )
 
 // Nothing here downloads a tokenizer. What a fetch does is settled in dem
@@ -455,5 +456,222 @@ func TestDemCountsNamesEveryBoxThatWasStillGoing(t *testing.T) {
 	}
 	if strings.Contains(out, "server1 was still running") {
 		t.Errorf("the box that had finished was named as running:\n%s", out)
+	}
+}
+
+// Nothing below reaches a store. What a pass over one does is settled in dem,
+// and what is left for the command is the plan it prints before it starts and
+// the verdict it prints at the end.
+
+func TestDemVerifyIsInTheUsageAndSaysWhatItMoves(t *testing.T) {
+	_, errOut, code := exec(t, "dem")
+	if code != 2 {
+		t.Fatalf("gao dem with no subcommand: exit %d, want 2", code)
+	}
+	if !strings.Contains(errOut, "verify") {
+		t.Errorf("verify is not in the dem usage:\n%s", errOut)
+	}
+
+	_, errOut, _ = exec(t, "dem", "verify", "-h")
+	for _, want := range []string{"n_chars", "twelve bytes per document", "sample", "uniformly a little off"} {
+		if !strings.Contains(errOut, want) {
+			t.Errorf("the verify usage does not mention %q:\n%s", want, errOut)
+		}
+	}
+}
+
+func TestDemVerifyRejectsALevelThatIsNotOne(t *testing.T) {
+	_, errOut, code := exec(t, "dem", "verify", "-level", "everything")
+	if code != 2 {
+		t.Errorf("gao dem verify at an unknown level: exit %d, want 2", code)
+	}
+	if !strings.Contains(errOut, "everything") {
+		t.Errorf("the error does not name the level asked for:\n%s", errOut)
+	}
+}
+
+func TestDemVerifySaysWhenThereIsNoSuchRepo(t *testing.T) {
+	_, errOut, code := exec(t, "dem", "verify", "-repo", "vietnamese-nothing")
+	if code != 1 {
+		t.Errorf("gao dem verify on an unknown repo: exit %d, want 1", code)
+	}
+	if !strings.Contains(errOut, "vietnamese-nothing") {
+		t.Errorf("the error does not name the repo:\n%s", errOut)
+	}
+}
+
+// plan is a snapshot the size of the one this protocol was written for.
+func plan(t *testing.T, documents int64) dem.Plan {
+	t.Helper()
+	parts := make([]kho.Stored, 400)
+	for i := range parts {
+		parts[i] = kho.Stored{Path: kho.StagePath("hplt-v3-0f2b4c1d9e", i, 0), Bytes: 700 << 20}
+	}
+	return dem.Planned("hplt-v3-0f2b4c1d9e", parts, documents, 0.05, 0.99, "s1-2026-08")
+}
+
+// The plan is the argument. Somebody deciding whether to run this needs the two
+// halves priced separately and the alternative priced beside them, before the
+// run rather than during it.
+func TestTheVerifyPlanPricesBothLevelsAgainstTheDownloadItReplaces(t *testing.T) {
+	var b bytes.Buffer
+	printVerifyPlan(&b, plan(t, 4_000_000), "tamnd/gao-work", 100)
+	out := b.String()
+
+	for _, want := range []string{"level one", "level two", "s1-2026-08", "5.0%", "99.0%", "tamnd/gao-work"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("the plan does not mention %q:\n%s", want, out)
+		}
+	}
+	if !strings.Contains(out, "6.5 hours at 100 Mbit") {
+		t.Errorf("the plan does not price the download it replaces:\n%s", out)
+	}
+}
+
+// A plan with no report to size level one from still names its sample, because
+// level two is the half that costs real money and it costs the same either way.
+func TestAVerifyPlanWithNothingClaimedYetStillPricesTheSample(t *testing.T) {
+	var b bytes.Buffer
+	printVerifyPlan(&b, plan(t, 0), "tamnd/gao-work", 100)
+	out := b.String()
+
+	if !strings.Contains(out, "no report yet") {
+		t.Errorf("the plan does not say why level one has no size on it:\n%s", out)
+	}
+	if !strings.Contains(out, "90 parts read in full") {
+		t.Errorf("the plan does not price level two:\n%s", out)
+	}
+}
+
+// A budget without the rate it assumed is a budget for one person's broadband.
+func TestABudgetNamesTheRateItAssumed(t *testing.T) {
+	const gb = 1 << 30
+	for _, tc := range []struct {
+		bytes int64
+		mbit  float64
+		want  string
+	}{
+		{100 * gb, 100, "2.4 hours at 100 Mbit"},
+		{700 * gb, 100, "16.7 hours at 100 Mbit"},
+		{700 * 400 * gb, 1000, "27.8 days at 1000 Mbit"},
+		{48 * gb, 0, "no budget without a link rate"},
+		{1 << 20, 100, "under a minute at 100 Mbit"},
+	} {
+		if got := budget(tc.bytes, tc.mbit); got != tc.want {
+			t.Errorf("budget(%d, %g) = %q, want %q", tc.bytes, tc.mbit, got, tc.want)
+		}
+	}
+}
+
+func TestPrintDifferencesSaysTheCountsAreTheOnesInTheStore(t *testing.T) {
+	c := dem.Counts{Documents: 1000, Chars: 40000, Syllables: 9000}
+	var b bytes.Buffer
+	ok := printDifferences(&b, dem.Compare(
+		dem.Report{Sources: []dem.SourceCounts{{Source: doc.SourceGlotCC, Counts: c}}},
+		map[doc.Source]dem.Counts{doc.SourceGlotCC: c},
+	))
+	if !ok {
+		t.Errorf("a report that matches the store was reported as a difference:\n%s", b.String())
+	}
+	if !strings.Contains(b.String(), "are the counts in the store") {
+		t.Errorf("the verdict is not in the output:\n%s", b.String())
+	}
+}
+
+// The failure this exists for: a report written from a run that stopped early,
+// which is a real number about less corpus than there is.
+func TestPrintDifferencesNamesTheColumnThatIsOff(t *testing.T) {
+	claimed := dem.Counts{Documents: 900, Chars: 40000, Syllables: 9000}
+	stored := dem.Counts{Documents: 1000, Chars: 44000, Syllables: 9000}
+
+	var b bytes.Buffer
+	ok := printDifferences(&b, dem.Compare(
+		dem.Report{Sources: []dem.SourceCounts{{Source: doc.SourceGlotCC, Counts: claimed}}},
+		map[doc.Source]dem.Counts{doc.SourceGlotCC: stored},
+	))
+	if ok {
+		t.Fatalf("a report a hundred documents short of the store agreed with it:\n%s", b.String())
+	}
+	out := b.String()
+	if !strings.Contains(out, "differs on") || !strings.Contains(out, "documents, chars") {
+		t.Errorf("the output does not name the columns that are off:\n%s", out)
+	}
+	if strings.Contains(out, "syllables,") {
+		t.Errorf("a column that matched is named as one that did not:\n%s", out)
+	}
+}
+
+func TestPrintSpotSaysWhichDocumentAndWhichColumn(t *testing.T) {
+	var b bytes.Buffer
+	printSpot(&b, dem.Spot{
+		Part:      "data/hplt-v3-0f2b4c1d9e/f00003-p00012.parquet",
+		Documents: 40000,
+		Wrong:     12,
+		Mismatches: []dem.Mismatch{
+			{Row: 7, DocID: "3f2a91c4", Column: "n_chars", Stored: 940, Counted: 900},
+		},
+	})
+	out := b.String()
+	for _, want := range []string{"f00003-p00012.parquet", "row 7", "3f2a91c4", "n_chars", "940", "900", "11 more"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("the mismatch line does not mention %q:\n%s", want, out)
+		}
+	}
+}
+
+// The sample is a bound and not a proof, and the output has to say so where the
+// number is rather than in a footnote somewhere.
+func TestPrintSpotsSaysWhatTheSampleDoesNotProve(t *testing.T) {
+	counted := dem.Counts{Documents: 40000, Bytes: 1 << 30, Chars: 700_000_000, Syllables: 160_000_000}
+	spots := []dem.Spot{{
+		Part:      "data/hplt-v3-0f2b4c1d9e/f00003-p00012.parquet",
+		Documents: 40000,
+		Checked:   []string{"n_chars", "n_syllables"},
+		Counted:   counted,
+	}}
+
+	var b bytes.Buffer
+	if !printSpots(&b, spots, 0.05, 0.99) {
+		t.Fatalf("a sample with nothing wrong in it failed:\n%s", b.String())
+	}
+	out := b.String()
+	for _, want := range []string{"n_chars, n_syllables", "no more than 5.0%", "99.0% confidence", "uniformly a little off"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("the summary does not mention %q:\n%s", want, out)
+		}
+	}
+	if !strings.Contains(out, "bytes per character") {
+		t.Errorf("the sample is the only place a byte count is measured and it is not reported:\n%s", out)
+	}
+}
+
+func TestPrintSpotsFailsWhenAColumnDoesNotDescribeItsText(t *testing.T) {
+	var b bytes.Buffer
+	ok := printSpots(&b, []dem.Spot{{
+		Part:      "data/hplt-v3-0f2b4c1d9e/f00003-p00012.parquet",
+		Documents: 40000,
+		Checked:   []string{"n_chars"},
+		Counted:   dem.Counts{Documents: 40000, Bytes: 1 << 30, Chars: 700_000_000},
+		Wrong:     12,
+	}}, 0.05, 0.99)
+	if ok {
+		t.Fatalf("a part with twelve wrong documents in it passed:\n%s", b.String())
+	}
+	if !strings.Contains(b.String(), "12 documents across 1 parts") {
+		t.Errorf("the summary does not count what was wrong:\n%s", b.String())
+	}
+}
+
+// A dash rather than a zero, for the same reason the counts table does it: a
+// zero in a token column reads as a measurement.
+func TestPrintShapeDoesNotClaimAByteCountItCannotHave(t *testing.T) {
+	var b bytes.Buffer
+	printShape(&b, "hplt-v3-0f2b4c1d9e", dem.Counts{Documents: 1000, Chars: 40000, Syllables: 9000})
+	out := b.String()
+	if !strings.Contains(out, "tokens     -") {
+		t.Errorf("a run with no token column printed a number for it:\n%s", out)
+	}
+	if !strings.Contains(out, "nothing stores the byte length") {
+		t.Errorf("the output does not say why there is no byte count:\n%s", out)
 	}
 }

@@ -467,23 +467,3 @@ func TestTheLetterUnicodeDoesNotDecomposeIsStillMarked(t *testing.T) {
 		}
 	}
 }
-
-// A syllable count is a count and not one of the estimates in doc/units.go, and
-// it is what a per source number in a release note is allowed to be built from.
-func TestSyllablesAreCountedAndNotEstimated(t *testing.T) {
-	for _, tc := range []struct {
-		in   string
-		want uint32
-	}{
-		{"Tiếng Việt", 2},
-		{"Hà Nội, Việt Nam.", 4},
-		{"", 0},
-		{"123 456", 0},
-		{"COVID-19", 1},
-		{"một\nhai\tba", 3},
-	} {
-		if got := syllables(tc.in); got != tc.want {
-			t.Errorf("syllables(%q) = %d, want %d", tc.in, got, tc.want)
-		}
-	}
-}

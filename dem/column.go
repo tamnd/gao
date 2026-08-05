@@ -51,14 +51,42 @@ func DocIDs(r io.ReaderAt, size int64, yield func(doc.Hash) error) error {
 	if err != nil {
 		return fmt.Errorf("dem: opening a part of %d bytes: %w", size, err)
 	}
-	at, err := columnIndex(f.Schema(), kho.DocIDColumn)
+	return EachDocID(f, yield)
+}
+
+// EachDocID is [DocIDs] over a part that is already open, for a caller reading
+// more than one column out of the same file.
+func EachDocID(f *parquet.File, yield func(doc.Hash) error) error {
+	return eachValue(f, kho.DocIDColumn, func(v parquet.Value) error {
+		b := v.ByteArray()
+		if len(b) != doc.HashSize {
+			return fmt.Errorf("dem: a doc_id in this part is %d bytes rather than %d", len(b), doc.HashSize)
+		}
+		return yield(doc.Hash(b))
+	})
+}
+
+// EachUint32 calls yield with every value of a fixed width numeric column.
+//
+// The shape columns are this shape, and it is why a recount over the whole
+// corpus is affordable: four bytes per document per column against a few
+// kilobytes of text, before the encoding takes most of even that away.
+func EachUint32(f *parquet.File, name string, yield func(uint32) error) error {
+	return eachValue(f, name, func(v parquet.Value) error {
+		return yield(v.Uint32())
+	})
+}
+
+// eachValue walks one named column of a part and yields every value in it, in
+// row order.
+func eachValue(f *parquet.File, name string, yield func(parquet.Value) error) error {
+	at, err := columnIndex(f.Schema(), name)
 	if err != nil {
 		return err
 	}
-
 	buf := make([]parquet.Value, valueBatch)
 	for _, group := range f.RowGroups() {
-		if err := readColumn(group.ColumnChunks()[at], buf, yield); err != nil {
+		if err := readColumn(group.ColumnChunks()[at], buf, name, yield); err != nil {
 			return err
 		}
 	}
@@ -80,7 +108,7 @@ func columnIndex(s *parquet.Schema, name string) (int, error) {
 }
 
 // readColumn walks the pages of one column chunk and yields every value in it.
-func readColumn(chunk parquet.ColumnChunk, buf []parquet.Value, yield func(doc.Hash) error) error {
+func readColumn(chunk parquet.ColumnChunk, buf []parquet.Value, name string, yield func(parquet.Value) error) error {
 	pages := chunk.Pages()
 	defer func() { _ = pages.Close() }()
 
@@ -90,9 +118,9 @@ func readColumn(chunk parquet.ColumnChunk, buf []parquet.Value, yield func(doc.H
 			return nil
 		}
 		if err != nil {
-			return fmt.Errorf("dem: reading a page of doc_id: %w", err)
+			return fmt.Errorf("dem: reading a page of %s: %w", name, err)
 		}
-		err = readPage(page, buf, yield)
+		err = readPage(page, buf, name, yield)
 		// Released rather than left to the collector because these are pooled,
 		// and a pass over a corpus that dropped every page on the floor would be
 		// allocating a buffer per page for four hundred million documents.
@@ -103,16 +131,12 @@ func readColumn(chunk parquet.ColumnChunk, buf []parquet.Value, yield func(doc.H
 	}
 }
 
-func readPage(page parquet.Page, buf []parquet.Value, yield func(doc.Hash) error) error {
+func readPage(page parquet.Page, buf []parquet.Value, name string, yield func(parquet.Value) error) error {
 	values := page.Values()
 	for {
 		n, err := values.ReadValues(buf)
 		for _, v := range buf[:n] {
-			b := v.ByteArray()
-			if len(b) != doc.HashSize {
-				return fmt.Errorf("dem: a doc_id in this part is %d bytes rather than %d", len(b), doc.HashSize)
-			}
-			if err := yield(doc.Hash(b)); err != nil {
+			if err := yield(v); err != nil {
 				return err
 			}
 		}
@@ -120,7 +144,7 @@ func readPage(page parquet.Page, buf []parquet.Value, yield func(doc.Hash) error
 			return nil
 		}
 		if err != nil {
-			return fmt.Errorf("dem: reading doc_id values: %w", err)
+			return fmt.Errorf("dem: reading %s values: %w", name, err)
 		}
 	}
 }

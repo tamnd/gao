@@ -37,7 +37,6 @@ import (
 	"strconv"
 	"strings"
 	"unicode"
-	"unicode/utf8"
 
 	"github.com/klauspost/compress/gzip"
 	"github.com/klauspost/compress/zstd"
@@ -271,8 +270,8 @@ func build(r row, text string) *doc.Document {
 	d.PipelineVersion = PipelineVersion
 	d.Lang = "vie"
 	d.Diacritics = verdict
-	d.NChars = uint32(utf8.RuneCountInString(text))
-	d.NSyllables = syllables(text)
+	d.NChars = doc.Chars(text)
+	d.NSyllables = doc.Syllables(text)
 	d.Heuristics = map[string]float32{"diacritic_ratio": ratio}
 	d.LicenseClass, d.LicenseEvidence = license(r.Pin)
 	return d
@@ -301,34 +300,6 @@ func hostOf(raw string) string {
 		return ""
 	}
 	return u.Hostname()
-}
-
-// syllables counts the Vietnamese syllables in the text: every maximal run of
-// letters is one, and digits and punctuation are none.
-//
-// Vietnamese writes each syllable as its own whitespace separated word, so this
-// is a count and not an estimate, which is the difference between it and the
-// conversions in doc/units.go. Those exist to size a download before it happens.
-// This is what a per source count in the release notes is allowed to be built
-// from.
-//
-// It is not a token count. Tokens come out of a tokenizer that does not exist
-// yet, and a syllable count standing in for one would be a number that looks
-// like the headline and is not.
-func syllables(text string) uint32 {
-	var n uint32
-	inWord := false
-	for _, r := range text {
-		if unicode.IsLetter(r) {
-			if !inWord {
-				n++
-				inWord = true
-			}
-			continue
-		}
-		inWord = false
-	}
-	return n
 }
 
 // The diacritic verdict.
