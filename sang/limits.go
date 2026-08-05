@@ -53,6 +53,13 @@ type Limits struct {
 	// [TopGramSizes] and [RepeatGramSizes].
 	MaxTop    [3]float64
 	MaxRepeat [3]float64
+
+	// Identify says whether the syllable inventory decides the language, which
+	// it does. It is a switch rather than a constant so that the ablation can
+	// measure what the identifier costs and what it admits by running the same
+	// corpus with it off, which is the only way the claim that it admits
+	// documents stock models reject can be checked.
+	Identify bool
 }
 
 // Default returns the thresholds the pipeline runs at.
@@ -73,6 +80,8 @@ func Default() Limits {
 
 		MaxTop:    [3]float64{0.20, 0.18, 0.16},
 		MaxRepeat: [3]float64{0.15, 0.12, 0.10},
+
+		Identify: true,
 	}
 }
 
@@ -119,6 +128,9 @@ func (l Limits) Reject(r Result) (vo.Reason, string, bool) {
 	if r.StopWords < l.MinStopWords {
 		return vo.ReasonLanguage, fmt.Sprintf("%d distinct function words, under %d", r.StopWords, l.MinStopWords), true
 	}
+	if l.Identify && !r.Language.Vietnamese() {
+		return vo.ReasonLanguage, languageDetail(r.Language), true
+	}
 
 	if rate := r.DuplicateLineRate(); rate > l.MaxDuplicateLineRate {
 		return vo.ReasonRepetition, fmt.Sprintf("%.2f of lines had appeared before, over %.2f", rate, l.MaxDuplicateLineRate), true
@@ -137,6 +149,18 @@ func (l Limits) Reject(r Result) (vo.Reason, string, bool) {
 		}
 	}
 	return "", "", false
+}
+
+// languageDetail says why the identifier turned a document down, in the terms
+// the identifier used rather than in a score. Which register it was read in
+// decides which of the two bars applied, so the message names it.
+func languageDetail(l Language) string {
+	if l.MarkRate() >= MinMarkRate {
+		return fmt.Sprintf("%.2f of tokens are Vietnamese syllables and %d function words carry their marks, under %.2f and %d",
+			l.Rate(), l.MarkedStopWords, MinRate, MinIDMarkedStop)
+	}
+	return fmt.Sprintf("written without tone marks, %.2f of tokens are Vietnamese syllables with the marks off and %d function words match, under %.2f and %d",
+		l.BareRate(), l.StopWords, MinBareRate, MinIDStopWords)
 }
 
 // Tally is what a run of this stage reports.

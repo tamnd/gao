@@ -37,15 +37,17 @@
 // text, so the sizes are scaled rather than copied: where Gopher looks at 2, 3
 // and 4 word grams, this looks at 3, 5 and 7 syllable grams.
 //
+// # Which language, and how it is answered
+//
+// [Identify] is the language identifier, and it is a lookup rather than a model.
+// Vietnamese has a closed syllable inventory, so the question of whether a
+// document is Vietnamese has an exact answer that does not degrade on a short
+// page or on a register nobody trained for. What that buys and what it costs is
+// written down in syllable.go, next to the inventory.
+//
 // # What this stage does not do
 //
-// It does not identify the language. Two of its checks, the stop word count and
-// the syllable length window, are the cheap version of that question and they
-// write vo.ReasonLanguage when they fire, but the Vietnamese tuned identifier is
-// a separate piece of work and this one runs before it because it costs a pass
-// over the text rather than a model.
-//
-// It does not judge quality either. gao-qual is a classifier trained against a
+// It does not judge quality. gao-qual is a classifier trained against a
 // hand built reference set, and a document that passes everything here has only
 // been found to be Vietnamese prose of some length, which is the floor rather
 // than the bar.
@@ -101,6 +103,12 @@ type Result struct {
 	DuplicateLines     int
 	DuplicateLineRunes int
 	LineRunes          int
+
+	// Language is what the document measures against the Vietnamese syllable
+	// inventory. It is a separate struct because it answers a separate question,
+	// and because it is the one part of this stage that can be run on its own
+	// against a labeled set.
+	Language Language
 
 	// Top holds, for each size in [TopGramSizes], the share of the document
 	// taken by the single most repeated syllable gram of that size, and zero
@@ -229,6 +237,9 @@ func (r Result) Heuristics() map[string]float32 {
 		"dup_line_runes":  float32(r.DuplicateLineRuneRate()),
 		"top_gram_max":    float32(max3(r.Top)),
 		"repeat_gram_max": float32(max3(r.Repeat)),
+		"syllable_rate":   float32(r.Language.Rate()),
+		"bare_rate":       float32(r.Language.BareRate()),
+		"mark_rate":       float32(r.Language.MarkRate()),
 	}
 	return h
 }
@@ -276,6 +287,7 @@ func Measure(text string) Result {
 	}
 	r.Symbols = countSymbols(text)
 	r.StopWords = countStopWords(syllables)
+	r.Language = Identify(text)
 
 	measureLines(&r, text)
 	measureGrams(&r, syllables)

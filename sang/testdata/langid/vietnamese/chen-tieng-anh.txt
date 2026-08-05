@@ -1,0 +1,5 @@
+Team mình đang dùng Kubernetes để deploy service, nhưng cluster hiện tại chỉ có ba node nên mỗi lần rollout là latency tăng thấy rõ. Nhìn vào dashboard thì phần lớn thời gian nằm ở bước pull image, chứ không phải ở chỗ container khởi động.
+
+Sprint này bọn mình sẽ tách phần authentication ra thành một service riêng, viết bằng Go, và để cache ở Redis cho nhẹ database. Chỗ khó nhất vẫn là migration, vì bảng user hiện tại có hơn hai mươi triệu dòng và không thể khoá lâu được.
+
+Bạn nào từng chạy Postgres với connection pool lớn thì cho mình xin ít kinh nghiệm về tuning, nhất là mấy tham số liên quan tới work_mem và shared_buffers. Bọn mình đã thử tăng lên nhưng chưa thấy khác biệt gì rõ ràng.
