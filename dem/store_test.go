@@ -12,7 +12,6 @@ import (
 	"sync"
 	"testing"
 	"time"
-	"unicode/utf8"
 
 	"github.com/tamnd/gao/doc"
 	"github.com/tamnd/gao/kho"
@@ -123,6 +122,17 @@ func (s *store) resolve(w http.ResponseWriter, r *http.Request) {
 // path an ingest would have written it to.
 func (s *store) put(snapshot string, file, part int, texts ...string) {
 	s.t.Helper()
+	docs := make([]*doc.Document, len(texts))
+	for i, text := range texts {
+		docs[i] = document(text)
+	}
+	s.putDocs(snapshot, file, part, docs...)
+}
+
+// putDocs is put for a test that needs the documents to say something other than
+// the truth about themselves, which is the case a spot check exists for.
+func (s *store) putDocs(snapshot string, file, part int, docs ...*doc.Document) {
+	s.t.Helper()
 	d, ok := kho.Lookup("vietnamese-web-text")
 	if !ok {
 		s.t.Fatal("the published text repo is not in the dataset table")
@@ -134,8 +144,8 @@ func (s *store) put(snapshot string, file, part int, texts ...string) {
 		s.t.Fatalf("CreatePart: %v", err)
 	}
 	defer p.Abandon()
-	for _, text := range texts {
-		if err := p.Append(document(text)); err != nil {
+	for _, d := range docs {
+		if err := p.Append(d); err != nil {
 			s.t.Fatalf("Append: %v", err)
 		}
 	}
@@ -172,7 +182,8 @@ func document(text string) *doc.Document {
 		Licensing: doc.Licensing{LicenseClass: doc.LicenseOpen, LicenseEvidence: "cc-by from the source"},
 	}
 	d.DocID = doc.SumString(d.Text)
-	d.NChars = uint32(utf8.RuneCountInString(d.Text))
+	d.NChars = doc.Chars(d.Text)
+	d.NSyllables = doc.Syllables(d.Text)
 	return d
 }
 

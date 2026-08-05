@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/tamnd/gao/dem"
+	"github.com/tamnd/gao/doc"
 	"github.com/tamnd/gao/kho"
 	"github.com/tamnd/gao/may"
 )
@@ -33,6 +34,8 @@ func runDem(stdout, stderr io.Writer, args []string) int {
 		return runDemKeys(stdout, stderr, args[1:])
 	case "overlap":
 		return runDemOverlap(stdout, stderr, args[1:])
+	case "verify":
+		return runDemVerify(stdout, stderr, args[1:])
 	case "help", "-h", "--help":
 		demUsage(stdout)
 		return 0
@@ -55,6 +58,7 @@ subcommands:
   counts   print the counts an ingest produced, or several added together
   keys     read the document identities of a snapshot out of the store
   overlap  print what the sources have in common, from their key files
+  verify   check a published count against the store it came from
 
 run 'gao dem <subcommand> -h' for the flags of a single subcommand.
 `)
@@ -442,6 +446,349 @@ func printOverlap(w io.Writer, m dem.Matrix) {
 		fmt.Fprintf(tw, "%s and %s\t%d\t%s\t%s\n", p.A, p.B, p.Both, percent(m.Share(p.A, p.B)), percent(m.Share(p.B, p.A)))
 	}
 	_ = tw.Flush()
+}
+
+// The three levels a verification run can go to. They are cumulative: reading
+// text without having added the columns up first would check a sample of a
+// corpus whose total nobody had checked.
+const (
+	levelPlan = iota
+	levelCounts
+	levelText
+)
+
+// dirs is a flag that can be given more than once, which is what four boxes each
+// writing their own counts need.
+type dirs []string
+
+func (d *dirs) String() string { return strings.Join(*d, ", ") }
+
+func (d *dirs) Set(v string) error {
+	*d = append(*d, v)
+	return nil
+}
+
+func runDemVerify(stdout, stderr io.Writer, args []string) int {
+	fs := flag.NewFlagSet("dem verify", flag.ContinueOnError)
+	fs.SetOutput(stderr)
+	var counts dirs
+	repo := fs.String("repo", kho.StageRepo, "the dataset repo the parts are in")
+	dir := fs.String("dir", "verify", "where the resume records are kept")
+	fs.Var(&counts, "counts", "an ingest directory whose counts to check, repeatable")
+	level := fs.String("level", "plan", "how far to go: plan, counts or text")
+	share := fs.Float64("share", 0.05, "the share of bad parts the sample is sized to catch")
+	confidence := fs.Float64("confidence", 0.99, "how sure to be of that")
+	seed := fs.String("seed", "", "the sample seed, defaulting to the snapshot name")
+	rate := fs.Float64("rate", 100, "the link rate in megabits the budget assumes")
+	model := fs.String("tokenizer", "", "the pinned tokenizer, without which the token column is not checked")
+	fs.Usage = func() {
+		fmt.Fprint(stderr, `usage: gao dem verify [-level plan|counts|text] [flags] [SNAPSHOT ...]
+
+Checks a published count against the store it came from, without downloading the
+corpus. With no snapshot it checks every snapshot the repo holds.
+
+The obvious way to verify a corpus size is to count the text again, and at the
+size gao is that is a week of somebody's bandwidth, so nobody does it, and a
+number nobody checks is a number nobody has to be right about. This is the way
+that can actually be run.
+
+Level one adds up n_chars, n_syllables and n_tokens over every part in the store.
+Those are fixed width columns, so it moves twelve bytes per document rather than
+the document, and it covers the corpus completely. What it proves is that the
+published total is the sum of what is stored, and what it catches is a report
+written from a run that did not finish, a source counted twice, a part that never
+arrived, and arithmetic.
+
+Level two reads a sample of parts all the way through and counts each document
+from its own text. That is the only way to catch a column that lies, which level
+one cannot see: a stage that rewrote text and forgot to recount leaves columns
+adding up perfectly to a total describing text nobody has.
+
+The sample is sized from the bound wanted rather than from what seemed like
+enough. Missing a fifth of a corpus takes 21 parts at 99% confidence, a twentieth
+takes 90, a hundredth takes 459, so the cost is driven by how localized a fault
+you want to catch and almost not at all by how sure you want to be. It is picked
+by hashing the seed with each part's path, which makes it the same sample on
+anybody's machine and leaves the parts already checked alone when the snapshot
+grows.
+
+What neither level catches is a corpus that is uniformly a little off, since
+level one reads the columns the report was made from and level two would have to
+read every part. A bound over how many parts are wrong says nothing about how
+wrong any one of them is.
+
+Both levels are resumable at the part, and reading a working repo needs a token
+in `+may.TokenEnv+` with access to it.
+
+flags:
+`)
+		fs.PrintDefaults()
+	}
+	if err := fs.Parse(args); err != nil {
+		return 2
+	}
+	want, ok := verifyLevel(*level)
+	if !ok {
+		fmt.Fprintf(stderr, "gao dem verify: no level named %q, and there are three: plan, counts, text\n", *level)
+		return 2
+	}
+
+	d, ok := kho.Lookup(*repo)
+	if !ok {
+		fmt.Fprintf(stderr, "gao dem verify: no dataset named %q\n", *repo)
+		fmt.Fprintln(stderr, "run 'gao kho datasets' for the list")
+		return 1
+	}
+	s := &dem.Store{Repo: d.Repo(), Token: may.Token(), API: pushAPI()}
+
+	var claimed dem.Report
+	if len(counts) > 0 {
+		reports := make([]dem.Report, 0, len(counts))
+		for _, c := range counts {
+			r, err := dem.ReadReport(c)
+			if err != nil {
+				fmt.Fprintf(stderr, "gao dem verify: %v\n", err)
+				return 1
+			}
+			reports = append(reports, r)
+		}
+		merged, err := dem.Merge(reports...)
+		if err != nil {
+			fmt.Fprintf(stderr, "gao dem verify: %v\n", err)
+			return 1
+		}
+		claimed = merged
+	}
+
+	var tok *dem.Tokenizer
+	if *model != "" {
+		t, err := dem.Open(dem.Gemma3, *model)
+		if err != nil {
+			fmt.Fprintf(stderr, "gao dem verify: %v\n", err)
+			return 1
+		}
+		tok = t
+	}
+
+	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
+	defer stop()
+
+	snapshots := fs.Args()
+	if len(snapshots) == 0 {
+		found, err := s.Snapshots(ctx)
+		if err != nil {
+			fmt.Fprintf(stderr, "gao dem verify: %v\n", err)
+			return 1
+		}
+		if len(found) == 0 {
+			fmt.Fprintf(stdout, "%s holds no ingested snapshots\n", d.Repo())
+			return 0
+		}
+		snapshots = found
+	}
+
+	stored := map[doc.Source]dem.Counts{}
+	var spots []dem.Spot
+	for _, snapshot := range snapshots {
+		parts, err := s.Parts(ctx, snapshot)
+		if err != nil {
+			fmt.Fprintf(stderr, "gao dem verify: %v\n", err)
+			return 1
+		}
+		if len(parts) == 0 {
+			fmt.Fprintf(stderr, "gao dem verify: %s holds no parts of %s\n", d.Repo(), snapshot)
+			return 1
+		}
+		source := doc.Source(dem.SourceOf(snapshot))
+		sown := *seed
+		if sown == "" {
+			sown = snapshot
+		}
+		printVerifyPlan(stdout, dem.Planned(snapshot, parts, claimedDocuments(claimed, source), *share, *confidence, sown), d.Repo(), *rate)
+		if want == levelPlan {
+			continue
+		}
+
+		fmt.Fprintf(stdout, "\nadding up the shape columns of %d parts\n", len(parts))
+		c, err := dem.RecountOf(ctx, s, snapshot, *dir, func(part kho.Stored, i, of int, c dem.Counts, moved int64) {
+			fmt.Fprintf(stdout, "  %4d/%d  %-52s %10d documents, %s read so far\n",
+				i, of, filepath.Base(part.Path), c.Documents, may.Size(moved))
+		})
+		if err != nil {
+			fmt.Fprintf(stderr, "gao dem verify: %v\n", err)
+			return 1
+		}
+		printShape(stdout, snapshot, c)
+
+		into := stored[source]
+		into.Merge(c)
+		stored[source] = into
+		if want < levelText {
+			continue
+		}
+
+		sample := dem.Sample(parts, dem.SampleSize(len(parts), *share, *confidence), sown)
+		fmt.Fprintf(stdout, "\nreading %d of %d parts all the way through\n", len(sample), len(parts))
+		for _, part := range sample {
+			spot, err := dem.SpotPart(ctx, s, part, tok)
+			if err != nil {
+				fmt.Fprintf(stderr, "gao dem verify: %v\n", err)
+				return 1
+			}
+			printSpot(stdout, spot)
+			spots = append(spots, spot)
+		}
+	}
+
+	ok = true
+	if len(counts) > 0 && want >= levelCounts {
+		ok = printDifferences(stdout, dem.Compare(claimed, stored))
+	}
+	if len(spots) > 0 {
+		ok = printSpots(stdout, spots, *share, *confidence) && ok
+	}
+	if !ok {
+		return 1
+	}
+	return 0
+}
+
+func verifyLevel(name string) (int, bool) {
+	switch name {
+	case "plan":
+		return levelPlan, true
+	case "counts":
+		return levelCounts, true
+	case "text":
+		return levelText, true
+	}
+	return 0, false
+}
+
+// claimedDocuments is what a report says a source is, or zero when nothing claims
+// anything about it yet. It sizes level one and level one runs either way.
+func claimedDocuments(r dem.Report, source doc.Source) int64 {
+	for _, s := range r.Sources {
+		if s.Source == source {
+			return s.Documents
+		}
+	}
+	return 0
+}
+
+// printPlan says what the run is about to do and what it will cost, before it
+// starts. A protocol whose cost is only knowable by starting it is a protocol
+// that gets started on a Friday.
+func printVerifyPlan(w io.Writer, p dem.Plan, repo string, rate float64) {
+	fmt.Fprintf(w, "\n%s in %s\n", p.Snapshot, repo)
+	fmt.Fprintf(w, "  parts      %d, %s in the store\n", p.Parts, may.GB(p.Bytes))
+	if p.Documents > 0 {
+		fmt.Fprintf(w, "  level one  every part, %s of columns over %d documents, %s\n",
+			may.Size(p.Columns), p.Documents, budget(p.Columns, rate))
+	} else {
+		fmt.Fprint(w, "  level one  every part, columns only, and no report yet to size that from\n")
+	}
+	fmt.Fprintf(w, "  level two  %d parts read in full, %s, %s\n", len(p.Sample), may.GB(p.SampleBytes), budget(p.SampleBytes, rate))
+	fmt.Fprintf(w, "  bound      no more than %s of parts wrong, at %s confidence\n", percent(p.Share), percent(p.Confidence))
+	fmt.Fprintf(w, "  seed       %s\n", p.Seed)
+	fmt.Fprintf(w, "  counting the text again instead would be %s\n", budget(p.Bytes, rate))
+}
+
+// budget prints a download in the unit somebody would plan it in. Hours for an
+// afternoon, days for the thing this whole approach exists to avoid.
+func budget(bytes int64, mbit float64) string {
+	h := dem.Hours(bytes, mbit)
+	if h == 0 {
+		return "no budget without a link rate"
+	}
+	at := fmt.Sprintf(" at %g Mbit", mbit)
+	switch m := h * 60; {
+	case m < 1:
+		return "under a minute" + at
+	case h < 1:
+		return fmt.Sprintf("%.0f minutes%s", m, at)
+	case h > 48:
+		return fmt.Sprintf("%.1f days%s", h/24, at)
+	default:
+		return fmt.Sprintf("%.1f hours%s", h, at)
+	}
+}
+
+// printShape prints what one snapshot's columns add up to.
+func printShape(w io.Writer, snapshot string, c dem.Counts) {
+	fmt.Fprintf(w, "\n%s adds up out of its own columns to\n", snapshot)
+	fmt.Fprintf(w, "  documents  %d\n", c.Documents)
+	fmt.Fprintf(w, "  chars      %d\n", c.Chars)
+	fmt.Fprintf(w, "  syllables  %d\n", c.Syllables)
+	fmt.Fprintf(w, "  tokens     %s\n", tokenColumn(c))
+	fmt.Fprint(w, "  bytes      nothing stores the byte length of the text, so level two is where that comes from\n")
+}
+
+// printDifferences puts the published counts beside the store, and reports
+// whether they are the same numbers.
+func printDifferences(w io.Writer, diffs []dem.Difference) bool {
+	fmt.Fprintln(w)
+	tw := tabwriter.NewWriter(w, 0, 0, 2, ' ', 0)
+	fmt.Fprint(tw, "source\t\tdocuments\tchars\tsyllables\ttokens\n")
+	for _, d := range diffs {
+		fmt.Fprintf(tw, "%s\tclaimed\t%d\t%d\t%d\t%s\n",
+			d.Source, d.Claimed.Documents, d.Claimed.Chars, d.Claimed.Syllables, tokenColumn(d.Claimed))
+		fmt.Fprintf(tw, "\tstored\t%d\t%d\t%d\t%s\n",
+			d.Stored.Documents, d.Stored.Chars, d.Stored.Syllables, tokenColumn(d.Stored))
+		if !d.Agrees() {
+			fmt.Fprintf(tw, "\tdiffers on\t%s\n", strings.Join(d.Off(), ", "))
+		}
+	}
+	_ = tw.Flush()
+
+	if dem.Agree(diffs) {
+		fmt.Fprint(w, "\nthe published counts are the counts in the store, in every unit a column holds\n")
+		return true
+	}
+	fmt.Fprint(w, "\nthe published counts are not the counts in the store, and the rows above say where\n")
+	return false
+}
+
+// printSpot prints one part read in full.
+func printSpot(w io.Writer, s dem.Spot) {
+	if s.Agrees() {
+		fmt.Fprintf(w, "  %-52s %8d documents, %s of text, every column describes it\n",
+			filepath.Base(s.Part), s.Documents, may.Size(s.Counted.Bytes))
+		return
+	}
+	fmt.Fprintf(w, "  %-52s %8d documents, %d of them wrong\n", filepath.Base(s.Part), s.Documents, s.Wrong)
+	for _, m := range s.Mismatches {
+		fmt.Fprintf(w, "      row %d, %s: %s says %d and its text counts %d\n", m.Row, m.DocID, m.Column, m.Stored, m.Counted)
+	}
+	if rest := s.Wrong - int64(len(s.Mismatches)); rest > 0 {
+		fmt.Fprintf(w, "      and %d more like it\n", rest)
+	}
+}
+
+// printSpots says what the sample proves and, as importantly, what it does not.
+func printSpots(w io.Writer, spots []dem.Spot, share, confidence float64) bool {
+	var counted dem.Counts
+	var wrong, parts int64
+	for _, s := range spots {
+		counted.Merge(s.Counted)
+		wrong += s.Wrong
+		if !s.Agrees() {
+			parts++
+		}
+	}
+
+	fmt.Fprintf(w, "\nread %d parts in full, %s of text, %d documents\n", len(spots), may.GB(counted.Bytes), counted.Documents)
+	fmt.Fprintf(w, "columns checked: %s\n", strings.Join(spots[0].Checked, ", "))
+	if counted.Chars > 0 {
+		fmt.Fprintf(w, "measured on the sample: %.2f bytes per character\n", counted.BytesPerChar())
+	}
+	if wrong > 0 {
+		fmt.Fprintf(w, "\n%d documents across %d parts carry columns that do not describe their text\n", wrong, parts)
+		return false
+	}
+	fmt.Fprintf(w, "\nno more than %s of parts are wrong, at %s confidence\n", percent(share), percent(confidence))
+	fmt.Fprint(w, "a corpus that is uniformly a little off would pass this, since both levels would have to read every part to see it\n")
+	return true
 }
 
 // percent prints a share the way a release note reads it. A tenth of a point is

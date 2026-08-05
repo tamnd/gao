@@ -100,20 +100,33 @@ func (s *Store) Parts(ctx context.Context, snapshot string) ([]kho.Stored, error
 }
 
 // Open returns a reader over one part that can be read out of order.
+//
+// One column read forwards is one live read position, plus the footer the reader
+// opened the file with, so two windows is what a column pass needs. The twenty
+// four a row reader wants are 92 MB held for nothing, which is most of what the
+// smallest box in the fleet has spare.
 func (s *Store) Open(ctx context.Context, part kho.Stored) (*gat.RangeAt, error) {
-	return s.fetcher().OpenRemote(ctx, gat.Remote{
-		Name:  part.Path,
-		From:  s.Repo,
-		URL:   s.pusher().ResolveURL(part.Path),
-		Bytes: part.Bytes,
-		Auth:  s.Token != "",
+	return s.open(ctx, part, 2)
+}
 
-		// One column read forwards is one live read position, plus the footer
-		// the reader opened the file with, so two windows is what this needs.
-		// The twenty four a row reader wants are 92 MB held for nothing, which
-		// is most of what the smallest box in the fleet has spare.
+// OpenRows returns a reader over one part for a pass that reads whole rows.
+//
+// A row reader has every column open at once, so two windows is a reader that
+// spends its life refilling. It is a second door rather than a wider default
+// because the whole point of the other one is that it holds almost nothing.
+func (s *Store) OpenRows(ctx context.Context, part kho.Stored) (*gat.RangeAt, error) {
+	return s.open(ctx, part, 24)
+}
+
+func (s *Store) open(ctx context.Context, part kho.Stored, windows int) (*gat.RangeAt, error) {
+	return s.fetcher().OpenRemote(ctx, gat.Remote{
+		Name:    part.Path,
+		From:    s.Repo,
+		URL:     s.pusher().ResolveURL(part.Path),
+		Bytes:   part.Bytes,
+		Auth:    s.Token != "",
 		Window:  s.window,
-		Windows: max(s.windows, 2),
+		Windows: max(s.windows, windows),
 	})
 }
 

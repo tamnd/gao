@@ -54,6 +54,7 @@ gao gat hf     -dir ingest/ -tokenizer tokenizer.model  # and count tokens while
 gao dem counts ingest/                      # what the harvest counted, per source
 gao dem keys   glotcc-abc1234               # read a snapshot's document identities back out of the store
 gao dem overlap keys/*.keys                 # what the sources have in common, counted rather than sampled
+gao dem verify -level counts -counts ingest/  # check a published count against the store it came from
 gao gat cc     --snapshots all              # recover Vietnamese from Common Crawl
 gao gat crawl  --policy crawl.toml          # crawl the Vietnamese web directly
 gao gat media  --from crawl                 # fetch PDFs, audio, video
@@ -468,6 +469,31 @@ A pass over a few hundred parts gets interrupted, so it is resumable at the part
 gao dem keys                                # what the store holds, ready to measure
 gao dem keys glotcc-abc1234                 # read one snapshot's identities out of the store
 gao dem overlap keys/*.keys                 # the matrix, counted rather than sampled
+```
+
+## Checking a count somebody else has to believe
+
+Every size in the release notes is produced by the run that wrote the corpus, which makes it a number the project says about itself. The obvious way to check one is to count the text again, and at this size that is a week of somebody's bandwidth, so nobody does it, and a number nobody checks is a number nobody has to be right about. The plan originally said this check should run in under an hour on one machine. That was never true: the fastest box in the fleet counts 4.2 GB of text in 37 minutes, HPLT v3 alone is around 700 GB, and no arrangement of four machines turns a hundred hours into one. What follows is the protocol that can actually be run, in two levels, and neither of them recounts the corpus.
+
+Level one adds up the shape columns. Every document carries `n_chars`, `n_syllables` and `n_tokens` as fixed width columns, so summing them over every part gives the corpus in three of its four published units at twelve bytes per document before the encoding, against the few kilobytes the document is. That is 48 MB for four million documents, and it covers every part rather than a sample of them. What it proves is that the published total is the sum of what is stored, and what it catches is a report written from a run that did not finish, a source counted twice, a part that never reached the store, and arithmetic.
+
+What level one cannot catch is a column that lies. A stage that rewrote text and forgot to recount leaves columns that add up perfectly to a total describing text nobody has. So level two takes a sample of parts, reads them all the way through, counts every document from its own text, and compares the answer with the column sitting beside it. That half is expensive per part, which is fine, because the number of parts is chosen rather than given.
+
+The sample size comes from the bound wanted rather than from what looked like enough. A sample of `k` parts drawn from a population where a fraction `p` is wrong misses every wrong one with probability `(1-p)^k`, so catching one with confidence `c` needs `k >= ln(1-c)/ln(1-p)`. At 99% confidence, missing no more than a fifth of the corpus is 21 parts, a twentieth is 90, and a hundredth is 459. The shape of that is the thing to read off it: halving the share you are willing to miss doubles the sample while tightening the confidence barely moves it, so the cost is driven by how localized a fault you want to catch and almost not at all by how sure you want to be.
+
+Which parts get read is decided by hashing the seed with each part's path, so the same seed gives the same sample on anybody's machine, which is what makes this something a third party can repeat rather than something they have to take on trust. It is deliberately neither the first `k` nor every `n`th, because the order of the listing is the order the parts were written in and both of those systematically miss a bad run of a stage that sits anywhere else. Ranking by path also means a snapshot that grew by a tenth does not resample the nine tenths that were checked last time.
+
+Both levels are resumable at the part, because a pass over a thousand parts will be interrupted. Level one keeps one line of JSON per part in a single file, which is the opposite of what the key pass does and for the opposite reason: a key file is megabytes and belongs on its own, while a thousand forty byte files cost more to list than the work they save.
+
+Three things are worth saying about what this does not do. Neither level catches a corpus that is uniformly a little off, since level one reads the same columns the report was written from and level two would have to read every part, and a bound over how many parts are wrong says nothing about how wrong any one of them is. The byte length of the text has no column, so level one reports no byte count at all rather than deriving one from the character count, which would be wrong by exactly the diacritics and would look like a measurement, and the sample is therefore the only place a bytes per character ratio comes from. And a token count can only be checked against the pinned tokenizer, so a run without one checks two of the three columns and says so in its output rather than reporting a token column that passed.
+
+The check counts with the same two functions the ingest counted with. A verifier that counts its own way is measuring the distance between two implementations, and the question here is whether the column describes the text next to it.
+
+```
+gao dem verify                              # what a full check would cost, per snapshot, before running it
+gao dem verify -level counts -counts ingest/  # add the columns up and put them against the published counts
+gao dem verify -level text -tokenizer tokenizer.model  # and read the sample, checking all three columns
+gao dem verify -share 0.01 -seed s1-2026-08 # a tighter bound, and the seed a third party repeats it with
 ```
 
 ## What we may publish

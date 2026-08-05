@@ -186,6 +186,22 @@ const TextColumn = "text"
 // needs.
 const DocIDColumn = "doc_id"
 
+// The shape columns: how much text each document is, in three of the four units
+// gao publishes. They are named here because a pass that recounts the corpus
+// reads them and nothing else, and four fixed width bytes per document per
+// column is the difference between checking a published size and downloading a
+// corpus to check a published size.
+//
+// The fourth unit, the byte length of the text, is deliberately not among them.
+// It is a property of the text and there is no column holding it, so a recount
+// off the columns can check three of the four and has to say which one it did
+// not check.
+const (
+	CharsColumn     = "n_chars"
+	SyllablesColumn = "n_syllables"
+	TokensColumn    = "n_tokens"
+)
+
 // schemaName is the root name of the published schema. It is what a Parquet
 // tool prints above the column list.
 const schemaName = "document"
@@ -526,15 +542,24 @@ func ScanPart(path string, fn func(Row) error) error {
 	if _, err := parquet.OpenFile(f, stat.Size()); err != nil {
 		return fmt.Errorf("kho: opening %s: %w", path, err)
 	}
+	return ScanRows(path, f, fn)
+}
 
+// ScanRows is [ScanPart] over a part that is not a local file.
+//
+// A part in the store is read over HTTP and never lands on a disk, which is the
+// arrangement that lets a box measure more corpus than it can hold. Anything
+// that can be read at an offset and knows its own length will do here, and name
+// is only what the errors call it.
+func ScanRows(name string, r io.ReaderAt, fn func(Row) error) error {
 	// Read against the Row schema rather than the file's own. They name the same
 	// columns, and the file's is a group schema built from the footer, which
 	// reconstructs into a map and not into a Go struct.
-	r := parquet.NewGenericReader[Row](f)
-	defer func() { _ = r.Close() }()
+	rd := parquet.NewGenericReader[Row](r)
+	defer func() { _ = rd.Close() }()
 	buf := make([]Row, 64)
 	for {
-		n, err := r.Read(buf)
+		n, err := rd.Read(buf)
 		for i := range buf[:n] {
 			if err := fn(buf[i]); err != nil {
 				return err
@@ -547,7 +572,7 @@ func ScanPart(path string, fn func(Row) error) error {
 			return nil
 		}
 		if err != nil {
-			return fmt.Errorf("kho: reading %s: %w", path, err)
+			return fmt.Errorf("kho: reading %s: %w", name, err)
 		}
 	}
 }
