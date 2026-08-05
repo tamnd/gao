@@ -211,6 +211,74 @@ func TestCheRefusesReportFlagsWithoutTheReport(t *testing.T) {
 	}
 }
 
+// The recall measurement is in the binary so that somebody who installed gao
+// can ask what the detectors find without a checkout, and the question it
+// answers is the one people actually ask about a redaction pass.
+func TestCheMeasuresItselfAgainstTheLabeledSet(t *testing.T) {
+	var stdout, stderr bytes.Buffer
+	if code := runChe(&stdout, &stderr, []string{"-recall"}); code != 0 {
+		t.Fatalf("gao che -recall = %d, want 0\n%s", code, stderr.String())
+	}
+	out := stdout.String()
+	for _, want := range []string{"detector", "marked", "covered", "recall", "precision", "documents, marked by hand"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("the report does not hold %q:\n%s", want, out)
+		}
+	}
+	for _, k := range che.Kinds() {
+		if !strings.Contains(out, string(k)) {
+			t.Errorf("the report has no row for %s:\n%s", k, out)
+		}
+	}
+	// The misses are the half of the report worth reading, so they are printed
+	// with it rather than left for whoever thinks to ask.
+	if !strings.Contains(out, "Not covered:") {
+		t.Errorf("the report does not list what was missed:\n%s", out)
+	}
+}
+
+// The same numbers, for whatever is watching them over time.
+func TestCheReportsTheRecallAsJSON(t *testing.T) {
+	var stdout, stderr bytes.Buffer
+	if code := runChe(&stdout, &stderr, []string{"-recall", "-json"}); code != 0 {
+		t.Fatalf("gao che -recall -json = %d, want 0\n%s", code, stderr.String())
+	}
+	var got che.Score
+	if err := json.Unmarshal(stdout.Bytes(), &got); err != nil {
+		t.Fatalf("%v\n%s", err, stdout.String())
+	}
+	if got.Documents < 8 {
+		t.Errorf("the labeled set came back with %d documents", got.Documents)
+	}
+	if got.Total.Gold != 49 {
+		t.Errorf("the labeled set came back with %d marked spans, and it holds 49", got.Total.Gold)
+	}
+	if r := got.Total.Recall(); r < 0.93 {
+		t.Errorf("recall over the whole set is %.3f, and it was 0.939", r)
+	}
+	if p := got.Total.Precision(); p < 1 {
+		t.Errorf("precision over the whole set is %.3f, and every span the detectors found was one somebody marked", p)
+	}
+}
+
+// -recall reads the set it was built with. A file on the command line means the
+// caller expected it to measure that file, and measuring something else instead
+// would hand back a number about the wrong text.
+func TestCheRecallTakesNoFiles(t *testing.T) {
+	dir := t.TempDir()
+	path := writeText(t, dir, "advert.txt", cheAdvert)
+
+	for _, args := range [][]string{{"-recall", path}, {"-recall", "-report"}, {"-recall", "-spans"}} {
+		var stdout, stderr bytes.Buffer
+		if code := runChe(&stdout, &stderr, args); code != 2 {
+			t.Fatalf("gao che %s = %d, want 2", strings.Join(args, " "), code)
+		}
+		if !strings.Contains(stderr.String(), "built into this binary") {
+			t.Errorf("the error for %s does not say what -recall measures: %q", strings.Join(args, " "), stderr.String())
+		}
+	}
+}
+
 // A part holds thousands of documents. Covering them onto one stream would
 // produce a file nobody can split back up, so the stage says so instead.
 func TestCheRefusesToCoverAPartOntoOneStream(t *testing.T) {

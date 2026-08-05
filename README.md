@@ -412,7 +412,32 @@ Liên hệ chính chủ anh [HOTEN], điện thoại [SODIENTHOAI], hoặc email
 Xe đưa đón xem nhà biển số [BIENSO], đi lại thuận tiện trong nội thành.
 ```
 
-The open item is recall, measured per detector against a labeled set rather than against the fixtures the detectors were written beside. Precision can be read off a run over real pages, which is what `-spans` is for, and it prints the matched text to the terminal on purpose because reading the matches is the only way to see a detector firing on something it should not. Recall cannot be read off anything, and until there is a labeled set the honest statement is that the cue lists and the structure rules are as good as the sources they were built from, which for the province codes and the carrier prefixes is a published table, and for the surname list is a decision to keep it short.
+### How much it actually finds
+
+Precision can be read off a run over real pages, which is what `-spans` is for, and it prints the matched text to the terminal on purpose because reading the matches is the only way to see a detector firing on something it should not. Recall cannot be read off anything. It needs text where somebody has already said what is in it, so `che/testdata/recall` holds twelve documents with the personal data marked by hand, in the text, and `gao che -recall` reports what each detector found of what was marked.
+
+```
+detector  marked  covered  recall  found  precision
+email     6       5        83.3%   5      100.0%
+phone     16      16       100.0%  16     100.0%
+cccd      2       2        100.0%  2      100.0%
+cmnd      3       2        66.7%   2      100.0%
+tax       2       2        100.0%  2      100.0%
+plate     2       2        100.0%  2      100.0%
+name      10      10       100.0%  10     100.0%
+address   8       7        87.5%   7      100.0%
+all       49      46       93.9%   46     100.0%
+```
+
+The marks sit in the text as `{{kind:text}}` rather than in a second file of offsets, because a set of offsets rots the first time somebody fixes a typo in the document it points into, and nobody notices until it has been two characters out for a year. A marked span counts as covered only when a found span of the same kind holds all of it, since half a national ID with the province code still attached has reached the corpus. What is marked is what the policy says must be covered rather than every proper noun on the page: the news story names a director, a vice chair and a department, none of them are marked, and a detector that fires on any of them fails.
+
+Three of the twelve documents have nothing marked in them, which is where the precision column comes from. One is that news story. One is a builder's price list, six product codes of seven digits each sitting next to prices, which is what a nine digit ID detector without a cue requirement would light up on. One is a quarterly financial summary carrying document numbers, a twelve digit customs declaration and `5260181597 đồng`, which is a structurally valid tax code followed by the word for money.
+
+The measurement paid for itself on its first clean run by finding four defects, all fixed in the detectors rather than by editing what was marked. The address chain read `đường dây nóng` as a street, because a hotline is literally a line and `đường` opens an address, then walked on through the phone number that followed and got it dropped for overlapping. A tax code was filed as a phone number because a phone cue sat earlier in the same window and that branch happened to run first, so cues are now compared by distance and the nearest one wins. `Lê Hoàng Nam` came out as `Lê Hoàng`, because the exclusion list held `Năm`, the word for year, and was matching it with the marks off where the two words are the same string. And `Chủ quán tên Trịnh Văn Đức` produced no name at all, because `quán` marks a business, so the words that introduce a person are now checked before the words that introduce a company.
+
+Three spans are still not found, each one a class rather than an accident, and the test fails if a fourth appears. An email address written `(a)` instead of `@` to get past a site's own filter, which is how a large share of them are written in classified listings. A bare nine digit CMND with nothing naming it, which is the gap the package already documents, and closing it would cost exactly the precision the price list measures. And a rural address with no house number for the chain to open on, which is the one most worth fixing and needs its own measurement first.
+
+Twelve documents and forty nine spans say the detectors work on the shapes somebody thought of, and a redaction pass is judged on the shapes nobody thought of. What this set does is stop the detectors regressing between fleet runs and record which cases were considered when the current trade was chosen. The number for the corpus is measured on the fleet, against a sample drawn from a real crawl and read by hand afterwards.
 
 ## Picking the grit out of the rice
 

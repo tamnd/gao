@@ -1,0 +1,9 @@
+Thông tin liên hệ
+
+Trung tâm Dịch vụ việc làm tiếp nhận hồ sơ từ thứ hai đến thứ sáu, buổi sáng từ 8 giờ đến 11 giờ 30, buổi chiều từ 13 giờ 30 đến 16 giờ 30. Thứ bảy và chủ nhật nghỉ theo quy định.
+
+Trụ sở: {{address:số 215 phố Trung Kính, phường Yên Hòa, quận Cầu Giấy, Hà Nội}}. Tổng đài {{phone:024 3782 6650}}, đường dây nóng {{phone:0968 305 174}}, thư điện tử {{email:tiepnhan@vieclamhanoi.gov.vn}}.
+
+Chi nhánh phía nam: {{address:số 40 đường Nguyễn Văn Trỗi, phường 15, quận Phú Nhuận, Thành phố Hồ Chí Minh}}, điện thoại {{phone:028 3845 2210}}, mã số thuế đơn vị {{tax:0301 447 926}}.
+
+Hồ sơ nộp trực tiếp hoặc gửi qua đường bưu điện. Kết quả trả sau bảy ngày làm việc. Đề nghị mang theo giấy tờ tùy thân khi đến nhận kết quả.

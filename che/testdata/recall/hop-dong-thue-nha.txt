@@ -1,0 +1,13 @@
+HỢP ĐỒNG THUÊ NHÀ Ở
+
+Hôm nay, ngày 14 tháng 3 năm 2024, tại Hà Nội, chúng tôi gồm có:
+
+Bên cho thuê: {{name:Phạm Thị Lan}}, sinh năm 1974, căn cước công dân số {{cccd:001174006218}} do Cục Cảnh sát quản lý hành chính về trật tự xã hội cấp ngày 8 tháng 1 năm 2022, thường trú tại {{address:số 12 ngõ 84 phố Chùa Láng, phường Láng Thượng, quận Đống Đa, Hà Nội}}, điện thoại {{phone:0903 118 245}}.
+
+Bên thuê: {{name:Lê Hoàng Nam}}, sinh năm 1996, chứng minh nhân dân số {{cmnd:012 456 789}} cấp tại Nam Định, điện thoại {{phone:0777 903 116}}, thư điện tử {{email:namlh96@gmail.com}}.
+
+Hai bên thống nhất ký hợp đồng thuê nhà với các điều khoản sau đây. Giá thuê là 9,5 triệu đồng một tháng, trả vào ngày 5 hàng tháng, đặt cọc hai tháng. Thời hạn thuê là 24 tháng kể từ ngày bàn giao. Tiền điện tính theo giá nhà nước, tiền nước 25.000 đồng một khối.
+
+Bên thuê không được cho người khác thuê lại, không được sửa chữa kết cấu nhà khi chưa hỏi ý kiến bên cho thuê. Bên cho thuê báo trước ba tháng nếu muốn lấy lại nhà trước hạn.
+
+Hợp đồng lập thành hai bản có giá trị như nhau, mỗi bên giữ một bản.

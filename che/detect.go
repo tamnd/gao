@@ -110,11 +110,8 @@ func classify(digits, lowered string, start, end int) (Kind, bool, bool) {
 		if k, ok := asPhone(digits); ok {
 			return k, false, true
 		}
-		if cuedBefore(lowered, start, KindPhone) {
-			return KindPhone, true, true
-		}
-		if cuedBefore(lowered, start, KindTax) {
-			return KindTax, true, true
+		if k, ok := nearestCue(lowered, start, KindPhone, KindTax); ok {
+			return k, true, true
 		}
 		// A bare ten digit number is a tax code only if it passes the check
 		// digit and is not money. This is the one place a validator decides on
@@ -128,11 +125,8 @@ func classify(digits, lowered string, start, end int) (Kind, bool, bool) {
 		// price list, a stock code, and a phone number missing its leading
 		// zero. There is no province table for the old numbering that holds up,
 		// so this one is only ever found by being named.
-		if cuedBefore(lowered, start, KindCMND) {
-			return KindCMND, true, true
-		}
-		if cuedBefore(lowered, start, KindPhone) {
-			return KindPhone, true, true
+		if k, ok := nearestCue(lowered, start, KindCMND, KindPhone); ok {
+			return k, true, true
 		}
 	}
 	return "", false, false
@@ -278,6 +272,9 @@ func opensAdministrativeUnit(segment string) (bool, bool) {
 		return false, false
 	}
 	bare := phoi.Bare(segment)
+	if opensWith(segment, bare, notAWay) {
+		return false, false
+	}
 	if opensWith(segment, bare, administrativeUnits) {
 		return true, true
 	}
@@ -306,11 +303,32 @@ func opensWith(segment, bare string, words []string) bool {
 // label with it, since "Điện" is a perfectly good Vietnamese given name and
 // "Điện thoại" is not a person.
 var notNameSyllables = bareOf([]string{
-	"Điện", "Đt", "Sđt", "Số", "Địa", "Liên", "Gọi", "Hotline", "Email",
+	"Điện", "Đt", "Sđt", "Số", "Địa", "Gọi", "Hotline", "Email",
 	"Zalo", "Tel", "Mã", "Đường", "Phố", "Ngõ", "Hẻm", "Phường", "Xã", "Quận",
-	"Huyện", "Tỉnh", "Thành", "Tp", "Cccd", "Cmnd", "Mst", "Chứng", "Căn",
-	"Giá", "Bán", "Mua", "Nhà", "Diện", "Công", "Ngày", "Tháng", "Năm",
+	"Huyện", "Tỉnh", "Tp", "Cccd", "Cmnd", "Mst", "Căn", "Nhà", "Ngày", "Tháng",
 })
+
+// markedNotName is the other half of that list: the label words whose bare form
+// is an ordinary Vietnamese given name.
+//
+// Năm means year and Nam is one of the commonest given names in the country,
+// and with the tone marks off they are the same four letters. So are Thành and
+// Thanh, Giá and Gia, Công and Công, Liên and Liên. Matching those on the bare
+// form ends a name one syllable early every time somebody is called Nam, which
+// is a real name lost to protect against a field label. These are matched as
+// they are written instead, which is exact in text that carries its marks and
+// gives up in text that does not. That is the right way round: the failure it
+// allows is a name that runs one syllable into a label and gets covered, which
+// costs a little of the sentence, and the failure it prevents is a person's
+// name published in full.
+var markedNotName = set([]string{
+	"năm", "tháng", "thành", "chứng", "giá", "bán", "mua", "diện", "công", "liên",
+})
+
+// blocksName reports whether a word ends a name rather than continuing it.
+func blocksName(word string) bool {
+	return notNameSyllables.has(word) || markedNotName[strings.ToLower(word)]
+}
 
 // beforeName are the words that turn what follows into a place rather than a
 // person. Vietnamese streets, wards and schools are named after people, so
@@ -333,12 +351,25 @@ var businessMarkers = bareOf([]string{
 	"showroom", "garage", "salon", "khách sạn", "nhà hàng", "quán",
 })
 
+// beforePerson are the words that introduce a person, and they beat the
+// business markers because they sit between the business and the name. A quán
+// is a business and the chủ quán is the person who owns it, so "chủ quán tên
+// Trịnh Văn Đức" names somebody and "quán Trịnh Văn Đức" is a sign over a door.
+var beforePerson = bareOf([]string{
+	"chủ", "tên", "anh", "chị", "ông", "bà", "cô", "chú", "bác", "em", "cháu",
+	"người", "gặp", "hỏi", "chính chủ", "đại diện", "giám đốc", "kế toán",
+})
+
 // namesABusiness reports whether the words before a candidate name make it a
 // business name. The scan stops at the start of the line, since a company on
-// one line of a contract says nothing about the person named on the next.
+// one line of a contract says nothing about the person named on the next, and
+// it stops early at anything that introduces a person.
 func namesABusiness(before []word, from int) bool {
 	for i := len(before) - 1; i >= 0 && before[i].start >= from; i-- {
 		w := strings.ToLower(before[i].text)
+		if beforePerson.has(w) {
+			return false
+		}
 		if businessMarkers.has(w) {
 			return true
 		}
@@ -436,7 +467,7 @@ func namesIn(text string, start, end int) []Span {
 			if next.start != words[j-1].end+1 || !startsUpper(next.text) {
 				break
 			}
-			if notNameSyllables.has(next.text) {
+			if blocksName(next.text) {
 				break
 			}
 			last = j
