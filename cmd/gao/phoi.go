@@ -1,12 +1,16 @@
 package main
 
 import (
+	"cmp"
 	"encoding/json"
 	"flag"
 	"fmt"
 	"io"
+	"maps"
 	"os"
 	"path/filepath"
+	"slices"
+	"strings"
 	"text/tabwriter"
 
 	"github.com/tamnd/gao/phoi"
@@ -26,7 +30,8 @@ thing every stage after it assumes has been done. With no file it reads standard
 input. The normalized text goes to standard output, so this is a filter and you
 can pipe a document through it.
 
-With -report it prints what it had to do instead: the homoglyphs it repaired, the
+With -report it prints what it had to do instead: the font encoding it read the
+document out of, if it was written in one, the homoglyphs it repaired, the
 invisible characters it took out, the syllables whose tone mark moved, and the
 syllables that look like input method keystrokes, which it counts and leaves
 alone. The last column says whether the document goes on to the next stage, and
@@ -148,23 +153,27 @@ func readDocument(name string) ([]byte, error) {
 
 func printPhoi(w io.Writer, lines []phoiLine, total phoi.Tally) {
 	tw := tabwriter.NewWriter(w, 0, 0, 2, ' ', 0)
-	fmt.Fprint(tw, "document\tchanged\trepaired\thomoglyphs\tinvisible\tcontrols\tcomposed\ttones\tresidue\tsyllables\tkept\n")
+	fmt.Fprint(tw, "document\tchanged\trepaired\tencoding\thomoglyphs\tinvisible\tcontrols\tcomposed\ttones\tresidue\tsyllables\tkept\n")
 	for _, l := range lines {
-		fmt.Fprintf(tw, "%s\t%s\t%s\t%d\t%d\t%d\t%d\t%d\t%d\t%d\t%s\n",
-			l.Name, yesNo(l.Changed), yesNo(l.Repaired()), l.Homoglyphs, l.Invisible,
-			l.Controls, l.Composed, l.Tones, l.Residue, l.Syllables, kept(l.Result))
+		fmt.Fprintf(tw, "%s\t%s\t%s\t%s\t%d\t%d\t%d\t%d\t%d\t%d\t%d\t%s\n",
+			l.Name, yesNo(l.Changed), yesNo(l.Repaired()), encoding(l.Result),
+			l.Homoglyphs, l.Invisible, l.Controls, l.Composed, l.Tones,
+			l.Residue, l.Syllables, kept(l.Result))
 	}
 	if total.Documents > 1 {
-		fmt.Fprintf(tw, "%d documents\t%d\t%d\t%d\t%d\t%d\t%d\t%d\t%d\t%d\t%d rejected\n",
-			total.Documents, total.Changed, total.Repaired, total.Homoglyphs,
-			total.Invisible, total.Controls, total.Composed, total.Tones,
-			total.Residue, total.Syllables, total.Rejected)
+		fmt.Fprintf(tw, "%d documents\t%d\t%d\t%d\t%d\t%d\t%d\t%d\t%d\t%d\t%d\t%d rejected\n",
+			total.Documents, total.Changed, total.Repaired, legacyTotal(total),
+			total.Homoglyphs, total.Invisible, total.Controls, total.Composed,
+			total.Tones, total.Residue, total.Syllables, total.Rejected)
 	}
 	_ = tw.Flush()
 
 	if total.Documents > 1 {
 		fmt.Fprintf(w, "\nNormalization changed %s of the documents by at least one byte, and %s of them by something other than layout.\n",
 			percent(total.ChangedShare()), percent(total.RepairedShare()))
+	}
+	if len(total.Legacy) > 0 {
+		fmt.Fprint(w, legacyLine(total))
 	}
 	if len(lines) == 1 {
 		r := lines[0].Result
@@ -181,6 +190,43 @@ func printPhoi(w io.Writer, lines []phoiLine, total phoi.Tally) {
 				string(reason), reason.Describe())
 		}
 	}
+}
+
+// encoding is the font encoding column. It is empty for nearly every document,
+// which is the right shape for a column that says a document was rewritten from
+// end to end: the few that were are the ones worth finding in a listing.
+func encoding(r phoi.Result) string { return r.Legacy }
+
+// legacyTotal is how many documents came out of a font encoding, over all of
+// them.
+func legacyTotal(t phoi.Tally) int64 {
+	var n int64
+	for _, count := range t.Legacy {
+		n += count
+	}
+	return n
+}
+
+// legacyLine is the sentence under the table. It names the encodings, the most
+// of them first, so that a run over a source reads as a sentence about when the
+// pages in it were written.
+func legacyLine(t phoi.Tally) string {
+	names := slices.Collect(maps.Keys(t.Legacy))
+	slices.SortFunc(names, func(a, b string) int {
+		if c := cmp.Compare(t.Legacy[b], t.Legacy[a]); c != 0 {
+			return c
+		}
+		return cmp.Compare(a, b)
+	})
+	if legacyTotal(t) == 1 {
+		return fmt.Sprintf("One document was written in a font encoding rather than in Unicode, and it was %s.\n", names[0])
+	}
+	parts := make([]string, 0, len(names))
+	for _, name := range names {
+		parts = append(parts, fmt.Sprintf("%d in %s", t.Legacy[name], name))
+	}
+	return fmt.Sprintf("%d documents were written in a font encoding rather than in Unicode: %s.\n",
+		legacyTotal(t), strings.Join(parts, ", "))
 }
 
 func yesNo(b bool) string {

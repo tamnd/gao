@@ -269,3 +269,69 @@ func TestPhoiIsInTheUsage(t *testing.T) {
 		t.Errorf("gao help does not list phoi:\n%s", stdout.String())
 	}
 }
+
+// tcvn3Page and vniPage are one Vietnamese paragraph as a crawler hands it over
+// after reading a TCVN3 page and a VNI page as windows-1252. They are written
+// out as the characters somebody sees on a broken page rather than as bytes,
+// because that is the form anybody checking them would recognize. The one escape
+// is TCVN3's ư, which is the soft hyphen and would otherwise be invisible here.
+const (
+	tcvn3Page = "Hµ Néi mïa nµy trêi trë l¹nh, vµ nh÷ng ng\u00adêi ®i lµm vÒ muén " +
+		"vÉn dõng l¹i ë gãc phè cò ®Ó mua mét gãi x«i.\n"
+	vniPage = "Haø Noäi muøa naøy trôøi trôû laïnh, vaø nhöõng ngöôøi ñi laøm veà muoän " +
+		"vaãn döøng laïi ôû goùc phoá cuõ ñeå mua moät goùi xoâi.\n"
+	unicodePage = "Hà Nội mùa này trời trở lạnh, và những người đi làm về muộn " +
+		"vẫn dừng lại ở góc phố cũ để mua một gói xôi.\n"
+)
+
+// A page in a font encoding is the one thing this stage does that rewrites a
+// document from end to end, so the report has to say it happened and say which
+// encoding it was.
+func TestPhoiNamesTheFontEncodingItReadADocumentOutOf(t *testing.T) {
+	path := writePart(t, tcvn3Page, "Hà Nội\n")
+
+	var stdout, stderr bytes.Buffer
+	if code := runPhoi(&stdout, &stderr, []string{"-report", path}); code != 0 {
+		t.Fatalf("gao phoi -report = %d, want 0\n%s", code, stderr.String())
+	}
+	out := stdout.String()
+	if !strings.Contains(out, "TCVN3") {
+		t.Errorf("the report does not name the encoding:\n%s", out)
+	}
+	if !strings.Contains(out, "One document was written in a font encoding rather than in Unicode, and it was TCVN3.") {
+		t.Errorf("the report does not say how many documents were in one:\n%s", out)
+	}
+}
+
+// The text a font encoding is read out of is the text every later stage sees, so
+// the filter has to hand back Vietnamese and not the mojibake it was given.
+func TestPhoiWritesTheTranscodedText(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "page.txt")
+	if err := os.WriteFile(path, []byte(tcvn3Page), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	var stdout, stderr bytes.Buffer
+	if code := runPhoi(&stdout, &stderr, []string{path}); code != 0 {
+		t.Fatalf("gao phoi = %d, want 0\n%s", code, stderr.String())
+	}
+	if stdout.String() != unicodePage {
+		t.Errorf("the filter wrote\n%q\nwant\n%q", stdout.String(), unicodePage)
+	}
+}
+
+// A source is rarely in one encoding. The breakdown is what says whether a crawl
+// reached the archives of one publisher or of several, so the sentence has to
+// hold every encoding the run met and put the most of them first.
+func TestPhoiBreaksTheFontEncodingsDownByName(t *testing.T) {
+	path := writePart(t, tcvn3Page, tcvn3Page, vniPage)
+
+	var stdout, stderr bytes.Buffer
+	if code := runPhoi(&stdout, &stderr, []string{"-report", "-total", path}); code != 0 {
+		t.Fatalf("gao phoi -report -total = %d, want 0\n%s", code, stderr.String())
+	}
+	out := stdout.String()
+	if !strings.Contains(out, "3 documents were written in a font encoding rather than in Unicode: 2 in TCVN3, 1 in VNI-WIN.") {
+		t.Errorf("the report does not break the encodings down:\n%s", out)
+	}
+}
