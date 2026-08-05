@@ -32,9 +32,14 @@ them words. Vietnamese writes a space between syllables. The report prints what
 each document measured beside what it was measured against, so a threshold that
 is removing good documents can be seen doing it.
 
-Nothing here identifies the language or judges quality. A document that goes
-through has been found to be Vietnamese prose of some length, which is the floor
-rather than the bar.
+The language is decided by the Vietnamese syllable inventory rather than by a
+model, and the vietnamese column is the share of a document's tokens that are
+Vietnamese syllables. For a document typed without tone marks it is the share
+with the marks taken off both sides, which is a looser test and is held to a
+higher bar.
+
+Nothing here judges quality. A document that goes through has been found to be
+Vietnamese prose of some length, which is the floor rather than the bar.
 
 flags:
 `)
@@ -124,6 +129,9 @@ type sangRow struct {
 	Syllables  int     `json:"syllables"`
 	Mean       float64 `json:"mean_syllable"`
 	StopWords  int     `json:"stop_words"`
+	Vietnamese float64 `json:"syllable_rate"`
+	BareRate   float64 `json:"bare_rate"`
+	MarkRate   float64 `json:"mark_rate"`
 	Alpha      float64 `json:"alpha_rate"`
 	Bullets    float64 `json:"bullet_rate"`
 	Ellipses   float64 `json:"ellipsis_rate"`
@@ -141,6 +149,9 @@ func sangRowOf(l sang.Limits, name string, r sang.Result) sangRow {
 		Syllables:  r.Syllables,
 		Mean:       r.MeanSyllable(),
 		StopWords:  r.StopWords,
+		Vietnamese: r.Language.Rate(),
+		BareRate:   r.Language.BareRate(),
+		MarkRate:   r.Language.MarkRate(),
 		Alpha:      r.AlphaRate(),
 		Bullets:    r.BulletRate(),
 		Ellipses:   r.EllipsisRate(),
@@ -153,6 +164,17 @@ func sangRowOf(l sang.Limits, name string, r sang.Result) sangRow {
 		row.Kept, row.Reason, row.Detail = false, string(reason), detail
 	}
 	return row
+}
+
+// vietnameseRate is the share the language verdict was taken on, which is the
+// share with the marks off for a document that was typed without them. One
+// column, because a report that printed both would be printing the same number
+// twice for every document that carries its marks.
+func vietnameseRate(r sangRow) float64 {
+	if r.MarkRate < sang.MinMarkRate {
+		return r.BareRate
+	}
+	return r.Vietnamese
 }
 
 // largest reports the worst of the three gram sizes, since the report has one
@@ -200,18 +222,18 @@ type sangReport struct {
 
 func printSang(w io.Writer, rows []sangRow, t sang.Tally) {
 	tw := tabwriter.NewWriter(w, 0, 0, 2, ' ', 0)
-	fmt.Fprint(tw, "document\tsyllables\tmean\tstop\talpha\tbullets\tellipses\tduplicate\trepeat\tdiacritics\tkept\n")
+	fmt.Fprint(tw, "document\tsyllables\tmean\tstop\tvietnamese\talpha\tbullets\tellipses\tduplicate\trepeat\tdiacritics\tkept\n")
 	for _, r := range rows {
 		kept := "yes"
 		if !r.Kept {
 			kept = "no, " + r.Reason
 		}
-		fmt.Fprintf(tw, "%s\t%d\t%.2f\t%d\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n",
-			r.Document, r.Syllables, r.Mean, r.StopWords,
+		fmt.Fprintf(tw, "%s\t%d\t%.2f\t%d\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n",
+			r.Document, r.Syllables, r.Mean, r.StopWords, percent(vietnameseRate(r)),
 			percent(r.Alpha), percent(r.Bullets), percent(r.Ellipses),
 			percent(r.Duplicate), percent(r.Repeat), r.Diacritics, kept)
 	}
-	fmt.Fprintf(tw, "%d documents\t%d\t\t\t\t\t\t\t\t\t%d kept\n", t.Documents, t.Syllables, t.Kept)
+	fmt.Fprintf(tw, "%d documents\t%d\t\t\t\t\t\t\t\t\t\t%d kept\n", t.Documents, t.Syllables, t.Kept)
 	_ = tw.Flush()
 
 	if t.Documents == 0 {

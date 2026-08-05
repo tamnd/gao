@@ -32,6 +32,16 @@ const (
 		"- Du lịch\n- Số hóa\n- Xe\n- Ý kiến\n- Tâm sự\n- Hài\n- Video\n- Ảnh\n- Infographics\n" +
 		"- Podcast\n- Tất cả chuyên mục\n- Đăng nhập\n- Đăng ký\n- Liên hệ tòa soạn\n- Quảng cáo\n" +
 		"- Điều khoản sử dụng\n- Chính sách bảo mật"
+
+	// English of about the length of the article, so that what separates the two
+	// is the language and not the size. A crawl seeded on Vietnamese domains
+	// returns a great deal of this.
+	sangEnglish = "The committee met for the third time this year to review the proposal, and after a long " +
+		"discussion it decided to postpone the vote until the next session.\n" +
+		"Several members argued that the report had arrived too late for anyone to read it properly.\n" +
+		"The chair replied that the deadline had been set by the ministry and was not hers to move.\n" +
+		"A revised draft will be circulated before the end of the month, together with the minutes of " +
+		"the two meetings that preceded this one."
 )
 
 // The headline numbers, on the three documents the stage exists to tell apart.
@@ -127,6 +137,66 @@ func TestSangPutsTheMeasurementsOnTheRow(t *testing.T) {
 	}
 }
 
+// English of the same length as the article has to be filed under language and
+// not under one of the shape checks, because a reject store where the reasons
+// are approximately right cannot answer what any threshold cost.
+func TestSangFilesAnotherLanguageUnderLanguage(t *testing.T) {
+	path := writeText(t, t.TempDir(), "english.txt", sangEnglish)
+
+	var stdout, stderr bytes.Buffer
+	if code := runSang(&stdout, &stderr, []string{"-json", path}); code != 0 {
+		t.Fatalf("gao sang = %d, want 0\n%s", code, stderr.String())
+	}
+	var got sangReport
+	if err := json.Unmarshal(stdout.Bytes(), &got); err != nil {
+		t.Fatalf("the report is not JSON: %v", err)
+	}
+	if got.Total.Rejected["language"] != 1 {
+		t.Fatalf("English was filed as %v", got.Total.Rejected)
+	}
+	if row := got.Documents[0]; row.Syllables < 60 {
+		t.Errorf("the fixture measured %d syllables, so it was dropped for its length before the language was looked at", row.Syllables)
+	}
+}
+
+// The shares the language verdict was taken on go on the row beside everything
+// else, for the reason every other measurement does: the identifier is the part
+// of this stage most likely to have its threshold moved after somebody reads
+// what it let through.
+func TestSangPutsTheLanguageSharesOnTheRow(t *testing.T) {
+	dir := t.TempDir()
+	files := []string{
+		writeText(t, dir, "article.txt", sangArticle),
+		writeText(t, dir, "english.txt", sangEnglish),
+	}
+
+	var stdout, stderr bytes.Buffer
+	if code := runSang(&stdout, &stderr, append([]string{"-json"}, files...)); code != 0 {
+		t.Fatalf("gao sang = %d, want 0\n%s", code, stderr.String())
+	}
+	var got sangReport
+	if err := json.Unmarshal(stdout.Bytes(), &got); err != nil {
+		t.Fatalf("the report is not JSON: %v", err)
+	}
+	rows := map[string]sangRow{}
+	for _, r := range got.Documents {
+		rows[filepath.Base(r.Document)] = r
+	}
+	article, english := rows["article.txt"], rows["english.txt"]
+	if article.Vietnamese < 0.9 {
+		t.Errorf("%.3f of the article is Vietnamese syllables", article.Vietnamese)
+	}
+	if article.MarkRate < 0.5 {
+		t.Errorf("the article carries marks on %.3f of its tokens, so it is not the marked fixture this test needs", article.MarkRate)
+	}
+	if english.Vietnamese > 0.5 || english.BareRate > 0.5 {
+		t.Errorf("English measured %.3f syllables and %.3f with the marks off", english.Vietnamese, english.BareRate)
+	}
+	if article.BareRate < article.Vietnamese {
+		t.Errorf("taking the marks off matched less than leaving them on, %.3f against %.3f", article.BareRate, article.Vietnamese)
+	}
+}
+
 // A part is what the ingest writes, so reading one is how this stage sees a
 // corpus rather than a directory somebody assembled by hand.
 func TestSangReadsAParquetPart(t *testing.T) {
@@ -194,7 +264,7 @@ func TestSangPrintsTheMeasurementsAsATable(t *testing.T) {
 		t.Fatalf("gao sang = %d, want 0\n%s", code, stderr.String())
 	}
 	out := stdout.String()
-	for _, want := range []string{"syllables", "mean", "diacritics", "boilerplate", "next stage"} {
+	for _, want := range []string{"syllables", "mean", "vietnamese", "diacritics", "boilerplate", "next stage"} {
 		if !strings.Contains(out, want) {
 			t.Errorf("the report does not print %q:\n%s", want, out)
 		}

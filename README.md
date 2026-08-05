@@ -268,17 +268,17 @@ Vietnamese typed without its tone marks is a register and not a defect. It is mo
 The order the checks run in decides which reason a document that fails several of them is filed under, and the reject store's whole value is being able to ask how many documents went for what. Length comes first, because every other measure is a ratio over almost nothing on a 13 syllable caption. Then the checks that say what shape the page is, before the ones that say what language it is in: a navigation bar holds no Vietnamese sentence and no English one either, so filing it under language would be true by accident and useless on purpose. It is a menu, and boilerplate is what a menu is.
 
 ```
-document      syllables  mean  stop  alpha   bullets  ellipses  duplicate  repeat  diacritics  kept
-article.txt   180        3.32  21    100.0%  0%       0%        0%         0%      present     yes
-unmarked.txt  180        3.32  21    100.0%  0%       0%        0%         0%      absent      yes
-caption.txt   13         3.77  1     86.7%   0%       0%        0%         0%      present     no, short
-menu.txt      63         3.63  0     67.7%   100.0%   0%        0%         0%      present     no, boilerplate
-listing.txt   135        3.48  14    94.4%   0%       100.0%    0%         0%      present     no, boilerplate
-looped.txt    384        3.35  8     100.0%  0%       0%        87.5%      100.0%  present     no, repetition
-chanted.txt   238        3.55  3     100.0%  0%       0%        0%         90.4%   present     no, repetition
-english.txt   118        4.69  0     100.0%  0%       0%        0%         0%      absent      no, language
-prices.txt    20         3.20  0     38.5%   0%       0%        0%         100.0%  mixed       no, short
-9 documents   1331                                                                             2 kept
+document      syllables  mean  stop  vietnamese  alpha   bullets  ellipses  duplicate  repeat  diacritics  kept
+article.txt   180        3.32  21    100.0%      100.0%  0%       0%        0%         0%      present     yes
+unmarked.txt  180        3.32  21    100.0%      100.0%  0%       0%        0%         0%      absent      yes
+caption.txt   13         3.77  1     100.0%      86.7%   0%       0%        0%         0%      present     no, short
+menu.txt      63         3.63  0     95.2%       67.7%   100.0%   0%        0%         0%      present     no, boilerplate
+listing.txt   135        3.48  14    100.0%      94.4%   0%       100.0%    0%         0%      present     no, boilerplate
+looped.txt    384        3.35  8     100.0%      100.0%  0%       0%        87.5%      100.0%  present     no, repetition
+chanted.txt   238        3.55  3     100.0%      100.0%  0%       0%        0%         90.4%   present     no, repetition
+english.txt   118        4.69  0     31.4%       100.0%  0%       0%        0%         0%      absent      no, language
+prices.txt    20         3.20  0     40.0%       38.5%   0%       0%        0%         100.0%  mixed       no, short
+9 documents   1331                                                                                         2 kept
 
 22.2% of the documents go on to the next stage.
 The reject store records the rest as 2 short, 2 boilerplate, 1 language, 2 repetition.
@@ -287,7 +287,25 @@ The reject store records the rest as 2 short, 2 boilerplate, 1 language, 2 repet
 
 The row carries the measurements rather than the verdicts. A corpus that recorded only that a document passed the length filter cannot be refiltered at a different threshold later without going back to text that is no longer on the box, and every threshold here is one the ablation is expected to move. All of them live in one struct for that reason, the length floor is on the command line, and none of them is claimed to be right yet. Two are properties of the language and will not move much. The rest are Gopher's numbers at Vietnamese sizes, which is to say they are the wrong numbers until a curve says otherwise, in exactly the way the deduplication threshold is.
 
-Nothing in this stage identifies the language or judges quality. A document that goes through has been found to be Vietnamese prose of some length, which is the floor and not the bar. The Vietnamese tuned language identifier is the open item, along with the set of negatives it has to be tested against, which is the hard half: Muong and Tay and Nung are close enough to be confused with Vietnamese by a model trained on distant languages, and unmarked Vietnamese looks like nothing else at all to a classifier that has only seen the marked kind.
+### Which language, and how the question is asked
+
+Every pipeline reaches for fastText here, and it is the right default when the question is which of a hundred and seventy six languages a page is in. That is not the question. This pipeline asks one question with a yes or no answer, and it asks it about a language whose syllables can be listed.
+
+A Vietnamese syllable is an onset from a list of twenty seven, a rhyme from a list of about a hundred and eighty, and one of six tones. Nothing else is one. There is no syllable with two consonants at the end, because the language has none. None ends in s or l or r, because the coda is one of eight sounds and none of them is those. None is written with k before a back vowel, because the orthography spells that sound c there, and the same rule fixes g against gh and ng against ngh with no exceptions anywhere in the language. A syllable that ends in p, t, c or ch takes the rising tone or the heavy one and can take no other, which is a fact about how the language is spoken rather than a rule anybody is taught, and it holds in text typed by people who have never heard it stated. Between them those rules rule out most of what a string of Vietnamese looking letters could be.
+
+So `sang` generates the inventory from its parts, four thousand and twenty two spellings before tones, and identification becomes a lookup. That buys two things a classifier does not give. It does not degrade on a short document, because a lookup has no context to run out of, and a comment is the length most of the social web arrives at. And it does not have an opinion about register, because it never saw a training distribution to have one about.
+
+Register is where the stock models actually fail, and it is why this is worth building rather than buying. Vietnamese typed without tone marks is not damaged Vietnamese, it is how most people type on a phone, and to a character n-gram model it looks like whichever language it saw most of that writes short syllables in Latin letters. Vietnamese engineering writing with the English terms left in is a third English by token and every model trained on clean prose calls it English. Both are Vietnamese, both are large, and a pipeline that drops them drops the registers the written language is actually moving in.
+
+The two registers get two tests. Text carrying its marks is judged on the share of tokens that are inventory syllables as written. Text without them is judged on the share that match once the marks are taken off both sides, and that bar is set higher rather than lower, which looks backwards until you notice that taking the marks off collapses the inventory: `da` is one token and it is đá and dạ and da and đã. The looser test has to be paid for, and it is paid for with a stricter share and with more function words required.
+
+The cost of a lookup is stated where it is defined rather than hidden. The inventory over-generates on purpose, since `bôn` and `quôn` are formed and neither is a word, because a missing rhyme rejects real Vietnamese while an unused spelling costs a fraction of a point on text that has to fail the other checks anyway. And unmarked matching alone admits a great deal, since `dan` and `cam` and `man` are Vietnamese syllables and also words in several other languages, which is why it is never used alone.
+
+The labeled set is fourteen documents in `sang/testdata/langid`, eight Vietnamese and six not, each one written for a case somebody can name, and its README says what each is and why it is there. At the thresholds in the code all fourteen are called right, but the number worth reporting is the separation and not the count: the worst Vietnamese document scores 0.809 and the best of the others scores 0.496. Fourteen documents can be fitted by accident and a threshold sitting a point from a document would be fitted whether anybody meant it or not, so a test fails the build if that gap falls under 0.25. The hardest negative is romanized Chinese written one syllable at a time, which is short open syllables separated by spaces with about half of them also Vietnamese, and it is what sets the unmarked bar.
+
+Two things this does not yet cover. There are no Muong or Tay negatives in the set, and those are the languages most likely to be filed as Vietnamese, because a fixture written by somebody who cannot check it is worse than no fixture. And fourteen hand written documents say nothing about corpus scale, so the claim on the board, that this admits at least two billion tokens stock fastText rejects at precision 0.95, is measured on the fleet against a sampled and labeled crawl. `Limits.Identify` turns the identifier off for exactly that reason, so the same corpus can be run twice and the difference counted.
+
+Nothing in this stage judges quality. A document that goes through has been found to be Vietnamese prose of some length, which is the floor and not the bar.
 
 ## Finding the same document twice
 
@@ -394,7 +412,7 @@ Liên hệ chính chủ anh [HOTEN], điện thoại [SODIENTHOAI], hoặc email
 Xe đưa đón xem nhà biển số [BIENSO], đi lại thuận tiện trong nội thành.
 ```
 
-The open item is recall, measured per detector against a labelled set rather than against the fixtures the detectors were written beside. Precision can be read off a run over real pages, which is what `-spans` is for, and it prints the matched text to the terminal on purpose because reading the matches is the only way to see a detector firing on something it should not. Recall cannot be read off anything, and until there is a labelled set the honest statement is that the cue lists and the structure rules are as good as the sources they were built from, which for the province codes and the carrier prefixes is a published table, and for the surname list is a decision to keep it short.
+The open item is recall, measured per detector against a labeled set rather than against the fixtures the detectors were written beside. Precision can be read off a run over real pages, which is what `-spans` is for, and it prints the matched text to the terminal on purpose because reading the matches is the only way to see a detector firing on something it should not. Recall cannot be read off anything, and until there is a labeled set the honest statement is that the cue lists and the structure rules are as good as the sources they were built from, which for the province codes and the carrier prefixes is a published table, and for the surname list is a decision to keep it short.
 
 ## Picking the grit out of the rice
 
