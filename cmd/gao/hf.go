@@ -91,6 +91,11 @@ counts tokens too, which is the only number in gao that costs anything to
 produce, at roughly 11 MB of text per second per core. Run 'gao dem model' to
 fetch the tokenizer and 'gao dem counts' to read the result.
 
+The counts are written before the first byte is fetched and rewritten after
+every file, so a run that takes days can be read while it runs and cannot leave
+an earlier run's numbers sitting in the directory. A report written mid run says
+so, and 'gao dem counts' prints which boxes had not finished.
+
 Counting happens here rather than in a later pass because the largest source is
 around 700 GB of text, and a design where ingestion writes documents and
 something else reads them back to count is a design that moves 700 GB twice.
@@ -192,10 +197,9 @@ flags:
 	defer stop()
 
 	in := &gat.Ingest{
-		Fetcher:  &gat.Fetcher{Token: may.Token()},
-		Ledger:   ledger,
-		Box:      may.Label(),
-		Progress: func(r gat.Report) { printFetched(stdout, r) },
+		Fetcher: &gat.Fetcher{Token: may.Token()},
+		Ledger:  ledger,
+		Box:     may.Label(),
 	}
 
 	var tally dem.Tally
@@ -237,6 +241,23 @@ flags:
 		}
 		docs.Emit = tally.Counting(tok, docs.Emit)
 	}
+
+	// The counts are rewritten after every file rather than at the end of the
+	// run. A source the size of the ones here takes days, and the version that
+	// wrote once at the end left the previous run's counts.json sitting in the
+	// directory for all of it, which is worse than an empty file: it parses, it
+	// names a source, and nothing about it says it describes a run that ended
+	// yesterday. The first write happens before any bytes are fetched, so the
+	// stale file is gone from the first second.
+	in.Progress = func(r gat.Report) {
+		printFetched(stdout, r)
+		if *decode {
+			saveCounts(stderr, *dir, in.Box, &tally, false)
+		}
+	}
+	if *decode {
+		saveCounts(stderr, *dir, in.Box, &tally, false)
+	}
 	fmt.Fprintln(stdout)
 
 	n, err := in.Run(ctx, todo)
@@ -248,18 +269,31 @@ flags:
 
 	// Written even when the run failed, because the counts up to the failure are
 	// the counts of what actually got read, and a run that dies on file ninety
-	// should not throw away eighty-nine files of measurement.
+	// should not throw away eighty-nine files of measurement. It is marked
+	// complete either way, since the run is over and the counts are final for
+	// the files that finished.
 	if *decode {
-		if err := tally.Report(in.Box, time.Now()).Write(*dir); err != nil {
-			fmt.Fprintf(stderr, "gao gat hf: writing the counts: %v\n", err)
-		} else {
-			printTally(stdout, &tally)
-		}
+		saveCounts(stderr, *dir, in.Box, &tally, true)
+		printTally(stdout, &tally)
 	}
 	if err != nil {
 		return hfError(stderr, err)
 	}
 	return 0
+}
+
+// saveCounts saves the counts so far into the ingest directory.
+//
+// A failure to write is reported and does not stop the run. The counts are a
+// measurement of a download that is already paid for, and losing the download
+// because the directory went read only would be the wrong trade in both
+// directions.
+func saveCounts(stderr io.Writer, dir, box string, tally *dem.Tally, complete bool) {
+	r := tally.Report(box, time.Now())
+	r.Complete = complete
+	if err := r.Write(dir); err != nil {
+		fmt.Fprintf(stderr, "gao gat hf: writing the counts: %v\n", err)
+	}
 }
 
 // printTally is the line that says what was in the bytes, as opposed to how many

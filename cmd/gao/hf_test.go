@@ -12,6 +12,7 @@ import (
 
 	"github.com/klauspost/compress/gzip"
 
+	"github.com/tamnd/gao/dem"
 	"github.com/tamnd/gao/doc"
 	"github.com/tamnd/gao/gat"
 	"github.com/tamnd/gao/may"
@@ -475,5 +476,51 @@ func TestTheLedgerCommandSaysWhenAnIngestIsRunning(t *testing.T) {
 	}
 	if !strings.Contains(out, may.Label()) {
 		t.Errorf("the report does not say which box is holding it:\n%s", out)
+	}
+}
+
+// The counts are on disk before the first byte is fetched and rewritten after
+// every file. The version that wrote them once at the end left the previous
+// run's counts.json in the directory for the whole of a run that takes days,
+// and a stale report is worse than a missing one because it parses.
+func TestTheCountsAreOnDiskBeforeTheRunEnds(t *testing.T) {
+	dir := t.TempDir()
+	var stderr bytes.Buffer
+	var tally dem.Tally
+
+	saveCounts(&stderr, dir, "server1", &tally, false)
+	r, err := dem.ReadReport(dir)
+	if err != nil {
+		t.Fatalf("nothing was written before the run ended: %v", err)
+	}
+	if r.Box != "server1" {
+		t.Errorf("the counts say they came from %q", r.Box)
+	}
+	if r.Complete {
+		t.Error("a run that had not ended reported itself finished")
+	}
+
+	saveCounts(&stderr, dir, "server1", &tally, true)
+	r, err = dem.ReadReport(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !r.Complete {
+		t.Error("a run that ended still reports itself running")
+	}
+	if stderr.Len() != 0 {
+		t.Errorf("writing the counts complained: %s", stderr.String())
+	}
+}
+
+// The counts measure a download that is already paid for, so failing to write
+// them is reported and does not end the run.
+func TestCountsThatCannotBeWrittenDoNotStopTheRun(t *testing.T) {
+	var stderr bytes.Buffer
+	var tally dem.Tally
+
+	saveCounts(&stderr, filepath.Join(t.TempDir(), "no-such-directory"), "server1", &tally, false)
+	if !strings.Contains(stderr.String(), "writing the counts") {
+		t.Errorf("a failed write said nothing: %q", stderr.String())
 	}
 }

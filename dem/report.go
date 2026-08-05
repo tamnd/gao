@@ -30,6 +30,14 @@ type Report struct {
 	Tokenizer string    `json:"tokenizer,omitempty"`
 	Finished  time.Time `json:"finished"`
 
+	// Complete says the run these counts came from reached its end. A run over
+	// a large source takes days, and the counts are rewritten after every file
+	// so that a run in progress can be measured instead of being invisible
+	// until it stops. That is only safe if a partial report says so, because
+	// the alternative is a number that looks like a source total and is a
+	// prefix of one.
+	Complete bool `json:"complete"`
+
 	// Sources is in source order rather than a map, so that two runs over the
 	// same material produce the same bytes and a diff of two reports is
 	// readable.
@@ -126,7 +134,12 @@ func Merge(reports ...Report) (Report, error) {
 	by := make(map[doc.Source]*Counts)
 	var order []doc.Source
 
+	// Complete only if every box is, since one box still running makes the sum
+	// a prefix of the corpus rather than the corpus.
+	out.Complete = len(reports) > 0
+
 	for _, r := range reports {
+		out.Complete = out.Complete && r.Complete
 		switch {
 		case out.Tokenizer == "":
 			out.Tokenizer = r.Tokenizer
