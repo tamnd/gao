@@ -318,6 +318,20 @@ Three numbers decide what furniture is, and all three are defaults rather than f
 
 A document that was nothing but furniture is counted and named rather than dropped quietly. That page is a real thing on the web, it is a nav column and a footer with no article between them, and it belongs in the reject store with the rest of the record. `gao xay -boiler` takes parts rather than text files, because boilerplate is found per host and a text file carries no host to be aware of.
 
+Run on `server2` over one part from each of two sources, the pass reports this:
+
+```
+part            hosts  documents  documents on a host of 5 or more  lines     furniture  removed  emptied
+glotcc/00000    60504  183514     101103                            11161135  263340     2808296  5246
+fineweb2/00000  95814  273460     145151                            6381092   10986      69915    19
+```
+
+The two sources disagree by a factor of twenty three and the disagreement is the finding. A quarter of GlotCC's lines were furniture and 5246 of its documents, one in 35, were nothing else. FineWeb2 lost 1.1% of its lines and 19 documents in 273460. Neither number is about Vietnamese. GlotCC hands over what its extractor pulled off the page with the site still around it, and FineWeb2 hands over text that somebody else already ran a boilerplate pass on, so the 1.1% is not this pass failing on FineWeb2, it is this pass agreeing with the pass that already ran. That is the same shape as the normalization counts: what the stage finds is mostly a measurement of how much cleaning the upstream did.
+
+Both numbers are floors, and the reason is worth stating rather than discovering later. A part is a slice of the crawl and not a slice of a host. FineWeb2's part holds 273460 documents across 95814 hosts, which is 2.9 documents per host, and GlotCC's holds 3.0. A little over half the documents in each part sit on a host that clears the five document floor at all, and the rest are on sites the part saw once or twice, whose furniture is invisible to a pass that only has the part. Grouping the corpus by host before this runs is the open item, and it wants the same sort on disk that the corpus scale minhash pass wants, so the two should be built together rather than twice.
+
+The cost is two streaming passes and the counters, which is what makes it affordable: 12 minutes for GlotCC's part and 14 for FineWeb2's on `server2`, at around 120% of a core, and 705 MB and 635 MB of resident memory. The memory is the counters and the host names rather than the text, so it grows with how many distinct lines a part holds and not with how large the part is.
+
 ## Covering what belongs to somebody
 
 Every identifier a person in Vietnam carries is a run of digits, and so is every price, date, document number, flight number and lottery result on the same page. A detector that matches digit runs has enormous recall and no precision at all, and what it produces is not a private corpus, it is a corpus with holes punched through the middle of ordinary Vietnamese sentences. So `che` validates the structure of what it matched. A national ID is twelve digits opening with one of the sixty three province codes the numbering was built on. A mobile number is ten or eleven digits whose first two after the leading zero were assigned to a carrier, and the ones that were never assigned are the reason a ten digit number is not automatically a phone number. A tax code carries a check digit over the weights 31, 29, 23, 19, 17, 13, 7, 5, 3. A plate has a letter series wedged between a two digit province prefix and its tail, which no ordinary number in Vietnamese text does.
