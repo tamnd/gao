@@ -65,6 +65,7 @@ gao sang       parts/*.parquet              # sift: which documents are Vietname
 gao sang -min-syllables 40 parts/*.parquet  # and what a different length floor would keep
 gao xay        parts/*.parquet              # mill: what the corpus holds more than one copy of
 gao xay -curve parts/*.parquet              # and what every deduplication threshold would cost
+gao xay -boiler parts/*.parquet             # and the furniture every page of a host carries
 gao che        doc.txt                      # cover: tag over the personal data in a document
 gao che -level L2 -report parts/*.parquet   # and what a corpus holds, per kind, before covering it
 
@@ -296,7 +297,26 @@ The answer does not depend on the order the documents arrived in. Union attaches
 
 What is here is a shard, not the corpus. A signature is 1 KB, so four hundred million documents is 400 GB of signatures against a fleet whose largest box has 64 GB. Holding them is what lets one pass over a shard answer at every threshold the ablation asks about, and it is exactly why it does not scale to the whole thing. The corpus scale pass keeps only the band hashes, 128 bytes per document, and works one band at a time from a file sorted on disk in the way `gao dem overlap` sorts document keys. That pass is not written yet. The arithmetic that says it is needed is in the package documentation rather than waiting to be discovered on the box.
 
-The paragraph level boilerplate pass is the other open item here. A legal footer repeated on every page of a site is not a duplicate document, it is a duplicate paragraph inside documents that are otherwise distinct, and removing it is a host aware pass over paragraphs rather than a threshold over documents.
+### The half document identity cannot see
+
+A legal footer repeated on every page of a ministry site is not a duplicate document. It is a duplicate paragraph inside documents that are otherwise distinct, so every one of those pages survives the pass above and the footer arrives once per page. A site with forty thousand pages contributes its notice forty thousand times, which is more copies of that sentence than the corpus holds of any sentence somebody wrote on purpose. `gao xay -boiler` is the pass for that, and it is host aware, which is the whole design. "Đọc thêm" repeated across one site is that site's furniture. The same two syllables repeated across the corpus are Vietnamese, and a pass that counted globally would take the language out a phrase at a time and report a retention figure that looked reasonable.
+
+The unit is the line rather than the blank line separated block. After `phoi` a document is lines with the layout settled, and lines are what the extractors emit: a nav column is one line per item, a footer is a line, a share prompt is a line. Blocks would glue the whole column into one lump that matches the column on no other page, which is the shape of furniture that gets missed rather than removed. Lines are compared by the deduplication key, so the same footer under two content management systems is one footer. Blank lines are left where they are, because layout was settled upstream and counting them would make the empty line the most repeated line on every site in the corpus.
+
+It reads the parts twice. A line cannot be known to repeat until the rest of the host has been seen, so the first pass counts and the second strips, and the second is where the text is at hand and the samples for the report are taken. What the first pass holds is one counter per distinct line per host, keyed by a 64 bit hash rather than by the line itself, which is the same trade the shingles make. A line that appears twice inside one document counts once: repetition inside a document is a different problem with its own measure in `sang`, and counting it here would let one page argue that its own refrain is the whole site's furniture.
+
+```
+host        documents  distinct lines  furniture  removed  example
+vnbao.vn    6          10              4          24       Bản quyền thuộc về báo điện tử. Nghiêm cấm sao …
+diendan.vn  1          2               0          0
+
+Across 2 hosts and 7 documents, 24 of 32 lines were furniture, which is 75.0% of them.
+A line is furniture on a host with 5 documents or more when it appears in 3 of them or in 10.0%, whichever is more.
+```
+
+Three numbers decide what furniture is, and all three are defaults rather than findings, in the way every threshold in this pipeline is a default until an ablation moves it. A host needs 5 documents before anything it repeats is treated as furniture, because three pages agreeing on a sentence is not evidence and a corpus that trimmed on that evidence would be trimming noise. A line needs to appear in 3 of the host's documents and in 10% of them, whichever is more, which is the same rule stated twice so that it survives a host being large: a sentence on three pages of a thousand is not that site's furniture. The pass runs after deduplication by document, and that order is load bearing. A host whose pages are near copies of each other would have every line of them repeating, and a boilerplate pass run first would empty all of them.
+
+A document that was nothing but furniture is counted and named rather than dropped quietly. That page is a real thing on the web, it is a nav column and a footer with no article between them, and it belongs in the reject store with the rest of the record. `gao xay -boiler` takes parts rather than text files, because boilerplate is found per host and a text file carries no host to be aware of.
 
 ## Covering what belongs to somebody
 
