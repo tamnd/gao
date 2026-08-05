@@ -199,3 +199,68 @@ func TestAReportIsWrittenWhereTheLedgerLives(t *testing.T) {
 		t.Errorf("the report is not at counts.json in the ingest directory: %v", err)
 	}
 }
+
+// A run over a large source is rewritten after every file, so most of the
+// reports that exist at any moment describe runs that are still going, and the
+// flag that says so is the difference between a prefix and a total.
+func TestAPartialReportSaysThatItIsOne(t *testing.T) {
+	dir := t.TempDir()
+	var tally dem.Tally
+	r := tally.Report("server2", time.Now())
+	if r.Complete {
+		t.Error("a report is finished before anybody says it is")
+	}
+	if err := r.Write(dir); err != nil {
+		t.Fatal(err)
+	}
+
+	back, err := dem.ReadReport(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if back.Complete {
+		t.Error("an unfinished report came back finished")
+	}
+
+	r.Complete = true
+	if err := r.Write(dir); err != nil {
+		t.Fatal(err)
+	}
+	if back, err = dem.ReadReport(dir); err != nil {
+		t.Fatal(err)
+	}
+	if !back.Complete {
+		t.Error("a finished report came back unfinished")
+	}
+}
+
+// One box still fetching makes the fleet total a prefix of the corpus, so the
+// sum of four reports is complete only when every one of them is.
+func TestASumIsFinishedOnlyWhenEveryBoxIs(t *testing.T) {
+	done := dem.Report{Box: "server1", Complete: true}
+	going := dem.Report{Box: "server3"}
+
+	both, err := dem.Merge(done, going)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if both.Complete {
+		t.Error("a sum that includes a running box called itself finished")
+	}
+
+	all, err := dem.Merge(done, dem.Report{Box: "server2", Complete: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !all.Complete {
+		t.Error("a sum of finished boxes called itself unfinished")
+	}
+
+	none, err := dem.Merge()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if none.Complete {
+		t.Error("a sum of nothing called itself finished")
+	}
+}

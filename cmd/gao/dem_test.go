@@ -374,3 +374,86 @@ func TestDemKeysExplainsWhatItMovesAndWhatItDoesNot(t *testing.T) {
 		}
 	}
 }
+
+// A run over a large source takes days, and its counts are on disk from the
+// first file. Reading them mid run is the point, and quoting them as a source
+// total is the mistake the last line of the report exists to prevent.
+func TestDemCountsSaysWhenARunHadNotFinished(t *testing.T) {
+	dir := writeCounts(t, dem.Report{
+		Box:      "server2",
+		Finished: time.Now().UTC(),
+		Sources: []dem.SourceCounts{
+			{Source: doc.SourceFineWeb2, Counts: dem.Counts{Documents: 561137, Chars: 1000, Syllables: 200}},
+		},
+		Natural: dem.Counts{Documents: 561137, Chars: 1000, Syllables: 200},
+		Total:   dem.Counts{Documents: 561137, Chars: 1000, Syllables: 200},
+	})
+
+	out, _, code := exec(t, "dem", "counts", dir)
+	if code != 0 {
+		t.Fatalf("gao dem counts: exit %d, want 0", code)
+	}
+	if !strings.Contains(out, "server2 was still running") {
+		t.Errorf("the report does not say the run had not ended:\n%s", out)
+	}
+	if !strings.Contains(out, "not a source total") {
+		t.Errorf("the report does not say what the number is not:\n%s", out)
+	}
+}
+
+// And says nothing of the kind about a run that ended, since a finished count
+// carrying a caveat is a count nobody quotes.
+func TestDemCountsIsQuietAboutAFinishedRun(t *testing.T) {
+	dir := writeCounts(t, dem.Report{
+		Box:      "server1",
+		Complete: true,
+		Finished: time.Now().UTC(),
+		Sources: []dem.SourceCounts{
+			{Source: doc.SourceGlotCC, Counts: dem.Counts{Documents: 500000, Chars: 1000, Syllables: 200}},
+		},
+		Natural: dem.Counts{Documents: 500000, Chars: 1000, Syllables: 200},
+		Total:   dem.Counts{Documents: 500000, Chars: 1000, Syllables: 200},
+	})
+
+	out, _, code := exec(t, "dem", "counts", dir)
+	if code != 0 {
+		t.Fatalf("gao dem counts: exit %d, want 0", code)
+	}
+	if strings.Contains(out, "still running") {
+		t.Errorf("a finished run was reported as running:\n%s", out)
+	}
+}
+
+// Four boxes, one of them still going, makes the sum a prefix of the corpus.
+func TestDemCountsNamesEveryBoxThatWasStillGoing(t *testing.T) {
+	done := writeCounts(t, dem.Report{
+		Box:      "server1",
+		Complete: true,
+		Finished: time.Now().UTC(),
+		Sources: []dem.SourceCounts{
+			{Source: doc.SourceGlotCC, Counts: dem.Counts{Documents: 10, Chars: 100, Syllables: 20}},
+		},
+		Natural: dem.Counts{Documents: 10, Chars: 100, Syllables: 20},
+		Total:   dem.Counts{Documents: 10, Chars: 100, Syllables: 20},
+	})
+	going := writeCounts(t, dem.Report{
+		Box:      "server3",
+		Finished: time.Now().UTC(),
+		Sources: []dem.SourceCounts{
+			{Source: doc.SourceFinePDFs, Counts: dem.Counts{Documents: 5, Chars: 50, Syllables: 10}},
+		},
+		Natural: dem.Counts{Documents: 5, Chars: 50, Syllables: 10},
+		Total:   dem.Counts{Documents: 5, Chars: 50, Syllables: 10},
+	})
+
+	out, _, code := exec(t, "dem", "counts", done, going)
+	if code != 0 {
+		t.Fatalf("gao dem counts: exit %d, want 0", code)
+	}
+	if !strings.Contains(out, "server3 was still running") {
+		t.Errorf("the box that was still going is not named:\n%s", out)
+	}
+	if strings.Contains(out, "server1 was still running") {
+		t.Errorf("the box that had finished was named as running:\n%s", out)
+	}
+}

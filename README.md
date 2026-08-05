@@ -128,6 +128,8 @@ One ingest at a time in one directory, enforced by a lock file. Two of them do n
 
 Every file is checked at the end against the byte count in the manifest, and against the pinned digest where the host publishes one. Where it does not, and HPLT publishes none while the Hub withholds them for gated repos, the fetch computes a digest and records it, so the second fetch of a file has something to compare against even though the first did not.
 
+The counts are written the same way the ledger is, which took a fleet run to notice. A decoding run tallies documents, bytes, characters, syllables and tokens as it goes and writes them to `counts.json` beside the ledger, and the first version wrote that file once, when the run ended. A run over one of these sources takes days. So for days the directory held the previous run's counts, naming a source the box was no longer fetching, and nothing about the file said so: it parses, it has a box on it, and `gao dem counts` would print it without complaint. The counts are now written before the first byte is fetched and rewritten after every finished file, and a report written mid run says it is one. `gao dem counts` names the boxes that had not finished, because a prefix of a source and a source total are the same shape.
+
 `-dir` has no default. A command that starts a 513.6 GB download into whichever directory it was run from is a command that does it once by accident.
 
 ## What a record becomes

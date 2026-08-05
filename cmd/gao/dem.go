@@ -209,6 +209,30 @@ func printCounts(w io.Writer, r dem.Report, from []dem.Report) {
 		fmt.Fprintf(w, "\nmeasured on this material: %.2f characters per token, %.2f tokens per syllable, %.2f bytes per character\n",
 			r.Natural.CharsPerToken(), r.Natural.TokensPerSyllable(), r.Natural.BytesPerChar())
 	}
+	if running := unfinished(from); len(running) > 0 {
+		fmt.Fprintf(w, "\n%s still running, so these are the files that have finished so far and not a source total.\n", stillRunning(running))
+	}
+}
+
+// unfinished names the boxes whose run had not ended when they last wrote. The
+// counts are rewritten after every file, so reading them mid run is the point
+// rather than a mistake, and saying so is what keeps a prefix from being quoted
+// as a total.
+func unfinished(from []dem.Report) []string {
+	var running []string
+	for _, r := range from {
+		if !r.Complete {
+			running = append(running, r.Box)
+		}
+	}
+	return running
+}
+
+func stillRunning(boxes []string) string {
+	if len(boxes) == 1 {
+		return boxes[0] + " was"
+	}
+	return strings.Join(boxes, ", ") + " were"
 }
 
 // boxes names where the numbers came from. A count that does not say which
