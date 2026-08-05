@@ -1,0 +1,177 @@
+{
+  "version": "2026-08-05",
+  "note": "Every benchmark gao is judged on, and every benchmark the corpus is checked against before a release. It only grows. A benchmark comes off this file when it stops existing, not when it comes back contaminated. Revisions marked unpinned have to be pinned before a release goes out, because a release note that says a benchmark was checked has to say which revision of it was checked.",
+  "benchmarks": [
+    {
+      "name": "vmlu",
+      "version": "unpinned",
+      "origin": "native",
+      "source": "vmlu.ai, the public evaluation split",
+      "note": "Vietnamese multitask knowledge across 58 subjects, and the primary gate. Items are the question and all of the options, without the answer key, because a page that reproduces a question and its options is the leak and a page that lists answer letters is not."
+    },
+    {
+      "name": "vimmrc",
+      "version": "2.0",
+      "origin": "native",
+      "source": "UIT NLP group, ViMMRC 1.0 and 2.0 test splits",
+      "note": "Reading comprehension over school texts. Items are the passage and the questions. The passages are published Vietnamese schoolbook material, so overlap here is expected and says more about the source than about the pipeline."
+    },
+    {
+      "name": "uit-viquad",
+      "version": "2.0",
+      "origin": "native",
+      "source": "UIT NLP group, UIT-ViQuAD 2.0",
+      "note": "Extractive QA with unanswerable questions. Items are the context paragraph and the questions. The contexts are drawn from Vietnamese Wikipedia, which is in the corpus, so this one is expected to come back contaminated and the useful number is how much of it."
+    },
+    {
+      "name": "vinli",
+      "version": "unpinned",
+      "origin": "native",
+      "source": "UIT NLP group, ViNLI test split",
+      "note": "Natural language inference. Items are the premise and the hypothesis as one text, because either alone is short enough to be an ordinary Vietnamese sentence."
+    },
+    {
+      "name": "uit-vsfc",
+      "version": "unpinned",
+      "origin": "native",
+      "source": "UIT NLP group, UIT-VSFC test split",
+      "note": "Student feedback sentiment. Items are the feedback sentences. Many are shorter than the window and produce no grams at all, which is reported rather than hidden."
+    },
+    {
+      "name": "visfd",
+      "version": "unpinned",
+      "origin": "native",
+      "source": "UIT NLP group, ViSFD test split",
+      "note": "Aspect based sentiment over smartphone reviews. Items are the review text, which is the kind of text a review aggregator republishes, so this one is worth watching."
+    },
+    {
+      "name": "vihsd",
+      "version": "unpinned",
+      "origin": "native",
+      "source": "UIT NLP group, UIT-ViHSD test split",
+      "note": "Hate speech detection. Items are the comments. They came off social media and they are short, so both a low gram yield and real overlap are plausible."
+    },
+    {
+      "name": "victsd",
+      "version": "unpinned",
+      "origin": "native",
+      "source": "UIT NLP group, ViCTSD test split",
+      "note": "Constructive and toxic speech detection over news comments."
+    },
+    {
+      "name": "vlsp",
+      "version": "unpinned",
+      "origin": "native",
+      "source": "VLSP shared task evaluation sets, per year and per task",
+      "note": "NER, parsing, machine translation and summarization. This is a suite rather than one benchmark and the roster carries it as one row, which is a simplification that has to end before the suite is used as a gate."
+    },
+    {
+      "name": "phomt",
+      "version": "unpinned",
+      "origin": "native",
+      "source": "VinAI Research, PhoMT test split",
+      "note": "Vietnamese and English translation with human quality references. Items are the Vietnamese side. The English side belongs in the check too and needs an English key rather than this one."
+    },
+    {
+      "name": "mmlu-vi",
+      "version": "unpinned",
+      "origin": "translated",
+      "source": "the Vietnamese translation used by the evaluation harness, pinned by harness revision",
+      "note": "Reported, never a gate. A clean result here is weak evidence: an item that reached the corpus through a different translation of the same English source shares no window with this one."
+    },
+    {
+      "name": "gsm8k-vi",
+      "version": "unpinned",
+      "origin": "translated",
+      "source": "the Vietnamese translation used by the evaluation harness, pinned by harness revision",
+      "note": "Grade school arithmetic word problems. Items are the problem statements without the worked solutions."
+    },
+    {
+      "name": "math-vi",
+      "version": "unpinned",
+      "origin": "translated",
+      "source": "the Vietnamese translation used by the evaluation harness, pinned by harness revision",
+      "note": "Competition mathematics. The problem statements carry a lot of notation, which survives the deduplication key poorly, so the gram yield per item is low and the check is weaker here than elsewhere."
+    },
+    {
+      "name": "arc-vi",
+      "version": "unpinned",
+      "origin": "translated",
+      "source": "the Vietnamese translation used by the evaluation harness, pinned by harness revision",
+      "note": "Science questions. Items are the question and the options."
+    },
+    {
+      "name": "hellaswag-vi",
+      "version": "unpinned",
+      "origin": "translated",
+      "source": "the Vietnamese translation used by the evaluation harness, pinned by harness revision",
+      "note": "Commonsense continuation. Items are the context and all four endings, because the wrong endings are machine written and are the part that could only have come from the benchmark."
+    },
+    {
+      "name": "winogrande-vi",
+      "version": "unpinned",
+      "origin": "translated",
+      "source": "the Vietnamese translation used by the evaluation harness, pinned by harness revision",
+      "note": "Pronoun resolution. The items are one sentence each and most of them are shorter than the window, so this benchmark is largely invisible to an n-gram check and the embedding check is the one that will find it."
+    },
+    {
+      "name": "humaneval",
+      "version": "unpinned",
+      "origin": "neutral",
+      "source": "OpenAI HumanEval, prompts and tests",
+      "note": "Code, so the text is English docstrings and Python. The deduplication key was built for Vietnamese prose and folds this text harder than it should, which makes the check here loose rather than tight."
+    },
+    {
+      "name": "mbpp",
+      "version": "unpinned",
+      "origin": "neutral",
+      "source": "MBPP test split",
+      "note": "Code. Same caveat as HumanEval."
+    },
+    {
+      "name": "vi-cloze",
+      "version": "unpinned",
+      "origin": "native",
+      "source": "built by gao, doc 10 section 2.2",
+      "note": "20,000 ranking items built from held out gao-web. Overlap is not a finding here, it is the hold out failing, so one shared window drops the document.",
+      "held_out": true
+    },
+    {
+      "name": "vi-diacritic",
+      "version": "unpinned",
+      "origin": "native",
+      "source": "built by gao, doc 10 section 1.2",
+      "note": "5,000 sentences held out from gao-web with the tone marks stripped. Held out, so one shared window drops the document. The stripped side is not in the list because undiacriticized Vietnamese is a real register that the corpus is supposed to contain.",
+      "held_out": true
+    },
+    {
+      "name": "vi-needle",
+      "version": "unpinned",
+      "origin": "native",
+      "source": "built by gao, doc 10 section 1.2",
+      "note": "Long context retrieval with haystacks drawn from gao-legal and gao-pdf. The haystacks are corpus text by construction, so the items are the needles and the questions rather than the haystacks.",
+      "held_out": true
+    },
+    {
+      "name": "vi-longdoc-qa",
+      "version": "unpinned",
+      "origin": "native",
+      "source": "built by gao, doc 10 section 1.2",
+      "note": "2,000 human written questions over 400 long documents. Items are the questions. The documents stay in the corpus on purpose, because removing 400 statutes and theses to protect a benchmark would be the tail wagging the dog, and the questions are what the model must not have seen."
+    },
+    {
+      "name": "vi-overrefusal",
+      "version": "unpinned",
+      "origin": "native",
+      "source": "built by gao, doc 10 section 1.2",
+      "note": "800 legitimate Vietnamese prompts that safety trained models commonly refuse. Written for this benchmark, so any overlap is a leak of the benchmark itself."
+    },
+    {
+      "name": "vi-adherence",
+      "version": "unpinned",
+      "origin": "native",
+      "source": "built by gao, doc 10 section 1.2",
+      "note": "1,000 Vietnamese prompts with no language instruction. Written for this benchmark."
+    }
+  ]
+}

@@ -68,6 +68,8 @@ gao xay -curve parts/*.parquet              # and what every deduplication thres
 gao xay -boiler parts/*.parquet             # and the furniture every page of a host carries
 gao che        doc.txt                      # cover: tag over the personal data in a document
 gao che -level L2 -report parts/*.parquet   # and what a corpus holds, per kind, before covering it
+gao nhat -benchmarks                        # pick out the grit: what gao is judged on, and it only grows
+gao nhat -list benchmarks.json parts/*.parquet  # and which documents hold a benchmark's own test items
 
 gao kho release --snapshot gao-v1.0         # store and publish
 gao kho verify  snapshots/gao-v1.0          # check a snapshot against its manifest
@@ -376,6 +378,54 @@ Xe đưa đón xem nhà biển số [BIENSO], đi lại thuận tiện trong n�
 
 The open item is recall, measured per detector against a labelled set rather than against the fixtures the detectors were written beside. Precision can be read off a run over real pages, which is what `-spans` is for, and it prints the matched text to the terminal on purpose because reading the matches is the only way to see a detector firing on something it should not. Recall cannot be read off anything, and until there is a labelled set the honest statement is that the cue lists and the structure rules are as good as the sources they were built from, which for the province codes and the carrier prefixes is a published table, and for the surname list is a decision to keep it short.
 
+## Picking the grit out of the rice
+
+A model trained on a corpus holding its own test set scores well and has learned nothing, and the number that comes out is not wrong by a little. `nhat` is nhặt sạn, picking the grit out of the rice, and the grit is the only contaminant in this pipeline that got into the corpus by being wanted somewhere else: a benchmark item published on the web, quoted in a blog post, argued about on a forum, or scraped into a dataset that was scraped again.
+
+It runs last and it runs again at every release. Every other stage takes the corpus as its input. This one takes the corpus and a list of benchmarks, and the list changes without the corpus changing, because a benchmark published next year is a benchmark this corpus has to be checked against. Running it last means a new benchmark costs one scan rather than a rerun of everything.
+
+The check is thirteen gram exact overlap, and thirteen is a number the field settled on while counting English words. Vietnamese writes a space between syllables rather than between words, so thirteen of what lies between the spaces is about eight words of Vietnamese. This check is therefore stricter than the English one it is borrowed from, which is the direction to err in: a false flag costs one person reading one document, and a miss costs a published score that is not real. Grams are taken over the deduplication key, the same one `gao xay` uses, so an item and a copy of it that changed the quotes, the capitals or the i and y spelling are the same text here. A decontamination check that could be defeated by the things a republisher changes would be a check against careful copying only.
+
+One shared window is reported and three are removed. Windows overlap, so three of them is one run of fifteen consecutive syllables rather than three separate quotations, and a document with one window from each of three unrelated benchmarks is three coincidences rather than a leak. The count is per benchmark for the same reason. A window that two benchmarks share is attributed to both, and a document that repeats the same line ten times reports the overlap once, because otherwise a page with a refrain would cross the threshold on a single shared sentence.
+
+Two files rather than one, and the split is what makes the only-grows rule checkable. The roster is `nhat/benchmarks.json`: names, revisions, where the items come from, what part of an item goes in, whether the benchmark is native Vietnamese or translated. It is small, it is read by people, it goes into a release note. The list is the roster with every item's text filled in, which is tens of megabytes of other people's test sets and belongs in a build artifact. A run checks its list against the roster before the scan starts, because a benchmark that failed to fetch produces exactly the report a clean benchmark produces.
+
+```
+benchmark       origin      revision  drops at            source
+vmlu            native      unpinned  3 windows           vmlu.ai, the public evaluation split
+vimmrc          native      2.0       3 windows           UIT NLP group, ViMMRC 1.0 and 2.0 test splits
+uit-viquad      native      2.0       3 windows           UIT NLP group, UIT-ViQuAD 2.0
+mmlu-vi         translated  unpinned  3 windows           the Vietnamese translation used by the evaluation harness
+vi-cloze        native      unpinned  1 window, held out  built by gao, doc 10 section 2.2
+vi-diacritic    native      unpinned  1 window, held out  built by gao, doc 10 section 1.2
+
+Roster 2026-08-05, 24 benchmarks. It only grows.
+22 of them have no revision pinned. A release cannot go out until they do, because a release note that says a benchmark was checked has to say which revision of it was checked.
+```
+
+The benchmarks gao builds for itself are the interesting rows. `vi-cloze` and `vi-diacritic` are made by holding text out of `gao-web`, so overlap with them is not evidence of contamination, it is the hold out that did not happen, and one shared window is enough to drop the document rather than report it. `uit-viquad` is the other direction: its contexts come from Vietnamese Wikipedia, which is in the corpus on purpose, so it is expected to come back contaminated and the useful number is how much. `vi-longdoc-qa` is the case where the right answer is to do nothing, because its documents are statutes and theses that belong in the corpus, and it is the questions written about them that the model must not have seen.
+
+```
+benchmark  origin      revision  items  found  share   documents  dropped
+vmlu       native      1         2      2      100.0%  2          2
+vimmrc     native      2.0       1      0      0%      0          0
+mmlu-vi    translated  1         1      0      0%      0          0
+
+4 documents checked against 3 benchmarks over 24 windows, roster demo, list demo-1.
+2 documents share text with a benchmark and 2 of them share enough to be removed.
+The contaminated benchmarks stay in the eval table with the contamination written next to them. Dropping one quietly is how contaminated scores become published scores.
+
+de-thi.txt, 4 of 22 windows in the list
+  vmlu             4 windows from 1 item, dropped
+
+bai-giang.txt, 6 of 14 windows in the list
+  vmlu             6 windows from 1 item, dropped
+```
+
+The second document is the one worth looking at. It writes `Nguyên lí` where the benchmark writes `Nguyên lý`, both are correct under different orthographic reform positions, and the fold is why it was found anyway. Every benchmark on the roster gets a row whether anything touched it or not, including the ones that came back clean, because a table holding only the contaminated ones cannot be read as a clean bill of health for the rest. Finding contamination is a result rather than an error and the command exits zero when it does.
+
+Two open items, and they are both about the check being weaker than the number suggests. The embedding neighbor check is not written: n-grams cannot see a benchmark item that was translated or paraphrased into the corpus, and for the six translated benchmarks on the roster, which reached Vietnamese through somebody else's translation of the same English source, that is the channel that matters most. It needs an index this project does not have yet. The second is that most of the roster is unpinned, and a revision that is not pinned is a release note that cannot say which items were checked. Both are printed by the tool rather than left for a reader to notice.
+
 ## Where the corpus lives
 
 gao runs on four real machines with 500 GB of free disk between them, and the corpus is 1188 GB of extracted text, 396 GB compressed. It does not fit, and it does not fit by enough that no amount of tidying changes the answer. `gao box` prints the arithmetic.
@@ -454,6 +504,7 @@ phoi/        normalization: Unicode, orthography, encoding repair
 sang/        filtering: language ID, heuristics, quality classification
 xay/         milling: deduplication, boilerplate removal
 che/         covering: Vietnamese personal data, found and tagged over
+nhat/        decontamination: the benchmark roster, and what of it the corpus holds
 kho/         the store: records, manifests, snapshots, signing
 vo/          the reject store: dropped documents and why they were dropped
 doc/         schema and contracts shared across stages
