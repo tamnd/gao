@@ -155,7 +155,7 @@ func printJSON(stdout, stderr io.Writer, v any) int {
 	enc := json.NewEncoder(stdout)
 	enc.SetIndent("", "  ")
 	if err := enc.Encode(v); err != nil {
-		fmt.Fprintf(stderr, "gao xay: %v\n", err)
+		fmt.Fprintf(stderr, "gao: %v\n", err)
 		return 1
 	}
 	return 0
