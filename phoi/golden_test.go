@@ -13,9 +13,10 @@ var update = flag.Bool("update", false, "rewrite the golden files from what the 
 // The golden corpus is real Vietnamese with the damage real Vietnamese arrives
 // with: a news page off a Windows box, an encyclopedia article that went through
 // a bad font conversion, a forum post typed with the input method half off, text
-// pulled out of a PDF, and a page written throughout in the older tone mark
-// convention. Passing on invented strings proves the rules fire. Passing on
-// these proves they fire together, on documents nobody wrote for the test.
+// pulled out of a PDF, a page written throughout in the older tone mark
+// convention, and a page from before Unicode that is only Vietnamese under one
+// font. Passing on invented strings proves the rules fire. Passing on these
+// proves they fire together, on documents nobody wrote for the test.
 //
 // Run go test ./phoi -update to rewrite the outputs, then read the diff. A
 // golden file that changed without somebody reading the change is not a test.
@@ -119,6 +120,9 @@ func TestEachGoldenDocumentExercisesWhatItIsThereFor(t *testing.T) {
 		{"dau-cu", func(r Result) (bool, string) {
 			return r.Tones >= 6, "the syllables in the older tone mark convention"
 		}},
+		{"font-cu", func(r Result) (bool, string) {
+			return r.Legacy == "TCVN3" && r.Transcoded > 100, "the page written in a font encoding"
+		}},
 	} {
 		t.Run(tc.doc, func(t *testing.T) {
 			text, err := os.ReadFile(filepath.Join("testdata", tc.doc+".in"))
@@ -138,7 +142,7 @@ func TestEachGoldenDocumentExercisesWhatItIsThereFor(t *testing.T) {
 // document in the corpus, and a false positive here is a good document thrown
 // away later.
 func TestTheResidueDetectorDoesNotFireOnCleanDocuments(t *testing.T) {
-	for _, doc := range []string{"bao-dien-tu", "bach-khoa", "ban-in", "dau-cu"} {
+	for _, doc := range []string{"bao-dien-tu", "bach-khoa", "ban-in", "dau-cu", "font-cu"} {
 		text, err := os.ReadFile(filepath.Join("testdata", doc+".in"))
 		if err != nil {
 			t.Fatal(err)

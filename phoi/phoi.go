@@ -58,6 +58,13 @@ type Result struct {
 	// hash taken before this stage is worth, which is nothing.
 	Changed bool
 
+	// Legacy names the font encoding the document was written in, for the few
+	// that were written in one, and is empty for everything else.
+	Legacy string
+
+	// Transcoded is how many letters were read out of that encoding.
+	Transcoded int
+
 	// Homoglyphs is characters that were wrong rather than variant: eth for đ,
 	// a caron where a breve belongs, Cyrillic letters shaped like Latin ones.
 	Homoglyphs int
@@ -92,7 +99,7 @@ type Result struct {
 
 // Repaired says the document changed by something other than its layout: a
 // character was wrong, or invisible, or in the wrong composition, or carried its
-// tone mark on the wrong vowel.
+// tone mark on the wrong vowel, or the whole document was in a font encoding.
 //
 // The distinction is the difference between a measurement and a tautology.
 // Whitespace and a final newline are settled on every document that goes past,
@@ -100,7 +107,7 @@ type Result struct {
 // nothing about the material. The share that had a character repaired says which
 // upstreams produce damaged Vietnamese and how much.
 func (r Result) Repaired() bool {
-	return r.Homoglyphs+r.Invisible+r.Controls+r.Composed+r.Tones > 0
+	return r.Homoglyphs+r.Invisible+r.Controls+r.Composed+r.Tones+r.Transcoded > 0
 }
 
 // ControlRate is the share of the incoming runes that were control characters.
@@ -121,18 +128,20 @@ func (r Result) ResidueRate() float64 {
 
 // Normalize brings a document to the form the rest of the pipeline assumes.
 //
-// The order is fixed and each step depends on the one before it. Homoglyphs are
-// repaired first, because an eth is not a Vietnamese letter and no composition
-// rule will make it one. The look-alike letters go next, once the fullwidth
-// forms have come back to ASCII, because the test for those is whether the word
-// around them is Latin. Composition and tone placement come after that, on the
-// repaired letters. Layout comes last, because the earlier steps remove
-// characters and leave the whitespace around them behind.
+// The order is fixed and each step depends on the one before it. A document in a
+// font encoding is read out of it first, because until that is done its bytes do
+// not mean what any later rule thinks they mean. Homoglyphs are repaired next,
+// because an eth is not a Vietnamese letter and no composition rule will make it
+// one. The look-alike letters go after that, once the fullwidth forms have come
+// back to ASCII, because the test for those is whether the word around them is
+// Latin. Composition and tone placement come next, on the repaired letters.
+// Layout comes last, because the earlier steps remove characters and leave the
+// whitespace around them behind.
 func Normalize(text string) Result {
 	var r Result
 	r.Runes = utf8.RuneCountInString(text)
 
-	out := layout(r.reshape(r.unmix(r.repair(lineEndings(text)))))
+	out := layout(r.reshape(r.unmix(r.repair(lineEndings(r.transcode(text))))))
 	r.Text = out
 	r.Changed = out != text
 	r.Syllables, r.Residue = survey(out)
@@ -257,6 +266,13 @@ type Tally struct {
 	Residue    int64 `json:"residue"`
 	Syllables  int64 `json:"syllables"`
 	Rejected   int64 `json:"rejected"`
+
+	// Legacy is how many documents came out of each font encoding, by the name
+	// of the encoding. It is a breakdown rather than a total because which
+	// encodings a source turns out to be full of says when and where its pages
+	// were written, and a source with none of them is a source that was crawled
+	// after 2010.
+	Legacy map[string]int64 `json:"legacy,omitempty"`
 }
 
 // Add folds one document's result into the tally.
@@ -270,6 +286,12 @@ func (t *Tally) Add(r Result) {
 	}
 	if _, ok := Reject(r); ok {
 		t.Rejected++
+	}
+	if r.Legacy != "" {
+		if t.Legacy == nil {
+			t.Legacy = map[string]int64{}
+		}
+		t.Legacy[r.Legacy]++
 	}
 	t.Homoglyphs += int64(r.Homoglyphs)
 	t.Invisible += int64(r.Invisible)

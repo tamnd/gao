@@ -1,6 +1,9 @@
 package phoi
 
-import "testing"
+import (
+	"reflect"
+	"testing"
+)
 
 // The counts are the claim. A corpus that says a fifth of its documents were
 // repaired and which repairs they were can be argued with, and one that says it
@@ -76,7 +79,7 @@ func TestTheTallyAddsUpARun(t *testing.T) {
 		Tones:      1,
 		Syllables:  13,
 	}
-	if got != want {
+	if !reflect.DeepEqual(got, want) {
 		t.Errorf("tally = %+v, want %+v", got, want)
 	}
 	if share := got.ChangedShare(); share != 0.75 {

@@ -1,6 +1,6 @@
 # The golden corpus
 
-Five documents of real Vietnamese, each carrying the damage a real Vietnamese
+Six documents of real Vietnamese, each carrying the damage a real Vietnamese
 document arrives with. The `.in` file is what came in and the `.out` file is what
 `phoi.Normalize` is expected to produce. Neither is generated from the other by
 hand: run `go test ./phoi -update` to rewrite the outputs, then read the diff
@@ -31,3 +31,11 @@ built for Chinese.
 
 **dau-cu** is a page written throughout in the older of the two tone mark
 conventions. Nothing in it is a spelling error and every syllable of it moves.
+
+**font-cu** is a page from before Unicode. It is TCVN3, which is what the .VnTime
+fonts draw, and it is stored here the way a crawler hands it over: the bytes have
+already been read as windows-1252, so the file holds the mojibake anybody who
+reads Vietnamese has seen a thousand times rather than the original bytes. The
+line endings are carriage return and newline, which is the other half of what it
+is here for, since the stage that settles those would eat a byte this one still
+needs.
