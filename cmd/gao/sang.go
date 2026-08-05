@@ -89,25 +89,34 @@ func label(name string, i, n int) string {
 	return fmt.Sprintf("%s#%d", name, i)
 }
 
-// readDocuments returns every document in one file. A parquet part holds many
-// and a text file is one, and the extension is what says which.
-func readDocuments(name string) ([]string, error) {
+// eachDocument hands every document in one file to fn, in the order the file
+// holds them. A parquet part holds many and a text file is one, and the
+// extension is what says which.
+//
+// It streams rather than returning a slice, because a part off the fleet is
+// around 700 MB compressed and several gigabytes of text once it is read, and a
+// command that has to hold a part to measure one is a command that cannot be
+// pointed at the corpus.
+func eachDocument(name string, fn func(text string) error) error {
 	if filepath.Ext(name) != ".parquet" {
 		text, err := os.ReadFile(name)
 		if err != nil {
-			return nil, err
+			return err
 		}
-		return []string{string(text)}, nil
+		return fn(string(text))
 	}
-	part, err := kho.ReadPart(name)
-	if err != nil {
-		return nil, err
-	}
-	texts := make([]string, 0, len(part))
-	for _, r := range part {
-		texts = append(texts, r.Text)
-	}
-	return texts, nil
+	return kho.ScanPart(name, func(r kho.Row) error { return fn(r.Text) })
+}
+
+// readDocuments returns every document in one file, for the commands that build
+// a row per document anyway and so gain nothing from streaming.
+func readDocuments(name string) ([]string, error) {
+	var texts []string
+	err := eachDocument(name, func(text string) error {
+		texts = append(texts, text)
+		return nil
+	})
+	return texts, err
 }
 
 type sangRow struct {
