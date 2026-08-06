@@ -754,6 +754,12 @@ The statement and the conclusion are two columns rather than one. `tdm_signals` 
 
 The header has one piece of syntax worth naming, since getting it wrong fails quietly and in the flattering direction. A line may open with a crawler name and a colon, and `unavailable_after` carries a colon of its own, so the two are told apart by knowing the directive names rather than by counting colons. A parser that counts colons reads `noindex, unavailable_after: 25 Jun 2010` as a line addressed to a crawler nobody is called and drops the `noindex` with it.
 
+Deciding what to ask for in the first place is the frontier, and it starts with knowing when two links are one page. `bien` puts a URL into the one spelling a crawl agrees to call it: the scheme and the host lowercased, the default port dropped, the fragment and any credential removed, dot segments resolved the way a server resolves them before it looks at the path, a closed list of tracking parameters dropped, and what is left of the query sorted. Every one of those rules is the same trade read in one direction or the other. Merging two URLs that are one page saves a fetch. Merging two URLs that are two pages loses one of them permanently, and nothing downstream can tell that a page was never asked for, so the rules that could go either way are written to lose the fetch rather than the page.
+
+The trailing slash is the one people argue with, and it is kept. A server is free to serve different things at `/tin-tuc` and `/tin-tuc/`, and most of them serve a redirect from one to the other, so following the redirect costs one request and merging the two by hand costs whichever of them was the real page. The list of tracking parameters is closed for the same reason: a prefix rule that dropped anything starting with `utm` would eventually drop a parameter that selects the page, and a URL missing the parameter that selects the page fetches the wrong thing without failing. The Vietnamese case here is the domain. Vietnam has had internationalized `.vn` names since 2011, so a link written with the host in Vietnamese letters and the same link written in punycode are one host that a byte comparison calls two, and both go through IDNA before either reaches the seen set.
+
+A budget is spent per URL and earned per host, and between those two there has to be something that says a hundred thousand URLs off one forum are a hundred thousand pages while a hundred thousand URLs off one calendar are one page and a date field. That something is the shape: the URL with its varying segments replaced by what kind of thing they were, so everything generated from one template collapses onto one countable string. A date is told apart from a number even though `20240315` is both, because a number in a path is an article and a date in a path is either an archive, which is finite, or a calendar, which is not. The date layouts include the day first ones and the query keys include `ngay`, `thang`, `nam` and `tu-ngay`, since a locally written event calendar names its fields in Vietnamese and a detector that only knew `month` and `year` would walk straight into it. A run of one repeated segment is counted separately, because `/tin/bai/bai/bai/` is a relative link resolving against itself and depth alone will not name it until the crawl is thousands of pages in.
+
 ## Why this is not just another crawler
 
 Three problems in Vietnamese text processing are load bearing, and general pipelines get all three wrong.
@@ -771,6 +777,7 @@ There is a fourth, and it is the reason spaces mislead everyone: Vietnamese writ
 ```
 cmd/gao/     the single binary
 gat/         acquisition: Hugging Face, Common Crawl, crawl, media
+bien/        the frontier: canonical URLs, shapes, what a host has earned
 dem/         counting: the tokenizer that defines a gao token, and the counts
 phoi/        normalization: Unicode, orthography, encoding repair
 sang/        filtering: language ID, heuristics, quality classification
