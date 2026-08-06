@@ -81,6 +81,9 @@ gao phoi -report ingest/*.txt               # what normalizing did, per document
 gao phoi -report -total parts/*.parquet     # and over parts, where the total is the part anybody reads
 gao sang       parts/*.parquet              # sift: which documents are Vietnamese prose, and why the rest are not
 gao sang -min-syllables 40 parts/*.parquet  # and what a different length floor would keep
+gao xep frame                               # to place: the gao-refset draw and the four band scale, with its digest
+gao xep frame -rubric                       # and what puts a document in each band, with the calls people get wrong
+gao xep read labels.jsonl                   # read a labeling back: coverage, agreement, and who did the labeling
 gao xay        parts/*.parquet              # mill: what the corpus holds more than one copy of
 gao xay -curve parts/*.parquet              # and what every deduplication threshold would cost
 gao xay -boiler parts/*.parquet             # and the furniture every page of a host carries
@@ -495,6 +498,46 @@ The labeled set is fourteen documents in `sang/testdata/langid`, eight Vietnames
 Two things this does not yet cover. There are no Muong or Tay negatives in the set, and those are the languages most likely to be filed as Vietnamese, because a fixture written by somebody who cannot check it is worse than no fixture. And fourteen hand written documents say nothing about corpus scale, so the claim on the board, that this admits at least two billion tokens stock fastText rejects at precision 0.95, is measured on the fleet against a sampled and labeled crawl. `Limits.Identify` turns the identifier off for exactly that reason, so the same corpus can be run twice and the difference counted.
 
 Nothing in this stage judges quality. A document that goes through has been found to be Vietnamese prose of some length, which is the floor and not the bar.
+
+## What the quality classifier is trained to agree with
+
+Quality is the one stage in this pipeline that is a learned function rather than a written one, and everything downstream of it is downstream of 200,000 human judgments. Those judgments decide what share of the corpus reaches training. Nobody audits them the way they audit the model trained on them, which is backwards: the model is checked against a held out split and the labels are checked against nothing.
+
+`xep` is the part that can be checked. Xep is to place, and what it fixes is the draw and the rubric, hashed before the first document is drawn. The reason is the same one behind the ablation slate and the evaluation harness. A rubric written while the labeling is underway gets written toward the labels already collected, a rubric written afterwards gets written toward the classifier, and neither leaves a mark on the finished set.
+
+```
+$ gao xep frame
+200000 documents drawn across 6 sources into 4 bands, at seed "gao-refset-1.0", with 10% of them labeled twice. Fixed and hashed before the first document was drawn, because a rubric written during labeling gets written toward the labels already collected.
+
+the draw:
+  source    share  documents  why it gets that share
+  hplt3     30%    60000      the largest source and the one the headline token count rests on, so the classifier has to be right about it before it is right about anything
+  crawl     25%    50000      the only source nobody else has cleaned, which makes it the one where a quality call is load bearing rather than a second opinion on somebody else's filter
+  fineweb2  15%    30000      already filtered upstream, and a share this size is what says whether our rubric agrees with that filter or quietly replaces it
+  culturax  10%    20000      the oldest of the derived sets and the one most likely to hold text the others have since dropped, which is a different distribution rather than a smaller one
+  finepdfs  15%    30000      three times its share of the corpus, because PDFs are where the edited long form is and a classifier that has seen fifty of them will call the rest of them boilerplate
+  glotcc    5%     10000      the smallest source, kept in at a share big enough to notice if the rubric behaves differently on it
+```
+
+The shares are not the shares of the corpus, and that is the point. Drawn in proportion, the reference set is overwhelmingly web text, and a classifier trained on it has seen almost nothing of what the corpus is actually short of. FinePDFs gets three times its weight for that reason: PDFs are where the edited long form is, and a labeler who has seen fifty of them calls the fifty first boilerplate. Every share carries the sentence explaining it, because a share nobody can explain is a share somebody argues about after the classifier is trained.
+
+The scale is four bands and the order is what makes them a scale: rich, plain, thin, unusable. What does the work is not the description of each band. It is the sentence on each one naming the band it gets confused with and saying how to tell them apart, since every disagreement between two labelers is a boundary case and none of them are in the middle of a band.
+
+```
+rich     against plain: effort rather than subject. A blog post about tax law is plain, a filed tax ruling is rich.
+plain    against thin: whether a person wanted to say it. A short review saying the food was salty and the parking
+         was hard is plain, because somebody meant it.
+thin     against unusable: whether it is sentences at all. A model can learn Vietnamese from thin text and learns
+         nothing from unusable text, which is why the line is here and not somewhere more flattering.
+```
+
+Every band carries worked calls that look wrong until the rule is read. A novel chapter is rich, which people get wrong because the register is not technical. Machine translation that came out grammatical is thin rather than unusable, because the sentences parse. A legal document reproduced as a table of article numbers is unusable, even though the source is exactly the kind of thing rich comes from. A rubric with no examples on it is a rubric that gets argued about during labeling, and by then the argument is being settled by whoever is in the room.
+
+Reading the labels back is where the rubric gets its grade. Ten percent of the draw is placed by two people, and the two numbers that come out are how often they chose the same band and how often they were within one of each other. They are separate on purpose: people landing next to each other means the boundary is soft, and people landing two apart means the scale is not a scale. The gate is 70% exact and 95% within one. The first label on a document is the band of record and the second measures the rubric rather than overruling it, because a set where disagreements are settled on the way in has no disagreements left to report.
+
+Nothing is refused at read time. A document from a source the frame does not draw from, a band invented during labeling, a person placing the same document twice, a label carrying an older frame digest: each comes back as a field with a sentence saying why the result may not be published. A band nobody used is reported too, since a band with nothing in it is not in the rubric whatever the rubric says.
+
+No documents have been labeled. The frame is fixed, the digest is above, and the labeling runs when there are people to run it.
 
 ## Finding the same document twice
 
@@ -1377,6 +1420,7 @@ suat/        a rate: net yield per target class, read while the crawl is still r
 dem/         counting: the tokenizer that defines a gao token, and the counts
 phoi/        normalization: Unicode, orthography, encoding repair
 sang/        filtering: language ID, heuristics, quality classification
+xep/         to place: the gao-refset draw and rubric the quality classifier is trained against
 soi/         judging a reading: character and diacritic error rates, tone confusion
 xay/         milling: deduplication, boilerplate removal
 tach/        separating: reading a forum page as the thread it is
