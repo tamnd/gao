@@ -39,6 +39,7 @@ func commands() []command {
 		{"gat", "work with acquisition: print the ingest manifest, check it for drift", runGat},
 		{"gieo", "to sow: the generator card for gao-synth, and the recipe it is written against", runGieo},
 		{"kho", "work with the store: verify a snapshot, generate a signing key", runKho},
+		{"kim", "the needle: vi-needle, whether a long context in Vietnamese is read or skimmed", runKim},
 		{"lat", "a slice: check a release slice is a view over its snapshot rather than a second copy of it", runLat},
 		{"luat", "print the legal position: counsel questions, license determinations, what ships", runLuat},
 		{"mam", "the seed: find hosts nobody handed us a list of", runMam},
