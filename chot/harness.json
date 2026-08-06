@@ -1,0 +1,163 @@
+{
+  "version": "2026-08-06",
+  "roster": "2026-08-06",
+  "note": "The evaluation harness for S7, closed before any of the three arms has been trained. Everything that decides what the comparison says is in here: the benchmarks, the prompts verbatim, the shot counts and the seed they are drawn with, the metric, and the rule for getting an answer out of the output. The digest over all of it goes into every published result. A benchmark added after the numbers exist changes the digest and the two result sets stop claiming to be comparable, which is the only enforcement that survives contact with the person who wants gao to win.",
+  "arms": [
+    "com-8B-cpt-gao",
+    "com-8B-cpt-culturax",
+    "com-8B-cpt-culturax-filtered"
+  ],
+  "tasks": [
+    {
+      "benchmark": "vmlu",
+      "metric": "accuracy",
+      "shots": 5,
+      "seed": 20260806,
+      "prompt": "Sau đây là các câu hỏi trắc nghiệm. Hãy chọn một đáp án đúng.\n\n{{shots}}\n\n{{item}}\nĐáp án:",
+      "extract": "likelihood",
+      "note": "The primary gate. Scored by likelihood over the options rather than by reading a letter out of the output, because these are base models and asking a base model to emit an answer letter measures how well it imitates the format of the prompt."
+    },
+    {
+      "benchmark": "vimmrc",
+      "metric": "accuracy",
+      "shots": 0,
+      "seed": 0,
+      "prompt": "Đọc đoạn văn sau và trả lời câu hỏi.\n\n{{item}}\nĐáp án:",
+      "extract": "likelihood",
+      "note": "Multiple choice reading comprehension, zero shot because the passage is already long and shots would push the shorter context arms into truncation on a different share of items than the longer ones."
+    },
+    {
+      "benchmark": "uit-viquad",
+      "metric": "f1",
+      "shots": 3,
+      "seed": 20260806,
+      "prompt": "Trả lời câu hỏi bằng một đoạn trích nguyên văn trong bài đọc.\n\n{{shots}}\n\n{{item}}\nTrả lời:",
+      "extract": "first-line",
+      "note": "Extractive, so F1 rather than exact match: a span that is right except for a leading article is not worth zero, and Vietnamese has enough optional classifiers that exact match penalizes phrasing rather than reading."
+    },
+    {
+      "benchmark": "vinli",
+      "metric": "accuracy",
+      "shots": 5,
+      "seed": 20260806,
+      "prompt": "Cho hai câu, hãy cho biết câu thứ hai là suy ra được, mâu thuẫn, hay không liên quan.\n\n{{shots}}\n\n{{item}}\nQuan hệ:",
+      "extract": "likelihood"
+    },
+    {
+      "benchmark": "uit-vsfc",
+      "metric": "accuracy",
+      "shots": 5,
+      "seed": 20260806,
+      "prompt": "Phân loại thái độ của câu sau là tiêu cực, trung tính, hay tích cực.\n\n{{shots}}\n\n{{item}}\nThái độ:",
+      "extract": "likelihood"
+    },
+    {
+      "benchmark": "visfd",
+      "metric": "f1",
+      "shots": 5,
+      "seed": 20260806,
+      "prompt": "Với mỗi nhận xét, hãy cho biết nói về khía cạnh nào và thái độ ra sao.\n\n{{shots}}\n\n{{item}}\nKhía cạnh và thái độ:",
+      "extract": "first-line",
+      "note": "Aspect based, so an item has several labels and F1 over them is the score. Accuracy over whole label sets would report almost nothing, since one wrong aspect out of four would count the same as four."
+    },
+    {
+      "benchmark": "vihsd",
+      "metric": "f1",
+      "shots": 5,
+      "seed": 20260806,
+      "prompt": "Phân loại bình luận sau là sạch, xúc phạm, hay thù ghét.\n\n{{shots}}\n\n{{item}}\nPhân loại:",
+      "extract": "likelihood",
+      "note": "Macro F1 rather than accuracy, because the clean class is most of the set and accuracy on it is a report about the class balance rather than about the model."
+    },
+    {
+      "benchmark": "victsd",
+      "metric": "f1",
+      "shots": 5,
+      "seed": 20260806,
+      "prompt": "Phân loại bình luận sau là độc hại hay không, và có tính xây dựng hay không.\n\n{{shots}}\n\n{{item}}\nPhân loại:",
+      "extract": "likelihood",
+      "note": "Same class imbalance argument as vihsd."
+    },
+    {
+      "benchmark": "phomt",
+      "metric": "chrf",
+      "shots": 5,
+      "seed": 20260806,
+      "prompt": "Dịch câu sau sang tiếng Việt.\n\n{{shots}}\n\n{{item}}\nBản dịch:",
+      "extract": "first-line",
+      "note": "chrF rather than BLEU. BLEU counts word n-grams and Vietnamese writes spaces between syllables, so a word based metric is measuring a different unit on Vietnamese than the number it is being compared against was measured on."
+    },
+    {
+      "benchmark": "mmlu-vi",
+      "metric": "accuracy",
+      "shots": 5,
+      "seed": 20260806,
+      "prompt": "Sau đây là các câu hỏi trắc nghiệm. Hãy chọn một đáp án đúng.\n\n{{shots}}\n\n{{item}}\nĐáp án:",
+      "extract": "likelihood",
+      "note": "Translated, and it is on the harness precisely so that the gap between it and vmlu can be read. A model that gains on the translated set and not on the native one has learned something about translationese."
+    },
+    {
+      "benchmark": "arc-vi",
+      "metric": "accuracy",
+      "shots": 25,
+      "seed": 20260806,
+      "prompt": "Sau đây là các câu hỏi khoa học. Hãy chọn một đáp án đúng.\n\n{{shots}}\n\n{{item}}\nĐáp án:",
+      "extract": "likelihood",
+      "note": "Twenty five shots because that is what the number this will be compared against was produced with, and a benchmark run at a different shot count is not the benchmark other people published."
+    },
+    {
+      "benchmark": "hellaswag-vi",
+      "metric": "accuracy",
+      "shots": 10,
+      "seed": 20260806,
+      "prompt": "Chọn cách hoàn thành hợp lý nhất cho đoạn sau.\n\n{{shots}}\n\n{{item}}",
+      "extract": "likelihood",
+      "note": "Ten shots for the same reason as arc-vi."
+    },
+    {
+      "benchmark": "humaneval",
+      "metric": "pass-rate",
+      "shots": 0,
+      "seed": 0,
+      "prompt": "{{item}}",
+      "extract": "code-block",
+      "note": "Neutral rather than Vietnamese, and on the harness to answer one question: whether continued pretraining on Vietnamese costs the base model its code ability. A gain on Vietnamese paid for with a collapse here is not a gain worth having and this is where it would show."
+    },
+    {
+      "benchmark": "mbpp",
+      "metric": "pass-rate",
+      "shots": 3,
+      "seed": 20260806,
+      "prompt": "{{shots}}\n\n{{item}}",
+      "extract": "code-block",
+      "note": "The second half of the same question as humaneval."
+    },
+    {
+      "benchmark": "vi-cloze",
+      "metric": "accuracy",
+      "shots": 0,
+      "seed": 0,
+      "prompt": "{{item}}",
+      "extract": "likelihood",
+      "note": "gao's own, held out of the corpus, and the fast proxy the ablation slate is scored by. It is on this harness so that the proxy can be checked against the full scale result rather than trusted."
+    },
+    {
+      "benchmark": "vi-diacritic",
+      "metric": "der",
+      "shots": 5,
+      "seed": 20260806,
+      "prompt": "Thêm dấu cho đoạn văn sau.\n\n{{shots}}\n\n{{item}}\nCó dấu:",
+      "extract": "whole",
+      "note": "The one metric here where a smaller number is better, and the only task on the harness whose correct answer is known exactly for every item without anybody annotating anything."
+    },
+    {
+      "benchmark": "vi-adherence",
+      "metric": "accuracy",
+      "shots": 0,
+      "seed": 0,
+      "prompt": "{{item}}",
+      "extract": "whole",
+      "note": "Whether the model answers in Vietnamese when it is asked in Vietnamese. It is zero shot on purpose, since shots in Vietnamese would be telling the model the answer to the question being asked."
+    }
+  ]
+}
