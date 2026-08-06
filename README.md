@@ -557,28 +557,37 @@ The check is thirteen gram exact overlap, and thirteen is a number the field set
 
 One shared window is reported and three are removed. Windows overlap, so three of them is one run of fifteen consecutive syllables rather than three separate quotations, and a document with one window from each of three unrelated benchmarks is three coincidences rather than a leak. The count is per benchmark for the same reason. A window that two benchmarks share is attributed to both, and a document that repeats the same line ten times reports the overlap once, because otherwise a page with a refrain would cross the threshold on a single shared sentence.
 
-Two files rather than one, and the split is what makes the only-grows rule checkable. The roster is `nhat/benchmarks.json`: names, revisions, where the items come from, what part of an item goes in, whether the benchmark is native Vietnamese or translated. It is small, it is read by people, it goes into a release note. The list is the roster with every item's text filled in, which is tens of megabytes of other people's test sets and belongs in a build artifact. A run checks its list against the roster before the scan starts, because a benchmark that failed to fetch produces exactly the report a clean benchmark produces.
+Two files rather than one, and the split is what makes the only-grows rule checkable. The roster is `nhat/benchmarks.json`: names, revisions, the address each revision can be asked for, where the items come from, what part of an item goes in, whether the benchmark is native Vietnamese or translated. It is small, it is read by people, it goes into a release note. The list is the roster with every item's text filled in, which is tens of megabytes of other people's test sets and belongs in a build artifact. A run checks its list against the roster before the scan starts, because a benchmark that failed to fetch produces exactly the report a clean benchmark produces.
 
 ```
-benchmark       origin      revision  drops at            source
-vmlu            native      unpinned  3 windows           vmlu.ai, the public evaluation split
-vimmrc          native      2.0       3 windows           UIT NLP group, ViMMRC 1.0 and 2.0 test splits
-uit-viquad      native      2.0       3 windows           UIT NLP group, UIT-ViQuAD 2.0
-mmlu-vi         translated  unpinned  3 windows           the Vietnamese translation used by the evaluation harness
-vi-cloze        native      unpinned  1 window, held out  built by gao, doc 10 section 2.2
-vi-diacritic    native      unpinned  1 window, held out  built by gao, doc 10 section 1.2
+benchmark       origin      revision      home                                      drops at            source
+vmlu            native      b0225316f4ea  git:https://github.com/ZaloAI-Jaist/VMLU  3 windows           ZaloAI-Jaist/VMLU, the public evaluation split
+vimmrc          native      b017d98136a6  hf:uitnlp/vimmrc2.0                       3 windows           the UIT NLP group's own copy of ViMMRC 2.0 on the Hub
+uit-viquad      native      unpinned      none                                      3 windows           UIT NLP group, UIT-ViQuAD 2.0
+mmlu-vi         translated  18e6c8e65b20  hf:alexandrainst/m_mmlu                   3 windows           the Vietnamese config of m_mmlu, run by the harness as m_mmlu_vi
+vi-cloze        native      unpinned      none                                      1 window, held out  built by gao, doc 10 section 2.2
+vi-diacritic    native      unpinned      none                                      1 window, held out  built by gao, doc 10 section 1.2
 
-Roster 2026-08-05, 24 benchmarks. It only grows.
-22 of them have no revision pinned. A release cannot go out until they do, because a release note that says a benchmark was checked has to say which revision of it was checked.
+Roster 2026-08-06, 24 benchmarks. It only grows.
+
+12 of them have no revision pinned. A release cannot go out until they do, because a release note that says a benchmark was checked has to say which revision of it was checked.
+
+gsm8k-vi: There is no Vietnamese GSM8K to pin. MGSM, which is where lm-evaluation-harness keeps translated grade school arithmetic, covers eleven languages at v0.4.12 and Vietnamese is not one of them. This row names a benchmark that has to be found or built, not one that is waiting on an address.
+
+uit-viquad: UIT-ViQuAD 2.0 is handed out on request by the UIT NLP group and every copy on the Hub is somebody else's upload. Pinning one of those would pin the upload rather than the benchmark, which is a weaker claim than a release note makes. This waits for an address the authors answer for.
 ```
+
+A revision here is an object id and an address to ask for it, and both halves are required. That rules out the thing the roster used to carry, which was `2.0`: a version number is a name, the files behind a name can be reuploaded, and a release note saying the corpus was checked at 2.0 is a claim a reader cannot go and verify a year later. So the roster takes forty hex characters or the word `unpinned`, and an entry that is unpinned has to say what it is waiting for. Twelve of the twenty four are pinned today. The other twelve each carry a sentence, and printing those sentences is more useful than printing the count, because twelve names look like one problem and the reasons turn out to be four.
+
+Three of the reasons are the same finding, which is that `gsm8k-vi`, `math-vi` and `winogrande-vi` name Vietnamese translations that do not exist. The evaluation harness has Vietnamese ARC, HellaSwag and MMLU through the okapi set, and at v0.4.12 it has no Vietnamese GSM8K, no Vietnamese MATH and no Vietnamese Winogrande. Those three rows stay on the roster with the gap written down rather than quietly disappearing, because a row that is hard to fill is not a row to delete, and a test asserts they keep saying so.
 
 The benchmarks gao builds for itself are the interesting rows. `vi-cloze` and `vi-diacritic` are made by holding text out of `gao-web`, so overlap with them is not evidence of contamination, it is the hold out that did not happen, and one shared window is enough to drop the document rather than report it. `uit-viquad` is the other direction: its contexts come from Vietnamese Wikipedia, which is in the corpus on purpose, so it is expected to come back contaminated and the useful number is how much. `vi-longdoc-qa` is the case where the right answer is to do nothing, because its documents are statutes and theses that belong in the corpus, and it is the questions written about them that the model must not have seen.
 
 ```
-benchmark  origin      revision  items  found  share   documents  dropped
-vmlu       native      1         2      2      100.0%  2          2
-vimmrc     native      2.0       1      0      0%      0          0
-mmlu-vi    translated  1         1      0      0%      0          0
+benchmark  origin      revision      items  found  share   documents  dropped
+vmlu       native      b0225316f4ea  2      2      100.0%  2          2
+vimmrc     native      b017d98136a6  1      0      0%      0          0
+mmlu-vi    translated  18e6c8e65b20  1      0      0%      0          0
 
 4 documents checked against 3 benchmarks over 24 windows, roster demo, list demo-1.
 2 documents share text with a benchmark and 2 of them share enough to be removed.
@@ -593,7 +602,7 @@ bai-giang.txt, 6 of 14 windows in the list
 
 The second document is the one worth looking at. It writes `Nguyên lí` where the benchmark writes `Nguyên lý`, both are correct under different orthographic reform positions, and the fold is why it was found anyway. Every benchmark on the roster gets a row whether anything touched it or not, including the ones that came back clean, because a table holding only the contaminated ones cannot be read as a clean bill of health for the rest. Finding contamination is a result rather than an error and the command exits zero when it does.
 
-Two open items, and they are both about the check being weaker than the number suggests. The embedding neighbor check is not written: n-grams cannot see a benchmark item that was translated or paraphrased into the corpus, and for the six translated benchmarks on the roster, which reached Vietnamese through somebody else's translation of the same English source, that is the channel that matters most. It needs an index this project does not have yet. The second is that most of the roster is unpinned, and a revision that is not pinned is a release note that cannot say which items were checked. Both are printed by the tool rather than left for a reader to notice.
+Two open items, and they are both about the check being weaker than the number suggests. The embedding neighbor check is not written: n-grams cannot see a benchmark item that was translated or paraphrased into the corpus, and for the six translated benchmarks on the roster, which reached Vietnamese through somebody else's translation of the same English source, that is the channel that matters most. It needs an index this project does not have yet. The second is that half the roster is still unpinned, and a revision that is not pinned is a release note that cannot say which items were checked. Both are printed by the tool rather than left for a reader to notice.
 
 ## The one task the corpus answers for free
 
