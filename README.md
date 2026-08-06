@@ -107,6 +107,9 @@ gao cham trich -register instruments.jsonl rollouts.jsonl  # grade legal citatio
 gao ngai items                              # to hesitate: vi-overrefusal, a line per topic and the line each one draws
 gao ngai items -pairs                       # every pair verbatim, which is the only way to check where that line falls
 gao ngai grade replies.jsonl                # both numbers off one set, and how often a pair was treated the same way
+gao theo items                              # to follow: vi-adherence, a line per prompt shape and what that shape invites
+gao theo items -prompts                     # every prompt verbatim, with the sentence saying why it is in the set
+gao theo grade replies.jsonl                # the whole answer read rather than the top, and how far in it turned
 gao chot harness                            # close the ledger: the evaluation harness, fixed before any result exists
 gao chot digest                             # the digest every published result has to carry
 gao chot audit results.json                 # and whether a set of results is the one the harness asked for
@@ -924,6 +927,39 @@ The gate is P09-6: over refusal at or under 5%, harm refusal at or over 90%, bot
 
 No model has been graded against it. The set exists, the detector exists, and the numbers arrive when there is something to point them at.
 
+## Whether the answer comes back in Vietnamese
+
+Everyone who has used a model finetuned into Vietnamese off an English base has watched this happen. You ask a question in Vietnamese, the first paragraph comes back in Vietnamese, and somewhere around the fourth the model is writing English and does not appear to have noticed. It is the first thing a user complains about and the last thing a benchmark suite measures, because every standard evaluation scores what the answer said and none of them score which language it said it in.
+
+`theo` is that measurement. Theo is to follow, and the question is whether the answer follows the question into the language it was asked in.
+
+```
+$ gao theo items
+24 items in 5 kinds, asked in Vietnamese: 20 want the answer back in Vietnamese and 4 ask for English. The whole answer is read rather than the top of it, since a first paragraph in Vietnamese and an ending in English is the normal shape of this failure.
+
+kind       items  wants  why the first of them is in the set
+plain      7      vi     an everyday question with nothing English anywhere near it, which is the floor a model has to clear before the rest of the set means anything
+long       5      vi     long enough and technical enough that a model with English training data on the subject has somewhere to slip into
+technical  5      vi     the answer has to say HTTPS in English repeatedly, and the sentences around it are the thing being measured
+quoted     3      vi     the quoted string is English by necessity and everything explaining it is not
+translate  4      en     the question is Vietnamese and the answer is English, and a model that answers this one in Vietnamese has misread the instruction
+
+digest 20cf0388cff47630dd11da43c0248d8c8d8e6e66c487ee40b5361d8445c9a109, published as vi-adherence
+Run 'gao theo items -prompts' for the prompts themselves.
+```
+
+The set is arranged by the shape of the prompt rather than by its subject, because drift does not care what the question was about. It happens in long answers, in answers carrying technical vocabulary that has no Vietnamese form, and in answers that had a good reason to put an English phrase in them and then never came back. Four items ask for English on purpose. Without them the whole set is passed by a model that has learned never to write English at all, which is the failure this benchmark would cause if it were built carelessly.
+
+Two things are counted apart. An answer in English is a model that ignored the question. An answer in Vietnamese with the tone marks left off is a model writing the language badly, which has a different cause and a different fix, and summing them into one number means neither can be worked on. The corpus deliberately contains unmarked Vietnamese, since a large part of what people type has no marks on it, and an answer without them to a question that had them is still wrong.
+
+Reading is done sentence by sentence over the whole answer rather than over the top of it, which is the deliberate opposite of what `ngai` does. A refusal is at the top or it is not a refusal, so `ngai` reads 200 runes. Drift is at the bottom by definition, so `theo` reads to the end and reports how far in the answer turned. A model that drifts at 90% of the way through every long answer and a model that answers in English outright produce the same failure count and are not the same bug. Code fences and inline code come out before anything is classified, because a model that puts a shell command in an answer has not switched language, and a measure that says it did teaches the model to translate identifiers, which is worse than the thing being measured.
+
+The classifier counts function words rather than characters, since a Vietnamese sentence with an English term in it is Vietnamese and a character count says otherwise. It is wrong in both directions and it is published so that can be seen: `cần` without its mark is `can`, `máy` is `may`, `và` is `va`, and those are left out of the English list rather than argued about. A reply may carry a person's verdict which overrides the classifier, and the number of calls the classifier made travels with the score.
+
+The gate is adherence at or above 98% and unmarked answers at or under 1%. The floor is high because this failure is either absent or obvious: a model at 90% is answering one question in ten in the wrong language, which any user notices in an afternoon.
+
+No model has been graded against it yet. The set exists, the classifier exists, and the numbers arrive when there is something to point them at.
+
 ## Making text once there is no more of it to find
 
 Everything up to here harvests. The crawl, the Hugging Face union, the PDFs and the transcripts are all Vietnamese somebody already wrote, and the whole project is arranged around finding it, reading it correctly, and throwing away the parts that are not worth keeping. That runs out. Deduplication collapses the web harder than anybody expects the first time they measure it, and past the edge of what is left the only move available is to make text rather than to find it. The mixture spends 150 billion tokens doing that, which is more than the legal and spoken registers put together.
@@ -1352,6 +1388,7 @@ dien/        filling in: the cloze proxy the ablation slate is scored by
 thu/         to try: the forty run ablation slate, and the results read against it
 cham/        marking: the verifiers the reinforcement learning arms are trained against
 ngai/        to hesitate: vi-overrefusal, the paired set both refusal numbers come off
+theo/        to follow: vi-adherence, whether the answer stays in the language it was asked in
 gieo/        to sow: the generator card for gao-synth, and the recipe it is written against
 lat/         a slice: release slices as views over a snapshot rather than copies of it
 chot/        closing the ledger: the evaluation harness, fixed and hashed before any result exists

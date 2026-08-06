@@ -192,10 +192,10 @@
     {
       "name": "vi-adherence",
       "version": "unpinned",
-      "pending": "Built by gao and not built yet. Written for this benchmark, so it is waiting on people rather than on a run.",
+      "pending": "Version 1.0 is 24 items and lives in theo rather than on the Hub. It gets a revision when the set is published, and it grows by somebody writing prompts rather than by a run finishing.",
       "origin": "native",
       "source": "built by gao, doc 10 section 1.2",
-      "note": "1,000 Vietnamese prompts with no language instruction. Written for this benchmark."
+      "note": "Vietnamese prompts with no language instruction, arranged by the shape of prompt that produces drift rather than by subject, plus items that ask for English so the set is not passed by a model that never writes it. Written for this benchmark, so any overlap is a leak of the benchmark itself."
     }
   ]
 }
