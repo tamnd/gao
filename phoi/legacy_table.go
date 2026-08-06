@@ -9,8 +9,13 @@ package phoi
 // against a second transcription of it in vnkey, a Rust rewrite. The two agree
 // on all 186 letters of every encoding here. TCVN3 and VISCII were then checked
 // a third time against iconv, which carries its own tables for both under the
-// names TCVN5712-1 and VISCII and agrees with them code for code, on every code
-// that has one meaning.
+// names TCVN5712-1 and VISCII, and that third check is committed rather than
+// remembered: testdata/legacy/*.iconv is what iconv encodes each of the 134
+// letters of Vietnamese as, and the test reads it back against these tables on
+// every run. They agree on every code both of them define. Where they do not
+// overlap it is iconv defining a code these tables leave empty, always a
+// capital, which for TCVN5712-1 is sixty of them and is the difference between
+// the standard and the font encoding named below.
 //
 // TCVN3 and VNI-Windows were checked a fourth way, against the mojibake that
 // anybody who reads Vietnamese can recite. "TiÕng ViÖt" and "Tieáng Vieät" both
@@ -133,16 +138,23 @@ var vps = &Charset{
 // the others: a VISCII page read as TCVN3 decodes to Vietnamese letters all the
 // way through and to no Vietnamese words at all.
 //
-// Seven capitals are missing from the table because VISCII puts them in the
-// control range, at 0x02 and 0x05 and 0x06 and four more, and this stage does
+// Six capitals are missing from the table because VISCII puts them in the
+// control range, at 0x02, 0x05, 0x06, 0x14, 0x19 and 0x1e, and this stage does
 // not read bytes below 0x80. A byte that low in a document that reached here is
 // far more likely to be damage than to be a capital Ỵ.
+//
+// Six and not seven, and the arithmetic is the reason to be sure of it. VISCII
+// carries all 134 letters of Vietnamese, 0x80 to 0xff is 128 codes, so exactly
+// six letters go below 0x80 and every one of the 128 above it is a letter. This
+// table had 127 of them and left 0xa0 empty, where Latin-1 keeps its non
+// breaking space and where VISCII keeps Õ. The count is what caught it and iconv
+// is what named it, and testdata/legacy/viscii.iconv is that check written down.
 var viscii = &Charset{
 	name: "VISCII",
 	single: singleTable("" +
 		"ẠẮẰẶẤẦẨẬẼẸẾỀỂỄỆỐ" + // 0x80
 		"ỒỔỖỘỢỚỜỞỊỎỌỈỦŨỤỲ" + // 0x90
-		" ắằặấầẩậẽẹếềểễệố" + // 0xa0
+		"Õắằặấầẩậẽẹếềểễệố" + // 0xa0
 		"ồổỗỠƠộờởịỰỨỪỬơớƯ" + // 0xb0
 		"ÀÁÂÃẢĂẳẵÈÉÊẺÌÍĨỳ" + // 0xc0
 		"ĐứÒÓÔạỷừửÙÚỹỵÝỡư" + // 0xd0
