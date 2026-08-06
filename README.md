@@ -64,6 +64,10 @@ gao bien canon < seeds.txt                  # the frontier: one spelling per pag
 gao bien shape -count < frontier.txt        # what templates a frontier is made of, heaviest first
 gao bien budget -shapes < frontier.txt      # what the budget would ask for, and what it would refuse
 
+gao gat fetch -warc gao.warc.gz URL         # fetch a page and keep the bytes the site actually served
+gao gat warc  gao.warc.gz                   # what is in an archive: one line per record
+gao gat warc  -uri URL gao.warc.gz          # a page back out of the archive, without asking the site again
+
 gao phoi       doc.txt                      # dry: normalize a document and write it out
 gao phoi -report ingest/*.txt               # what normalizing did, per document, with a total
 gao phoi -report -total parts/*.parquet     # and over parts, where the total is the part anybody reads
@@ -771,6 +775,14 @@ Three of the numbers are worth naming. A template earns four URLs per page of ne
 The facet rule is about the one explosion the per template budget does not already handle. Two filtered listings with different values set are one template, since the shape keeps the query keys and drops their values, so that case costs nothing extra. What multiplies is the subsets: four filters over one listing is fifteen distinct combinations of them and eight filters is two hundred and fifty six, each one a template with a starting allowance of its own. Past a couple of dozen combinations on one path only the single filter views stay open, which loses nothing, because every product on such a site is reachable from the unfiltered listing.
 
 Every refusal says why, in a sentence, and `gao bien budget -shapes` prints what each template on each host spent and what closed it. A crawl that refuses URLs without saying why is a crawl nobody can tell from one that is broken, and the person reading it is on the fleet at three in the morning.
+
+What comes back gets written to a WARC before anything reads it. A crawl that keeps only the text it extracted has thrown away the page, and every extraction bug found after the fact is then a bug that can only be fixed by fetching seven hundred million pages again, from sites that have changed and some of which are gone. The format is WARC 1.1, one gzip member per record so that an index can name an offset and a length and a reader can seek to one page in a file of millions. `gao gat warc` lists what is in a file and `gao gat warc -uri URL` writes one page back out of it, because a format we can write and cannot read is a format we are trusting somebody else's tool to have understood.
+
+Two things in the writer are worth stating because they are the ones a reader would otherwise assume went the usual way. The record identifiers are derived rather than random: a hash over the fields and the block, formatted as a UUID, so the same fetch written twice is the same bytes and `gao kho reproduce` can compare an archive against a rebuild without a diff full of identifiers that were always going to differ. And the digests say `sha256` rather than the sha1 the format conventionally carries, because the whole point of writing a digest next to a payload is to be able to prove later that the payload is the one that arrived, and a proof resting on a hash with a published collision attack against it is not one.
+
+The header block was the part that had a real bug in it. A reconstructed HTTP response looks like it should carry the headers the site sent, and copying `Content-Length`, `Content-Encoding` and `Transfer-Encoding` through is what a first draft does. It is wrong: the transport decompressed the body on the way in, so those three headers describe bytes we no longer hold, and a reader that honors the copied length stops at the compressed size and hands back a page cut off partway through. Every gzipped page in the crawl would have been silently truncated in the archive while the crawl itself looked healthy. The three are stripped, the length is computed from what is actually in the block, and what the site sent is kept beside the record as `X-Gao-Sent-Content-Length` and its two companions, because it is evidence about the fetch even though it is no longer a description of the payload.
+
+Beside the bytes go the parts of the fetch that leave no trace in them: the robots rule that allowed the page, what the response said about text and data mining and in which mechanism it said it, and where a redirect pointed if one did. Those are conclusions the crawler reached at a moment that will not come back, and a page in an archive without them is a page somebody has to guess about a year later.
 
 ## Why this is not just another crawler
 

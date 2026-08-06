@@ -2,11 +2,14 @@ package main
 
 import (
 	"context"
+	"errors"
 	"flag"
 	"fmt"
 	"io"
 	"net/http"
+	"os"
 	"os/signal"
+	"path/filepath"
 	"sort"
 	"strings"
 	"syscall"
@@ -36,6 +39,8 @@ func runGat(stdout, stderr io.Writer, args []string) int {
 		return runGatAgent(stdout, stderr, args[1:])
 	case "fetch":
 		return runGatFetch(stdout, stderr, args[1:])
+	case "warc":
+		return runGatWARC(stdout, stderr, args[1:])
 	case "help", "-h", "--help":
 		gatUsage(stdout)
 		return 0
@@ -56,6 +61,7 @@ subcommands:
   ledger print what an ingest has already finished
   agent  print the User-Agent the crawler sends, and where it points
   fetch  fetch one page the way the crawler would, and print what happened
+  warc   read a WARC back: what is in it, and the bytes of one page out of it
 
 run 'gao gat <subcommand> -h' for the flags of a single subcommand.
 `)
@@ -118,6 +124,7 @@ func runGatFetch(stdout, stderr io.Writer, args []string) int {
 	timeout := fs.Duration("timeout", 30*time.Second, "how long to wait for one request")
 	max := fs.Int64("max", gat.MaxBody, "the largest body to read, in bytes")
 	body := fs.Bool("body", false, "write the body to stdout instead of the summary")
+	warc := fs.String("warc", "", "also write every fetch to this WARC file, gzipped per record")
 	fs.Usage = func() {
 		fmt.Fprint(stderr, `usage: gao gat fetch [flags] URL [URL ...]
 
@@ -156,6 +163,29 @@ flags:
 		Client:  &http.Client{Timeout: *timeout, CheckRedirect: noRedirect},
 	})
 
+	var w *gat.WARCWriter
+	if *warc != "" {
+		f, err := os.Create(*warc)
+		if err != nil {
+			fmt.Fprintf(stderr, "gao gat fetch: %v\n", err)
+			return 1
+		}
+		defer func() { _ = f.Close() }()
+		w = gat.NewWARCWriter(f, true)
+		if _, _, err := w.Write(gat.Info(gat.WARCInfo{
+			Filename:  filepath.Base(*warc),
+			Software:  "gao/" + version,
+			Agent:     gat.Agent(version),
+			Operator:  "gao",
+			Contact:   gat.Contact,
+			IsPartOf:  "gao gat fetch",
+			Described: time.Now(),
+		})); err != nil {
+			fmt.Fprintf(stderr, "gao gat fetch: %v\n", err)
+			return 1
+		}
+	}
+
 	refused := 0
 	for i, target := range fs.Args() {
 		if i > 0 && !*body {
@@ -167,6 +197,14 @@ flags:
 			reason, why, _ := gat.Reject(err)
 			fmt.Fprintf(stderr, "%s\n  refused: %s\n  reason:  %s\n", target, why, reason)
 			continue
+		}
+		if w != nil {
+			for _, r := range gat.VisitRecords(v, time.Now(), gat.Agent(version)) {
+				if _, _, err := w.Write(r); err != nil {
+					fmt.Fprintf(stderr, "gao gat fetch: %v\n", err)
+					return 1
+				}
+			}
 		}
 		if *body {
 			_, _ = stdout.Write(v.Body)
@@ -430,5 +468,130 @@ func reportDrift(stdout, stderr io.Writer, results []driftResult) int {
 		return 1
 	}
 	fmt.Fprintf(stdout, "\nall %d sources still serve the revision they were pinned at on %s\n", len(results), gat.PinnedOn())
+	return 0
+}
+
+// runGatWARC reads a WARC back.
+//
+// It is here because a format we can write and cannot read is a format we are
+// trusting somebody else's tool to have understood. The listing is what an
+// operator wants when a crawl has finished and the question is what landed on
+// disk, and -uri is what an extraction bug looks like being fixed: the page comes
+// back out of the archive rather than off the site, which by then has changed.
+func runGatWARC(stdout, stderr io.Writer, args []string) int {
+	fs := flag.NewFlagSet("gat warc", flag.ContinueOnError)
+	fs.SetOutput(stderr)
+	uri := fs.String("uri", "", "write the body of this URL to stdout instead of the listing")
+	fields := fs.Bool("fields", false, "print every field of every record, not just the summary line")
+	fs.Usage = func() {
+		fmt.Fprint(stderr, `usage: gao gat warc [flags] FILE [FILE ...]
+
+Reads a WARC written by this crawler, compressed or not, and prints what is in
+it: one line per record with its type, its status, its size and its URL.
+
+With -uri it writes the body of one page to stdout, which is the whole reason
+the crawl keeps WARCs. An extraction bug found a year later is fixed against the
+bytes the site served rather than against whatever it serves now.
+
+flags:
+`)
+		fs.PrintDefaults()
+	}
+	if err := fs.Parse(args); err != nil {
+		return 2
+	}
+	if fs.NArg() == 0 {
+		fs.Usage()
+		return 2
+	}
+
+	found := 0
+	records, responses := 0, 0
+	for _, name := range fs.Args() {
+		f, err := os.Open(name)
+		if err != nil {
+			fmt.Fprintf(stderr, "gao gat warc: %v\n", err)
+			return 1
+		}
+		r, err := gat.NewWARCReader(f)
+		if err != nil {
+			_ = f.Close()
+			fmt.Fprintf(stderr, "gao gat warc: %s: %v\n", name, err)
+			return 1
+		}
+
+		tw := tabwriter.NewWriter(stdout, 0, 0, 2, ' ', 0)
+		for {
+			rec, err := r.Next()
+			if errors.Is(err, gat.ErrDone) {
+				break
+			}
+			if err != nil {
+				_ = tw.Flush()
+				_ = f.Close()
+				fmt.Fprintf(stderr, "gao gat warc: %s: %v\n", name, err)
+				return 1
+			}
+			records++
+			if rec.Type() == "response" {
+				responses++
+			}
+
+			if *uri != "" {
+				if rec.Type() != "response" || rec.URI() != *uri {
+					continue
+				}
+				found++
+				resp, err := rec.Response()
+				if err != nil {
+					_ = f.Close()
+					fmt.Fprintf(stderr, "gao gat warc: %v\n", err)
+					return 1
+				}
+				_, copyErr := io.Copy(stdout, resp.Body)
+				_ = resp.Body.Close()
+				if copyErr != nil {
+					_ = f.Close()
+					fmt.Fprintf(stderr, "gao gat warc: %v\n", copyErr)
+					return 1
+				}
+				continue
+			}
+
+			if *fields {
+				for _, field := range rec.Fields {
+					fmt.Fprintf(tw, "  %s\t%s\n", field.Name, field.Value)
+				}
+				fmt.Fprintf(tw, "  Content-Length\t%d\n", len(rec.Block))
+				// The block of a warcinfo record is itself a field block, and
+				// it is where the crawler wrote down what it calls itself and
+				// where to complain about it. Printing the fields of a file and
+				// leaving out that part would answer the wrong question.
+				if rec.Type() == "warcinfo" {
+					for line := range strings.SplitSeq(strings.TrimSpace(string(rec.Block)), "\r\n") {
+						name, value, ok := strings.Cut(line, ": ")
+						if !ok {
+							continue
+						}
+						fmt.Fprintf(tw, "  %s\t%s\n", name, value)
+					}
+				}
+				fmt.Fprintln(tw)
+				continue
+			}
+			fmt.Fprintf(tw, "%s\t%d\t%s\n", rec.Type(), len(rec.Block), rec.URI())
+		}
+		_ = tw.Flush()
+		_ = f.Close()
+	}
+
+	if *uri != "" {
+		if found == 0 {
+			fmt.Fprintf(stderr, "gao gat warc: no response for %s in %s\n", *uri, strings.Join(fs.Args(), ", "))
+			return 1
+		}
+		return 0
+	}
+	fmt.Fprintf(stdout, "\n%d records, %d of them pages\n", records, responses)
 	return 0
 }
