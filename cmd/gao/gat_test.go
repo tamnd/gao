@@ -11,6 +11,8 @@ import (
 	"github.com/tamnd/gao/doc"
 	"github.com/tamnd/gao/gat"
 	"github.com/tamnd/gao/may"
+	"os"
+	"path/filepath"
 )
 
 func TestGatPinsPrintsEverySourceAndItsRevision(t *testing.T) {
@@ -439,5 +441,148 @@ func TestGatFetchIsInTheSubcommandList(t *testing.T) {
 	}
 	if !strings.Contains(out, "fetch") {
 		t.Errorf("fetch is not in the gat subcommand list:\n%s", out)
+	}
+}
+
+// A WARC is the difference between an extraction bug that costs a rerun of the
+// parser and one that costs a rerun of the crawl. These tests are about the two
+// halves of that being connected: what -warc writes, gao gat warc reads.
+func TestAFetchWritesAWARCThatComesBackOut(t *testing.T) {
+	const page = "<p>xin chào, đây là bài viết</p>"
+	s := fetchSite(t, map[string]http.HandlerFunc{
+		"/robots.txt": html("User-agent: *\nAllow: /\n"),
+		"/bai-viet":   html(page),
+	})
+	path := filepath.Join(t.TempDir(), "gao.warc.gz")
+
+	out, errOut, code := exec(t, "gat", "fetch", "-delay", "1ms", "-warc", path, s.URL+"/bai-viet")
+	if code != 0 {
+		t.Fatalf("gao gat fetch -warc: exit %d\n%s\n%s", code, out, errOut)
+	}
+
+	out, errOut, code = exec(t, "gat", "warc", "-uri", s.URL+"/bai-viet", path)
+	if code != 0 {
+		t.Fatalf("gao gat warc -uri: exit %d\n%s\n%s", code, out, errOut)
+	}
+	if out != page {
+		t.Errorf("the page came back out as %q, want %q", out, page)
+	}
+}
+
+func TestTheListingSaysWhatIsInTheFile(t *testing.T) {
+	s := fetchSite(t, map[string]http.HandlerFunc{
+		"/robots.txt": html("User-agent: *\nAllow: /\n"),
+		"/mot":        html("<p>mot</p>"),
+		"/hai":        html("<p>hai</p>"),
+	})
+	path := filepath.Join(t.TempDir(), "gao.warc.gz")
+
+	if _, errOut, code := exec(t, "gat", "fetch", "-delay", "1ms", "-warc", path, s.URL+"/mot", s.URL+"/hai"); code != 0 {
+		t.Fatalf("gao gat fetch -warc: exit %d\n%s", code, errOut)
+	}
+
+	out, _, code := exec(t, "gat", "warc", path)
+	if code != 0 {
+		t.Fatalf("gao gat warc: exit %d\n%s", code, out)
+	}
+	// A warcinfo, and a request and a response for each of the two pages.
+	if !strings.Contains(out, "warcinfo") {
+		t.Errorf("the listing does not mention who wrote the file:\n%s", out)
+	}
+	if !strings.Contains(out, "5 records, 2 of them pages") {
+		t.Errorf("the count is wrong:\n%s", out)
+	}
+	for _, want := range []string{"/mot", "/hai"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("%s is not in the listing:\n%s", want, out)
+		}
+	}
+}
+
+// The fields are where the parts of a fetch that are not bytes ended up: the
+// robots rule that allowed it, what the response said about mining, and the
+// lengths the site sent before the transport decompressed them.
+func TestTheFieldsCarryWhatTheSummaryWouldHaveLost(t *testing.T) {
+	s := fetchSite(t, map[string]http.HandlerFunc{
+		"/robots.txt": html("User-agent: *\nAllow: /tin/\n"),
+		"/tin/mot": func(w http.ResponseWriter, r *http.Request) {
+			w.Header().Set("Content-Type", "text/html; charset=utf-8")
+			w.Header().Set("X-Robots-Tag", "noai")
+			_, _ = w.Write([]byte("<p>mot</p>"))
+		},
+	})
+	path := filepath.Join(t.TempDir(), "gao.warc.gz")
+
+	if _, errOut, code := exec(t, "gat", "fetch", "-delay", "1ms", "-warc", path, s.URL+"/tin/mot"); code != 0 {
+		t.Fatalf("gao gat fetch -warc: exit %d\n%s", code, errOut)
+	}
+
+	out, _, code := exec(t, "gat", "warc", "-fields", path)
+	if code != 0 {
+		t.Fatalf("gao gat warc -fields: exit %d\n%s", code, out)
+	}
+	for _, want := range []string{
+		"WARC-Payload-Digest",
+		"WARC-Concurrent-To",
+		"X-Gao-Robots",
+		"X-Gao-Reservation-Said",
+		"gaobot",
+	} {
+		if !strings.Contains(out, want) {
+			t.Errorf("%s is not in the fields:\n%s", want, out)
+		}
+	}
+}
+
+func TestAskingForAPageTheCrawlNeverFetched(t *testing.T) {
+	s := fetchSite(t, map[string]http.HandlerFunc{
+		"/robots.txt": html("User-agent: *\nAllow: /\n"),
+		"/mot":        html("<p>mot</p>"),
+	})
+	path := filepath.Join(t.TempDir(), "gao.warc.gz")
+
+	if _, errOut, code := exec(t, "gat", "fetch", "-delay", "1ms", "-warc", path, s.URL+"/mot"); code != 0 {
+		t.Fatalf("gao gat fetch -warc: exit %d\n%s", code, errOut)
+	}
+
+	out, errOut, code := exec(t, "gat", "warc", "-uri", s.URL+"/hai", path)
+	if code == 0 {
+		t.Errorf("a page that is not in the file was reported as found:\n%s", out)
+	}
+	if !strings.Contains(errOut, "no response for") {
+		t.Errorf("the error does not say what was missing: %q", errOut)
+	}
+}
+
+func TestReadingSomethingThatIsNotAWARC(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "khong-phai.warc")
+	if err := os.WriteFile(path, []byte("day khong phai la mot warc\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	_, errOut, code := exec(t, "gat", "warc", path)
+	if code == 0 {
+		t.Error("a file that is not a WARC was read as one")
+	}
+	if !strings.Contains(errOut, "WARC") {
+		t.Errorf("the error does not say what was wrong: %q", errOut)
+	}
+}
+
+func TestGatWARCNeedsAFile(t *testing.T) {
+	if _, _, code := exec(t, "gat", "warc"); code != 2 {
+		t.Error("gao gat warc with no file did not report the usage")
+	}
+	if _, errOut, code := exec(t, "gat", "warc", filepath.Join(t.TempDir(), "khong-co")); code != 1 {
+		t.Errorf("a file that does not exist: exit %d, want 1: %s", code, errOut)
+	}
+}
+
+func TestGatWARCIsInTheSubcommandList(t *testing.T) {
+	out, _, code := exec(t, "gat", "help")
+	if code != 0 {
+		t.Fatalf("gao gat help: exit %d", code)
+	}
+	if !strings.Contains(out, "warc") {
+		t.Errorf("warc is not in the gat subcommand list:\n%s", out)
 	}
 }
