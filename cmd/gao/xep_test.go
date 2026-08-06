@@ -322,3 +322,163 @@ func TestAnUnknownXepSubcommandIsNamed(t *testing.T) {
 		t.Errorf("the error does not name the subcommand: %s", errOut)
 	}
 }
+
+// xepAgreed writes a labeling where the second opinions are on the documents
+// the seed designated, which is the difference between measuring the rubric and
+// measuring the documents somebody chose to check. bands says how the two
+// labelers placed each designated document, in order, and repeats.
+func xepAgreed(t *testing.T, f xep.Frame, bands [][2]xep.Band) string {
+	t.Helper()
+	digest := f.Digest()
+	var labels []xep.Label
+	n, seen := 0, 0
+	for _, sl := range f.Slices {
+		for range sl.Wanted(f.Size) {
+			id := doc.Hash(blake3.Sum256(fmt.Appendf(nil, "doc-%d", n)))
+			n++
+			if !f.Doubled(id) {
+				labels = append(labels, xep.Label{Doc: id, Source: sl.Source, By: "an", Band: xep.Plain, Frame: digest})
+				continue
+			}
+			pair := bands[seen%len(bands)]
+			seen++
+			labels = append(labels,
+				xep.Label{Doc: id, Source: sl.Source, By: "an", Band: pair[0], Frame: digest},
+				xep.Label{Doc: id, Source: sl.Source, By: "binh", Band: pair[1], Frame: digest},
+			)
+		}
+	}
+
+	lines := make([]string, 0, len(labels))
+	for _, l := range labels {
+		b, err := json.Marshal(l)
+		if err != nil {
+			t.Fatal(err)
+		}
+		lines = append(lines, string(b))
+	}
+	path := filepath.Join(t.TempDir(), "agreed.jsonl")
+	if err := os.WriteFile(path, []byte(strings.Join(lines, "\n")+"\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	return path
+}
+
+// Two people who always answer plain agree perfectly and have not tested the
+// rubric, which is the number this subcommand exists to print.
+func TestPerfectAgreementOnOneBandIsReportedAsChance(t *testing.T) {
+	f, frame := xepPilot(t)
+	labels := xepAgreed(t, f, [][2]xep.Band{{xep.Plain, xep.Plain}})
+
+	out, _, code := exec(t, "xep", "agree", "-frame", frame, labels)
+	if code != 1 {
+		t.Fatalf("exit %d, want 1:\n%s", code, out)
+	}
+	for _, want := range []string{"same band", "1.000", "above chance", "0.000", "two people agreeing on what the corpus mostly is"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("the report does not carry %q:\n%s", want, out)
+		}
+	}
+}
+
+// A rubric fails at a line, and the report names the line and quotes the
+// sentence in the rubric that was supposed to decide it.
+func TestTheReportNamesTheLineTheRubricFailsOn(t *testing.T) {
+	f, frame := xepPilot(t)
+	labels := xepAgreed(t, f, [][2]xep.Band{
+		{xep.Rich, xep.Rich}, {xep.Plain, xep.Plain}, {xep.Thin, xep.Thin}, {xep.Unusable, xep.Unusable},
+		{xep.Plain, xep.Thin}, {xep.Rich, xep.Rich}, {xep.Unusable, xep.Unusable}, {xep.Rich, xep.Rich},
+	})
+
+	out, _, code := exec(t, "xep", "agree", "-frame", frame, labels)
+	if code != 0 {
+		t.Fatalf("exit %d:\n%s", code, out)
+	}
+	if !strings.Contains(out, "where the disagreement is, worst line first") {
+		t.Fatalf("the boundaries are not reported:\n%s", out)
+	}
+	line := ""
+	for _, l := range strings.Split(out, "\n") {
+		if strings.HasPrefix(strings.TrimSpace(l), "plain") && strings.Contains(l, "thin") {
+			line = l
+		}
+	}
+	if line == "" {
+		t.Errorf("the line the disagreement is on is not named:\n%s", out)
+	}
+
+	// And the sentence in the rubric that was supposed to decide that line, so
+	// the thing to go and rewrite is on the same row as the evidence.
+	r, ok := f.Rule(xep.Plain)
+	if !ok || r.Confused != xep.Thin {
+		t.Fatalf("the fixed rubric no longer confuses plain with thin, which this test reads off it")
+	}
+	if !strings.Contains(line, r.Apart) {
+		t.Errorf("the rubric's own sentence for that line is not on the row: %q", line)
+	}
+}
+
+// Left to choose, people check the documents they found hard.
+func TestSecondOpinionsNobodyDrewAreReportedByTheCommand(t *testing.T) {
+	f, frame := xepPilot(t)
+	out, _, code := exec(t, "xep", "agree", "-frame", frame, xepLabels(t, f, nil))
+	if code != 1 {
+		t.Fatalf("exit %d, want 1:\n%s", code, out)
+	}
+	if !strings.Contains(out, "the documents they thought were worth checking") {
+		t.Errorf("second opinions the seed did not designate passed unremarked:\n%s", out)
+	}
+}
+
+func TestTheAgreementNumberSpeaksJSON(t *testing.T) {
+	f, frame := xepPilot(t)
+	labels := xepAgreed(t, f, [][2]xep.Band{
+		{xep.Rich, xep.Rich}, {xep.Plain, xep.Plain}, {xep.Thin, xep.Thin}, {xep.Unusable, xep.Unusable},
+		{xep.Plain, xep.Thin}, {xep.Rich, xep.Rich}, {xep.Unusable, xep.Unusable}, {xep.Rich, xep.Rich},
+	})
+
+	out, _, code := exec(t, "xep", "agree", "-json", "-frame", frame, labels)
+	if code != 0 {
+		t.Fatalf("exit %d:\n%s", code, out)
+	}
+	var report struct {
+		Pairs      int     `json:"pairs"`
+		Designated int     `json:"designated"`
+		Drawn      int     `json:"drawn"`
+		Elsewhere  int     `json:"elsewhere"`
+		Exact      float64 `json:"exact"`
+		Chance     float64 `json:"chance"`
+		Kappa      float64 `json:"kappa"`
+		Weighted   float64 `json:"weighted"`
+		Verdict    string  `json:"verdict"`
+		Boundaries []struct {
+			A     string `json:"a"`
+			B     string `json:"b"`
+			Pairs int    `json:"pairs"`
+		} `json:"boundaries"`
+	}
+	if err := json.Unmarshal([]byte(out), &report); err != nil {
+		t.Fatalf("%v:\n%s", err, out)
+	}
+	if report.Pairs == 0 || report.Drawn != report.Designated || report.Elsewhere != 0 {
+		t.Fatalf("%d comparisons, %d of %d designated, %d elsewhere", report.Pairs, report.Drawn, report.Designated, report.Elsewhere)
+	}
+	if report.Kappa <= 0 || report.Kappa >= report.Exact {
+		t.Errorf("kappa is %.3f against a raw figure of %.3f and chance of %.3f", report.Kappa, report.Exact, report.Chance)
+	}
+	if report.Weighted <= report.Kappa {
+		t.Errorf("the weighted figure is %.3f and the plain one %.3f, and the only misses were one band apart", report.Weighted, report.Kappa)
+	}
+	if len(report.Boundaries) != 1 || report.Boundaries[0].A != "plain" || report.Boundaries[0].B != "thin" {
+		t.Errorf("the boundaries came back %+v", report.Boundaries)
+	}
+}
+
+func TestAgreeAsksForALabelFile(t *testing.T) {
+	if _, _, code := exec(t, "xep", "agree"); code != 2 {
+		t.Error("no label file did not read as a usage error")
+	}
+	if _, errOut, code := exec(t, "xep", "agree", filepath.Join(t.TempDir(), "nowhere.jsonl")); code != 1 || !strings.Contains(errOut, "nowhere.jsonl") {
+		t.Errorf("exit %d and %q from a label file that is not there", code, errOut)
+	}
+}

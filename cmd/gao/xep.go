@@ -15,6 +15,8 @@ func runXep(stdout, stderr io.Writer, args []string) int {
 		return 2
 	}
 	switch args[0] {
+	case "agree":
+		return runXepAgree(stdout, stderr, args[1:])
 	case "frame":
 		return runXepFrame(stdout, stderr, args[1:])
 	case "read":
@@ -49,6 +51,7 @@ neither is visible in the finished set.
 commands:
   frame   print the draw and the rubric with the digest they are fixed under
   read    read a labeling back: coverage, agreement, and who did the labeling
+  agree   the agreement number on its own, corrected for chance and per boundary
 `)
 }
 
@@ -260,6 +263,117 @@ func printXepScore(w io.Writer, f xep.Frame, out xepReadReport) {
 	}
 
 	if len(out.Faults) > 0 {
+		fmt.Fprintf(w, "\n%s:\n", plural(len(out.Faults), "fault"))
+		for _, x := range out.Faults {
+			fmt.Fprintf(w, "  %s\n", x)
+		}
+	}
+}
+
+func runXepAgree(stdout, stderr io.Writer, args []string) int {
+	fs := flag.NewFlagSet("xep agree", flag.ContinueOnError)
+	fs.SetOutput(stderr)
+	asJSON := fs.Bool("json", false, "print JSON")
+	path := fs.String("frame", "", "read the frame from a file instead of the one this build ships")
+	fs.Usage = func() {
+		fmt.Fprint(stderr, `usage: gao xep agree [-json] [-frame file] labels.jsonl
+
+Measure agreement between labelers over the documents that were placed twice.
+
+Two people choosing the same band 70% of the time is not 70% of a working
+rubric. If four fifths of the draw is one band, two people who never read the
+rubric agree 80% of the time, so the raw figure is reported next to what chance
+alone would have produced and the difference between them is the number that
+says anything.
+
+Where the disagreements are matters as much as how many. Every one of them is
+counted against the pair of bands it is between, because a rubric fails at a
+line rather than in general, and the line is the sentence somebody can rewrite.
+
+Which documents get a second opinion is decided by the seed. Left to choose,
+people check the ones they found hard, and agreement over the hard tenth is not
+agreement over the draw.
+
+Exits 1 if the agreement number may not be published as it stands.
+
+flags:
+`)
+		fs.PrintDefaults()
+	}
+	if err := fs.Parse(args); err != nil {
+		return 2
+	}
+	if fs.NArg() != 1 {
+		fs.Usage()
+		return 2
+	}
+
+	f, code := readXepFrame(stderr, *path)
+	if code != 0 {
+		return code
+	}
+	labels, err := xep.ReadLabels(fs.Arg(0))
+	if err != nil {
+		fmt.Fprintf(stderr, "gao xep: %v\n", err)
+		return 1
+	}
+
+	a := f.Agree(labels)
+	out := xepAgreeReport{Agreement: a, Verdict: a.Verdict(), Faults: a.Blocking()}
+	if *asJSON {
+		if code := printJSON(stdout, stderr, out); code != 0 {
+			return code
+		}
+	} else {
+		printXepAgree(stdout, f, out)
+	}
+	if !a.Passed() {
+		return 1
+	}
+	return 0
+}
+
+type xepAgreeReport struct {
+	xep.Agreement
+	Verdict string   `json:"verdict"`
+	Faults  []string `json:"faults,omitempty"`
+}
+
+func printXepAgree(w io.Writer, f xep.Frame, out xepAgreeReport) {
+	a := out.Agreement
+	fmt.Fprintf(w, "%s\n\n", f.Describe())
+
+	tw := tabwriter.NewWriter(w, 0, 0, 2, ' ', 0)
+	fmt.Fprintf(tw, "placed twice\t%d\t%s between them\n", a.Documents, plural(a.Pairs, "comparison"))
+	fmt.Fprintf(tw, "designated\t%d\t%d of them got the second opinion the seed asked for\n", a.Designated, a.Drawn)
+	fmt.Fprintf(tw, "same band\t%.3f\tagainst a floor of %.2f\n", a.Exact, xep.MinExact)
+	fmt.Fprintf(tw, "within one band\t%.3f\tagainst a floor of %.2f\n", a.Adjacent, xep.MinAdjacent)
+	fmt.Fprintf(tw, "by chance\t%.3f\twhat the same two people get answering out of the band distribution\n", a.Chance)
+	fmt.Fprintf(tw, "above chance\t%.3f\tagainst a floor of %.2f\n", a.Kappa, xep.MinKappa)
+	fmt.Fprintf(tw, "weighted\t%.3f\tthe same, counting a miss of one band for more than a miss of three\n", a.Weighted)
+	if a.Documents > 0 {
+		fmt.Fprintf(tw, "most common\t%s\t%.1f%% of the draw\n", a.Common, 100*a.Prevalence)
+	}
+	_ = tw.Flush()
+
+	if len(a.Boundaries) > 0 {
+		fmt.Fprint(w, "\nwhere the disagreement is, worst line first:\n")
+		bw := tabwriter.NewWriter(w, 0, 0, 2, ' ', 0)
+		fmt.Fprint(bw, "  between\tand\tapart\tcomparisons\tshare\ttold apart by\n")
+		for _, b := range a.Boundaries {
+			apart := "the rubric says nothing about this pair"
+			if r, ok := f.Rule(b.A); ok && r.Confused == b.B {
+				apart = r.Apart
+			} else if r, ok := f.Rule(b.B); ok && r.Confused == b.A {
+				apart = r.Apart
+			}
+			fmt.Fprintf(bw, "  %s\t%s\t%d\t%d\t%.1f%%\t%s\n", b.A, b.B, b.Apart, b.Pairs, 100*b.Share, apart)
+		}
+		_ = bw.Flush()
+	}
+
+	fmt.Fprintf(w, "\n%s\n", out.Verdict)
+	if len(out.Faults) > 1 {
 		fmt.Fprintf(w, "\n%s:\n", plural(len(out.Faults), "fault"))
 		for _, x := range out.Faults {
 			fmt.Fprintf(w, "  %s\n", x)

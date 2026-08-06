@@ -96,6 +96,7 @@ gao sang -min-syllables 40 parts/*.parquet  # and what a different length floor 
 gao xep frame                               # to place: the gao-refset draw and the four band scale, with its digest
 gao xep frame -rubric                       # and what puts a document in each band, with the calls people get wrong
 gao xep read labels.jsonl                   # read a labeling back: coverage, agreement, and who did the labeling
+gao xep agree labels.jsonl                  # and what that agreement is worth once chance is taken out of it
 gao xay        parts/*.parquet              # mill: what the corpus holds more than one copy of
 gao xay -curve parts/*.parquet              # and what every deduplication threshold would cost
 gao xay -boiler parts/*.parquet             # and the furniture every page of a host carries
@@ -593,6 +594,39 @@ Reading the labels back is where the rubric gets its grade. Ten percent of the d
 Nothing is refused at read time. A document from a source the frame does not draw from, a band invented during labeling, a person placing the same document twice, a label carrying an older frame digest: each comes back as a field with a sentence saying why the result may not be published. A band nobody used is reported too, since a band with nothing in it is not in the rubric whatever the rubric says.
 
 No documents have been labeled. The frame is fixed, the digest is above, and the labeling runs when there are people to run it.
+
+## What an agreement number is worth once chance is taken out of it
+
+Seventy percent exact agreement is the gate, and on its own it is a number that can be met by two people who never opened the rubric. If four fifths of the draw is plain Vietnamese, two labelers who answer plain every time agree eighty percent of the time and have measured nothing. That is not a hypothetical failure mode, it is the expected one, because most of a web corpus is the middle of the scale and the fastest way through a labeling queue is to say so.
+
+So `gao xep agree` reports the raw figure next to what chance alone would have produced, and the difference between them is the number that says anything. It is Scott's pi rather than Cohen's kappa, since there is no first labeler and second labeler here. A document is placed by whoever picks it up, so the marginals are pooled across both positions and the statistic does not depend on who happened to be written to the file first. The floor is 0.60, which is the conventional line for a scale that carries information, and it is not higher because four ordered bands with real boundary cases in them will not reach the figures people quote off binary tasks.
+
+```
+$ gao xep agree -frame pilot.json labels.jsonl
+placed twice     204    204 comparisons between them
+designated       204    204 of them got the second opinion the seed asked for
+same band        0.922  against a floor of 0.70
+within one band  1.000  against a floor of 0.95
+by chance        0.306  what the same two people get answering out of the band distribution
+above chance     0.887  against a floor of 0.60
+weighted         0.919  the same, counting a miss of one band for more than a miss of three
+most common      plain  50.0% of the draw
+
+where the disagreement is, worst line first:
+  between  and    apart  comparisons  share  told apart by
+  plain    thin   1      15           7.4%   whether a person wanted to say it. A short review saying the food was
+                                             salty and the parking was hard is plain, because somebody meant it.
+  rich     plain  1      1            0.5%   effort rather than subject. A blog post about tax law is plain, a filed
+                                             tax ruling is rich.
+
+two people chose the same band 92.2% of the time over 204 comparisons, which is 0.89 above chance, and most of what is left is plain against thin
+```
+
+That run is a pilot against invented labels, since nothing has been labeled yet. What is real about it is the shape. When exact agreement clears the gate and the chance corrected figure does not, the report says so in those words rather than printing two numbers and letting the reader pick: the same band came up 92% of the time, half the draw is plain, chance alone gets most of it, and the rubric is worth very little above that. It is the one failure in this file that looks like success in every summary it ever appears in.
+
+The second half is where the disagreement is. Knowing that seven percent of the comparisons were one band apart does not say which line they were on, and the line is the thing somebody can go and fix. Every disagreement is counted against the pair of bands it is between, the worst line is named, and the sentence from the rubric that was supposed to decide that line is printed on the same row as the evidence that it did not. Either the sentence gets rewritten or the two bands get merged, and both of those are decisions somebody can make from this table.
+
+Which documents get a second opinion is decided by the seed rather than by the labelers, and that is not pedantry. Left to choose, people double check the documents they found hard, and agreement measured over the hard tenth understates a rubric that works. Left to choose the other way, people double check whatever is next in the queue, and agreement over the easy documents overstates one that does not. Neither leaves a mark on the finished set. A hash of the seed and the document identity settles it before anybody has seen a document, and a second opinion on something the seed did not designate is reported as what it is, which is agreement measured over the documents somebody thought were worth checking.
 
 ## Finding the same document twice
 
