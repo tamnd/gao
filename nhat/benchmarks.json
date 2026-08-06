@@ -184,15 +184,15 @@
     {
       "name": "vi-overrefusal",
       "version": "unpinned",
-      "pending": "Built by gao and not built yet. Written for this benchmark, so it is waiting on people rather than on a run.",
+      "pending": "Version 1.0 is 24 pairs and lives in ngai rather than on the Hub. It gets a revision when the set is published, and it grows by somebody writing pairs rather than by a run finishing.",
       "origin": "native",
       "source": "built by gao, doc 10 section 1.2",
-      "note": "800 legitimate Vietnamese prompts that safety trained models commonly refuse. Written for this benchmark, so any overlap is a leak of the benchmark itself."
+      "note": "Paired Vietnamese prompts: every legitimate question that safety trained models commonly refuse has a harmful twin on the same topic in the same words, so over refusal and harm refusal come off one set. Written for this benchmark, so any overlap is a leak of the benchmark itself."
     },
     {
       "name": "vi-adherence",
       "version": "unpinned",
-      "pending": "Built by gao and not built yet. Written for this benchmark, so it is waiting on people rather than on a run.",
+      "pending": "Version 1.0 is 24 pairs and lives in ngai rather than on the Hub. It gets a revision when the set is published, and it grows by somebody writing pairs rather than by a run finishing.",
       "origin": "native",
       "source": "built by gao, doc 10 section 1.2",
       "note": "1,000 Vietnamese prompts with no language instruction. Written for this benchmark."
