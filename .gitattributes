@@ -5,6 +5,14 @@
 phoi/testdata/*.in  -text
 phoi/testdata/*.out -text
 
+# The legacy fixtures are the strongest form of this. A .bytes file is not text
+# in any encoding git knows, it is the input to the stage that decides what
+# encoding it is in, and VISCII alone puts six letters below 0x80. Rewriting a
+# byte of one of these changes the document rather than the way it is stored.
+phoi/testdata/legacy/*.bytes -text
+phoi/testdata/legacy/*.txt   -text
+phoi/testdata/legacy/*.iconv -text
+
 # The labeled set is measured, and a measurement that reports one recall on one
 # platform and another somewhere else is not a measurement. Its line endings are
 # part of the document, so they are checked out as they were committed. The
