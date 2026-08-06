@@ -167,6 +167,10 @@ gao nau reconcile                           # what the budget buys against what 
 gao nau arms                                # the continued pretraining comparison and the recipe it shares
 gao nau check                               # everything in the plan that cannot be true at once
 
+gao chon criteria                           # choosing a base: the six criteria, in the order they bind
+gao chon bases                              # the candidates, before anybody has measured one
+gao chon score bases.jsonl                  # and what the measurements say, if they are enough to decide
+
 gao hieu model                              # the effect: the from scratch architecture and what a token of it costs
 gao hieu plan -gpus 64                      # the compute that run needs, in the hours it gets booked in
 gao hieu read steps.jsonl                   # what the hardware actually gave back, tenth of the run by tenth
@@ -1170,6 +1174,27 @@ Synthetic text goes to `vietnamese-synthetic-text` and nowhere else, and it is n
 
 None of this has run yet. `gao-synth` generation needs `gamingpc`, which is the only box in the fleet with a GPU the generator fits on, and the card records the box and the batch settings so that the throughput on it is a number somebody else can reproduce rather than one they have to take our word for. The recipe is closed and hashed now, before any of that, which is the point.
 
+## Choosing a base without letting the small criteria outvote the large one
+
+The continued pretraining arms start from somebody else's weights, and six criteria decide whose. They are ranked, and the ranking is the whole content of them. The license permits derivative weights and commercial use or the candidate is out. Base quality on multilingual reasoning is measured directly rather than read off a model card. Fertility comes third, and the sentence that governs it is that a base at 1.50 tokens per syllable gives 33% more Vietnamese per FLOP than one at 1.99, which is enough to break a tie and not enough to override the criterion above it. Then Vietnamese exposure probed before any training, long context already present, and a 2026 architecture so that what is learned continuing it transfers to the run that starts from nothing.
+
+The obvious way to implement that is a table with six columns and a total, and the obvious way is wrong. Adding them up is exactly how the criterion that cannot be traded gets traded: a base with a license that forbids derivatives collects enough small advantages elsewhere to finish above one that has no such problem, and the sum has no way to say that the result is not a candidate at all. So criterion 1 removes rather than scores, and the comparison below it is lexicographic with a band. Two bases within two points on measured quality are tied, and fertility decides between them. Two bases further apart than that are not tied, and no fertility figure moves them.
+
+```
+base                    quality  fertility  exposure  context
+qwen3-30b-a3b           62.0     1.28       3.8%      32k
+gemma-3-27b-it          61.0     1.32       2.1%      128k
+llama-3.3-70b-instruct  58.0     1.75       0.8%      128k
+mistral-small-3         55.5     1.60       0.5%      128k
+sailor2-8b              44.0     1.55       14.0%     32k
+```
+
+Those numbers are an illustration and not a result, which is the other half of what this command is for. Four of the six criteria are measurements somebody has to take, and an unmeasured criterion is not a zero. A table that scores around the holes produces a ranking that reads like a decision and was made out of a field that was never assembled. So each hole is named against the base it is a hole in, and the report says leader rather than choice until there are none of them left. The exit code says the same thing, because that distinction is exactly the one that gets lost when a table is pasted into a message.
+
+Two faults are worth more than the ranking. A base with two different quality figures on it is refused rather than averaged, since criterion 2 is the criterion that decides and a criterion that decides cannot have two values. And quality measured on two different suites is refused outright, because ranking across suites ranks the suites. Both of those pass unnoticed in a spreadsheet, and both would pick the wrong base quietly.
+
+The tokenizer column on the roster is what connects this to the fertility work. Criterion 3 is a fact about a vocabulary rather than about weights, so each base names the tokenizer it comes with, and a base whose tokenizer is not on the fertility roster is one criterion 3 cannot be applied to yet. Two of the five are in that position today, which is a piece of work this table names instead of quietly scoring as zero.
+
 ## What fraction of the hardware becomes gradient
 
 The gate on the from scratch run is 40% model FLOPs utilization in FP8 and the kill criterion is 25% after a week of tuning, which makes utilization the number that decides whether the most expensive thing in this project continues. A number with that job should not be an estimate somebody did once in a spreadsheet, so `gao hieu` computes it and reads it back off the run.
@@ -1688,6 +1713,7 @@ xoa/         the takedown register: who asked, when, and when it was done
 doc/         schema and contracts shared across stages
 luat/        the legal position: license determinations, publication posture
 nau/         the training plan: the token budget, the curriculum, the arms
+chon/        to choose: the base model criteria, in the order they bind
 hieu/        the effect: what fraction of the hardware a training run turns into gradient
 may/         the fleet: the four boxes this actually runs on
 ```
