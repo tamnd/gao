@@ -52,6 +52,8 @@ gao gat ledger -dir ingest/ -files          # every finished file, and how each 
 gao dem model  -o tokenizer.model           # fetch the tokenizer that defines a gao token
 gao dem gates  -tokenizer tokenizer.model parts/*.parquet  # and put it through the ten gates before trusting a count
 gao gat hf     -dir ingest/ -tokenizer tokenizer.model  # and count tokens while harvesting
+gao dem fertility                           # the candidate tokenizers, and which of them anybody has pinned
+gao dem fertility fertility.jsonl           # and what each one costs for the same Vietnamese, measured
 gao dem counts ingest/                      # what the harvest counted, per source
 gao dem keys   glotcc-abc1234               # read a snapshot's document identities back out of the store
 gao dem overlap keys/*.keys                 # what the sources have in common, counted rather than sampled
@@ -360,6 +362,29 @@ gao dem gates -tokenizer tokenizer.model parts/*.parquet
 gao dem gates -tokenizer tokenizer.model -one-in 100 parts/*.parquet  # and the same run over one document in a hundred
 gao dem gates -tokenizer tokenizer.model -coverage                    # or over the built in set, which leaves no gate unrun
 ```
+
+## What the same Vietnamese costs under each tokenizer
+
+Fertility is how many tokens a tokenizer spends on the same text, and it is the one number here that cannot be improved later. Gemma-3 gets 3.02 characters into a token on Vietnamese and Llama-3.3 gets 2.28, which is a third more tokens for the same corpus. That third is paid on every training step, taken out of every context window, and charged again on every inference call, for as long as the model exists. Picking a base model is picking a tokenizer, and picking a tokenizer is fixing that multiplier before a single step has run.
+
+So the measurement is taken on every candidate rather than on the one already in use, because a number with nothing beside it does not decide anything. There are five, and they are not all the same kind of thing. Three are tokenizers this project would inherit by continuing somebody else's pretraining and can at most extend. One is a vocabulary trained on gao text, which is the only candidate whose fertility this project gets to decide instead of accept. `gao dem fertility` prints the roster with no argument, and what it mostly prints today is how much of this is not done.
+
+```
+tokenizer         vocab   path                   pinned   reported
+gemma-3           262144  continued pretraining  yes      3.02
+llama-3.3         128256  continued pretraining  not yet  2.28
+qwen3             151936  continued pretraining  not yet  nobody has
+gao-192k          192000  from scratch           not yet  nobody has
+gemma-3-plus-32k  294144  continued pretraining  not yet  nobody has
+```
+
+The pinned column is the one that decides whether a candidate can be measured at all. A fertility figure taken on whatever tokenizer happened to be installed on the box is a figure nobody can reproduce and nobody can argue with, so a candidate without a digest is reported as a hole rather than left off a list that would then look complete. The reported column is what other people have published on their own Vietnamese, which is where to start and not an answer, and replacing every one of those numbers with a figure taken on gao text is the whole of the work.
+
+Given a log of readings the same command folds them onto the roster, ranks what has been measured by tokens per syllable, and prices the gap between the best and the worst as a percentage, because that percentage is what the choice costs. It names what has not been measured in the same breath. A slate missing two candidates is a shortlist, and the only thing separating a shortlist from a comparison is somebody saying which one it is.
+
+Two readings of one tokenizer over the same text on two different boxes have to come back identical, and that is the cheapest reproducibility check anywhere in this project. The arithmetic is a division, the input is a fixed file, and the whole thing takes seconds. When the two disagree it is a locale, a normalization difference, or a tokenizer file that is not the one that was pinned, and all three of those are wrong everywhere else in the pipeline too. Finding one here costs an afternoon. Finding it after the counts are published costs the counts.
+
+Which is why the report counts boxes rather than readings. The same tokenizer measured twice on `server1` is a repeat and not a reproduction, and it is the failure most likely to go through unnoticed, because in any summary that counts readings the two look identical. That one is named as a fault in its own sentence, and the command exits non zero on it, on a candidate nobody measured, and on any disagreement, so a pipeline gets the answer without reading the prose.
 
 ## Normalizing before anything reads a character
 
