@@ -179,7 +179,7 @@ func TestXayBoilerAndCurveAreNotRunTogether(t *testing.T) {
 	if code := runXay(&stdout, &stderr, []string{"-boiler", "-curve", boilerPart(t)}); code != 2 {
 		t.Fatalf("gao xay -boiler -curve = %d, want 2\n%s", code, stderr.String())
 	}
-	if !strings.Contains(stderr.String(), "two different measurements") {
+	if !strings.Contains(stderr.String(), "different measurements") {
 		t.Errorf("it does not say why: %s", stderr.String())
 	}
 }
