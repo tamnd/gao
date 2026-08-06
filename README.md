@@ -78,6 +78,10 @@ gao gat fetch -warc gao.warc.gz URL         # fetch a page and keep the bytes th
 gao gat warc  gao.warc.gz                   # what is in an archive: one line per record
 gao gat warc  -uri URL gao.warc.gz          # a page back out of the archive, without asking the site again
 
+gao boc thread.html                         # to husk: the conversation out of a forum page, and not the sidebar
+gao boc -text -furniture thread.html        # the posts, and the repeated lines that were dropped to get them
+gao boc -json pages/*.html                  # over a crawl, where the number that matters is how many held a thread
+
 gao phoi       doc.txt                      # dry: normalize a document and write it out
 gao phoi -report ingest/*.txt               # what normalizing did, per document, with a total
 gao phoi -report -total parts/*.parquet     # and over parts, where the total is the part anybody reads
@@ -1464,6 +1468,42 @@ A kill criterion is only useful if it says what stopping costs, so the verdict c
 
 Two things it refuses to do. It will not fire the kill criterion on a young crawl, because yield in the first tens of millions of fetches is a measurement of the seed list rather than of the web, and stopping a crawl for being young is the one way this meter could do real damage. And it will not compute a curve out of measurements that are not continuous: checkpoints more than five million fetches apart are refused, since the gap between them is where a yield stopped being something anybody watched and became something somebody reconstructed afterward.
 
+## Keeping the forum and throwing the page away
+
+The table above says forums are the biggest class in the crawl and the reason the crawl exists at all, and there is one thing that quietly turns that into nothing. Generic article extraction works by finding the densest run of text on a page and keeping it. That is the right rule for a news article, which is one block of prose in a frame of furniture. A forum thread is forty small blocks of prose separated by furniture, none of them dense enough to win, and the densest single run on a thread page is very often the sidebar listing the thirty most recent threads. Point a generic extractor at a forum and it returns the navigation, drops the conversation, and reports success, on every page.
+
+That failure is worth its own handler because of what is in the class. Forums are where informal written Vietnamese lives: the slang, the regional vocabulary, the code switching between Vietnamese and English, and the sentence shapes people use when nobody is editing them. None of that is in the news archives and none of it is in the government gazettes. Losing forums is not losing volume, it is losing the register the rest of the corpus does not contain. `bóc` is to husk, which is the one step in rice processing where what you throw away weighs more than what you keep.
+
+The method is repetition rather than a list of sites. A thread page has a repeated element on it and an article page does not: forty posts are forty siblings built from the same template, same tag, same classes, different text. That is a property of the page rather than of the software behind it, so it holds for vBulletin, XenForo, phpBB and whatever voz is running this year. A selector list per forum engine is a file that is wrong within a year and wrong silently, which is the same failure with more maintenance attached.
+
+```
+$ gao boc -text -furniture thread.html
+page         posts  runes  quoted  skipped  shape
+thread.html  2      176    14.1%   0        article.js-post.message
+
+thread.html
+  Hỏi về thuế thu nhập cá nhân 2026
+
+  [0] thanhnv, 2026-03-01T09:00:00+07:00
+  Em mới đi làm được sáu tháng, lương gross hai mươi triệu thì quyết toán thuế thế nào ạ.
+
+  [1] huyenanh, 2026-03-01T10:12:00+07:00
+  Bác lên trang thuế điện tử đăng ký tài khoản trước đã, xong rồi mới nộp tờ khai được nhé.
+  (29 runes of quotation taken out)
+
+  dropped as furniture:
+    Trả lời
+    Đọc kỹ nội quy trước khi đăng bài nhé các bác.
+```
+
+Repetition is also what finds the furniture, and that turns out to be the same observation applied one level down. A signature under every message, a Reply button under every message and a Report link under every message are indistinguishable from sentences until you notice they occur forty times on one page. Anything appearing in at least half the containers is dropped, half rather than all because the first post of a thread is usually laid out differently from the replies. What was dropped is kept verbatim rather than counted, and printed on request, because the way this handler fails is by removing something that was not furniture, and a number saying how much it removed makes exactly that failure invisible.
+
+Quoted text comes out and is counted rather than discarded quietly. A quote is somebody else's post, which is already in the corpus once, and taking it a second time defeats deduplication rather than triggering it: each copy sits inside a different document with different text around it, so the shingles never collide and the same paragraph enters the training data three times looking like three documents. The share is reported per thread because it is read as a judgement about the page, and a thread that is two thirds quotation is a page not worth the fetch it took.
+
+The byline is read off the markup and left out of the text. Forums write "2 giờ trước" next to the message and the real timestamp in the attribute, and only the second one still means something a week after the fetch. A display name comes from microdata or from the one class name every major engine agrees on, and from nothing else, because a name guessed wrong is attached to an opinion somebody actually holds. Where the page does not say, the field is empty rather than approximated.
+
+A page with no thread in it is an answer rather than an error. It comes back saying which of the three things it was, and it exits 0, because the caller's next move is to hand the page to the generic extractor and a non zero exit would have the pipeline dropping the page instead. Candidates are tried in order rather than picked once: the group with the most text usually is the conversation, and on a quiet thread with a busy sidebar it is not, so the sidebar losing costs one pass over it instead of the whole page.
+
 ## What the corpus is for
 
 A corpus is a means to a model, and the model has a plan: a trillion token instances, 66% Vietnamese, three phases that get longer and more curated as they go, and a continued pretraining comparison that decides whether any of this was worth doing before a from scratch run is funded. That plan lives in `nau`, in Go, rather than in a document, because a mixture table is arithmetic and arithmetic written in prose is arithmetic nobody checks. `gao nau check` runs in CI and fails on a budget whose components do not add up, a phase that reads 98% of itself, and a comparison whose arms differ in two things at once.
@@ -1531,6 +1571,7 @@ gat/         acquisition: Hugging Face, Common Crawl, crawl, media
 bien/        the frontier: canonical URLs, shapes, what a host has earned, and whether it fits in memory
 mam/         the seed: hosts and repositories nobody handed us a list of
 suat/        a rate: net yield per target class, read while the crawl is still running
+boc/         to husk: the posts out of a forum thread, and the page they were wrapped in left behind
 dem/         counting: the tokenizer that defines a gao token, and the counts
 phoi/        normalization: Unicode, orthography, encoding repair
 sang/        filtering: language ID, heuristics, quality classification
