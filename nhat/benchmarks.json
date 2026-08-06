@@ -1,5 +1,5 @@
 {
-  "version": "2026-08-06",
+  "version": "2026-08-07",
   "note": "Every benchmark gao is judged on, and every benchmark the corpus is checked against before a release. It only grows. A benchmark comes off this file when it stops existing, not when it comes back contaminated. A revision here is the object id its home answers with, because a version number is a name and the files behind a name can be reuploaded. Twelve of these are pinned and twelve are not, and each of the twelve that is not says what it is waiting for.",
   "benchmarks": [
     {
@@ -149,7 +149,7 @@
     {
       "name": "vi-cloze",
       "version": "unpinned",
-      "pending": "Built by gao and not built yet. It gets a revision when the held out split exists and is written down somewhere that can be asked for one.",
+      "pending": "Built by gao out of held out gao-web, which is not ingested, so the items do not exist to be hashed yet. It gets a digest when the split is drawn.",
       "origin": "native",
       "source": "built by gao, doc 10 section 2.2",
       "note": "20,000 ranking items built from held out gao-web. Overlap is not a finding here, it is the hold out failing, so one shared window drops the document.",
@@ -158,7 +158,7 @@
     {
       "name": "vi-diacritic",
       "version": "unpinned",
-      "pending": "Built by gao and not built yet. It gets a revision when the held out split exists.",
+      "pending": "Built by gao out of held out gao-web, which is not ingested, so the items do not exist to be hashed yet. It gets a digest when the split is drawn.",
       "origin": "native",
       "source": "built by gao, doc 10 section 1.2",
       "note": "5,000 sentences held out from gao-web with the tone marks stripped. Held out, so one shared window drops the document. The stripped side is not in the list because undiacriticized Vietnamese is a real register that the corpus is supposed to contain.",
@@ -166,8 +166,8 @@
     },
     {
       "name": "vi-needle",
-      "version": "unpinned",
-      "pending": "Built by gao and not built yet. The haystacks come out of gao-legal and gao-pdf, so this one cannot be pinned before those two exist either.",
+      "version": "5da3e0715e97a43431c73ba8ad65ac9493f0934f0d9518d0fc5c03926d34dc2a",
+      "home": "gao:kim frame",
       "origin": "native",
       "source": "built by gao, doc 10 section 1.2",
       "note": "Long context retrieval with haystacks drawn from gao-legal and gao-pdf. The haystacks are corpus text by construction, so the items are the needles and the questions rather than the haystacks.",
@@ -183,16 +183,16 @@
     },
     {
       "name": "vi-overrefusal",
-      "version": "unpinned",
-      "pending": "Version 1.0 is 24 pairs and lives in ngai rather than on the Hub. It gets a revision when the set is published, and it grows by somebody writing pairs rather than by a run finishing.",
+      "version": "51b46ea24e4c169fbe44c99f7916e598496d95a25a9f00059a24d8aae4341ab0",
+      "home": "gao:ngai items",
       "origin": "native",
       "source": "built by gao, doc 10 section 1.2",
       "note": "Paired Vietnamese prompts: every legitimate question that safety trained models commonly refuse has a harmful twin on the same topic in the same words, so over refusal and harm refusal come off one set. Written for this benchmark, so any overlap is a leak of the benchmark itself."
     },
     {
       "name": "vi-adherence",
-      "version": "unpinned",
-      "pending": "Version 1.0 is 24 items and lives in theo rather than on the Hub. It gets a revision when the set is published, and it grows by somebody writing prompts rather than by a run finishing.",
+      "version": "20cf0388cff47630dd11da43c0248d8c8d8e6e66c487ee40b5361d8445c9a109",
+      "home": "gao:theo items",
       "origin": "native",
       "source": "built by gao, doc 10 section 1.2",
       "note": "Vietnamese prompts with no language instruction, arranged by the shape of prompt that produces drift rather than by subject, plus items that ask for English so the set is not passed by a model that never writes it. Written for this benchmark, so any overlap is a leak of the benchmark itself."
