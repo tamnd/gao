@@ -588,8 +588,13 @@ func (g *Gates) spacing(word string) string {
 const MinEncodeTime = 10 * time.Millisecond
 
 // throughput settles T9.
+//
+// A run too short to time and a run with nothing in it are different findings
+// and are reported as different findings. A clock that did not tick is the first
+// of the two, not the second, and on Windows it is the ordinary case for a
+// sample this size rather than a curiosity.
 func (g *Gates) throughput(gate Gate) Gate {
-	if g.bytes == 0 || g.encoded == 0 {
+	if g.bytes == 0 {
 		gate.Why = "nothing was encoded"
 		return gate
 	}
