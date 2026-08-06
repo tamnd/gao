@@ -11,6 +11,7 @@ import (
 	"text/tabwriter"
 
 	"github.com/tamnd/gao/bien"
+	"github.com/tamnd/gao/may"
 )
 
 func runBien(stdout, stderr io.Writer, args []string) int {
@@ -25,6 +26,8 @@ func runBien(stdout, stderr io.Writer, args []string) int {
 		return runBienShape(stdout, stderr, args[1:])
 	case "budget":
 		return runBienBudget(stdout, stderr, args[1:])
+	case "fit":
+		return runBienFit(stdout, stderr, args[1:])
 	case "help", "-h", "--help":
 		bienUsage(stdout)
 		return 0
@@ -42,9 +45,11 @@ subcommands:
   canon  print the canonical form of each URL, and what merged with what
   shape  print the template each URL came from, and what is wrong with it
   budget run a list of URLs past the budget and print what it would ask for
+  fit    work out whether the frontier fits on the box that has to hold it
 
-with no URLs on the command line, each subcommand reads them one per line from
-standard input.
+canon, shape and budget read URLs one per line from standard input when there
+are none on the command line. fit reads no URLs, because it is the check that
+runs before the first fetch rather than one that runs over a list.
 
 run 'gao bien <subcommand> -h' for the flags of a single subcommand.
 `)
@@ -225,6 +230,131 @@ func runBienBudget(stdout, stderr io.Writer, args []string) int {
 	fmt.Fprintf(stdout, "\n%d urls in, %d asked for, %d skipped, across %s\n",
 		len(urls), asked, skipped, plural(len(hosts), "host"))
 	return 0
+}
+
+// bienFitReport is what fit prints with -json, so a gate in a script reads the
+// same numbers a person does.
+type bienFitReport struct {
+	Box       string `json:"box"`
+	Memory    int64  `json:"memory"`
+	Available int64  `json:"available"`
+	Reserve   int64  `json:"reserve"`
+	bien.Cost
+	Headroom float64      `json:"headroom"`
+	Fits     bool         `json:"fits"`
+	Sample   *bien.Sample `json:"sample,omitempty"`
+	Blocking []string     `json:"blocking"`
+	Faults   []string     `json:"faults"`
+}
+
+// runBienFit answers the one question that has to be answered before the crawl
+// starts, because it cannot be answered afterwards.
+//
+// The frontier and the seen set are the only things a crawl holds that cannot be
+// rebuilt from what it has already written. A crawler killed for memory at a
+// hundred million fetches comes back not knowing what it has already asked for,
+// and a crawl that does not know that is a crawl that asks again. So the
+// arithmetic runs first, it runs against a named box rather than against a
+// number somebody remembers, and it exits non zero when the answer is no.
+func runBienFit(stdout, stderr io.Writer, args []string) int {
+	fs := flag.NewFlagSet("bien fit", flag.ContinueOnError)
+	fs.SetOutput(stderr)
+	p := bien.Frontier()
+	name := fs.String("box", "server1", "the box in the fleet the frontier has to fit on")
+	asJSON := fs.Bool("json", false, "print the whole answer as JSON")
+	measure := fs.Int("measure", 0, "build a real frontier of this many hosts and read the heap, instead of trusting the arithmetic")
+	fs.Int64Var(&p.URLs, "urls", p.URLs, "URLs in the seed frontier")
+	fs.Int64Var(&p.Hosts, "hosts", p.Hosts, "hosts the frontier spreads across")
+	fs.Int64Var(&p.Active, "active", p.Active, "hosts held resident at once, the rest paged out with the frontier")
+	fs.IntVar(&p.SeenBits, "bits", p.SeenBits, "bits per URL in the filter in front of the exact seen set")
+	fs.IntVar(&p.ShapesPerHost, "shapes", p.ShapesPerHost, "templates a host is tracked at")
+	fs.IntVar(&p.ReadyPerHost, "ready", p.ReadyPerHost, "URLs queued in memory per active host")
+	if err := fs.Parse(args); err != nil {
+		return 2
+	}
+	if fs.NArg() > 0 {
+		fmt.Fprintf(stderr, "gao bien fit: %s takes no URLs, since it runs before there are any\n", fs.Name())
+		bienUsage(stderr)
+		return 2
+	}
+
+	box, ok := may.Lookup(*name)
+	if !ok {
+		names := make([]string, 0, len(may.Boxes))
+		for _, b := range may.Boxes {
+			names = append(names, b.Name)
+		}
+		fmt.Fprintf(stderr, "gao bien fit: no box named %q in the fleet, which is %s\n", *name, strings.Join(names, ", "))
+		return 2
+	}
+
+	c := p.Cost()
+	out := bienFitReport{
+		Box:       box.Name,
+		Memory:    box.Memory,
+		Available: bien.Available(box),
+		Reserve:   bien.Reserve,
+		Cost:      c,
+		Headroom:  c.Headroom(box),
+		Fits:      c.Fits(box),
+		Faults:    p.Faults(),
+	}
+	if len(out.Faults) == 0 {
+		out.Blocking = c.Blocking(box)
+	}
+	if *measure > 0 {
+		s := bien.Measure(*measure, p.ShapesPerHost)
+		out.Sample = &s
+	}
+
+	if *asJSON {
+		printJSON(stdout, stderr, out)
+	} else {
+		printBienFit(stdout, p, out)
+	}
+	if len(out.Faults) > 0 || len(out.Blocking) > 0 {
+		return 1
+	}
+	return 0
+}
+
+func printBienFit(w io.Writer, p bien.Plan, out bienFitReport) {
+	fmt.Fprintf(w, "%s\n\n", p.Describe())
+
+	tw := tabwriter.NewWriter(w, 0, 0, 2, ' ', 0)
+	fmt.Fprintf(tw, "seen filter\t%s\t%d bits per URL, exact set on disk behind it\n", bien.Bytes(out.Seen), p.SeenBits)
+	fmt.Fprintf(tw, "host ledgers\t%s\t%s resident of %s\n", bien.Bytes(out.Ledgers), bien.Count(p.Active, "host"), bien.Count(p.Hosts, "host"))
+	fmt.Fprintf(tw, "template tallies\t%s\t%d templates apiece\n", bien.Bytes(out.Shapes), p.ShapesPerHost)
+	fmt.Fprintf(tw, "facet counters\t%s\t%d paths apiece, %d combinations each\n", bien.Bytes(out.Facets), p.FacetPathsPerHost, p.FacetsPerPath)
+	fmt.Fprintf(tw, "ready queues\t%s\t%d URLs apiece\n", bien.Bytes(out.Ready), p.ReadyPerHost)
+	fmt.Fprintf(tw, "total\t%s\t%d bytes per resident host, queue aside\n", bien.Bytes(out.Total), out.PerHost)
+	fmt.Fprintf(tw, "%s has\t%s\t%s of memory less %s reserved\n", out.Box, bien.Bytes(out.Available), bien.Bytes(out.Memory), bien.Bytes(out.Reserve))
+	_ = tw.Flush()
+
+	fmt.Fprintf(w, "\nthe filter errs %.2f%% of the time, which costs %s in the exact set on disk over the whole crawl and no lost URLs\n",
+		100*out.FalsePositive, bien.Count(out.Reads, "lookup"))
+
+	if out.Sample != nil {
+		s := out.Sample
+		fmt.Fprintf(w, "\nmeasured on this machine: %s over %s offered, %d bytes per host against the %d worked out above\n",
+			bien.Bytes(s.Heap), plural(s.Offered, "URL"), s.PerHost, out.PerHost)
+		fmt.Fprintf(w, "which puts the whole plan at %s measured against %s worked out\n",
+			bien.Bytes(s.Scaled(p)), bien.Bytes(out.Total))
+	}
+
+	fmt.Fprintln(w)
+	for _, why := range out.Faults {
+		fmt.Fprintf(w, "fault: %s\n", why)
+	}
+	for _, why := range out.Blocking {
+		fmt.Fprintf(w, "blocked: %s\n", why)
+	}
+	if len(out.Faults) == 0 && len(out.Blocking) == 0 {
+		fmt.Fprintf(w, "fits: %s of %s on %s, %.0f%% spare. The crawl may start.\n",
+			bien.Bytes(out.Total), bien.Bytes(out.Available), out.Box, 100*out.Headroom)
+	} else {
+		fmt.Fprintf(w, "\nthe crawl does not start until this comes back clean\n")
+	}
 }
 
 // stdin is a variable so the tests can hand these subcommands a list of URLs

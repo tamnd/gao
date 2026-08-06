@@ -63,6 +63,8 @@ gao gat media  --from crawl                 # fetch PDFs, audio, video
 gao bien canon < seeds.txt                  # the frontier: one spelling per page, and what merged with what
 gao bien shape -count < frontier.txt        # what templates a frontier is made of, heaviest first
 gao bien budget -shapes < frontier.txt      # what the budget would ask for, and what it would refuse
+gao bien fit                                # whether the frontier fits on server1, before the first fetch
+gao bien fit -measure 20000                 # and the same answer read off a real heap rather than worked out
 
 gao mam ct -counts < ct.json                # the seed: hosts Certificate Transparency names, heaviest first
 gao mam ct -direct -seed seed.txt < ct.json # and which of them a seed list did not already have
@@ -1236,6 +1238,37 @@ Almost all of the work in that harvester is about not reporting a working reposi
 
 Two smaller things are about what the records actually contain rather than about the protocol. `dc:identifier` is repeatable and is mostly not a URL: it carries ISSNs, DOIs, call numbers and citation strings, with the handle link sitting among them, so taking the first one takes a citation about as often as a link. And `dc:language` is whatever the deposit form defaulted to, which on a lot of DSpace installs is `en_US` on a thesis written entirely in Vietnamese. It is kept as a hint that travels with the record and it is not believed, because deciding what language a document is in is `sang`'s job and it reads the text.
 
+## Whether the frontier fits before the first fetch
+
+The frontier and the seen set are the only two things a crawl holds that cannot be rebuilt from what it has already written. Every fetched page is in a WARC and every extracted document is in the store, but the record of what has already been asked for exists once, in memory, on one box. A crawler killed by the kernel at four in the morning comes back not knowing what it has asked for, and a crawl that does not know that is a crawl that asks again, from the same sites, at the same rate. So the question of whether 280 million URLs across 900,000 hosts fit inside server1 is not a capacity planning exercise. It is the gate, and the only useful time to run it is before the first fetch.
+
+`gao bien fit` runs it. The arithmetic is taken from the structures that actually hold the frontier rather than typed in, so `reflect` reports the size of a host ledger and a template tally and adding a field to either moves the total instead of quietly invalidating it. What is left over is the cost of a map entry beyond its key and its value, which the Go runtime does not document, and that is the reason for the second half: `-measure` builds a real budget at a fraction of the scale, offers real URLs into it, and reads the heap on either side. On this machine the two land within 4% of each other, which is the only thing that makes the first number worth quoting.
+
+```
+$ gao bien fit
+280 million URLs across 900k hosts, of which 50k hosts are resident at a time with 32 URLs queued behind each. The exact seen set is on disk behind a filter of 10 bits per URL, and so is everything else, because holding the frontier resident is the thing this check exists to refuse.
+
+seen filter       333.8 MB  10 bits per URL, exact set on disk behind it
+host ledgers      4.4 MB    50k hosts resident of 900k hosts
+template tallies  228.9 MB  24 templates apiece
+facet counters    103.8 MB  4 paths apiece, 8 combinations each
+ready queues      170.9 MB  32 URLs apiece
+total             841.7 MB  7068 bytes per resident host, queue aside
+server1 has       5.01 GB   5.79 GB of memory less 800.0 MB reserved
+
+the filter errs 0.82% of the time, which costs 2.3 million lookups in the exact set on disk over the whole crawl and no lost URLs
+
+fits: 841.7 MB of 5.01 GB on server1, 84% spare. The crawl may start.
+```
+
+The first version of this said no, and that is the whole reason it was worth writing. Holding a ledger for every one of the 900,000 hosts, each tracked at two dozen templates with a few dozen URLs queued behind it, comes to 12.26 GB against the 5.01 GB server1 has once the reserve is off. Nothing about that is recoverable at run time. It is a design decision, and the design it forces is that only the hosts being fetched from right now are resident: the rest of the ledgers page out with the frontier they belong to and come back when the host comes back into rotation. Fifty thousand active hosts is what that number is now, and it is a field rather than a constant so that the next person to argue with it can pass a flag and see what happens. `gao bien fit -active 900000 -ready 64` still prints the arithmetic that said no, and it still exits non zero.
+
+The reserve is 800 MB and it is subtracted rather than assumed away: the kernel, the socket buffers under several hundred concurrent fetches, and the WARC writer's roll buffers are not the crawl's to spend. What it leaves is 5.01 GB, which is where the round number in the plan came from rather than the other way around.
+
+Two of the lines are there to be argued with. The seen filter is 10 bits per URL, which errs slightly under one time in a hundred, and the exact set sits behind it on disk. That arrangement is the reason a false positive costs a disk lookup rather than a URL: 2.3 million extra reads over the whole crawl, spread across seven hundred million fetches, against a filter that would need four times the memory to make them go away. Below eight bits the check refuses the plan outright, because at that point the filter is costing more in seeks than it saves in memory. And if the ready queues ever outgrow the seen filter the check refuses that too, since more memory going to URLs waiting than to the record of what has already been asked for is what a frontier held resident looks like from the inside.
+
+The crawl has not started, and this has been run against `server1`'s real inventory rather than against a box we intend to have.
+
 ## Reading the crawl while it is still running
 
 One number decides whether the crawl was worth running, and it is net yield: unique documents kept per fetch made. The plan is written against 0.15, and the kill criterion says stop below 0.08 once a hundred million fetches are behind it. Neither of those is worth anything unless somebody can act on it at fetch one hundred million rather than read about it at fetch seven hundred million, and a yield computed when the crawl finishes is a post mortem on a decision the budget already made. `suất` is a rate, and the meter has to exist before the thing it measures.
@@ -1335,7 +1368,7 @@ There is a fourth, and it is the reason spaces mislead everyone: Vietnamese writ
 ```
 cmd/gao/     the single binary
 gat/         acquisition: Hugging Face, Common Crawl, crawl, media
-bien/        the frontier: canonical URLs, shapes, what a host has earned
+bien/        the frontier: canonical URLs, shapes, what a host has earned, and whether it fits in memory
 mam/         the seed: hosts and repositories nobody handed us a list of
 suat/        a rate: net yield per target class, read while the crawl is still running
 dem/         counting: the tokenizer that defines a gao token, and the counts
