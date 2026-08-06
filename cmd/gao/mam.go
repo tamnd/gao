@@ -3,6 +3,7 @@ package main
 import (
 	"bufio"
 	"context"
+	"errors"
 	"flag"
 	"fmt"
 	"io"
@@ -24,6 +25,8 @@ func runMam(stdout, stderr io.Writer, args []string) int {
 	switch args[0] {
 	case "ct":
 		return runMamCT(stdout, stderr, args[1:])
+	case "oai":
+		return runMamOAI(stdout, stderr, args[1:])
 	case "help", "-h", "--help":
 		mamUsage(stdout)
 		return 0
@@ -38,7 +41,8 @@ func mamUsage(w io.Writer) {
 	fmt.Fprint(w, `usage: gao mam <subcommand> [flags]
 
 subcommands:
-  ct  read Certificate Transparency and print the hosts it names
+  ct   read Certificate Transparency and print the hosts it names
+  oai  ask university repositories for their catalogs, and say which of them answer
 
 run 'gao mam <subcommand> -h' for the flags of a single subcommand.
 `)
@@ -185,4 +189,120 @@ func readHosts(path string) ([]string, error) {
 		out = append(out, line)
 	}
 	return out, sc.Err()
+}
+
+// runMamOAI asks a list of repositories what they hold.
+//
+// Two questions, and they are not the same one. Without -links it is asking
+// whether the repository speaks the protocol at all, which is what P03-6 is a
+// prediction about and what decides whether a university's theses are reachable
+// without crawling a search form. With -links it is harvesting the catalog into
+// URLs the frontier can take.
+func runMamOAI(stdout, stderr io.Writer, args []string) int {
+	fs := flag.NewFlagSet("mam oai", flag.ContinueOnError)
+	fs.SetOutput(stderr)
+	links := fs.Bool("links", false, "harvest the catalog and print the URLs in it, one per line")
+	max := fs.Int("max", 0, "stop after this many records per repository, or every record when zero")
+	from := fs.String("from", "", "only records changed since this date, as 2006-01-02")
+	set := fs.String("set", "", "harvest one set rather than the whole repository")
+	timeout := fs.Duration("timeout", 2*time.Minute, "how long to wait for one repository")
+	fs.Usage = func() {
+		fmt.Fprint(stderr, `usage: gao mam oai [flags] BASE [BASE ...]
+
+Asks each OAI-PMH base URL who it is and whether it will hand over its catalog.
+Base URLs are read from the arguments, or one per line from standard input.
+
+A university repository is a DSpace or an Eprints install holding theses,
+journal issues and conference papers, which is the highest quality Vietnamese
+prose per byte in this project and close to invisible to a crawler: the landing
+pages sit behind a search form and the identifiers are handles rather than
+paths. A repository that speaks OAI-PMH will instead hand over a complete
+catalog of what it holds, which is the difference between reaching some of it
+and reaching all of it.
+
+With -links it harvests and prints the URLs, ready for the frontier. Without,
+it reports what each repository said about itself and whether it works, and
+counts how many of them did, which is the measurement P03-6 is about.
+
+Exits 0 when every repository answered and 1 when any did not.
+
+flags:
+`)
+		fs.PrintDefaults()
+	}
+	if err := fs.Parse(args); err != nil {
+		return 2
+	}
+
+	bases, err := readURLs(fs.Args(), stdin)
+	if err != nil {
+		fmt.Fprintf(stderr, "gao mam oai: %v\n", err)
+		return 2
+	}
+
+	var since time.Time
+	if *from != "" {
+		since, err = time.Parse(time.DateOnly, *from)
+		if err != nil {
+			fmt.Fprintf(stderr, "gao mam oai: -from wants a date like 2024-03-15: %v\n", err)
+			return 2
+		}
+	}
+
+	c := &http.Client{Timeout: *timeout}
+	ctx := context.Background()
+	working := 0
+	for i, base := range bases {
+		r, err := mam.Works(ctx, c, base)
+		if err != nil {
+			fmt.Fprintf(stderr, "%s\n  %v\n", base, err)
+			continue
+		}
+		working++
+
+		if *links {
+			items, err := mam.Records(ctx, c, r, mam.Harvest{Set: *set, From: since, Max: *max})
+			if err != nil && !errors.Is(err, mam.ErrNoRecords) {
+				// Whatever came back before the failure is still worth having,
+				// so this reports the break and keeps the records.
+				fmt.Fprintf(stderr, "%s\n  %v\n", base, err)
+			}
+			for _, it := range items {
+				if it.Deleted {
+					continue
+				}
+				for _, link := range it.Links {
+					fmt.Fprintln(stdout, link)
+				}
+			}
+			continue
+		}
+
+		if i > 0 {
+			fmt.Fprintln(stdout)
+		}
+		printRepository(stdout, r)
+	}
+
+	fmt.Fprintf(stderr, "\n%d of %s answered OAI-PMH\n", working, plural(len(bases), "repository"))
+	if working < len(bases) {
+		return 1
+	}
+	return 0
+}
+
+func printRepository(stdout io.Writer, r mam.Repository) {
+	tw := tabwriter.NewWriter(stdout, 0, 0, 2, ' ', 0)
+	fmt.Fprintf(tw, "%s\n", r.Base)
+	fmt.Fprintf(tw, "  name\t%s\n", r.Name)
+	fmt.Fprintf(tw, "  protocol\t%s\n", r.Protocol)
+	fmt.Fprintf(tw, "  granularity\t%s\n", r.Granularity)
+	if !r.Earliest.IsZero() {
+		fmt.Fprintf(tw, "  earliest\t%s\n", r.Earliest.Format(time.DateOnly))
+	}
+	fmt.Fprintf(tw, "  formats\t%s\n", strings.Join(r.Formats, ", "))
+	if len(r.Admin) > 0 {
+		fmt.Fprintf(tw, "  contact\t%s\n", strings.Join(r.Admin, ", "))
+	}
+	_ = tw.Flush()
 }

@@ -260,5 +260,8 @@ func plural(n int, noun string) string {
 	if n == 1 {
 		return fmt.Sprintf("%d %s", n, noun)
 	}
+	if strings.HasSuffix(noun, "y") {
+		return fmt.Sprintf("%d %sies", n, strings.TrimSuffix(noun, "y"))
+	}
 	return fmt.Sprintf("%d %ss", n, noun)
 }

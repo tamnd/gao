@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -168,5 +169,118 @@ func TestMamRefusesASubcommandItDoesNotHave(t *testing.T) {
 	}
 	if !strings.Contains(errb.String(), "unknown subcommand") {
 		t.Errorf("the error does not say what happened: %q", errb.String())
+	}
+}
+
+// oaiSite is a repository that answers the three verbs, so the CLI tests can be
+// about what the command reports rather than about the protocol, which mam's own
+// tests cover.
+func oaiSite(t *testing.T, name string, records int) *httptest.Server {
+	t.Helper()
+	s := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/xml; charset=utf-8")
+		open := `<?xml version="1.0" encoding="UTF-8"?>
+<OAI-PMH xmlns="http://www.openarchives.org/OAI/2.0/">`
+		switch r.URL.Query().Get("verb") {
+		case "Identify":
+			_, _ = fmt.Fprintf(w, `%s<Identify><repositoryName>%s</repositoryName><protocolVersion>2.0</protocolVersion><granularity>YYYY-MM-DD</granularity><earliestDatestamp>2011-05-02</earliestDatestamp><adminEmail>thuvien@%s</adminEmail></Identify></OAI-PMH>`, open, name, "example.edu.vn")
+		case "ListMetadataFormats":
+			_, _ = fmt.Fprintf(w, `%s<ListMetadataFormats><metadataFormat><metadataPrefix>oai_dc</metadataPrefix></metadataFormat></ListMetadataFormats></OAI-PMH>`, open)
+		case "ListRecords":
+			_, _ = fmt.Fprint(w, open+"<ListRecords>")
+			for i := range records {
+				_, _ = fmt.Fprintf(w, `<record><header><identifier>oai:x:%d</identifier><datestamp>2021-01-0%d</datestamp></header><metadata><oai_dc:dc xmlns:oai_dc="http://www.openarchives.org/OAI/2.0/oai_dc/" xmlns:dc="http://purl.org/dc/elements/1.1/"><dc:title>Luận án %d</dc:title><dc:identifier>ISSN 1859-1388</dc:identifier><dc:identifier>https://tainguyenso.example.edu.vn/handle/1/%d</dc:identifier></oai_dc:dc></metadata></record>`, i+1, i+1, i+1, i+1)
+			}
+			_, _ = fmt.Fprint(w, "</ListRecords></OAI-PMH>")
+		default:
+			_, _ = fmt.Fprintf(w, `%s<error code="badVerb">no</error></OAI-PMH>`, open)
+		}
+	}))
+	t.Cleanup(s.Close)
+	return s
+}
+
+func TestMamOAIReportsWhatARepositorySaysAboutItself(t *testing.T) {
+	s := oaiSite(t, "Kho tài liệu số", 2)
+	out, _, code := mamRun(t, "", "oai", s.URL)
+	if code != 0 {
+		t.Fatalf("exit %d: %s", code, out)
+	}
+	for _, want := range []string{"Kho tài liệu số", "oai_dc", "2011-05-02", "thuvien@example.edu.vn"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("%q is not in the report:\n%s", want, out)
+		}
+	}
+}
+
+func TestMamOAIHarvestsLinksForTheFrontier(t *testing.T) {
+	s := oaiSite(t, "Kho tài liệu số", 3)
+	out, _, code := mamRun(t, "", "oai", "-links", s.URL)
+	if code != 0 {
+		t.Fatalf("exit %d: %s", code, out)
+	}
+	lines := strings.Fields(out)
+	if len(lines) != 3 {
+		t.Fatalf("got %d links, want 3:\n%s", len(lines), out)
+	}
+	// An ISSN is a dc:identifier and it is not a link.
+	for _, l := range lines {
+		if !strings.HasPrefix(l, "https://") {
+			t.Errorf("something that is not a URL reached the frontier: %q", l)
+		}
+	}
+}
+
+// This count is what P03-6 is a prediction about, so a repository that is down
+// has to be visible rather than quietly missing from a list of links.
+func TestMamOAICountsHowManyAnswered(t *testing.T) {
+	good := oaiSite(t, "Kho một", 1)
+	bad := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write([]byte("<html><body>Thư viện</body></html>"))
+	}))
+	defer bad.Close()
+
+	out, errOut, code := mamRun(t, "", "oai", good.URL, bad.URL)
+	if code != 1 {
+		t.Errorf("a repository that does not answer: exit %d, want 1\n%s", code, out)
+	}
+	if !strings.Contains(errOut, "1 of 2 repositories answered") {
+		t.Errorf("the count does not say what happened:\n%s", errOut)
+	}
+	if !strings.Contains(errOut, bad.URL) {
+		t.Errorf("the repository that failed is not named:\n%s", errOut)
+	}
+}
+
+func TestMamOAIReadsAListOfRepositories(t *testing.T) {
+	s := oaiSite(t, "Kho tài liệu số", 1)
+	in := "# the ones we know about\n" + s.URL + "\n\n"
+	out, errOut, code := mamRun(t, in, "oai", "-links")
+	if code != 0 {
+		t.Fatalf("exit %d: %s", code, out)
+	}
+	if !strings.Contains(errOut, "1 of 1 repository answered") {
+		t.Errorf("blank lines or comments were counted as repositories:\n%s", errOut)
+	}
+}
+
+func TestMamOAIWantsADateItCanRead(t *testing.T) {
+	s := oaiSite(t, "Kho tài liệu số", 1)
+	_, errOut, code := mamRun(t, "", "oai", "-from", "hom qua", s.URL)
+	if code != 2 {
+		t.Errorf("an unreadable date: exit %d, want 2", code)
+	}
+	if !strings.Contains(errOut, "2024-03-15") {
+		t.Errorf("the error does not say what a date looks like: %q", errOut)
+	}
+}
+
+func TestMamOAINeedsSomethingToAsk(t *testing.T) {
+	_, errOut, code := mamRun(t, "", "oai")
+	if code == 0 {
+		t.Error("an empty list of repositories exited zero")
+	}
+	if !strings.Contains(errOut, "no urls") {
+		t.Errorf("the error does not say what is missing: %q", errOut)
 	}
 }
