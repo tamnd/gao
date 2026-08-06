@@ -45,6 +45,7 @@ func commands() []command {
 		{"plan", "print the build plan: slices, gates, and kill criteria", runPlan},
 		{"sang", "sift: measure documents and say which of them are Vietnamese prose", runSang},
 		{"soi", "hold a reading up to the light: measure what a machine read against what the page says", runSoi},
+		{"tach", "separate: read a forum page as the thread it is, since generic extraction keeps the menu and drops the posts", runTach},
 		{"version", "print the version", runVersion},
 		{"xay", "mill: find the documents a corpus holds more than one copy of", runXay},
 		{"xoa", "the takedown register: who asked us to remove something, and how long it took", runXoa},
