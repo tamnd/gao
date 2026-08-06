@@ -123,6 +123,10 @@ gao thu slate                               # to try: the forty run ablation sla
 gao thu slate -knobs                        # and what the forty runs are actually for, one line per question
 gao thu read results.jsonl                  # read the runs that came back, nulls included, against the slate
 
+gao tin study                               # to believe: whether the cheap benchmark orders recipes like the expensive one
+gao tin read pairs.jsonl                    # read the paired scores, against a floor taken from the baseline repeats
+gao tin read -missed pairs.jsonl            # and every comparison the proxy called backwards, widest first
+
 gao gieo recipe                             # to sow: the gao-synth recipe, fixed and hashed before a token exists
 gao gieo recipe -prompts                    # the prompts verbatim, which is what reproducing it needs
 gao gieo card synth/gao-synth-1.0           # check a generator card against the recipe it names
@@ -878,6 +882,34 @@ The compute is on the slate and inside its digest, because the gate for this sli
 
 None of these runs has happened. What exists is the slate, the questions, the price, and the reading that will refuse a table with holes in it.
 
+## Whether the cheap benchmark can be believed about the expensive one
+
+The slate above scores forty runs of a 1.4 billion parameter model with `vi-cloze`, and every threshold this project ships gets set from what those forty runs say. That is the whole point of running them, and it is worth nothing unless the ordering `vi-cloze` produces at 1.4B is the ordering the real benchmark produces at 8B. That is a claim about the instrument rather than about any recipe, nobody has checked it for Vietnamese, and it is the assumption underneath every ablation table in the field. `tin` is to believe.
+
+```
+$ gao tin study
+whether vi-cloze at 1.4B parameters over 40B tokens orders recipes the way vmlu at 8B parameters at full scale does, measured over at least 12 recipes scored both ways, with 3 repeats of the baseline recipe setting the floor a comparison has to clear to be a comparison at all
+
+proxy          vi-cloze  1.4B parameters over 40B tokens
+anchor         vmlu      8B parameters at full scale
+believable at  0.70      rank correlation, and the pairwise rate at 0.80
+killed below   0.50      rank correlation, and then the slate is exploratory
+recipes        12        scored both ways before the correlation means anything
+baselines      3         runs of one recipe, which is where the noise floor comes from
+```
+
+Two bars rather than one, because they answer different questions. The rank correlation is about the whole ordering, and it is the number the literature quotes. The pairwise rate is about the decision anybody actually makes with the proxy, which is never "rank these forty" and is always "is this recipe better than that one". A proxy can score 0.75 on the first while getting the close calls wrong every time, and the close calls are the ones a sweep over four values of a threshold consists of.
+
+The noise floor is the part that decides whether any of this means anything. The slate runs its baseline three times at different seeds, and the spread across those three is what two runs of the same recipe differ by for no reason at all. Two recipes closer together than that are a comparison nobody can be right about, so `gao tin read` counts them, reports them as too close to call, and leaves them out of the rate. Counting a coin flip the proxy happened to call correctly as an agreement is how a proxy that knows nothing reports 70%, and it is why a validity study with no floor under it is a study that cannot fail.
+
+The three baseline runs are also one recipe rather than three. Ranking them separately puts three nearly identical scores into the correlation and drags it toward wherever they happen to land, so they contribute the floor and one representative, which is what they are.
+
+`gao tin read` refuses nothing and publishes nothing quietly. A run with no machine recorded at one of the two scales is named rather than counted, because a result nobody can reproduce cannot be ruled out as a locale difference. A run that appears twice is a run somebody re-ran after seeing the first number. A run produced under a different slate is not the same recipe and the comparison is not a comparison. All of those come back as lists of run IDs, and every one of them is a reason the study may not go out even when the correlation looks fine. So is a study of six recipes that scores 0.9, because a rank correlation over that few lands where it lands by accident and the number would get quoted for the life of the project.
+
+Below 0.5 the slice is dead and the cost is real: the forty run slate is reported as exploratory rather than decisive, every threshold falls back to a published default from the literature, and each one goes into the release notes flagged as unvalidated rather than presented as tuned. Between 0.5 and 0.7 is a third state that most write-ups collapse into one of the other two, and it is the honest answer often enough to be worth keeping. The slate's findings go out with the caveat attached rather than without it or not at all.
+
+Nothing has been scored at either scale yet, which is the point of building this now. A validity study written after the ablation results arrive is a study whose thresholds move until the answer is the one somebody wanted.
+
 ## Training against a check rather than against a reward model
 
 Post-training here is supervised finetuning, then reinforcement learning run as parallel specialists, then distillation of the specialists back into one model. There is no reward model anywhere in it. A reward model is a second model whose mistakes become the first model's objective, and in Vietnamese the preference data it would be trained on would itself be translated, which makes those mistakes systematic rather than random. So every arm is trained against a program that says whether an answer is right, and `cham` is to mark a paper.
@@ -1463,6 +1495,7 @@ nhat/        decontamination: the benchmark roster, and what of it the corpus ho
 dau/         the mark: the diacritic restoration task set, built out of the corpus
 dien/        filling in: the cloze proxy the ablation slate is scored by
 thu/         to try: the forty run ablation slate, and the results read against it
+tin/         to believe: whether the cloze proxy at 1.4B orders recipes the way the real benchmark does at 8B
 cham/        marking: the verifiers the reinforcement learning arms are trained against
 ngai/        to hesitate: vi-overrefusal, the paired set both refusal numbers come off
 theo/        to follow: vi-adherence, whether the answer stays in the language it was asked in
