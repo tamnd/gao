@@ -1515,8 +1515,8 @@ So the harness is fixed first and hashed. `chốt sổ` is to close the ledger. 
 
 ```
 $ gao chot harness
-harness 2026-08-06, closed against roster 2026-08-06
-393fdd426026bcc60b9a05c02f5bf21f707b5aae30ca1e015f275554ee55a7d4
+harness 2026-08-07, closed against roster 2026-08-07
+e4d71047c881575bd9d77f37c06dc99beed2596e1840f689b8dea6d22b030a57
 
 arms, named before any of them was trained:
   com-8B-cpt-gao
@@ -1540,12 +1540,12 @@ humaneval     neutral     pass-rate  0      .         code-block   7dce6050a7d6
 mbpp          neutral     pass-rate  3      20260806  code-block   4bb6404fdc6c
 vi-cloze      native      accuracy   0      .         likelihood   unpinned
 vi-diacritic  native      der        5      20260806  whole        unpinned
-vi-adherence  native      accuracy   0      .         whole        unpinned
+vi-adherence  native      accuracy   0      .         whole        20cf0388cff4
 
 17 tasks over 3 arms, so this harness promises 51 numbers.
 
-5 of these run on a benchmark whose revision the roster has not pinned:
-  uit-viquad, vi-adherence, vi-cloze, vi-diacritic, vinli
+4 of these run on a benchmark whose revision the roster has not pinned:
+  uit-viquad, vi-cloze, vi-diacritic, vinli
 A result on an unpinned benchmark is a number nobody else can reproduce, so these are what stands between this harness and a published comparison.
 ```
 
@@ -1557,7 +1557,7 @@ Which numbers are best is a separate question from which are present, so the aud
 
 Three of the seventeen are on the harness to catch a win that is not one. `mmlu-vi` sits beside `vmlu` so the gap between a translated set and a native one can be read, and an arm that gains on the translation and not on the original has learned something about translationese. `humaneval` and `mbpp` are there because continued pretraining on Vietnamese can be paid for out of the base model's code ability, and a gain bought that way is not a gain worth having.
 
-Nothing has been trained yet, which is the point. The harness is closed, the digest is in the tests so that a change to it fails the build, and the five unpinned revisions are the work list standing between this and a comparison somebody outside can run. Training the three arms is a `gamingpc` item.
+Nothing has been trained yet, which is the point. The harness is closed, the digest is in the tests so that a change to it fails the build, and the four unpinned revisions are the work list standing between this and a comparison somebody outside can run. Training the three arms is a `gamingpc` item.
 
 ## Where the corpus lives
 
