@@ -32,6 +32,8 @@ func runDem(stdout, stderr io.Writer, args []string) int {
 		return runDemCounts(stdout, stderr, args[1:])
 	case "gates":
 		return runDemGates(stdout, stderr, args[1:])
+	case "fertility":
+		return runDemFertility(stdout, stderr, args[1:])
 	case "keys":
 		return runDemKeys(stdout, stderr, args[1:])
 	case "overlap":
@@ -56,12 +58,13 @@ tokenizer is named, so the tokenizer is a pinned file with a digest rather than
 whatever was installed on the box.
 
 subcommands:
-  model    fetch the tokenizer that defines a gao token, and verify it
-  gates    put a tokenizer through the ten gates, and measure its fertility
-  counts   print the counts an ingest produced, or several added together
-  keys     read the document identities of a snapshot out of the store
-  overlap  print what the sources have in common, from their key files
-  verify   check a published count against the store it came from
+  model      fetch the tokenizer that defines a gao token, and verify it
+  gates      put a tokenizer through the ten gates, and measure its fertility
+  fertility  the candidate tokenizers, and what each one costs for the same Vietnamese
+  counts     print the counts an ingest produced, or several added together
+  keys       read the document identities of a snapshot out of the store
+  overlap    print what the sources have in common, from their key files
+  verify     check a published count against the store it came from
 
 run 'gao dem <subcommand> -h' for the flags of a single subcommand.
 `)
