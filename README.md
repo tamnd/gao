@@ -73,6 +73,9 @@ gao che        doc.txt                      # cover: tag over the personal data 
 gao che -level L2 -report parts/*.parquet   # and what a corpus holds, per kind, before covering it
 gao nhat -benchmarks                        # pick out the grit: what gao is judged on, and it only grows
 gao nhat -list benchmarks.json parts/*.parquet  # and which documents hold a benchmark's own test items
+gao dau build -o vi-diacritic.jsonl parts/*.parquet  # the mark: build the diacritic restoration task set
+gao dau baseline -items vi-diacritic.jsonl other/*.parquet  # the two numbers a model has to beat
+gao dau grade -items vi-diacritic.jsonl answers.jsonl  # and score a model's answers against them
 
 gao kho release --snapshot gao-v1.0         # store and publish
 gao kho verify  snapshots/gao-v1.0          # check a snapshot against its manifest
@@ -548,6 +551,32 @@ bai-giang.txt, 6 of 14 windows in the list
 The second document is the one worth looking at. It writes `Nguyên lí` where the benchmark writes `Nguyên lý`, both are correct under different orthographic reform positions, and the fold is why it was found anyway. Every benchmark on the roster gets a row whether anything touched it or not, including the ones that came back clean, because a table holding only the contaminated ones cannot be read as a clean bill of health for the rest. Finding contamination is a result rather than an error and the command exits zero when it does.
 
 Two open items, and they are both about the check being weaker than the number suggests. The embedding neighbor check is not written: n-grams cannot see a benchmark item that was translated or paraphrased into the corpus, and for the six translated benchmarks on the roster, which reached Vietnamese through somebody else's translation of the same English source, that is the channel that matters most. It needs an index this project does not have yet. The second is that most of the roster is unpinned, and a revision that is not pinned is a release note that cannot say which items were checked. Both are printed by the tool rather than left for a reader to notice.
+
+## The one task the corpus answers for free
+
+Every evaluation set in this project costs somebody a day of reading, except one. Taking the marks off a page of Vietnamese is a function. Putting them back is not. So `phoi.Bare` turns any page in the corpus into a question whose answer is already sitting next to it, exactly, with no annotator and no disagreement to arbitrate. `dau` is the mark, and `vi-diacritic` is the task set it builds.
+
+That makes it the cheapest set here and the most dangerous one. The answers are in the training corpus by construction, so a model trained on gao has read every one of these pages with its marks on. Every item carries the identity of the document it came from for that reason and for no other: the identity is what lets the items be held out before training and what lets `gao nhat` check afterwards that they were. A `vi-diacritic` score from a run that skipped the hold out is a memorization score, and it will look excellent.
+
+A document typed without its marks is refused. Roughly half the Vietnamese written online is typed bare, and such a document is not an answer key, it is a second copy of the question. The floor is a share of marked characters rather than a yes or no, and it sits at 0.12 against a language that runs at about 0.24. The gap is deliberate. A page about a subject short of marked vowels is still Vietnamese, and a floor set at the average would keep the easy pages and throw the hard ones away.
+
+```
+gao dau build -o vi-diacritic.jsonl -one-in 100 parts/*.parquet   # turn documents into questions
+gao dau baseline -items vi-diacritic.jsonl other/*.parquet        # the two numbers to beat
+gao dau grade -items vi-diacritic.jsonl answers.jsonl             # score a model's answers
+```
+
+Two floors get published with any result, and both of them are higher than they look.
+
+The first is answering with the question. A model that hands the bare text straight back has restored nothing at all, and on the test fixtures it scores 75.8% character accuracy and gets 10.9% of syllables exactly right, because about one Vietnamese syllable in nine is written with no mark on it in the first place. Any diacritic restoration figure quoted as character accuracy is quoting a number that starts in the seventies.
+
+The second is a table. Count every bare spelling in some other text, answer each one with the marked spelling it most often had, and use no context whatsoever. On 138 spellings counted off four paragraphs it restores 66.2% of the marks and gets 65.9% of syllables right, against 0% and 10.9% for doing nothing. That is the entire task minus the only interesting part of it, and it is strong, because most bare spellings in Vietnamese have one common answer. A model that does not clear the table has learned the dictionary and not the language, and without the table's number printed beside it nobody reading the model's can tell.
+
+The text the table counts must not be the text the items were built from. A table is trivially perfect on the pages it counted, and a baseline measured on its own training data is the same mistake as a benchmark measured on the model's, one level down.
+
+Scoring is the share of the page's marks that came back rather than character accuracy, for the reason above, with `gao soi` doing the counting. An answer is faithful when it is the question with marks added and nothing else, and only faithful answers get their syllables counted. When the bare forms agree the two sequences line up one for one and the comparison is exact, and when they do not, comparing them means aligning them, which puts a judgment inside a number that should not have one. An unfaithful answer is still scored and still reported, because a model that paraphrases a tenth of the time is a fact about the model rather than a fault in the harness.
+
+Sampling is by document identity rather than by a random draw, so `-one-in 100` picks the same hundredth on `server2` as on `gamingpc` with no seed file passed between them. Building the real set over the corpus is a fleet item. The generator, the two baselines and the scoring are written and tested here.
 
 ## Where the corpus lives
 
