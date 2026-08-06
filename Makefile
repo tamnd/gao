@@ -10,7 +10,7 @@ export CGO_ENABLED ?= 0
 
 LDFLAGS := -s -w -X main.version=$(VERSION)
 
-.PHONY: all build install test race cover bench vet lint fmt tidy golden clean
+.PHONY: all build install test race cover bench vet lint fmt tidy golden takedown clean
 
 all: build
 
@@ -59,6 +59,11 @@ tidy:
 ## golden: regenerate the golden files, then review the diff by hand
 golden:
 	$(GO) test ./... -update
+
+## takedown: check the takedown register and fail on anything past the promise
+takedown:
+	$(GO) run ./cmd/gao xoa check
+	$(GO) run ./cmd/gao xoa status
 
 ## clean: remove build and coverage output
 clean:

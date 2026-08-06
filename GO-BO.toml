@@ -1,0 +1,37 @@
+# The takedown register.
+#
+# LIEN-HE.md promises a response inside 72 hours to anyone who asks us to stop
+# crawling their site or to remove what we already have, and it says the real
+# time for each request is recorded in public. This file is that record. It is
+# in the repository rather than in a database because a promise about response
+# times that only the operator can audit is a promise nobody can check.
+#
+# Nothing has been filed yet, because nothing has been crawled yet. That is not
+# the same as a takedown path that works, and `gao xoa status` says so rather
+# than reporting a perfect record over zero requests.
+#
+# One block per request. Fields:
+#
+#   issue     the public issue it was filed in, so anybody can read the request
+#   host      the host, which covers its subdomains and nothing else
+#   paths     path prefixes, when the request was about part of a site
+#   scope     "stop" to stop crawling, "erase" to also rebuild published releases
+#   asked     when the issue was opened, which is when the clock starts
+#   stopped   when the crawl actually stopped
+#   rebuilt   when the last affected release was republished, for an erase
+#   releases  which releases had to be rebuilt
+#   note      anything a reader would otherwise have to guess at
+#
+# The dates are RFC 3339 and unquoted, which is what TOML wants for a timestamp.
+# `gao xoa check` reads this file for entries that cannot be true, and CI runs
+# it, because a register edited by hand under time pressure is a register with
+# the dates the wrong way round in it.
+#
+# An example of what a filed request looks like:
+#
+#   [[request]]
+#   issue = 123
+#   host = "example.vn"
+#   scope = "stop"
+#   asked = 2026-09-01T09:00:00Z
+#   stopped = 2026-09-01T14:20:00Z

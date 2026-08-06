@@ -64,7 +64,7 @@ Trong issue, xin cho biết:
 
 Bạn không cần nêu lý do. Chúng tôi không đánh giá yêu cầu gỡ nội dung, chúng tôi thực hiện.
 
-Thời gian phản hồi mục tiêu là 72 giờ kể từ lúc issue được mở, và thời gian thực tế của từng yêu cầu được ghi lại công khai. Việc dừng thu thập có hiệu lực ngay khi tên miền được đưa vào danh sách chặn. Việc gỡ khỏi một bản phát hành đã công bố cần thêm thời gian vì phải dựng lại bản phát hành đó, và issue sẽ mở cho đến khi xong.
+Thời gian phản hồi mục tiêu là 72 giờ kể từ lúc issue được mở, và thời gian thực tế của từng yêu cầu được ghi lại công khai tại [GO-BO.toml](GO-BO.toml) trong kho mã nguồn. Việc dừng thu thập có hiệu lực ngay khi tên miền được đưa vào danh sách chặn. Việc gỡ khỏi một bản phát hành đã công bố cần thêm thời gian vì phải dựng lại bản phát hành đó, và issue sẽ mở cho đến khi xong.
 
 Nếu bạn không muốn công khai yêu cầu của mình, issue vẫn là cách duy nhất hiện tại. Đây là dự án mã nguồn mở của một người, không có hộp thư riêng để hứa trả lời, và chúng tôi thà nói thẳng điều đó còn hơn đăng một địa chỉ email không ai đọc.
 
@@ -92,6 +92,6 @@ Nếu `gaobot` gây tải nặng cho máy chủ của bạn, đó là lỗi củ
 
 **Blocking it.** `robots.txt` works and we read it before every host. `User-agent: gaobot` followed by `Disallow: /` stops us entirely. A block written for `gaobot` replaces the `User-agent: *` block rather than adding to it, so write it in full. We also read `X-Robots-Tag`, the robots meta tag, and TDMRep declarations at `/.well-known/tdmrep.json`. Returning 403 or 429 to this agent also works, and we treat it as an answer rather than as a transient error.
 
-**Takedowns.** Open an issue at https://github.com/tamnd/gao/issues/new?labels=takedown with the domain or the URLs, whether you are the owner or acting for them, and whether you need removal from published releases or only a stop to future crawling. You do not need to give a reason. The target response time is 72 hours from the issue being opened and the real time for each request is recorded in public. Stopping the crawl takes effect as soon as the domain is on the block list. Removal from a published release takes longer because the release has to be rebuilt, and the issue stays open until it is.
+**Takedowns.** Open an issue at https://github.com/tamnd/gao/issues/new?labels=takedown with the domain or the URLs, whether you are the owner or acting for them, and whether you need removal from published releases or only a stop to future crawling. You do not need to give a reason. The target response time is 72 hours from the issue being opened and the real time for each request is recorded in public, in [GO-BO.toml](GO-BO.toml) in the repository. Stopping the crawl takes effect as soon as the domain is on the block list. Removal from a published release takes longer because the release has to be rebuilt, and the issue stays open until it is.
 
 **Load.** One connection per host at a time by default, with a delay between requests, and your `Crawl-delay` wins if it is longer. A 429 or a 503 makes us back off rather than retry. If `gaobot` is loading your server, that is our fault: open an issue naming the domain and we will slow down or stop.
