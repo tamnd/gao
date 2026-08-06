@@ -309,3 +309,39 @@ func TestTheDefaultPlanLeavesOutADroppedSource(t *testing.T) {
 		t.Errorf("the plan includes a source that is not fetched:\n%s", out)
 	}
 }
+
+// The identity has to be printable, because the answer to a webmaster asking
+// what our crawler calls itself cannot be a grep through the source.
+func TestGatAgentPrintsTheTokenAndTheHeaderSeparately(t *testing.T) {
+	out, _, code := exec(t, "gat", "agent")
+	if code != 0 {
+		t.Fatalf("gao gat agent: exit %d\n%s", code, out)
+	}
+
+	for _, want := range []string{gat.Bot, gat.Contact, "User-agent: " + gat.Bot, "Disallow: /"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("gao gat agent does not print %q:\n%s", want, out)
+		}
+	}
+	// The header carries the version and the token does not, and printing them
+	// on one line would lose exactly that distinction.
+	if !strings.Contains(out, gat.Agent(version)) {
+		t.Errorf("gao gat agent does not print the header it sends:\n%s", out)
+	}
+}
+
+func TestGatAgentTakesNoArguments(t *testing.T) {
+	if _, _, code := exec(t, "gat", "agent", "extra"); code != 2 {
+		t.Errorf("gao gat agent with an argument: exit %d, want 2", code)
+	}
+}
+
+func TestGatAgentIsInTheSubcommandList(t *testing.T) {
+	out, _, code := exec(t, "gat", "help")
+	if code != 0 {
+		t.Fatalf("gao gat help: exit %d", code)
+	}
+	if !strings.Contains(out, "agent") {
+		t.Errorf("agent is not in the gat subcommand list:\n%s", out)
+	}
+}
