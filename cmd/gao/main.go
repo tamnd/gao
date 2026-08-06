@@ -41,6 +41,7 @@ func commands() []command {
 		{"dien", "fill in: build and score the cloze proxy the ablation slate is run against", runDien},
 		{"don", "clear away: whether the crawl gets its bytes off the box faster than it writes them", runDon},
 		{"gat", "work with acquisition: print the ingest manifest, check it for drift", runGat},
+		{"ghep", "to graft: what adding Vietnamese tokens to a base vocabulary bought and cost", runGhep},
 		{"gieo", "to sow: the generator card for gao-synth, and the recipe it is written against", runGieo},
 		{"giu", "to keep: what the distilled model kept of each specialist's gain, against merging the same checkpoints", runGiu},
 		{"hieu", "the effect: what fraction of the hardware a training run turns into gradient", runHieu},
