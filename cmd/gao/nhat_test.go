@@ -7,6 +7,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/tamnd/gao/nhat"
 )
 
 // One benchmark item, and prose that shares nothing with it.
@@ -270,5 +272,49 @@ func TestNhatSaysWhenTheRosterIsNotThere(t *testing.T) {
 	var stdout, stderr bytes.Buffer
 	if code := runNhat(&stdout, &stderr, []string{"-roster", filepath.Join(dir, "gone.json"), "-benchmarks"}); code != 1 {
 		t.Fatalf("gao nhat with a roster that is not there = %d, want 1\n%s", code, stderr.String())
+	}
+}
+
+// TestEveryDigestOnTheRosterIsStillWhatTheCommandPrints is the check that makes
+// a gao: pin worth writing down.
+//
+// A benchmark this repository builds is pinned at the digest of its own frame,
+// and the whole value of that is that anybody with the repository can print the
+// digest and compare. So this test does exactly what a reader would do: it runs
+// the command the roster names and looks for the revision the roster claims. If
+// somebody adds an item to a set and does not repin it, the roster is quietly
+// describing a set that no longer exists, and this is where that stops.
+func TestEveryDigestOnTheRosterIsStillWhatTheCommandPrints(t *testing.T) {
+	ros, err := nhat.Rostered()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	var built int
+	for _, e := range ros.Benchmarks {
+		if e.Home == "" {
+			continue
+		}
+		home, err := nhat.ParseHome(e.Home)
+		if err != nil {
+			t.Fatalf("%s: %v", e.Name, err)
+		}
+		if home.Scheme != nhat.Built {
+			continue
+		}
+		built++
+
+		out, errOut, code := exec(t, strings.Fields(home.Path)...)
+		if code != 0 {
+			t.Errorf("%s: %q exited %d: %s", e.Name, home.Ask(), code, errOut)
+			continue
+		}
+		if !strings.Contains(out, e.Version) {
+			t.Errorf("%s is pinned at %s and %q does not print it, so the roster is describing a set that has changed since it was pinned:\n%s",
+				e.Name, e.Version, home.Ask(), out)
+		}
+	}
+	if built == 0 {
+		t.Fatal("no benchmark on the roster is pinned to a set built here, and this check was written because several are")
 	}
 }

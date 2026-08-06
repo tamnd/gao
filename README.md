@@ -739,19 +739,25 @@ vmlu            native      b0225316f4ea  git:https://github.com/ZaloAI-Jaist/VM
 vimmrc          native      b017d98136a6  hf:uitnlp/vimmrc2.0                       3 windows           the UIT NLP group's own copy of ViMMRC 2.0 on the Hub
 uit-viquad      native      unpinned      none                                      3 windows           UIT NLP group, UIT-ViQuAD 2.0
 mmlu-vi         translated  18e6c8e65b20  hf:alexandrainst/m_mmlu                   3 windows           the Vietnamese config of m_mmlu, run by the harness as m_mmlu_vi
+vi-needle       native      5da3e0715e97  gao:kim frame                             1 window, held out  built by gao, doc 10 section 1.2
 vi-cloze        native      unpinned      none                                      1 window, held out  built by gao, doc 10 section 2.2
-vi-diacritic    native      unpinned      none                                      1 window, held out  built by gao, doc 10 section 1.2
 
-Roster 2026-08-06, 24 benchmarks. It only grows.
+Roster 2026-08-07, 24 benchmarks. It only grows.
 
-12 of them have no revision pinned. A release cannot go out until they do, because a release note that says a benchmark was checked has to say which revision of it was checked.
+9 of them have no revision pinned. A release cannot go out until they do, because a release note that says a benchmark was checked has to say which revision of it was checked.
 
 gsm8k-vi: There is no Vietnamese GSM8K to pin. MGSM, which is where lm-evaluation-harness keeps translated grade school arithmetic, covers eleven languages at v0.4.12 and Vietnamese is not one of them. This row names a benchmark that has to be found or built, not one that is waiting on an address.
 
 uit-viquad: UIT-ViQuAD 2.0 is handed out on request by the UIT NLP group and every copy on the Hub is somebody else's upload. Pinning one of those would pin the upload rather than the benchmark, which is a weaker claim than a release note makes. This waits for an address the authors answer for.
+
+vi-cloze: Built by gao out of held out gao-web, which is not ingested, so the items do not exist to be hashed yet. It gets a digest when the split is drawn.
 ```
 
-A revision here is an object id and an address to ask for it, and both halves are required. That rules out the thing the roster used to carry, which was `2.0`: a version number is a name, the files behind a name can be reuploaded, and a release note saying the corpus was checked at 2.0 is a claim a reader cannot go and verify a year later. So the roster takes forty hex characters or the word `unpinned`, and an entry that is unpinned has to say what it is waiting for. Twelve of the twenty four are pinned today. The other twelve each carry a sentence, and printing those sentences is more useful than printing the count, because twelve names look like one problem and the reasons turn out to be four.
+A revision here is an object id and an address to ask for it, and both halves are required. That rules out the thing the roster used to carry, which was `2.0`: a version number is a name, the files behind a name can be reuploaded, and a release note saying the corpus was checked at 2.0 is a claim a reader cannot go and verify a year later. So the roster takes an object id or the word `unpinned`, and an entry that is unpinned has to say what it is waiting for. Fifteen of the twenty four are pinned today. The other nine each carry a sentence, and printing those sentences is more useful than printing the count, because nine names look like one problem and the reasons turn out to be four.
+
+Three of those fifteen were unpinned until recently for a reason that did not survive being written down. `vi-needle`, `vi-overrefusal` and `vi-adherence` are built here, and the roster said each of them would get a revision when the set was published on the Hub. But publishing is where the items can be downloaded from and pinning is whether two people mean the same set by the same name, and the second question has been answerable since the frame was hashed. So there is a third address scheme, `gao:`, whose path is the command that prints the digest and whose revision is that digest: `vi-needle` is pinned at `gao:kim frame`, and anybody with the repository can run it and compare. A test does exactly that on every `gao:` row, so a set that gains an item without being repinned fails the build rather than leaving the roster describing something that no longer exists.
+
+The two lengths are not interchangeable and the entry is refused if they are swapped. A Hub repository cannot answer for a digest computed here and a set built here has no forty character revision to give, and either way the row would read as pinned to somebody who cannot check it.
 
 Three of the reasons are the same finding, which is that `gsm8k-vi`, `math-vi` and `winogrande-vi` name Vietnamese translations that do not exist. The evaluation harness has Vietnamese ARC, HellaSwag and MMLU through the okapi set, and at v0.4.12 it has no Vietnamese GSM8K, no Vietnamese MATH and no Vietnamese Winogrande. Those three rows stay on the roster with the gap written down rather than quietly disappearing, because a row that is hard to fill is not a row to delete, and a test asserts they keep saying so.
 
@@ -776,7 +782,7 @@ bai-giang.txt, 6 of 14 windows in the list
 
 The second document is the one worth looking at. It writes `Nguyên lí` where the benchmark writes `Nguyên lý`, both are correct under different orthographic reform positions, and the fold is why it was found anyway. Every benchmark on the roster gets a row whether anything touched it or not, including the ones that came back clean, because a table holding only the contaminated ones cannot be read as a clean bill of health for the rest. Finding contamination is a result rather than an error and the command exits zero when it does.
 
-Two open items, and they are both about the check being weaker than the number suggests. The embedding neighbor check is not written: n-grams cannot see a benchmark item that was translated or paraphrased into the corpus, and for the six translated benchmarks on the roster, which reached Vietnamese through somebody else's translation of the same English source, that is the channel that matters most. It needs an index this project does not have yet. The second is that half the roster is still unpinned, and a revision that is not pinned is a release note that cannot say which items were checked. Both are printed by the tool rather than left for a reader to notice.
+Two open items, and they are both about the check being weaker than the number suggests. The embedding neighbor check is not written: n-grams cannot see a benchmark item that was translated or paraphrased into the corpus, and for the six translated benchmarks on the roster, which reached Vietnamese through somebody else's translation of the same English source, that is the channel that matters most. It needs an index this project does not have yet. The second is that nine rows are still unpinned, and a revision that is not pinned is a release note that cannot say which items were checked. Both are printed by the tool rather than left for a reader to notice.
 
 ## The one task the corpus answers for free
 

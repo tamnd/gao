@@ -11,16 +11,22 @@ package nhat
 //
 // The address is machine readable because the step that fetches the items has to
 // read it, and because a reason written in prose is a reason nobody can act on.
-// There are exactly two schemes, which covers every benchmark on the roster that
-// has an authoritative copy at all: the Hugging Face Hub and a git repository.
+// Two of the three schemes are somebody else's copy: the Hugging Face Hub and a
+// git repository. The third is this repository, for the benchmarks gao builds
+// itself, and it is here because those were sitting unpinned on the roster for a
+// reason that did not survive being written down. The set is fixed and hashed in
+// the source before it is built, the digest can be printed by anybody with the
+// repository, and waiting to pin it until somebody has uploaded it to the Hub
+// would be pinning the upload rather than the set.
 
 import (
 	"fmt"
 	"strings"
 )
 
-// Home is the authoritative copy of a benchmark, written as `hf:owner/name` or
-// `git:https://host/owner/name`.
+// Home is the authoritative copy of a benchmark, written as `hf:owner/name`,
+// `git:https://host/owner/name`, or `gao:<command>` for the sets this repository
+// fixes itself.
 //
 // Authoritative means published by the people who made it. Most of these
 // benchmarks also exist as third party copies on the Hub, and pinning one of
@@ -28,10 +34,11 @@ import (
 // uploaded, which is a weaker statement than it looks and is not the statement a
 // release note is making.
 type Home struct {
-	// Scheme is HuggingFace or Git.
+	// Scheme is HuggingFace, Git or Built.
 	Scheme string
 
-	// Path is the repository, `owner/name` for the Hub and a URL for git.
+	// Path is the repository, `owner/name` for the Hub, a URL for git, and the
+	// command that prints the digest for a set built here.
 	Path string
 }
 
@@ -39,6 +46,10 @@ type Home struct {
 const (
 	HuggingFace = "hf"
 	Git         = "git"
+
+	// Built is a benchmark this repository fixes, addressed by the command that
+	// prints its digest.
+	Built = "gao"
 )
 
 // ParseHome reads an address off a roster entry.
@@ -57,6 +68,10 @@ func ParseHome(s string) (Home, error) {
 	case Git:
 		if !strings.HasPrefix(path, "https://") {
 			return Home{}, fmt.Errorf("nhat: %q is not a git repository, and a git repository is an https URL", s)
+		}
+	case Built:
+		if !command(path) {
+			return Home{}, fmt.Errorf("nhat: %q is not a command, and a set built here is addressed by the command that prints its digest", s)
 		}
 	default:
 		return Home{}, fmt.Errorf("nhat: %q has scheme %q, and an address is %s or %s", s, scheme, HuggingFace, Git)
@@ -79,20 +94,49 @@ func (h Home) Ask() string {
 		return "https://huggingface.co/api/datasets/" + h.Path
 	case Git:
 		return strings.TrimSuffix(h.Path, ".git") + "/commits"
+	case Built:
+		return "gao " + h.Path
 	}
 	return ""
 }
 
-// revisionLen is the length of an object id, on the Hub and in git alike.
-const revisionLen = 40
+// command reports whether s is an invocation of the gao binary, which is what a
+// Built address has to be for the reader to be able to run it.
+//
+// It is not checked against the command table, because this package would then
+// depend on every package that builds a benchmark in order to answer a question
+// about a string. What it rules out is the thing that would actually get written
+// here by mistake, which is a sentence.
+func command(s string) bool {
+	fields := strings.Fields(s)
+	if len(fields) == 0 || len(fields) > 3 || s != strings.Join(fields, " ") {
+		return false
+	}
+	for _, f := range fields {
+		for _, c := range f {
+			if c < 'a' || c > 'z' {
+				return false
+			}
+		}
+	}
+	return true
+}
+
+// The lengths an object id comes in. Forty hex characters is a Hub or git
+// revision, and sixty four is the digest of a set fixed in this repository.
+const (
+	revisionLen = 40
+	digestLen   = 64
+)
 
 // pinned reports whether s is an object id rather than a name.
 //
 // A tag moves and a version number is a name, and the failure this rule prevents
 // is a release note that says a benchmark was checked at 2.0 when 2.0 has since
-// been reuploaded. Forty hex characters is the one form that cannot do that.
+// been reuploaded. Hex of a fixed length is the one form that cannot do that,
+// whether it came from the Hub or from hashing a set here.
 func pinned(s string) bool {
-	if len(s) != revisionLen {
+	if len(s) != revisionLen && len(s) != digestLen {
 		return false
 	}
 	for _, c := range s {
@@ -121,8 +165,12 @@ func (e Entry) checkPin() error {
 		if e.Pending != "" {
 			return fmt.Errorf("nhat: %s is pinned at %s and still says it is waiting on %q", e.Name, e.Version, e.Pending)
 		}
-		if _, err := ParseHome(e.Home); err != nil {
+		h, err := ParseHome(e.Home)
+		if err != nil {
 			return fmt.Errorf("nhat: %s: %w", e.Name, err)
+		}
+		if err := h.fits(e.Name, e.Version); err != nil {
+			return err
 		}
 	case e.Home != "" && e.Version != Unpinned && e.Version != "":
 		return fmt.Errorf("nhat: %s is at revision %q, and a revision is the %d character object id its home answers with rather than a name that can be moved", e.Name, e.Version, revisionLen)
@@ -160,4 +208,21 @@ func (ros Roster) Blocking() []string {
 		}
 	}
 	return out
+}
+
+// fits reports whether a revision is the kind of object id this home answers
+// with.
+//
+// The two lengths are not interchangeable and the mistake they catch is a real
+// one: a Hub repository cannot answer for a digest we computed, and a set built
+// here has no forty character revision to give. Either way the entry would read
+// as pinned and nobody could check it.
+func (h Home) fits(name, version string) error {
+	switch {
+	case h.Scheme == Built && len(version) != digestLen:
+		return fmt.Errorf("nhat: %s is built here and pinned at a %d character revision, and a set built here is pinned at the %d character digest its command prints", name, len(version), digestLen)
+	case h.Scheme != Built && len(version) != revisionLen:
+		return fmt.Errorf("nhat: %s lives at %s and is pinned at a %d character revision, and %s answers with a %d character object id", name, h, len(version), h.Scheme, revisionLen)
+	}
+	return nil
 }

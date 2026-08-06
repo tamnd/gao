@@ -14,6 +14,8 @@ func TestAnAddressIsReadOrRejected(t *testing.T) {
 		{"hf:openai/openai_humaneval", HuggingFace, "https://huggingface.co/api/datasets/openai/openai_humaneval"},
 		{"git:https://github.com/ZaloAI-Jaist/VMLU", Git, "https://github.com/ZaloAI-Jaist/VMLU/commits"},
 		{"git:https://github.com/ZaloAI-Jaist/VMLU.git", Git, "https://github.com/ZaloAI-Jaist/VMLU/commits"},
+		{"gao:kim frame", Built, "gao kim frame"},
+		{"gao:ngai items", Built, "gao ngai items"},
 	} {
 		h, err := ParseHome(tt.in)
 		if err != nil {
@@ -37,6 +39,12 @@ func TestAnAddressIsReadOrRejected(t *testing.T) {
 		"hf:openai/humaneval/main",
 		"git:github.com/ZaloAI-Jaist/VMLU",
 		"http:example.vn/benchmark",
+		"gao:",
+		"gao:kim  frame",
+		"gao: kim frame",
+		"gao:kim frame -json",
+		"gao:print the frame kim is built on",
+		"gao:KIM frame",
 	} {
 		if h, err := ParseHome(in); err == nil {
 			t.Errorf("%q was read as %+v", in, h)
@@ -242,5 +250,50 @@ func TestTheBenchmarksWithNoVietnameseVersionSayThatIsWhatIsWrong(t *testing.T) 
 	}
 	for name := range missing {
 		t.Errorf("%s came off the roster, and a row that is hard to fill is not a row to delete", name)
+	}
+}
+
+const digest = "5da3e0715e97a43431c73ba8ad65ac9493f0934f0d9518d0fc5c03926d34dc2a"
+
+// A set built here is pinned at the digest its own command prints, which is what
+// the sets in this repository had instead of a Hub upload the whole time.
+//
+// The reason they sat unpinned was that pinning was read as publishing. It is
+// not. Publishing is where the items can be downloaded from, and pinning is
+// whether two people mean the same set by the same name, and the second one has
+// been answerable since the frame was hashed.
+func TestASetBuiltHereIsPinnedByItsOwnDigest(t *testing.T) {
+	e := Entry{Name: "vi-needle", Version: digest, Home: "gao:kim frame", Origin: Native}
+	if !e.Pinned() {
+		t.Fatal("a set pinned at the digest its command prints is not pinned")
+	}
+	if err := e.checkPin(); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// The two lengths are not interchangeable and neither substitution is a typo. A
+// Hub repository cannot answer for a digest computed here, and a set built here
+// has no forty character revision to give, so an entry that mixes them reads as
+// pinned to a reader and cannot be checked by one.
+func TestARevisionHasToBeTheKindItsHomeAnswersWith(t *testing.T) {
+	for _, tt := range []struct {
+		name    string
+		version string
+		home    string
+		want    string
+	}{
+		{"vi-needle", sha, "gao:kim frame", "digest its command prints"},
+		{"humaneval", digest, "hf:openai/openai_humaneval", "answers with a 40 character object id"},
+	} {
+		e := Entry{Name: tt.name, Version: tt.version, Home: tt.home, Origin: Native}
+		err := e.checkPin()
+		if err == nil {
+			t.Errorf("%s at %s said nothing", tt.name, tt.home)
+			continue
+		}
+		if !strings.Contains(err.Error(), tt.want) {
+			t.Errorf("%s: %v", tt.name, err)
+		}
 	}
 }
