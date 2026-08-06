@@ -60,9 +60,9 @@ func TestPlanFullPrintsGatesAndKillCriteria(t *testing.T) {
 }
 
 func TestUnknownCommandExitsTwo(t *testing.T) {
-	_, stderr, code := exec(t, "nau")
+	_, stderr, code := exec(t, "khong-co")
 	if code != 2 {
-		t.Fatalf("gao nau: exit %d, want 2", code)
+		t.Fatalf("gao khong-co: exit %d, want 2", code)
 	}
 	if !strings.Contains(stderr, "unknown command") {
 		t.Errorf("stderr did not explain the failure: %q", stderr)

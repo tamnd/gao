@@ -141,15 +141,31 @@ jobs:
       - name: Nothing is past the response time we promised
         run: go run ./cmd/gao xoa status
 
+  plan:
+    name: training plan
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+          check-latest: true
+      # The token budget and the curriculum that spends it are arithmetic, and
+      # a mistake in either one is found halfway through a run that costs tens
+      # of thousands of dollars. This job finds it on the pull request that
+      # introduces it instead.
+      - name: The budget adds up and the curriculum spends it
+        run: go run ./cmd/gao nau check
+
   ci-complete:
     name: ci-complete
     if: always()
-    needs: [build-test, tidy, vet, lint, race, coverage, takedown]
+    needs: [build-test, tidy, vet, lint, race, coverage, takedown, plan]
     runs-on: ubuntu-latest
     steps:
       - name: gate on every job
         run: |
-          results="${{ needs.build-test.result }} ${{ needs.tidy.result }} ${{ needs.vet.result }} ${{ needs.lint.result }} ${{ needs.race.result }} ${{ needs.coverage.result }} ${{ needs.takedown.result }}"
+          results="${{ needs.build-test.result }} ${{ needs.tidy.result }} ${{ needs.vet.result }} ${{ needs.lint.result }} ${{ needs.race.result }} ${{ needs.coverage.result }} ${{ needs.takedown.result }} ${{ needs.plan.result }}"
           echo "results: $results"
           for r in $results; do
             if [ "$r" != "success" ]; then
