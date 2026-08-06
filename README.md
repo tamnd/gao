@@ -183,6 +183,7 @@ gao chia -why report.pdf                    # route one PDF: direct extraction, 
 gao chia *.pdf                              # and the routing distribution over a pile of them
 
 gao box                                     # the fleet, and the disk budget it implies
+gao box peak -ran 6h disk.jsonl             # what a run actually held on disk, against the ceiling and against the arithmetic
 gao luat                                    # the legal position and what it lets us publish
 ```
 
@@ -1426,6 +1427,27 @@ Every repo carries a card, and the card is generated. `gao kho card` renders one
 The columns are the contract, so they are written out in `kho/parquet.go` rather than reflected off the record type, with one test pinning the list and another asserting that every field of the record has a column. A rename that a reader would notice fails a test rather than shipping as a silent break. A repo that withholds text withholds it in the schema: there is no `text` column at all rather than an empty one, so a query that selects it fails at plan time instead of returning blanks that read like documents with nothing in them. Every file also carries the snapshot, the stage, and the box that wrote it in its own footer, so a shard somebody downloaded a year ago still says where it came from without the manifest next to it. `gao kho columns` prints the contract, and given a file prints what that file actually holds.
 
 A column list is not the same as a schema somebody can use, so [SCHEMA.md](SCHEMA.md) is every column with its type, the stage that fills it, and one sentence about what it holds. It is generated from the type that writes the files, by `gao kho schema -md`, and a test fails when the file in the repository has fallen behind. Half of that is free and the other half is the part that matters: the names and the types are read off the writer and cannot drift, and the meanings are written by hand beside it, so a column added without a sentence explaining it fails the build rather than shipping as a header nobody outside this repository can interpret. The page also says the things a reader would otherwise have to infer from the data and get wrong. Nothing is nullable, so a field no stage filled in arrives as an empty string or a zero rather than as a null, which is a real trade and is stated rather than discovered. The spans in `pii_spans` are there at redaction levels 0 and 1 and gone at level 2, because publishing the offsets of what was removed alongside the text it was removed from hands most of it back.
+
+### What the run actually held
+
+The paragraph above is arithmetic, and the milestone does not gate on it. It gates on a measurement taken while the ingestion runs, because the arithmetic knows about shards in flight and knows nothing about a Parquet writer's row group buffer, a part sitting on disk waiting out an upload retry, a download resuming into a partial file, or whatever the operating system decided to keep in a temporary directory. That is the whole reason the ceiling is 90 GB and the prediction is 4.1: the gap is room for the things the model does not have terms for. `gao box peak` reads the watcher's trace back.
+
+```
+$ gao box peak -run hplt-v3 -ran 6h disk.jsonl
+run        hplt-v3        on server1, 6h0m0s of wall clock
+peak       11.2 GB        at 5h9m40s, during push
+ceiling    90.0 GB        78.8 GB of it left
+predicted  4.1 GB         two shards for each of the workers the box runs
+drift      2.7x           the measurement over the arithmetic
+watched    1081 readings  across 6h0m0s, widest gap 20s
+free       118.5 GB       on server1
+
+server1 peaked at 11.2 GB of a 90.0 GB ceiling during push, 2.7 times the 4.1 GB the design predicts, watched every 20s across 6h0m0s
+```
+
+That trace is invented, since the ingestion has not run. What is not invented is the second number the reading insists on. Passing the ceiling and matching the model are different questions, and the second one is the one that travels. A run that peaks at 60 GB under a 90 GB ceiling has passed the gate and has also said that the design's account of its own disk is off by a factor of fifteen, which is fine on `server1` and is not fine on the next box, or on the same box next year with a second stage running beside it. So the drift is reported next to the gate and a peak more than three times the prediction is a fault in its own right, in either direction: a third of the prediction means a smaller run than the one the ceiling was written about, wearing the gate's name.
+
+The refusals are about how the trace was taken rather than about what it says. A peak sampled every five minutes is not a peak, because a worker can take a shard, write it, push it and delete it inside a five minute gap and the watcher will report the quiet either side of it. Thirty seconds is the resolution, and it comes from what allocates rather than from what looked reasonable. A watcher that started late or stopped early missed the start and the flush, which is exactly where a run allocates hardest, so the trace has to cover the run and the run's length is stated separately rather than inferred from the trace, since a trace cannot notice that it stopped. A sample that does not say how many workers were running cannot be read against a prediction that is per worker. And a peak is a fact about one machine, so a trace holding samples from two of them is refused rather than maximized over.
 
 ## Whether the bytes leave faster than they arrive
 
