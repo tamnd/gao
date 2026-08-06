@@ -10,6 +10,9 @@ import (
 )
 
 func runSoi(stdout, stderr io.Writer, args []string) int {
+	if len(args) > 0 && args[0] == "field" {
+		return runSoiField(stdout, stderr, args[1:])
+	}
 	fs := flag.NewFlagSet("soi", flag.ContinueOnError)
 	fs.SetOutput(stderr)
 	asJSON := fs.Bool("json", false, "print JSON")
@@ -17,6 +20,7 @@ func runSoi(stdout, stderr io.Writer, args []string) int {
 	gate := fs.Bool("gate", false, "exit non zero if the reading fails the S4 gate")
 	fs.Usage = func() {
 		fmt.Fprint(stderr, `usage: gao soi [-matrix] [-gate] [-json] page reading [page reading...]
+       gao soi field [-pages N] [-json] engines.jsonl
 
 Measure a machine's reading of Vietnamese against what the page actually says.
 

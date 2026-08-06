@@ -105,6 +105,7 @@ gao xay -overlap parts/*.parquet            # and how much of each source is alr
 gao xay -choose runs.json                   # the threshold the ablation runs support, or the reason there is none
 gao soi        page.txt reading.txt         # judge a machine's reading of a page against what it says
 gao soi -matrix page.txt reading.txt        # and what each of the six tones was read as
+gao soi field engines.jsonl                 # the whole field of candidate engines, losers included, against the card they ran on
 gao tach       thread.html                  # separate: read a forum page as the thread it is
 gao tach -text thread.html                  # and print the conversation, which is what to check first
 gao che        doc.txt                      # cover: tag over the personal data in a document
@@ -501,11 +502,45 @@ The corner where the ngang row meets the ngang column stays empty on purpose. Fi
 gao soi page.txt reading.txt                 # the two rates, side by side, for one page
 gao soi -matrix page.txt reading.txt         # and what each tone was read as
 gao soi -gate eval/*.txt                     # exit non zero if it misses the S4 gate, naming what failed
+gao soi field engines.jsonl                  # the whole field of candidates, losers included
 ```
 
 Several pairs in one run are one evaluation set and one score over all of it, not an average of per page scores, because a caption and a page of body text are not one vote each.
 
 Two things this does not do. It does not decide whether a reading is good enough: the thresholds live in the S4 milestone and are checked against these numbers rather than inside them. And it does not know what the page said, only what it was told the page said, so every figure here inherits whatever is wrong in the reference transcript. That is why the hand corrected evaluation set is a separate deliverable from the metric that reads it, and why no engine has a number here yet. The metric is written and tested. Measuring an engine with it needs real scans and real engines on `gamingpc`, which is a fleet item.
+
+### Comparing engines rather than announcing one
+
+A gate on one engine says whether that engine works. It does not say the field was searched, and what usually gets published is the survivor: one row, one error rate, no way to tell whether three other engines were tried and lost or whether three others were never run. `gao soi field` reads the whole field, losers included, because a table with one row in it cannot be argued with.
+
+```
+$ gao soi field engines.jsonl
+engine                der   cer    tone  batch  vram     free  rate   hours  gate
+got-ocr2 (finetuned)  0.9%  1.6%   0.4%  4      19.0 GB  21%   0.6/s  5556   pass
+paddleocr             1.2%  2.1%   0.5%  16     18.0 GB  25%   2.4/s  1389   pass
+surya                 1.8%  3.2%   0.8%  8      20.0 GB  17%   1.1/s  3030   fails 2 lines
+tesseract             9.3%  16.3%  3.9%  1      1.0 GB   96%   3.8/s  877    fails 4 lines
+
+4 candidate engines on gamingpc, NVIDIA GeForce RTX 4090, against a 1.5% diacritic gate.
+2 engines did not clear it, and they are in the table because a comparison without them is an announcement.
+Hours are for the 12.0M pages the plan routes to OCR, against the 4500 OCR has of the extraction stage's 6000.
+
+got-ocr2 reads best at 0.94% and costs 5556 GPU hours, which is more than OCR's 4500, so the path that ships is paddleocr at 1.20% and 1389 hours.
+```
+
+Those numbers are invented. No engine has been run against a real set yet, and the point of showing the table before the results exist is that the shape of it is a decision and the decision is easier to argue with now than after somebody has a favourite.
+
+The last line is the one worth reading twice. The engine that reads best is not the engine that ships, because the S4 gate has a second half: the winning path has to sustain its throughput across a full batch at a rate that finishes the slice in the time the plan allows. At 0.6 pages a second `got-ocr2` spends more than OCR's share of the extraction stage's whole GPU budget on its own, which leaves nothing for the router, the legacy transcoder, or the ASR pass. So the report names both, and it names them separately rather than folding accuracy and throughput into a score, because a score would let a tenth of a point of diacritic error rate buy back four thousand GPU hours and nobody would see it happen.
+
+Three refusals, and they are what makes this reproducible rather than merely published.
+
+A gap smaller than the set can resolve is not a gap. Two hundred pages hold about a hundred thousand marked characters, which places a diacritic error rate to within a tenth of a point, so two engines at 1.20% and 1.25% are one engine and the luckier draw. Naming one of them the winner publishes the draw. This computes the standard error on each rate from the marks it was measured over, and refuses to rank the top two when the difference between them is inside twice the error on that difference.
+
+A result without a batch size and the memory it held does not reproduce. That is the milestone item verbatim, and it is worth the line because a published OCR benchmark almost never carries either. A run at batch 64 holding 23.6 GB of a 24 GB card is not a result somebody else can repeat, it is a result that fails the first time anything else touches the GPU, and gamingpc is also where the classifiers, the tokenizer and every evaluation run. So the reserve is 15% of the card and a batch sized to fill it is refused.
+
+Engines read on different pages are two numbers rather than a difference. Every row has to name the same evaluation set and the same page count, and every row has to have run on the same card, since a throughput compared across two machines is a comparison of the machines.
+
+The page count behind the hours column is the honest weak spot and it is labelled as one. Twelve million pages is P04-2's ceiling over the plan's estimate of institutional PDFs, which makes it arithmetic on an estimate until the routing distribution is measured on real documents. `-pages` is where a measured count goes, and every hour in that column moves when it arrives.
 
 ## Deciding what is a document
 
