@@ -145,6 +145,14 @@ func (p *Polite) Learn(host string, r *Robots) (time.Duration, bool) {
 	defer p.mu.Unlock()
 	h := p.host(host)
 	if asked > h.delay {
+		// A gap already reserved was reserved under the shorter number, and the
+		// first request to a host is always the one that fetched the file the
+		// longer number was written in. Left alone, a site asking for thirty
+		// seconds would get one second between its robots.txt and its first
+		// page, which is the one gap it can be sure we read the file before.
+		if !h.next.IsZero() {
+			h.next = h.next.Add(asked - h.delay)
+		}
 		h.delay = asked
 	}
 	return h.delay, true

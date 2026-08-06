@@ -5,7 +5,9 @@ import (
 	"flag"
 	"fmt"
 	"io"
+	"net/http"
 	"os/signal"
+	"sort"
 	"strings"
 	"syscall"
 	"text/tabwriter"
@@ -32,6 +34,8 @@ func runGat(stdout, stderr io.Writer, args []string) int {
 		return runGatLedger(stdout, stderr, args[1:])
 	case "agent":
 		return runGatAgent(stdout, stderr, args[1:])
+	case "fetch":
+		return runGatFetch(stdout, stderr, args[1:])
 	case "help", "-h", "--help":
 		gatUsage(stdout)
 		return 0
@@ -51,6 +55,7 @@ subcommands:
   hf     fetch the pinned files, resuming from whatever a previous run finished
   ledger print what an ingest has already finished
   agent  print the User-Agent the crawler sends, and where it points
+  fetch  fetch one page the way the crawler would, and print what happened
 
 run 'gao gat <subcommand> -h' for the flags of a single subcommand.
 `)
@@ -95,6 +100,128 @@ this is the command that shows the two are not the same thing.
 	fmt.Fprint(stdout, "\nA site blocks this crawler by writing, in robots.txt:\n\n")
 	fmt.Fprintf(stdout, "  User-agent: %s\n  Disallow: /\n", gat.Bot)
 	return 0
+}
+
+// runGatFetch is the crawler doing one page, with everything it would do on a
+// real run and nothing it would do for a second page.
+//
+// It exists because the parts of a crawl that are worth checking before starting
+// one are the parts a person cannot see from a log line: whether robots.txt was
+// read, which rule allowed the page, what the site said about mining, and how
+// long the next request would have to wait. All of that is invisible in a fetch
+// that worked, and all of it is what makes this a crawler rather than a loop
+// around curl.
+func runGatFetch(stdout, stderr io.Writer, args []string) int {
+	fs := flag.NewFlagSet("gat fetch", flag.ContinueOnError)
+	fs.SetOutput(stderr)
+	delay := fs.Duration("delay", gat.DefaultDelay, "the shortest gap between two requests to one host, before the site's own Crawl-delay")
+	timeout := fs.Duration("timeout", 30*time.Second, "how long to wait for one request")
+	max := fs.Int64("max", gat.MaxBody, "the largest body to read, in bytes")
+	body := fs.Bool("body", false, "write the body to stdout instead of the summary")
+	fs.Usage = func() {
+		fmt.Fprint(stderr, `usage: gao gat fetch [flags] URL [URL ...]
+
+Fetches each URL the way the crawler does: robots.txt first and once per host,
+the published User-Agent, a gap between requests that is the longer of ours and
+the site's, and a body cap. Redirects are reported rather than followed, because
+a redirect can cross to another host where a different robots.txt applies.
+
+It prints what happened rather than the page, so that the parts of the decision
+that do not show up in a body are visible: the rule that allowed the fetch, what
+the response said about text and data mining, and the wait the next request to
+that host would take. Use -body for the bytes.
+
+Exits 0 when every URL was fetched and 1 when any was refused, by robots.txt, by
+the host, or by the size cap.
+
+flags:
+`)
+		fs.PrintDefaults()
+	}
+	if err := fs.Parse(args); err != nil {
+		return 2
+	}
+	if fs.NArg() == 0 {
+		fs.Usage()
+		return 2
+	}
+
+	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
+	defer stop()
+
+	c := gat.NewCrawler(gat.CrawlOptions{
+		Polite:  gat.NewPolite(gat.PoliteOptions{Delay: *delay}),
+		Version: version,
+		MaxBody: *max,
+		Client:  &http.Client{Timeout: *timeout, CheckRedirect: noRedirect},
+	})
+
+	refused := 0
+	for i, target := range fs.Args() {
+		if i > 0 && !*body {
+			fmt.Fprintln(stdout)
+		}
+		v, err := c.Get(ctx, target)
+		if err != nil {
+			refused++
+			reason, why, _ := gat.Reject(err)
+			fmt.Fprintf(stderr, "%s\n  refused: %s\n  reason:  %s\n", target, why, reason)
+			continue
+		}
+		if *body {
+			_, _ = stdout.Write(v.Body)
+			continue
+		}
+		printVisit(stdout, c, v)
+	}
+	if refused > 0 {
+		fmt.Fprintf(stderr, "\n%d of %d URLs were not fetched\n", refused, fs.NArg())
+		return 1
+	}
+	return 0
+}
+
+// noRedirect is the only redirect policy this project uses. See [gat.Crawler.Get].
+func noRedirect(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }
+
+func printVisit(stdout io.Writer, c *gat.Crawler, v *gat.Visit) {
+	tw := tabwriter.NewWriter(stdout, 0, 0, 2, ' ', 0)
+	fmt.Fprintf(tw, "%s\n", v.URL)
+	fmt.Fprintf(tw, "  robots\t%s\n", describeDecision(v.Robots))
+	fmt.Fprintf(tw, "  status\t%d\n", v.Status)
+	fmt.Fprintf(tw, "  bytes\t%d\n", len(v.Body))
+	if ct := v.Header.Get("Content-Type"); ct != "" {
+		fmt.Fprintf(tw, "  type\t%s\n", ct)
+	}
+	if v.Redirect != "" {
+		fmt.Fprintf(tw, "  redirect\t%s, not followed\n", v.Redirect)
+	}
+	fmt.Fprintf(tw, "  mining\t%s\n", describeReservation(v.Reserve))
+	fmt.Fprintf(tw, "  next\t%v from now, to %s\n", c.Delay(v.Host), v.Host)
+	_ = tw.Flush()
+}
+
+func describeDecision(d gat.Decision) string {
+	switch d.Why {
+	case gat.RobotsAllowDefault:
+		return "allowed, no rule addressed to us"
+	case gat.RobotsAllow:
+		return "allowed by " + d.Rule
+	default:
+		return d.Why
+	}
+}
+
+func describeReservation(r gat.Reservation) string {
+	if !r.Reserved() {
+		return "no reservation, the response asked for nothing"
+	}
+	var said []string
+	for name, value := range r.Signals() {
+		said = append(said, name+": "+value)
+	}
+	sort.Strings(said)
+	return "reserved, " + strings.Join(said, "; ")
 }
 
 func runGatPins(stdout, stderr io.Writer, args []string) int {

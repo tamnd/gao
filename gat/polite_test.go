@@ -163,6 +163,29 @@ func TestASiteAskingForLongerGetsLonger(t *testing.T) {
 	}
 }
 
+// The one gap a site can be certain we had read its file before is the gap after
+// the request that fetched the file, and it is the one gap a scheduler that only
+// applied the new number going forward would get wrong. Thirty seconds asked for
+// has to reach the request already queued behind the robots.txt fetch.
+func TestTheNumberASiteAsksForReachesTheGapAlreadyReserved(t *testing.T) {
+	c := newClock()
+	p := polite(c, gat.PoliteOptions{Delay: time.Second})
+
+	// This is the fetch of robots.txt, which happens before anybody can know
+	// what is in it, so it is reserved at the default.
+	fetch(t, p, "baomoi.com")
+
+	r := gat.ReadRobots([]byte("User-agent: " + gat.Bot + "\nCrawl-delay: 30\n"))
+	if _, ok := p.Learn("baomoi.com", r); !ok {
+		t.Fatal("thirty seconds was refused")
+	}
+
+	fetch(t, p, "baomoi.com")
+	if first := c.waits()[1]; first != 30*time.Second {
+		t.Errorf("the first page after robots.txt waited %v and the file asked for 30s", first)
+	}
+}
+
 // And a site asking for less than we were going to give it does not get its way,
 // because the default is what we are willing to do rather than what we are
 // obliged to.
