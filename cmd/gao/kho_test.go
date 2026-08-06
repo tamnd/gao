@@ -4,6 +4,7 @@ import (
 	"crypto/ed25519"
 	"crypto/sha256"
 	"encoding/hex"
+	"encoding/json"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
@@ -945,5 +946,96 @@ func TestKhoRemoveIsInTheSubcommandList(t *testing.T) {
 	}
 	if !strings.Contains(out, "remove") {
 		t.Errorf("the subcommand list does not mention remove:\n%s", out)
+	}
+}
+
+// orderLog writes readings of n shards measured both ways, on two boxes, with
+// the sorted run saving the fraction given.
+func orderLog(t *testing.T, n int, saves float64) string {
+	t.Helper()
+	var b strings.Builder
+	for i := range n {
+		box := "server3"
+		if i%2 == 1 {
+			box = "gamingpc"
+		}
+		const raw, arrival = 1_500_000_000, 500_000_000
+		for _, o := range []struct {
+			name string
+			size int64
+		}{{"arrival", arrival}, {"host", int64(arrival * (1 - saves))}} {
+			fmt.Fprintf(&b, `{"shard":"shard-%05d-of-00750","ordering":%q,"level":19,"raw":%d,"compressed":%d,"documents":11800,"hosts":900,"biggest":0.05,"box":%q}`+"\n",
+				i, o.name, raw, o.size, box)
+		}
+	}
+	path := filepath.Join(t.TempDir(), "order.jsonl")
+	if err := os.WriteFile(path, []byte(b.String()), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	return path
+}
+
+func TestWhatSortingAShardByHostBuysIsReportedAgainstWhatItCosts(t *testing.T) {
+	out, errOut, code := exec(t, "kho", "order", "-text", "1200000000000", orderLog(t, 3, 0.08))
+	if code != 0 {
+		t.Fatalf("exit %d: %s\n%s", code, out, errOut)
+	}
+	for _, want := range []string{"saved", "8.0%", "resident", "held in memory while one shard is sorted", "per shard, best first"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("the report does not carry %q:\n%s", want, out)
+		}
+	}
+
+	// The shard count is downstream of the measured ratio, and the release is
+	// shaped like the shard count.
+	if !strings.Contains(out, "shards") || !strings.Contains(out, "of text at that ratio") {
+		t.Errorf("the shard count is not reported against the corpus size:\n%s", out)
+	}
+}
+
+func TestASavingThatDoesNotPayForTheMemoryExitsNonzero(t *testing.T) {
+	out, _, code := exec(t, "kho", "order", orderLog(t, 3, 0.01))
+	if code != 1 {
+		t.Fatalf("exit %d, want 1:\n%s", code, out)
+	}
+	if !strings.Contains(out, "is not worth that") {
+		t.Errorf("a 1%% saving passed:\n%s", out)
+	}
+}
+
+func TestTheOrderingComparisonSpeaksJSON(t *testing.T) {
+	out, _, code := exec(t, "kho", "order", "-json", "-text", "1200000000000", orderLog(t, 3, 0.08))
+	if code != 0 {
+		t.Fatalf("exit %d:\n%s", code, out)
+	}
+	var report struct {
+		Median   float64  `json:"median"`
+		Ratio    float64  `json:"ratio"`
+		Target   int64    `json:"target"`
+		Resident int64    `json:"resident"`
+		Shards   int      `json:"shards"`
+		Boxes    []string `json:"boxes"`
+		Settled  bool     `json:"settled"`
+	}
+	if err := json.Unmarshal([]byte(out), &report); err != nil {
+		t.Fatalf("%v:\n%s", err, out)
+	}
+	if !report.Settled || len(report.Boxes) != 2 {
+		t.Fatalf("settled=%v off %v", report.Settled, report.Boxes)
+	}
+	if report.Resident <= report.Target {
+		t.Errorf("a %d byte shard was reported as needing %d bytes resident", report.Target, report.Resident)
+	}
+	if report.Shards < 600 || report.Shards > 900 {
+		t.Errorf("1.2 TB of text at %.2f to 1 came to %d shards", report.Ratio, report.Shards)
+	}
+}
+
+func TestOrderAsksForAReadingsFile(t *testing.T) {
+	if _, _, code := exec(t, "kho", "order"); code != 2 {
+		t.Error("no readings file did not read as a usage error")
+	}
+	if _, errOut, code := exec(t, "kho", "order", filepath.Join(t.TempDir(), "nowhere.jsonl")); code != 1 || !strings.Contains(errOut, "nowhere.jsonl") {
+		t.Errorf("exit %d and %q from a readings file that is not there", code, errOut)
 	}
 }

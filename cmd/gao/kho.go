@@ -40,6 +40,8 @@ func runKho(stdout, stderr io.Writer, args []string) int {
 		return runKhoSchema(stdout, stderr, args[1:])
 	case "push":
 		return runKhoPush(stdout, stderr, args[1:])
+	case "order":
+		return runKhoOrder(stdout, stderr, args[1:])
 	case "card":
 		return runKhoCard(stdout, stderr, args[1:])
 	case "help", "-h", "--help":
@@ -65,6 +67,7 @@ subcommands:
   schema    print the full record schema, every column and what it means
   push      upload a file to a dataset repo at the path it belongs at
   card      generate a dataset card from a snapshot manifest
+  order     what sorting a shard by host buys, and what holding it resident costs
 
 run 'gao kho <subcommand> -h' for the flags of a single subcommand.
 `)
@@ -727,6 +730,108 @@ func printDatasets(w io.Writer, tier kho.Tier, snapshot string) {
 		fmt.Fprintln(w)
 		if d.Public() {
 			fmt.Fprintf(w, "    %s\n", d.Query(snapshot))
+		}
+	}
+}
+
+func runKhoOrder(stdout, stderr io.Writer, args []string) int {
+	fs := flag.NewFlagSet("kho order", flag.ContinueOnError)
+	fs.SetOutput(stderr)
+	asJSON := fs.Bool("json", false, "print JSON")
+	target := fs.Int64("target", may.ShardBytes, "the compressed size each shard is aimed at, in bytes")
+	text := fs.Int64("text", 0, "the size of the corpus in bytes of extracted text, for the shard count")
+	fs.Usage = func() {
+		fmt.Fprint(stderr, `usage: gao kho order [-json] [-target bytes] [-text bytes] readings.jsonl
+
+What sorting a shard by host buys, measured rather than assumed.
+
+Shards are assigned by hash, which makes each one a uniform sample of the
+corpus and scatters every host across the file. Pages from one site share
+their navigation, their footer and their URL prefix, and scattered they never
+land inside the same compression window. Sorting by host inside the shard puts
+them back together without changing which shard anything is in.
+
+What it costs is that a stream stops being a stream. The shard has to be held
+in memory to be sorted, which is over a gigabyte of text at the target size, on
+a fleet whose smallest box has 6.2 GB. So the saving is only worth having if
+somebody measured it: the same shard, both ways, at the same compression level,
+on more than one box we own.
+
+One reading per line, each naming the shard, the ordering, the level, the bytes
+before and after, and the box. Exits 1 if the readings do not settle it.
+
+flags:
+`)
+		fs.PrintDefaults()
+	}
+	if err := fs.Parse(args); err != nil {
+		return 2
+	}
+	if fs.NArg() != 1 {
+		fs.Usage()
+		return 2
+	}
+
+	readings, err := kho.ReadReadings(fs.Arg(0))
+	if err != nil {
+		fmt.Fprintf(stderr, "gao kho: %v\n", err)
+		return 1
+	}
+
+	c := kho.Compare(*target, readings)
+	out := khoOrderReport{Comparison: c, Verdict: c.Verdict(), Settled: c.Settled()}
+	if *text > 0 {
+		out.Shards = c.Shards(*text)
+	}
+	if *asJSON {
+		if code := printJSON(stdout, stderr, out); code != 0 {
+			return code
+		}
+	} else {
+		printKhoOrder(stdout, out, *text)
+	}
+	if !c.Settled() {
+		return 1
+	}
+	return 0
+}
+
+type khoOrderReport struct {
+	kho.Comparison
+	Shards  int    `json:"shards,omitempty"`
+	Verdict string `json:"verdict"`
+	Settled bool   `json:"settled"`
+}
+
+func printKhoOrder(w io.Writer, out khoOrderReport, text int64) {
+	c := out.Comparison
+	tw := tabwriter.NewWriter(w, 0, 0, 2, ' ', 0)
+	fmt.Fprintf(tw, "measured\t%s\ton %s\n", plural(len(c.Gains), "shard"), strings.Join(c.Boxes, " and "))
+	fmt.Fprintf(tw, "saved\t%.1f%%\ton the middle shard, against a floor of %.0f%%\n", 100*c.Median, 100*kho.MinGain)
+	fmt.Fprintf(tw, "ratio\t%.2f to 1\tsorted by host, which is what the disk budget gets written against\n", c.Ratio)
+	fmt.Fprintf(tw, "target\t%s\tcompressed per shard\n", may.Size(c.Target))
+	fmt.Fprintf(tw, "resident\t%s\tof text held in memory while one shard is sorted and written\n", may.Size(c.Resident))
+	if text > 0 {
+		fmt.Fprintf(tw, "shards\t%d\tfor %s of text at that ratio\n", out.Shards, may.Size(text))
+	}
+	_ = tw.Flush()
+
+	if len(c.Gains) > 0 {
+		fmt.Fprint(w, "\nper shard, best first:\n")
+		gw := tabwriter.NewWriter(w, 0, 0, 2, ' ', 0)
+		fmt.Fprint(gw, "  shard\tarrival\tsorted\tsaved\thosts\tbiggest\n")
+		for _, g := range c.Gains {
+			fmt.Fprintf(gw, "  %s\t%s\t%s\t%.1f%%\t%d\t%.0f%%\n",
+				g.Shard, may.Size(g.Arrival.Compressed), may.Size(g.Sorted.Compressed), 100*g.Fraction, g.Sorted.Hosts, 100*g.Sorted.Biggest)
+		}
+		_ = gw.Flush()
+	}
+
+	fmt.Fprintf(w, "\n%s\n", out.Verdict)
+	if why := c.Blocking(); len(why) > 1 {
+		fmt.Fprintf(w, "\n%s:\n", plural(len(why), "fault"))
+		for _, x := range why {
+			fmt.Fprintf(w, "  %s\n", x)
 		}
 	}
 }

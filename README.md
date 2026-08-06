@@ -155,6 +155,7 @@ gao kho remove  -from a -to b -snapshot b -key gao.key -reason takedown <docid> 
 gao kho datasets                            # where processed data is written, and how to read it
 gao kho push  part.parquet                  # send one file to the store, skipping what is already there
 gao kho card  -dataset vietnamese-web-text  # generate a repo's dataset card from its snapshot manifest
+gao kho order readings.jsonl                # what sorting a shard by host buys, and what it costs to sort one
 gao kho schema                              # every column of the record, its type, and what it holds
 gao kho schema -parquet                     # the same schema as a parquet tool prints it
 
@@ -1281,6 +1282,34 @@ The first thing the formula does not tell you is that there is a regime where no
 The second is that a checkpoint that was written is not yet a checkpoint. It counts when the store confirms it holds those bytes, which is the same distinction the rotation is built around and it fails the same way: from the training host afterwards, a checkpoint that landed and one that was half written when the instance went away look identical. If the confirmation window is as long as the interval, the run is never more than one unconfirmed save away from having no checkpoint at all, and that is refused separately rather than folded into the overhead.
 
 The last line is the retention budget against real disk. The fleet has 467 GB free, a resumable checkpoint is 427 GB, so the fleet holds exactly one and a run can only ever be rewound to its last save. That is a fact worth having written down before somebody notices at hour nine that something went wrong at hour six. Keeping weights only instead holds seven of them and reaches back 33 minutes, which is a different budget for a different question, and the command says which one it counted rather than leaving the reader to assume.
+
+## What sorting a shard by host is worth
+
+Shards are assigned by hash, and that is right for every reason except one. A hash shard is a uniform sample of the corpus, so a stage that processes shard 7 sees what a stage processing all 750 sees, a bug that only shows up on one source shows up in every shard rather than in one file nobody opened, and two copies of a document land together by construction, which is what makes deduplication tractable at all.
+
+What it costs is compression. Pages from one host share their navigation, their footer, their cookie banner, their breadcrumb trail and their URL prefix, and a hash shard scatters those pages so thoroughly that no two of them are ever inside the same compression window. The compressor is shown the same boilerplate a few hundred times and told nothing about it each time. Sorting by host inside the shard puts them back together without changing which shard anything is in, because the sample property belongs to the assignment rather than to the order.
+
+The catch is that a stream stops being a stream. A shard cannot be sorted until every record for it is in hand, so the writer holds the shard's records in memory, orders them, and only then compresses. At the target of 512 MB compressed that is around 1.7 GB of text resident, on a fleet whose smallest box has 6.2 GB in total and wants all of its cores busy. That is a real cost against a saving nobody has measured, which is the shape of decision this project tries not to make by preference.
+
+```
+$ gao kho order -text 1200000000000 readings.jsonl
+measured  3 shards   on gamingpc and server3
+saved     7.8%       on the middle shard, against a floor of 3%
+ratio     3.29 to 1  sorted by host, which is what the disk budget gets written against
+target    512.0 MB   compressed per shard
+resident  1.7 GB     of text held in memory while one shard is sorted and written
+shards    712        for 1200.0 GB of text at that ratio
+
+per shard, best first:
+  shard                 arrival   sorted    saved  hosts  biggest
+  shard-00001-of-00750  491.0 MB  447.0 MB  9.0%   902    7%
+  shard-00000-of-00750  498.0 MB  459.0 MB  7.8%   940    5%
+  shard-00002-of-00750  495.0 MB  463.0 MB  6.5%   877    6%
+```
+
+Those readings are invented, since no shard has been written yet. What is not invented is what the command refuses. Two readings have to be of the same shard, because compressing shard 4 sorted against shard 9 unsorted compares the shards. They have to be at the same zstd level, because the level moves the ratio further than the ordering does and a saving measured across two levels is a measurement of the levels. The figure quoted is the middle shard rather than the mean, because one shard that is mostly a single site saves a great deal on that site's template and drags an average that reproduces on nothing else, and a shard where one host holds more than a quarter of the bytes is called out for exactly that reason. And a comparison that ran on one box is a run rather than a measurement, which is the fleet gate on this milestone written as arithmetic instead of as a sentence in a checklist.
+
+The last line is why any of it matters beyond a few percent of download size. The shard count is downstream of the compression ratio, the compression ratio has been an assumed 3.0 in the disk budget since the beginning, and the release is shaped like its shard count: 512 MB apiece and around 750 of them is what makes a partial download useful and a takedown cheap. Measuring the ratio replaces an assumption in the one place where being wrong changes the shape of the artifact rather than a number in a report.
 
 ## Publishing a slice without a second copy of the corpus
 
