@@ -170,6 +170,7 @@ gao nau check                               # everything in the plan that cannot
 gao chon criteria                           # choosing a base: the six criteria, in the order they bind
 gao chon bases                              # the candidates, before anybody has measured one
 gao chon score bases.jsonl                  # and what the measurements say, if they are enough to decide
+gao ghep expansions.jsonl                   # to graft: what adding Vietnamese tokens to a base vocabulary bought and cost
 
 gao hieu model                              # the effect: the from scratch architecture and what a token of it costs
 gao hieu plan -gpus 64                      # the compute that run needs, in the hours it gets booked in
@@ -1301,6 +1302,33 @@ Two faults are worth more than the ranking. A base with two different quality fi
 
 The tokenizer column on the roster is what connects this to the fertility work. Criterion 3 is a fact about a vocabulary rather than about weights, so each base names the tokenizer it comes with, and a base whose tokenizer is not on the fertility roster is one criterion 3 cannot be applied to yet. Two of the five are in that position today, which is a piece of work this table names instead of quietly scoring as zero.
 
+### Grafting Vietnamese onto a vocabulary that was not trained with it
+
+Criterion 3 leaves the continued pretraining arms in an awkward position. Fertility matters, none of the candidate bases is good at it, and none of them can be handed a better tokenizer, because every weight in the model was trained against the ids the tokenizer it ships with produces. Expansion is the only move on the board. Keep the vocabulary, add the Vietnamese pieces the base spells out three at a time, and pay for the new rows out of the run's own budget.
+
+`gao ghep` exists because that payment is invisible from the tokenizer side. The fertility win is real, it costs nothing to measure, it needs no GPU, and it is available before a single step is trained. It is also the easy half, and it is the half that ends up in the message announcing the work.
+
+```
+$ gao ghep expansions.jsonl
+method  rows   added   tokens/syllable  gain   norm  frozen  spike  recovered  of budget  net
+pieces  32768  240 MB  2.11 to 1.62     23.2%  0.96  2000    1.28x  1.8B       4.5%       18.7%
+mean    32768  240 MB  2.11 to 1.62     23.2%  0.64  2000    1.42x  5.6B       14.0%      9.2%
+
+gemma-3-12b, 262144 tokens at 3840 wide, measured on gamingpc.
+A graft has to buy 15.0% of fertility to be worth the parameters, and may spend 10.0% of the run getting back to the loss it started at.
+The fertility columns are free and the recovery columns are what the run pays, which is why the methods are ordered by the difference rather than by the gain.
+
+gemma-3-12b by pieces is the best of 2 methods, buying 23.2% of fertility for 240 MB of new parameters and 4.5% of the run spent recovering, which nets 18.7%.
+```
+
+Those two rows are the same graft. Same base, same 32768 added tokens, same 240 MB of new parameters, and identical fertility, because fertility is a property of the tokenizer and has nothing to do with what was written into the rows. Everything that separates them is on the right of the table. The grafted rows start out meaning nothing while every row around them is a direction the body has been reading for trillions of tokens, so the loss goes up when the expanded tokenizer is switched on and comes back down over a number of tokens that is spent out of this run's budget. Averaging a quarter of a million vectors mostly cancels, which puts the mean rows at 0.64 of the norm they sit among, spikes the loss higher, and costs 5.6B tokens of recovery against 1.8B. Ranked by fertility those two methods are tied. Ranked by what they net they are 18.7% against 9.2%, and the second one is barely worth doing.
+
+That block is invented. No arm of S5 has run, the expanded tokenizer is not built, and the figures in it are what the command prints rather than what a graft measured.
+
+The checks are about the rows rather than about the vocabulary, because the rows are where the mechanics live. Rows drawn from a normal are refused with the reason, which is that the first thing the model does with a token it has never seen is produce a logit with nothing to do with the string, and the gradient that corrects it travels through every layer of a body that was already right. A norm well under the surrounding rows is a token the output head gives a flat logit to however good its direction is, and a norm well over them is a token it reaches for before it has any reason to, and those are opposite failures whose fixes make each other worse. Untied embeddings are two decisions and the output one is the one that gets forgotten, which leaves a model able to read the new tokens and unable to write them. The quiet failure is an added token the base tokenizer could already produce, since nothing breaks, the model trains, and merge order decides which of the two ids the text becomes while the weights were trained on the other.
+
+The column that never appears on the tokenizer side is the last one. An expansion that buys a fifth of the fertility and spends a third of the run getting back to where it started has made the run worse, so the recovery is measured against the run's own budget and the verdict is written against the difference. A method whose loss never came back prints never rather than a zero, because a recovery of nothing and a recovery that did not happen are not the same reading.
+
 ## What fraction of the hardware becomes gradient
 
 The gate on the from scratch run is 40% model FLOPs utilization in FP8 and the kill criterion is 25% after a week of tuning, which makes utilization the number that decides whether the most expensive thing in this project continues. A number with that job should not be an estimate somebody did once in a spreadsheet, so `gao hieu` computes it and reads it back off the run.
@@ -1932,6 +1960,7 @@ doc/         schema and contracts shared across stages
 luat/        the legal position: license determinations, publication posture
 nau/         the training plan: the token budget, the curriculum, the arms
 chon/        to choose: the base model criteria, in the order they bind
+ghep/        to graft: what expanding a base vocabulary bought, and what the run paid for it
 hieu/        the effect: what fraction of the hardware a training run turns into gradient
 chim/        to sink: what an FP8 E4M3 step lost to zero, and the checks that catch it
 nhip/        the beat: what each pipeline stage runs at, with the box on every number
