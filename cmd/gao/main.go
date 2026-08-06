@@ -36,6 +36,7 @@ func commands() []command {
 		{"dem", "count: fetch the tokenizer that defines a gao token, print what an ingest counted", runDem},
 		{"dien", "fill in: build and score the cloze proxy the ablation slate is run against", runDien},
 		{"gat", "work with acquisition: print the ingest manifest, check it for drift", runGat},
+		{"gieo", "to sow: the generator card for gao-synth, and the recipe it is written against", runGieo},
 		{"kho", "work with the store: verify a snapshot, generate a signing key", runKho},
 		{"lat", "a slice: check a release slice is a view over its snapshot rather than a second copy of it", runLat},
 		{"luat", "print the legal position: counsel questions, license determinations, what ships", runLuat},
