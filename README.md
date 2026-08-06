@@ -92,6 +92,10 @@ gao nhat -list benchmarks.json parts/*.parquet  # and which documents hold a ben
 gao dau build -o vi-diacritic.jsonl parts/*.parquet  # the mark: build the diacritic restoration task set
 gao dau baseline -items vi-diacritic.jsonl other/*.parquet  # the two numbers a model has to beat
 gao dau grade -items vi-diacritic.jsonl answers.jsonl  # and score a model's answers against them
+gao dien build -count other/*.parquet -o vi-cloze.jsonl parts/*.parquet  # fill in: build the cloze proxy the ablation slate is scored by
+gao dien baseline -items vi-cloze.jsonl other/*.parquet  # what picking the commonest candidate scores
+gao dien grade -items vi-cloze.jsonl answers.jsonl  # and score a model's answers against the set
+gao dien validate recipes.json              # whether the proxy agrees with full scale, or the slate is exploratory
 
 gao kho release --snapshot gao-v1.0         # store and publish
 gao kho verify  snapshots/gao-v1.0          # check a snapshot against its manifest
@@ -725,6 +729,43 @@ Scoring is the share of the page's marks that came back rather than character ac
 
 Sampling is by document identity rather than by a random draw, so `-one-in 100` picks the same hundredth on `server2` as on `gamingpc` with no seed file passed between them. Building the real set over the corpus is a fleet item. The generator, the two baselines and the scoring are written and tested here.
 
+## Scoring forty training runs without paying for forty evaluations
+
+The ablation slate is forty runs, and every one of them has to be scored before the next one is worth starting. That makes whatever scores them the inner loop of the entire tuning program. A generative evaluation with a model judging the output puts an hour and an API bill between each run and its result, which turns a week of ablations into a month of them and makes the obvious economy, running fewer arms, the one that costs the most.
+
+So the slate is scored by a proxy. `dien` is to fill in, and `vi-cloze` is four candidate continuations of a passage with one syllable taken out, scored by likelihood, with an argmax over the four. Nothing is generated and nothing is judged. Four thousand items is sixteen thousand scored continuations, which is minutes on one card. The answer key is the page the passage came off, so like `vi-diacritic` it costs no annotator.
+
+```
+gao dien build -count other/*.parquet -o vi-cloze.jsonl parts/*.parquet   # turn documents into questions
+gao dien baseline -items vi-cloze.jsonl other/*.parquet                   # the number to beat
+gao dien grade -items vi-cloze.jsonl answers.jsonl                        # score a model's answers
+gao dien validate recipes.json                                            # whether the proxy agrees with full scale
+```
+
+An item off the test fixtures, which are three paragraphs rather than the corpus:
+
+```
+Một âm tiết viết không dấu trong tiếng Việt có thể ứng với nhiều từ khác hẳn
+nhau về nghĩa, và người đọc quen với ngôn ngữ này khôi phục dấu một cách tự
+nhiên nhờ ngữ ___. Máy thì phải học điều đó từ đầu.
+
+  cũ    cấy    cảnh    cơm
+```
+
+There are three ways to build this badly and each of them produces a benchmark that looks like it is working. A blank over one of the commonest syllables is answered by grammar rather than by having read anything, so the top 200 of the frequency ranking are never taken out. Wrong answers drawn at random are answered by picking the commonest candidate, so they come from the ranks nearest the answer, and the answer's own position among the four is spread evenly across the set, which is what pins that strategy to chance. A candidate that is the answer with different marks turns the item into diacritic restoration, which is `vi-diacritic`'s job, so it is refused, and the two benchmarks stay two benchmarks rather than one measured twice.
+
+The frequency baseline is run rather than argued about. Over the four hundred item fixture in the package tests it scores 24.0% against a 25.0% chance floor, with the answer's frequency position 5.8% off an even spread, and both numbers are printed by `gao dien baseline` on any set. A build that broke the spread shows up there as the baseline scoring well, and a benchmark the unigram distribution can win looks from the outside exactly like a benchmark a model is winning.
+
+A syllable that appears twice in the passage is never the one taken out, because it can be copied from its other occurrence. Which position gets blanked, which frequency rank the item is built at, and the order the four candidates come out in are all decided by the identity of the document, so the set rebuilds byte for byte on any box and two runs of the slate are comparable without a seed file passed between them.
+
+The ranking the wrong answers are drawn from has to be counted over text the items were not built from, and `gao dien build` refuses a file that appears on both sides rather than warning about it. A ranking that saw the passage chose the distractors with the right answer in view.
+
+None of that is worth anything if the proxy disagrees with the thing it stands in for. `gao dien validate` takes the recipes that were scored at both scales and reports the rank correlation between the two orderings, and beside it how often the two pick the same winner out of a pair, which is the question anybody running a slate actually has. Spearman is computed over average ranks rather than with the six d squared formula, because that formula is wrong when there are ties and the ties are the interesting case: two recipes the proxy could not separate are the proxy declining to make a call, and crediting it for whichever was listed first would be scoring it on a coin toss.
+
+Below a correlation of 0.5 the slate is reported as exploratory rather than decisive, every threshold it set falls back to a published default, and every one of those ships flagged as unvalidated. That is the kill criterion for the whole ablation slice, and it lives in the command that measures it so that the run which settles it is the run that reports it. Fewer than five recipes scored at both scales is refused outright, because a rank correlation over three points takes one of nine values and all nine of them are coincidences.
+
+Building the real set over the corpus, and every proxy evaluation of it, runs on `gamingpc`, which is the box with the card. The generator, the baseline, the scoring and the validity measurement are written and tested here.
+
 ## Where the corpus lives
 
 gao runs on four real machines with 500 GB of free disk between them, and the corpus is 1188 GB of extracted text, 396 GB compressed. It does not fit, and it does not fit by enough that no amount of tidying changes the answer. `gao box` prints the arithmetic.
@@ -931,6 +972,8 @@ xay/         milling: deduplication, boilerplate removal
 chia/        dividing: which of three ways a PDF is extracted, and what that costs
 che/         covering: Vietnamese personal data, found and tagged over
 nhat/        decontamination: the benchmark roster, and what of it the corpus holds
+dau/         the mark: the diacritic restoration task set, built out of the corpus
+dien/        filling in: the cloze proxy the ablation slate is scored by
 kho/         the store: records, manifests, snapshots, signing
 vo/          the reject store: dropped documents and why they were dropped
 xoa/         the takedown register: who asked, when, and when it was done
