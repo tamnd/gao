@@ -30,6 +30,8 @@ func runDem(stdout, stderr io.Writer, args []string) int {
 		return runDemModel(stdout, stderr, args[1:])
 	case "counts":
 		return runDemCounts(stdout, stderr, args[1:])
+	case "gates":
+		return runDemGates(stdout, stderr, args[1:])
 	case "keys":
 		return runDemKeys(stdout, stderr, args[1:])
 	case "overlap":
@@ -55,6 +57,7 @@ whatever was installed on the box.
 
 subcommands:
   model    fetch the tokenizer that defines a gao token, and verify it
+  gates    put a tokenizer through the ten gates, and measure its fertility
   counts   print the counts an ingest produced, or several added together
   keys     read the document identities of a snapshot out of the store
   overlap  print what the sources have in common, from their key files

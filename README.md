@@ -50,6 +50,7 @@ gao gat ledger -dir ingest/                 # what the harvest has finished so f
 gao gat ledger -dir ingest/ -files          # every finished file, and how each one was read
 
 gao dem model  -o tokenizer.model           # fetch the tokenizer that defines a gao token
+gao dem gates  -tokenizer tokenizer.model parts/*.parquet  # and put it through the ten gates before trusting a count
 gao gat hf     -dir ingest/ -tokenizer tokenizer.model  # and count tokens while harvesting
 gao dem counts ingest/                      # what the harvest counted, per source
 gao dem keys   glotcc-abc1234               # read a snapshot's document identities back out of the store
@@ -234,6 +235,25 @@ Two counts produced by different tokenizers are never added up. It is an error r
 The first counted run puts a number on the estimate this project has been quoting, and it is not the estimated number. One GlotCC shard, 500000 documents, 3228869043 characters, 983022920 tokens: **3.28 characters per token**, where `doc/units.go` predicts 3.0 and the plan that wrote it allowed plus or minus 0.15. Tokens per syllable came out at 1.45 against a predicted 1.51 and bytes per character at 1.30 against 1.32, both close enough to leave alone. The character figure is not close, and it runs the same way every time: it means Vietnamese costs fewer tokens than the estimate assumed, so every token headline derived from a character count is about 8 percent high. That is one source of six and one shard of it, so it does not settle the corpus figure and the constants stay where they are, but it is the direction to expect from the rest.
 
 The conversion constants in `doc/units.go` are for estimates and nothing in `dem` multiplies. They answer what a hundred gigabytes is roughly worth before anything has been fetched. They live in a different package from the counting on purpose, because an estimate that reaches a release note becomes a measurement in the reader's mind and there is no way to take it back.
+
+## What a tokenizer has to pass first
+
+The tokenizer is a measuring instrument, every headline here is quoted in its units, and an instrument gets checked before its readings do. There are ten checks. They are cheap, they are absolute, and `gao dem gates` runs all of them over a sample of the corpus and reports the fertility it measured on the same text.
+
+The first three are one question asked of text that fails in different ways: does `decode(encode(x))` give back `x`, on the corpus, on the corpus with its marks taken off, and on the documents that mix Vietnamese with foreign words and with code. The threshold is 100.000% rather than 99.99%, and the extra digits are the point. One failure in ten thousand documents is fifty thousand corrupted documents at the size this is aiming for, and they do not spread evenly. They collect in the old orthography, the minority language quotations and the mathematical notation, which is text that is hard to notice missing and expensive to have got in the first place.
+
+The fifth gate is the one this project added, and it is how the syllable question got settled. gao lets a token span a syllable boundary, so `Việt Nam` may be one token. Forbidding that would cap the useful vocabulary at the roughly 6200 syllables the language has, which wastes most of a 128k vocabulary and bars exactly the pairs that carry the most information. What gao forbids instead is splitting a letter from its marks. `ế` is one unit or part of a larger one, and never `e` followed by a fragment. A tokenizer that can split them produces a model that can emit the letter and then fail to emit the mark, which is tone loss arriving at generation time instead of at ingest, and the constraint makes it unrepresentable rather than rare.
+
+A mark comes off in two ways and the suite counts both. A boundary can land inside a character, which is what byte fallback does, and a check on UTF-8 validity finds it. A boundary can also land between two characters and still be wrong, when the character after it is a combining mark belonging to the letter before it, and no validity check will ever see that one. Both are counted in boundaries rather than in documents, because a page holds thousands of boundaries and calling a bad page one failure hides how bad it is.
+
+A gate that found nothing in the sample to run on is reported as not run, and a tokenizer is eligible only when all nine measured gates ran and passed. That distinction is the failure this suite is most likely to have in practice: point it at a thousand clean documents, three gates find nothing that applies, and a run that called that a pass prints ten green lines and means seven of them. The NFC gate says the same thing about itself in its own way, since a corpus that is already NFC compares every document against itself. The report gives the share of the sample that was not NFC as given, and when that share is zero it says so in as many words.
+
+The last gate is an audit rather than a threshold and it stays that way. It walks the vocabulary and prints the pieces made of characters this project strips: replacement characters, private use, invisible formatting, anything that is not NFC. A piece like that is a fact about the corpus the tokenizer was trained on rather than about the text it will see here, and one of them is a hint while a thousand is a different tokenizer. No threshold decides that, a person does.
+
+```
+gao dem gates -tokenizer tokenizer.model parts/*.parquet
+gao dem gates -tokenizer tokenizer.model -one-in 100 parts/*.parquet  # and the same run over one document in a hundred
+```
 
 ## Normalizing before anything reads a character
 
