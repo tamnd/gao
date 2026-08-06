@@ -1,6 +1,10 @@
 package main
 
 import (
+	"encoding/json"
+	"fmt"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -84,5 +88,112 @@ func TestBoxPrintsTheStoreOfRecord(t *testing.T) {
 	}
 	if !strings.Contains(out, "s3://gao-store") {
 		t.Errorf("gao box did not print the configured store:\n%s", out)
+	}
+}
+
+// diskTrace writes what a watcher appends to while a run goes: one reading every
+// interval seconds, holding hold bytes, with one spike partway through.
+func diskTrace(t *testing.T, ran, every, hold, spike int64) string {
+	t.Helper()
+	var lines []string
+	for s := int64(0); s <= ran; s += every {
+		b, stage := hold, "download"
+		if s > ran/2 {
+			stage = "push"
+		}
+		if s == ran/2+ran/2%every {
+			b, stage = spike, "push"
+		}
+		lines = append(lines, fmt.Sprintf(
+			`{"second":%d,"bytes":%d,"box":"server1","stage":%q,"workers":4}`, s, b, stage))
+	}
+	path := filepath.Join(t.TempDir(), "disk.jsonl")
+	if err := os.WriteFile(path, []byte(strings.Join(lines, "\n")+"\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	return path
+}
+
+func TestPeakDiskIsMeasuredRatherThanTrustedFromTheArithmetic(t *testing.T) {
+	out, errOut, code := exec(t, "box", "peak", "-run", "hplt-v3", "-ran", "6h",
+		diskTrace(t, 21600, 20, 3_000_000_000, 11_200_000_000))
+	if code != 0 {
+		t.Fatalf("exit %d: %s\n%s", code, out, errOut)
+	}
+	for _, want := range []string{"11.2 GB", "90.0 GB", "4.1 GB", "drift", "widest gap 20s"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("%q is missing from the reading:\n%s", want, out)
+		}
+	}
+	if !strings.Contains(out, "the design predicts") {
+		t.Errorf("the verdict does not carry the arithmetic it was read against:\n%s", out)
+	}
+}
+
+func TestARunOverTheCeilingExitsNonZero(t *testing.T) {
+	out, _, code := exec(t, "box", "peak", "-ran", "6h",
+		diskTrace(t, 21600, 20, 80_000_000_000, 104_000_000_000))
+	if code != 1 {
+		t.Fatalf("exit %d, want 1:\n%s", code, out)
+	}
+	if !strings.Contains(out, "does not fit on the box it was planned for") {
+		t.Errorf("the reading does not say what going over costs:\n%s", out)
+	}
+}
+
+// A peak sampled every five minutes is not a peak, and the reading says so
+// rather than printing the largest number it happened to see.
+func TestAPeakTakenTooRarelyIsRefused(t *testing.T) {
+	out, _, code := exec(t, "box", "peak", "-ran", "6h",
+		diskTrace(t, 21600, 300, 3_000_000_000, 11_200_000_000))
+	if code != 1 {
+		t.Fatalf("exit %d, want 1:\n%s", code, out)
+	}
+	if !strings.Contains(out, "the disk at some moments rather than its peak") {
+		t.Errorf("a trace sampled every five minutes was accepted:\n%s", out)
+	}
+}
+
+func TestThePeakIsAlsoMachineReadable(t *testing.T) {
+	out, _, code := exec(t, "box", "peak", "-json", "-ran", "6h",
+		diskTrace(t, 21600, 20, 3_000_000_000, 11_200_000_000))
+	if code != 0 {
+		t.Fatalf("exit %d:\n%s", code, out)
+	}
+	var got struct {
+		Box       string `json:"box"`
+		Held      int64  `json:"held"`
+		Predicted int64  `json:"predicted"`
+		Ceiling   int64  `json:"ceiling"`
+	}
+	if err := json.Unmarshal([]byte(out), &got); err != nil {
+		t.Fatalf("%v:\n%s", err, out)
+	}
+	if got.Box != "server1" || got.Held != 11_200_000_000 || got.Ceiling != may.Ceiling {
+		t.Errorf("%+v", got)
+	}
+	if got.Predicted != may.PeakBytes(mustBox(t, "server1")) {
+		t.Errorf("the prediction came back as %d", got.Predicted)
+	}
+}
+
+func mustBox(t *testing.T, name string) may.Box {
+	t.Helper()
+	b, ok := may.Lookup(name)
+	if !ok {
+		t.Fatalf("%s is not on the fleet", name)
+	}
+	return b
+}
+
+func TestPeakRefusesWhatItCannotRead(t *testing.T) {
+	if _, _, code := exec(t, "box", "peak"); code != 2 {
+		t.Errorf("a peak with no trace exited %d, want 2", code)
+	}
+	if _, _, code := exec(t, "box", "peak", "a.jsonl", "b.jsonl"); code != 2 {
+		t.Errorf("two traces exited %d, want 2", code)
+	}
+	if _, _, code := exec(t, "box", "peak", filepath.Join(t.TempDir(), "gone.jsonl")); code != 1 {
+		t.Errorf("a missing trace exited %d, want 1", code)
 	}
 }
