@@ -53,9 +53,9 @@ A marked span counts as covered only when a found span of the same kind holds al
 
 The precision column is measured mostly by the three documents with nothing in them, which are a quarter of the set for that reason. A detector for nine digit numbers can be made to find every one of them by dropping the requirement that something in the text name it, and the price list is what stops that from looking like an improvement.
 
-## The four defects this found
+## The five defects this found
 
-The measurement is worth having because of what it turned up on the first clean run, and all four were fixed in the detectors rather than by editing what was marked.
+The measurement is worth having because of what it turned up, and all five were fixed in the detectors rather than by editing what was marked. Four came out of the first clean run and the fifth came out of the Windows leg of CI.
 
 The address chain read `đường dây nóng` as a street, because `đường` opens a Vietnamese address and a hotline is literally a line. The chain then walked on through the phone number that followed, and `resolve` dropped the phone number for overlapping something bigger. One phrase in a short list of things that open like an address and are not one.
 
@@ -66,6 +66,10 @@ A tax code was filed as a phone number, because `điện thoại` sat earlier in
 `Chủ quán tên Trịnh Văn Đức` produced no name at all, because `quán` is one of the words that says a name belongs to a business rather than a person. The words that introduce a person are now checked first, so `chủ`, `tên`, `anh` and the rest beat the business test they were losing to.
 
 The first clean run before those fixes reported 1.000 on every detector, which on a set the author wrote is a warning rather than a result. `rao-vat-ne-bo-loc.txt` was added afterwards for that reason.
+
+The fifth came from the Windows leg of CI, which checks the fixtures out with `\r\n` endings, and it is the most serious of the five because nothing about it looks wrong. The co-occurrence scope for a name is a paragraph, a paragraph ends at a blank line, and a blank line was being read as two newline bytes in a row. Text with Windows endings has none of those, so the whole document became one paragraph, and one phone number anywhere on the page made every name on it a candidate. The motorbike advertisement gave up `Hà Nội` out of its headline and the job application gave up two words of its own title. Name precision on the set fell from 1.000 to 0.714, and it would have fallen on any Windows authored page in the crawl without anybody knowing. A blank line is now a line with nothing on it but space, and `TestTheLineEndingsDoNotChangeTheAnswer` measures the whole set both ways and requires the same numbers.
+
+The fixtures are pinned to their committed line endings in `.gitattributes`, since a measurement that reports one recall on one platform and another somewhere else is not a measurement. The detectors are held to reading either ending by that test rather than by the pin, because the pin protects the fixtures and the crawl is not pinned to anything.
 
 ## What is not found, and why it stays that way
 

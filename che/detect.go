@@ -408,32 +408,37 @@ func findNames(text string, identifiers []Span) []Span {
 
 type block struct{ start, end int }
 
+// paragraphs cuts the text at blank lines.
+//
+// A blank line is a line with nothing on it but space, which is not the same
+// thing as two newline bytes in a row. Text with Windows line endings puts a
+// carriage return between them, and the two spellings have to mean the same
+// thing here because the failure when they do not is silent and it is large: a
+// document whose lines end \r\n has no blank line by the strict reading, so the
+// whole page becomes one paragraph, and the co-occurrence scope that decides
+// whether a name is personal data widens from a contact block to the document.
+// One phone number anywhere on the page then makes every name on it a
+// candidate, including the ones in the headline.
 func paragraphs(text string) []block {
 	var out []block
-	start, blank := 0, 0
-	for i := 0; i <= len(text); i++ {
-		if i == len(text) {
-			if i > start {
-				out = append(out, block{start, i})
-			}
+	keep := func(start, end int) {
+		if strings.TrimSpace(text[start:end]) != "" {
+			out = append(out, block{start, end})
+		}
+	}
+	start, at := 0, 0
+	for at < len(text) {
+		nl := strings.IndexByte(text[at:], '\n')
+		if nl < 0 {
 			break
 		}
-		if text[i] != '\n' {
-			blank = 0
-			continue
+		if line := at + nl; strings.TrimSpace(text[at:line]) == "" {
+			keep(start, at)
+			start = line + 1
 		}
-		blank++
-		if blank < 2 {
-			continue
-		}
-		if i-1 > start {
-			out = append(out, block{start, i - 1})
-		}
-		start, blank = i+1, 0
+		at += nl + 1
 	}
-	if len(out) == 0 && len(text) > 0 {
-		out = append(out, block{0, len(text)})
-	}
+	keep(start, len(text))
 	return out
 }
 

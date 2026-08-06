@@ -174,6 +174,83 @@ func TestAMarkThatIsWrongIsAnError(t *testing.T) {
 	}
 }
 
+// The same documents with Windows line endings have to measure the same, and
+// this is the fifth defect the labeled set found.
+//
+// The co-occurrence scope for a name is a paragraph, a paragraph ends at a blank
+// line, and a blank line was being read as two newline bytes in a row. Text with
+// \r\n endings has none of those, so every document became one paragraph and one
+// phone number anywhere on the page made every name on it a candidate. The
+// headline of a motorbike advertisement gave up Hà Nội, and a job application
+// gave up the words for accountant out of its own title. Nothing about it fails
+// on text that happens to have been written on a machine that ends its lines the
+// other way, which is most of the web.
+func TestTheLineEndingsDoNotChangeTheAnswer(t *testing.T) {
+	set, err := Labeled()
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, m := range set {
+		if strings.Contains(m.Text, "\r") {
+			t.Fatalf("%s was checked out with the line endings rewritten, and the labeled set is pinned to keep that from happening", m.Name)
+		}
+	}
+
+	windows := make([]Marked, len(set))
+	for i, m := range set {
+		windows[i] = Marked{Name: m.Name, Text: strings.ReplaceAll(m.Text, "\n", "\r\n")}
+		for _, g := range m.Gold {
+			at := strings.Index(windows[i].Text, g.Text)
+			if at < 0 {
+				t.Fatalf("%s: %q does not survive the line endings changing", m.Name, g.Text)
+			}
+			windows[i].Gold = append(windows[i].Gold, Span{Start: at, End: at + len(g.Text), Kind: g.Kind, Text: g.Text})
+		}
+	}
+
+	unix, dos := Measure(set), Measure(windows)
+	for _, k := range Kinds() {
+		if a, b := unix.ByKind[k], dos.ByKind[k]; a != b {
+			t.Errorf("%s reads %+v with one line ending and %+v with the other", k, a, b)
+		}
+	}
+	for _, m := range dos.Spurious[KindName] {
+		t.Errorf("%s: %q is covered as a name only when the lines end \\r\\n", m.Document, m.Span.Text)
+	}
+}
+
+// The unit the paragraph scope is built on, on its own, because the way it was
+// wrong before was that it looked right on every document anybody had tried.
+func TestABlankLineIsALineWithNothingOnIt(t *testing.T) {
+	for _, c := range []struct {
+		name, text string
+		want       int
+	}{
+		{"unix", "một\n\nhai\n\nba", 3},
+		{"windows", "một\r\n\r\nhai\r\n\r\nba", 3},
+		{"a line of spaces", "một\n   \nhai", 2},
+		{"a line of tabs", "một\n\t\nhai", 2},
+		{"one newline is not a break", "một\nhai\nba", 1},
+		{"three in a row is one break", "một\n\n\nhai", 2},
+		{"leading blank lines", "\n\nmột\n\nhai", 2},
+		{"trailing blank lines", "một\n\nhai\n\n", 2},
+		{"nothing at all", "", 0},
+		{"nothing but blank lines", "\n\n \n", 0},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			got := paragraphs(c.text)
+			if len(got) != c.want {
+				t.Fatalf("%q came to %d paragraphs, want %d: %v", c.text, len(got), c.want, got)
+			}
+			for _, p := range got {
+				if p.start < 0 || p.end > len(c.text) || p.start >= p.end {
+					t.Errorf("%+v does not point into %q", p, c.text)
+				}
+			}
+		})
+	}
+}
+
 // The set has to hold more than one shape of document, since a recall measured
 // on ten copies of a contact block is a recall on contact blocks.
 func TestTheLabeledSetIsNotAllOneShapeOfDocument(t *testing.T) {
