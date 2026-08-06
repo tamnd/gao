@@ -11,8 +11,8 @@ import (
 // changing one field is changing one thing.
 func small() Harness {
 	return Harness{
-		Version: "2026-08-06",
-		Roster:  "2026-08-06",
+		Version: "2026-08-07",
+		Roster:  "2026-08-07",
 		Arms:    []string{"a", "b"},
 		Tasks: []Task{
 			{Benchmark: "vmlu", Metric: Accuracy, Shots: 5, Seed: 1, Prompt: "{{shots}}\n{{item}}", Extract: Likelihood},
@@ -156,7 +156,7 @@ func TestTheClosedHarnessKeepsItsDigest(t *testing.T) {
 	// changed, which is the event the whole package exists to make loud. If the
 	// change was meant, the version goes up, this number is replaced, and the
 	// results produced under the old one are not comparable to the new.
-	const want = "393fdd426026bcc60b9a05c02f5bf21f707b5aae30ca1e015f275554ee55a7d4"
+	const want = "e4d71047c881575bd9d77f37c06dc99beed2596e1840f689b8dea6d22b030a57"
 	h, err := Fixed()
 	if err != nil {
 		t.Fatal(err)

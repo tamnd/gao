@@ -1,6 +1,6 @@
 {
-  "version": "2026-08-06",
-  "roster": "2026-08-06",
+  "version": "2026-08-07",
+  "roster": "2026-08-07",
   "note": "The evaluation harness for S7, closed before any of the three arms has been trained. Everything that decides what the comparison says is in here: the benchmarks, the prompts verbatim, the shot counts and the seed they are drawn with, the metric, and the rule for getting an answer out of the output. The digest over all of it goes into every published result. A benchmark added after the numbers exist changes the digest and the two result sets stop claiming to be comparable, which is the only enforcement that survives contact with the person who wants gao to win.",
   "arms": [
     "com-8B-cpt-gao",
