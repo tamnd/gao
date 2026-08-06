@@ -50,6 +50,7 @@ func commands() []command {
 		{"soi", "hold a reading up to the light: measure what a machine read against what the page says", runSoi},
 		{"suat", "a rate: the crawl's net yield, per target class, read while it is still running", runSuat},
 		{"tach", "separate: read a forum page as the thread it is, since generic extraction keeps the menu and drops the posts", runTach},
+		{"thu", "to try: the forty run ablation slate, fixed before any of it runs, and what came back", runThu},
 		{"version", "print the version", runVersion},
 		{"xay", "mill: find the documents a corpus holds more than one copy of", runXay},
 		{"xoa", "the takedown register: who asked us to remove something, and how long it took", runXoa},

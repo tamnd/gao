@@ -108,6 +108,10 @@ gao chot harness                            # close the ledger: the evaluation h
 gao chot digest                             # the digest every published result has to carry
 gao chot audit results.json                 # and whether a set of results is the one the harness asked for
 
+gao thu slate                               # to try: the forty run ablation slate, fixed before any of it runs
+gao thu slate -knobs                        # and what the forty runs are actually for, one line per question
+gao thu read results.jsonl                  # read the runs that came back, nulls included, against the slate
+
 gao gieo recipe                             # to sow: the gao-synth recipe, fixed and hashed before a token exists
 gao gieo recipe -prompts                    # the prompts verbatim, which is what reproducing it needs
 gao gieo card synth/gao-synth-1.0           # check a generator card against the recipe it names
@@ -784,6 +788,45 @@ Below a correlation of 0.5 the slate is reported as exploratory rather than deci
 
 Building the real set over the corpus, and every proxy evaluation of it, runs on `gamingpc`, which is the box with the card. The generator, the baseline, the scoring and the validity measurement are written and tested here.
 
+## Forty runs, written down before the first one starts
+
+Almost every threshold in this project is a number somebody picked. The deduplication cut at 0.85 Jaccard, the quality classifier's threshold, how many passes over the educational slice keep helping, how much generated text the mixture can carry before the narrowing shows: none of those has an answer that can be read off a paper written about English, and defending them by citation is defending them with somebody else's language. The honest way to defend a picked number is to run the thing twice and look. `thử` is to try, and `thu` is the list of what gets tried.
+
+The slate is forty runs of a 1.4 billion parameter model over 40 billion tokens each, which is the size of experiment this project can afford forty of. It is fixed and hashed before the first one starts, in the source rather than in a file somebody edits, for the same reason the evaluation harness is: a slate written while the results arrive grows a run whenever a number disappoints and loses one whenever a number is embarrassing, and nothing in the published table shows that happened.
+
+```
+$ gao thu slate -knobs
+40 runs of a 1.4B parameter model over 40.0B tokens each, scored by vi-cloze, varying 15 things. The baseline is run 3 times at different seeds, so an effect has a floor to clear before it is one. 28 of the runs settle something and the rest are exploratory, which is on the slate rather than decided afterward.
+
+dedup             5 runs  what deduplication throws away that was worth keeping, and what it keeps that was not
+quality           4 runs  whether the quality classifier earns its place, which is the run that has to be on the slate for the other three to mean anything
+vocabulary        4 runs  what a vocabulary trained on Vietnamese buys, in the only currency that matters, which is what the model knows at the end rather than what the fertility table says
+pre-tokenization  1 run   whether forcing token boundaries onto syllable boundaries helps a language written in syllables, or whether it only costs the model the pieces it would have found itself
+synthetic         4 runs  what the synthetic slice is actually worth, which is the run that decides whether 14000 GPU hours of generation happens at all
+english           4 runs  whether the Vietnamese only mixture is worse, and by how much, since every point of English is a point of Vietnamese the run does not read
+epochs            4 runs  how many passes over the educational slice keep helping, which is the number that decides whether 309 billion natural tokens can fill a trillion token run
+normalization     1 run   what leaving two spellings of one word in the corpus costs, which is the question every pipeline that skips normalization has answered by not asking it
+boilerplate       1 run   what the furniture on every page of a site costs a model that reads all of it
+covering          1 run   whether tagging over personal data costs anything the corpus needed, which is worth knowing before it is defended as free
+curriculum        1 run   whether the curated slice belongs at the start rather than at the end, which is the one ordering question three phases can actually answer
+legacy pdf        1 run   what the transcoded 1995 to 2012 PDFs are worth, since they are the most expensive documents in the corpus per byte
+translated        2 runs  whether machine translated Vietnamese helps at all, which has to be settled before it is given a place in a phase
+ocr               2 runs  where the OCR error ceiling belongs, which decides how much of the scanned pile is admitted
+forum             2 runs  what forum text is worth against the news archives it displaces, which is the prediction the whole crawl is arranged around
+```
+
+Four of those runs are the ones a slate written for its results would not contain. `Q01` turns the quality classifier off, `N01` turns normalization off, `P01` turns boilerplate removal off, and `Y01` sets the synthetic share to zero. Each one is a stage this project defends in prose and has never measured, and each one could come back saying the stage was not worth writing. They are on the slate first because a sweep over four values of a threshold assumes the thing being thresholded earns its place, and that assumption is the one nobody checks.
+
+One run varies one thing. It sounds obvious and it is the mistake that fits forty questions into twenty runs, because pairing two changes per run looks like efficiency right up until a result arrives and answers neither question. So every run names the one knob it moves and the run it is a difference from, and a run measured against another run that moved a different knob is refused. Sweeping within a knob is allowed, since two points on the same sweep still differ in one thing.
+
+The baseline is run three times, at different seeds, and it is the part most published ablation tables leave out. Without repeats there is no measured gap between two runs of the same recipe, so there is no size an effect has to reach before it is one, and a table of forty differences reads exactly the same whether or not anybody knew that. The floor here is the spread between the baseline runs, measured rather than picked, and `gao thu read` refuses a set of results that carries fewer than three of them. It also refuses results where the baselines scored identically, because that is not what different seeds do and it means the seed is not reaching the run or the same number got written down twice.
+
+Every run is published, including the ones that found nothing. A slate that reports only where it moved the number is an advertisement, and the null results are the more useful half: a knob nobody has to think about again is worth more to the next person than another win. This is enforced rather than intended, so a report missing runs is refused as a comparison published with the runs that finished, and a report where every single run cleared the floor is refused too, since that is not what a sweep looks like once it has a floor under it.
+
+The compute is on the slate and inside its digest, because the gate for this slice says the cost is sourced and priced before the slate locks rather than after. Forty runs is 9,400 GPU hours, quoted at $22,560 on rented H100s, and that number is on the slate so it gets argued about while the slate can still change. It also cannot say the fleet: `gao thu slate` refuses a slate naming `server1`, `server2`, `server3` or `gamingpc`, because a 1.4B parameter run over 40 billion tokens does not fit on one 24 GB card, let alone forty times, and every other stage in this project running on the fleet makes that the natural thing to write down by mistake.
+
+None of these runs has happened. What exists is the slate, the questions, the price, and the reading that will refuse a table with holes in it.
+
 ## Training against a check rather than against a reward model
 
 Post-training here is supervised finetuning, then reinforcement learning run as parallel specialists, then distillation of the specialists back into one model. There is no reward model anywhere in it. A reward model is a second model whose mistakes become the first model's objective, and in Vietnamese the preference data it would be trained on would itself be translated, which makes those mistakes systematic rather than random. So every arm is trained against a program that says whether an answer is right, and `cham` is to mark a paper.
@@ -1261,6 +1304,7 @@ che/         covering: Vietnamese personal data, found and tagged over
 nhat/        decontamination: the benchmark roster, and what of it the corpus holds
 dau/         the mark: the diacritic restoration task set, built out of the corpus
 dien/        filling in: the cloze proxy the ablation slate is scored by
+thu/         to try: the forty run ablation slate, and the results read against it
 cham/        marking: the verifiers the reinforcement learning arms are trained against
 gieo/        to sow: the generator card for gao-synth, and the recipe it is written against
 lat/         a slice: release slices as views over a snapshot rather than copies of it
