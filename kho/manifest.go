@@ -48,7 +48,13 @@ type Stage struct {
 // the data, and [Verify] checks the ones it can check without a tokenizer.
 type Counts struct {
 	Documents int64 `toml:"documents"`
-	Bytes     int64 `toml:"bytes"`
+
+	// Bytes is the UTF-8 bytes of text the snapshot holds, which is the number
+	// a corpus size is quoted in. It is not the size of the files: those are
+	// compressed, they are about a third of this, and the two get confused
+	// because both are called bytes. [Shard.Bytes] is the other one.
+	Bytes int64 `toml:"bytes"`
+
 	Chars     int64 `toml:"chars"`
 	Syllables int64 `toml:"syllables"`
 
@@ -80,8 +86,12 @@ type Shard struct {
 	// document in it.
 	Index int `toml:"index"`
 
-	Documents int   `toml:"documents"`
-	Bytes     int64 `toml:"bytes"`
+	Documents int `toml:"documents"`
+
+	// Bytes is the size of the file on disk, compressed, which is what verify
+	// checks it against. It is not the amount of text in the shard: that is
+	// several times larger and it is counted in [Counts.Bytes].
+	Bytes int64 `toml:"bytes"`
 
 	// Hash is the segment's content hash, over the bytes of the file.
 	Hash doc.Hash `toml:"hash"`
