@@ -220,7 +220,11 @@ const schemaName = "document"
 // any reader of it cares which came first.
 var (
 	withText = sync.OnceValue(func() *parquet.Schema {
-		return parquet.SchemaOf(Row{})
+		// The root is renamed off the Go type it was reflected from. A Parquet
+		// tool prints the root name above the column list, and a file that
+		// announces itself as a Go type name tells a reader something about our
+		// source tree rather than about their data.
+		return parquet.NewSchema(schemaName, parquet.SchemaOf(Row{}))
 	})
 	withoutText = sync.OnceValue(func() *parquet.Schema {
 		g := parquet.Group{}

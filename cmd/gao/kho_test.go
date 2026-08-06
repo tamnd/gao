@@ -353,6 +353,70 @@ func TestKhoColumnsShowsTheWithheldText(t *testing.T) {
 	}
 }
 
+func TestKhoSchemaExplainsEveryColumn(t *testing.T) {
+	out, _, code := exec(t, "kho", "schema")
+	if code != 0 {
+		t.Fatalf("gao kho schema: exit %d, want 0", code)
+	}
+	for _, c := range kho.Schema() {
+		if !strings.Contains(out, c.Name) {
+			t.Errorf("gao kho schema left out %s", c.Name)
+		}
+		if !strings.Contains(out, c.Meaning) {
+			t.Errorf("gao kho schema printed %s with nothing about what it means", c.Name)
+		}
+	}
+	// The fields inside pii_spans are columns somebody has to read too.
+	if !strings.Contains(out, "pii_spans.start") {
+		t.Error("gao kho schema stopped at the top level")
+	}
+}
+
+func TestKhoSchemaPrintsWhatParquetSees(t *testing.T) {
+	out, _, code := exec(t, "kho", "schema", "-parquet")
+	if code != 0 {
+		t.Fatalf("gao kho schema -parquet: exit %d, want 0", code)
+	}
+	if !strings.HasPrefix(out, "message document {") {
+		t.Errorf("the definition does not start where a parquet tool would print it:\n%s", out)
+	}
+
+	// A repo that withholds text has no text column, and the definition is
+	// where that is easiest to check.
+	out, _, code = exec(t, "kho", "schema", "-parquet", "-dataset", "vietnamese-web-urls")
+	if code != 0 {
+		t.Fatalf("gao kho schema -parquet -dataset: exit %d, want 0", code)
+	}
+	if strings.Contains(out, " text (STRING)") {
+		t.Error("the definition for a repo that withholds text has a text column in it")
+	}
+}
+
+// The page on the web and the page the binary prints are the same page, and a
+// reader who compares them and finds a difference stops trusting both.
+func TestKhoSchemaPrintsThePageThatShips(t *testing.T) {
+	out, _, code := exec(t, "kho", "schema", "-md")
+	if code != 0 {
+		t.Fatalf("gao kho schema -md: exit %d, want 0", code)
+	}
+	shipped, err := os.ReadFile(filepath.Join("..", "..", "SCHEMA.md"))
+	if err != nil {
+		t.Fatalf("reading SCHEMA.md: %v", err)
+	}
+	if out != string(shipped) {
+		t.Error("gao kho schema -md and SCHEMA.md are not the same page, run `make schema`")
+	}
+}
+
+func TestKhoSchemaRefusesTwoOutputsAtOnce(t *testing.T) {
+	if _, _, code := exec(t, "kho", "schema", "-md", "-parquet"); code != 2 {
+		t.Error("gao kho schema -md -parquet did not say it could only do one")
+	}
+	if _, _, code := exec(t, "kho", "schema", "extra"); code != 2 {
+		t.Error("gao kho schema takes no arguments and accepted one")
+	}
+}
+
 func TestKhoColumnsRefusesADatasetThatIsNotOne(t *testing.T) {
 	_, errOut, code := exec(t, "kho", "columns", "-dataset", "vietnamese-everything")
 	if code != 1 {

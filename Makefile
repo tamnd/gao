@@ -10,7 +10,7 @@ export CGO_ENABLED ?= 0
 
 LDFLAGS := -s -w -X main.version=$(VERSION)
 
-.PHONY: all build install test race cover bench vet lint fmt tidy golden takedown clean
+.PHONY: all build install test race cover bench vet lint fmt tidy golden schema takedown clean
 
 all: build
 
@@ -59,6 +59,10 @@ tidy:
 ## golden: regenerate the golden files, then review the diff by hand
 golden:
 	$(GO) test ./... -update
+
+## schema: regenerate SCHEMA.md from the type that writes the files
+schema:
+	$(GO) run ./cmd/gao kho schema -md > SCHEMA.md
 
 ## takedown: check the takedown register and fail on anything past the promise
 takedown:
