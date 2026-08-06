@@ -69,6 +69,9 @@ gao mam ct -direct -seed seed.txt < ct.json # and which of them a seed list did 
 gao mam oai < repositories.txt              # which university repositories will hand over a catalog
 gao mam oai -links -from 2024-01-01 BASE    # and the URLs in one, ready for the frontier
 
+gao suat yield.jsonl                        # a rate: net yield per target class, read while the crawl runs
+gao suat -json yield.jsonl                  # the same reading, for whatever watches the crawl overnight
+
 gao gat fetch -warc gao.warc.gz URL         # fetch a page and keep the bytes the site actually served
 gao gat warc  gao.warc.gz                   # what is in an archive: one line per record
 gao gat warc  -uri URL gao.warc.gz          # a page back out of the archive, without asking the site again
@@ -104,6 +107,10 @@ gao cham trich -register instruments.jsonl rollouts.jsonl  # grade legal citatio
 gao chot harness                            # close the ledger: the evaluation harness, fixed before any result exists
 gao chot digest                             # the digest every published result has to carry
 gao chot audit results.json                 # and whether a set of results is the one the harness asked for
+
+gao gieo recipe                             # to sow: the gao-synth recipe, fixed and hashed before a token exists
+gao gieo recipe -prompts                    # the prompts verbatim, which is what reproducing it needs
+gao gieo card synth/gao-synth-1.0           # check a generator card against the recipe it names
 
 gao lat -snapshot snapshots/gao-v1.0 slices/*  # a slice: check a release slice is a view rather than a copy
 gao lat -snapshot snapshots/gao-v1.0 -head snapshots/gao-v1.1 slices/*  # and whether a removal has left one stale
@@ -829,6 +836,53 @@ The rule underneath all of it is that a verifier has to be beatable only by doin
 
 Every verifier runs on CPU, without a network, and returns the same verdict for the same two strings every time. Seven arms sampling in parallel each produce rollouts faster than one GPU can score them, so a verifier that wants a card becomes the bottleneck it exists to feed, and the interface takes no context and no client to make that hard to get wrong. Grading runs anywhere on the fleet. The sampling that produces the rollouts is the part that needs `gamingpc`.
 
+## Making text once there is no more of it to find
+
+Everything up to here harvests. The crawl, the Hugging Face union, the PDFs and the transcripts are all Vietnamese somebody already wrote, and the whole project is arranged around finding it, reading it correctly, and throwing away the parts that are not worth keeping. That runs out. Deduplication collapses the web harder than anybody expects the first time they measure it, and past the edge of what is left the only move available is to make text rather than to find it. The mixture spends 150 billion tokens doing that, which is more than the legal and spoken registers put together.
+
+Making text is where corpora go wrong, so this one makes it under a rule: the generator rephrases rather than invents. `gieo` is to sow, and every document it produces has a real Vietnamese document behind it that a person wrote, taken from the educational slice rather than from the corpus at large, because rephrasing text that was already poor produces poor text in a new voice. That property is worth something only if it is enforced, so the recipe names the slice by digest and a recipe that does not pin its source is refused as invention wearing a rephrase's name.
+
+The recipe is fixed and hashed before a token of output exists. It holds the generator and its revision, the registers with their prompts verbatim, the decoding settings including the seed, the gates with their config hashes, and the roster the output is checked against. It lives in the source rather than in a file somebody edits, because that is the only version of committing to something in advance that means anything: changing it is a diff on a pull request with a reviewer on it, not a file edited the afternoon the numbers came out.
+
+```
+$ gao gieo recipe
+gao-synth is model-generated Vietnamese: qwen3-235b-a22b-instruct rephrasing gao-edu in 4 registers, at temperature 0.8 with seed 20260401, filtered by 6 gates. It is not natural text and it is never counted as any.
+
+generator  qwen3-235b-a22b-instruct@2026-04-11
+read gao   no
+source     gao-edu at a9f34a5444eb
+target     150.0B tokens
+decoding   temperature 0.8, top_p 0.95, 4096 tokens, seed 20260401
+roster     nhat-2026.08
+digest     dbff94782b24372314c769b245e209b882830e5233de5708d5b3898c27a994fb
+
+4 registers:
+  bao-chi     the register most Vietnamese prose on the web is already written in, kept so the rephrase does not drift away from what the corpus looks like
+  giang-giai  the explanatory register, which is where the long dependencies are and which the crawled web has the least of
+  hoi-dap     dialog, which is the shape of most of what anybody will actually ask the model, and which almost nothing in the natural corpus is written as
+  tom-luoc    compression, which teaches the model what in a document is load bearing, and the only style here that produces fewer tokens than it reads
+
+6 gates:
+  vi-only        5334c64fa157  a generator asked for Vietnamese answers in English more often than anybody expects, particularly at the end of a long document
+  faithful       8ebcaf855ae5  a rephrase that invents a number is not a rephrase, and it is the failure that survives every other gate here because the text reads perfectly
+  not-a-copy     8cad63589b4f  output that is the source back again spends GPU hours to add a duplicate, which the dedup pass would then remove anyway
+  degenerate     3d234d3ca080  the loop a sampled generator falls into, which is fluent for a paragraph and then is not text at all
+  refusal        9b50b1850a05  the model talking about the task instead of doing it, which is training data for a habit nobody wants
+  contamination  1f25ea1ccf71  a generated document that reproduces a benchmark item puts the answer in the training set, and the evaluation afterward is scoring memorization
+```
+
+The `read gao` line is there because a model trained on gao rephrasing gao is the corpus fed back into itself, and the tokens that come out carry no information the corpus did not already have. It is a field rather than an assumption, and a recipe that answers yes is refused before anything is generated.
+
+Four registers rather than one is the defense against the failure that has no symptom. A model asked to rephrase returns a narrower distribution than it was given, every time, and 150 billion tokens of narrowed Vietnamese inside a trillion token mixture is a real change to what the model learns with nothing in the output that looks wrong. Four registers only help if they differ, so two styles sharing a prompt is refused rather than counted twice, and greedy decoding is refused for the same reason: at temperature zero each register is the one continuation its prompt admits, and the four of them collapse toward a single voice. Registers rather than temperatures, because a register moves the syntax and the vocabulary while a temperature only moves the tail.
+
+`gao gieo recipe -prompts` prints the prompts as they are, with the recipe digest above them, which is what somebody reproducing this actually needs. They are in Vietnamese, since that is the language of the task, and a prompt with nowhere for the source document to go is refused as a prompt that rephrases nothing.
+
+The card is the recipe plus what happened when it ran: how much came out, what each gate rejected, what the contamination check found, which box it ran on with which batch settings, and what it cost in GPU hours. It carries the digest of the recipe it was produced under, so a prompt quietly improved after seeing the output produces a card that no longer matches what it claims to be. Two things on it are checked harder than the rest. The rejection counts have to add up to what came out minus what was kept, because a card whose arithmetic does not close is describing a run nobody was watching. And a rejection rate of zero is refused outright, because generated text that passed every gate did not pass them, it did not meet them, and in a release note that reads exactly like a generator that was very good.
+
+Synthetic text goes to `vietnamese-synthetic-text` and nowhere else, and it is never summed into a natural count anywhere in the project. A generated document sitting in a repo of natural Vietnamese is a document somebody downloads believing a person wrote it, and no amount of metadata further down undoes the first impression. A card reporting any contaminated output at all is not publishable, since a generated document that reproduces a benchmark item puts the answer into the training set and every evaluation afterward is scoring memorization.
+
+None of this has run yet. `gao-synth` generation needs `gamingpc`, which is the only box in the fleet with a GPU the generator fits on, and the card records the box and the batch settings so that the throughput on it is a number somebody else can reproduce rather than one they have to take our word for. The recipe is closed and hashed now, before any of that, which is the point.
+
 ## Publishing a slice without a second copy of the corpus
 
 A release ships more than one artifact. There is the educational shard, the legal shard, the ten billion token cut for somebody with one card, each with its own repo and its own dataset card, because a person who wants the legal text should not have to download a terabyte to find it. The obvious way to build one is to select the rows and write them out again, and that is what most corpora do.
@@ -1071,6 +1125,64 @@ Almost all of the work in that harvester is about not reporting a working reposi
 
 Two smaller things are about what the records actually contain rather than about the protocol. `dc:identifier` is repeatable and is mostly not a URL: it carries ISSNs, DOIs, call numbers and citation strings, with the handle link sitting among them, so taking the first one takes a citation about as often as a link. And `dc:language` is whatever the deposit form defaulted to, which on a lot of DSpace installs is `en_US` on a thesis written entirely in Vietnamese. It is kept as a hint that travels with the record and it is not believed, because deciding what language a document is in is `sang`'s job and it reads the text.
 
+## Reading the crawl while it is still running
+
+One number decides whether the crawl was worth running, and it is net yield: unique documents kept per fetch made. The plan is written against 0.15, and the kill criterion says stop below 0.08 once a hundred million fetches are behind it. Neither of those is worth anything unless somebody can act on it at fetch one hundred million rather than read about it at fetch seven hundred million, and a yield computed when the crawl finishes is a post mortem on a decision the budget already made. `suất` is a rate, and the meter has to exist before the thing it measures.
+
+Net rather than gross is where crawlers flatter themselves. A fetch that came back 200 with a full page of HTML under it has produced nothing if the page is already in the store, or is furniture with no prose under it, or is a calendar for 2031, and a crawler reporting on responses would call any of this a success at 0.98. So every fetch is accounted for by outcome and by name: kept, duplicate, empty, rejected, refused, failed. A checkpoint whose outcomes do not sum to its fetches is refused rather than reported, because the cheapest way to improve a yield is to quietly stop counting a category, and that failure arrives looking like good news.
+
+The crawl has not started. What follows is the meter reading a run that has not happened, which is the only order these two can be built in.
+
+```
+$ gao suat yield.jsonl
+class       fetches  documents  yield  tokens  hosts   objected
+forum       47.6M    9.6M       0.201  8.6B    119.0k  0.41%
+news        33.6M    5.5M       0.163  2.7B    84.0k   0.26%
+education   9.8M     1.8M       0.186  2.0B    24.5k   0.07%
+government  11.2M    1.6M       0.143  1.1B    28.0k   0.09%
+other       11.2M    1.8M       0.163  547.7M  28.0k   0.33%
+commerce    26.6M    2.5M       0.094  502.0M  66.5k   0.52%
+
+all         140.0M   22.8M      0.163  15.5B   350.0k  0.34%
+
+gao-crawl-2026-09 at 140.0M on server1, measured at 28 checkpoints.
+The last stretch alone yielded 0.142, which is the number that moves before the cumulative one does.
+P03-5 is holding: forums have produced 8.6B tokens against 2.7B from news archives.
+The classifier placed 92.0% of fetches into one of the five target classes.
+
+continue: net yield is 0.163 against a plan of 0.15.
+```
+
+The per class rows are the part that changes what happens next. This crawl exists because Common Crawl caps fetches per host, which is the right call for covering the web and the wrong one for covering a single language, and forums are the class that cap hurts most: twenty years of threads behind one hostname, most of it prose nobody else kept. P03-5 says forums will beat news archives on tokens, and the table settles that while there is still budget left to move. A per class yield that arrives at the end is a fact about a decision somebody already made. The classes are ranked by tokens rather than by documents, because a forum thread and a news lede are both one document and are not the same amount of Vietnamese.
+
+The window line is there because a cumulative yield over a hundred and forty million fetches is a number that barely moves. Whatever changed last week is a rounding error against everything before it, so a crawl watched only on the cumulative figure is a crawl nobody is watching. In the reading above the last stretch alone is 0.142 against a cumulative 0.163, which is the frontier working through the good hosts first and is exactly what nobody notices until it has been true for a month.
+
+Objections are answered before yield is. They are counted per host rather than per fetch, because one operator objecting once about a host we took ten thousand pages from is one objection, and counting it per fetch would let a single complaint look like a crisis while a thousand quiet ones stayed invisible. Past 2% of crawled hosts the crawl halves its rate, and that verdict comes out ahead of anything the yield has to say, since a disappointing yield is a budget conversation and somebody asking us to stop is a thing to answer today.
+
+```
+$ gao suat yield-low.jsonl
+class       fetches  documents  yield  tokens  hosts   objected
+forum       40.8M    3.5M       0.086  3.2B    102.0k  0.41%
+news        28.8M    2.0M       0.070  1.0B    72.0k   0.26%
+education   8.4M     672.0k     0.080  739.2M  21.0k   0.07%
+government  9.6M     588.0k     0.061  411.6M  24.0k   0.09%
+other       9.6M     672.0k     0.070  201.6M  24.0k   0.33%
+commerce    22.8M    924.0k     0.041  184.8M  57.0k   0.52%
+
+all         120.0M   8.4M       0.070  5.7B    300.0k  0.34%
+
+gao-crawl-2026-09 at 120.0M on server1, measured at 24 checkpoints.
+The last stretch alone yielded 0.027, which is the number that moves before the cumulative one does.
+P03-5 is holding: forums have produced 3.2B tokens against 1.0B from news archives.
+The classifier placed 92.0% of fetches into one of the five target classes.
+
+stop: net yield is 0.070 after 120M fetches, below the kill line of 0.08, so gao-crawl contributes around 9B rather than 60B and the corpus lands near 250B.
+```
+
+A kill criterion is only useful if it says what stopping costs, so the verdict carries the arithmetic rather than the threshold it crossed. The same reading exits 2 there and exits 1 on a run that does not add up, because those are different events and a script driving this at three in the morning has to be able to tell a crawl that should stop from a report that cannot be trusted.
+
+Two things it refuses to do. It will not fire the kill criterion on a young crawl, because yield in the first tens of millions of fetches is a measurement of the seed list rather than of the web, and stopping a crawl for being young is the one way this meter could do real damage. And it will not compute a curve out of measurements that are not continuous: checkpoints more than five million fetches apart are refused, since the gap between them is where a yield stopped being something anybody watched and became something somebody reconstructed afterward.
+
 ## What the corpus is for
 
 A corpus is a means to a model, and the model has a plan: a trillion token instances, 66% Vietnamese, three phases that get longer and more curated as they go, and a continued pretraining comparison that decides whether any of this was worth doing before a from scratch run is funded. That plan lives in `nau`, in Go, rather than in a document, because a mixture table is arithmetic and arithmetic written in prose is arithmetic nobody checks. `gao nau check` runs in CI and fails on a budget whose components do not add up, a phase that reads 98% of itself, and a comparison whose arms differ in two things at once.
@@ -1137,6 +1249,7 @@ cmd/gao/     the single binary
 gat/         acquisition: Hugging Face, Common Crawl, crawl, media
 bien/        the frontier: canonical URLs, shapes, what a host has earned
 mam/         the seed: hosts and repositories nobody handed us a list of
+suat/        a rate: net yield per target class, read while the crawl is still running
 dem/         counting: the tokenizer that defines a gao token, and the counts
 phoi/        normalization: Unicode, orthography, encoding repair
 sang/        filtering: language ID, heuristics, quality classification
@@ -1149,6 +1262,7 @@ nhat/        decontamination: the benchmark roster, and what of it the corpus ho
 dau/         the mark: the diacritic restoration task set, built out of the corpus
 dien/        filling in: the cloze proxy the ablation slate is scored by
 cham/        marking: the verifiers the reinforcement learning arms are trained against
+gieo/        to sow: the generator card for gao-synth, and the recipe it is written against
 lat/         a slice: release slices as views over a snapshot rather than copies of it
 chot/        closing the ledger: the evaluation harness, fixed and hashed before any result exists
 kho/         the store: records, manifests, snapshots, signing
