@@ -11,6 +11,7 @@ import (
 	"path/filepath"
 	"slices"
 	"strings"
+	"text/tabwriter"
 
 	"github.com/tamnd/gao/doc"
 	"github.com/tamnd/gao/kho"
@@ -35,6 +36,8 @@ func runKho(stdout, stderr io.Writer, args []string) int {
 		return runKhoDatasets(stdout, stderr, args[1:])
 	case "columns":
 		return runKhoColumns(stdout, stderr, args[1:])
+	case "schema":
+		return runKhoSchema(stdout, stderr, args[1:])
 	case "push":
 		return runKhoPush(stdout, stderr, args[1:])
 	case "card":
@@ -59,6 +62,7 @@ subcommands:
   keygen    generate a snapshot signing key
   datasets  print the dataset repos processed data is written to
   columns   print the columns a published parquet file carries
+  schema    print the full record schema, every column and what it means
   push      upload a file to a dataset repo at the path it belongs at
   card      generate a dataset card from a snapshot manifest
 
@@ -451,6 +455,62 @@ flags:
 	}
 	if !d.Text {
 		fmt.Fprintf(stdout, "\nthis repo withholds %s, so the column is absent and not empty\n", kho.TextColumn)
+	}
+	return 0
+}
+
+func runKhoSchema(stdout, stderr io.Writer, args []string) int {
+	fs := flag.NewFlagSet("kho schema", flag.ContinueOnError)
+	fs.SetOutput(stderr)
+	md := fs.Bool("md", false, "print the schema page that ships as SCHEMA.md")
+	def := fs.Bool("parquet", false, "print the parquet message definition")
+	name := fs.String("dataset", "vietnamese-web-text", "the dataset repo whose definition to print, with -parquet")
+	fs.Usage = func() {
+		fmt.Fprint(stderr, `usage: gao kho schema [-md] [-parquet [-dataset NAME]]
+
+Prints every column of the published record, its type, the stage that fills it,
+and what it holds. Where 'gao kho columns' answers what a file carries, this
+answers what the columns mean, which is the question somebody who did not build
+the corpus has to have answered before they can use it.
+
+The column names and types are read off the type that writes the files, so they
+cannot drift from what ships. The meanings are written down beside that type,
+and a column added without one fails the build.
+
+-md prints the same thing as the SCHEMA.md in the repository, and -parquet
+prints the message definition a parquet tool would show.
+
+flags:
+`)
+		fs.PrintDefaults()
+	}
+	if err := fs.Parse(args); err != nil {
+		return 2
+	}
+	if fs.NArg() > 0 || (*md && *def) {
+		fs.Usage()
+		return 2
+	}
+
+	switch {
+	case *md:
+		fmt.Fprint(stdout, kho.Page())
+	case *def:
+		d, ok := kho.Lookup(*name)
+		if !ok {
+			fmt.Fprintf(stderr, "gao kho schema: no dataset named %q\n", *name)
+			fmt.Fprintln(stderr, "run 'gao kho datasets' for the list")
+			return 1
+		}
+		fmt.Fprintln(stdout, kho.Definition(d))
+	default:
+		cols := append(kho.Schema(), kho.Nested()...)
+		fmt.Fprintf(stdout, "%d columns, schema version %d\n\n", len(kho.Schema()), doc.SchemaVersion)
+		tw := tabwriter.NewWriter(stdout, 0, 0, 2, ' ', 0)
+		for _, c := range cols {
+			fmt.Fprintf(tw, "%s\t%s\t%s\t%s\n", c.Name, c.Type, c.Stage, c.Meaning)
+		}
+		_ = tw.Flush()
 	}
 	return 0
 }
