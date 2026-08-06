@@ -19,11 +19,15 @@ func runXay(stdout, stderr io.Writer, args []string) int {
 	threshold := fs.Float64("threshold", xay.DefaultThreshold, "the similarity at which two documents are copies of each other")
 	curve := fs.Bool("curve", false, "print what every threshold would retain instead of what one of them does")
 	boiler := fs.Bool("boiler", false, "report the boilerplate each host repeats on its pages instead of deduplicating documents")
+	over := fs.Bool("overlap", false, "measure how much of each source is already in the others instead of deduplicating documents")
+	choose := fs.String("choose", "", "choose the threshold from a file of ablation runs instead of reading a corpus")
 	hosts := fs.Int("hosts", 20, "with -boiler, how many hosts to print")
 	asJSON := fs.Bool("json", false, "print JSON")
 	fs.Usage = func() {
 		fmt.Fprint(stderr, `usage: gao xay [-threshold t] [-curve] [-json] file...
+       gao xay -overlap [-threshold t] [-json] part...
        gao xay -boiler [-hosts n] [-json] part...
+       gao xay -choose runs.json [-json]
 
 Find the documents a corpus holds more than one copy of. A file is either a
 parquet part written by the ingest, in which case every row in it is a document,
@@ -37,6 +41,20 @@ With -curve it prints what each threshold would retain rather than what one of
 them does, which is the measurement the deduplication threshold is chosen from.
 The curve is built at a wider banding than the pipeline runs at, because a pair
 that was never proposed as a candidate cannot be scored at any threshold.
+
+With -overlap it answers a different question: not how much a corpus repeats
+itself, but how much of each source is already in another one. Every source in
+this corpus is built out of Common Crawl, so adding their published sizes
+together counts the same document several times, and the only way to know how
+far off that sum is is to measure it. Containment comes back in both directions,
+because most of a small source being inside a large one and a little of the
+large one being inside the small one are the same fact, and only the first is
+worth acting on.
+
+With -choose it takes the ablation runs, one per threshold, and applies the rule
+that turns them into one number. It refuses more often than it answers: a set
+that did not separate, a winner at the edge of the range, or runs that changed
+two things at once all come back with the default and the reason.
 
 With -boiler it does the other half of the job, the half document identity cannot
 see: the nav column, the share prompt and the copyright notice that every page of
@@ -56,9 +74,18 @@ flags:
 		fmt.Fprintf(stderr, "gao xay: a threshold is a similarity between 0 and 1, not %v\n", *threshold)
 		return 2
 	}
-	if *boiler && *curve {
-		fmt.Fprintln(stderr, "gao xay: -boiler and -curve are two different measurements. Run one of them")
+	modes := 0
+	for _, on := range []bool{*boiler, *curve, *over, *choose != ""} {
+		if on {
+			modes++
+		}
+	}
+	if modes > 1 {
+		fmt.Fprintln(stderr, "gao xay: -curve, -overlap, -boiler and -choose are four different measurements. Run one of them")
 		return 2
+	}
+	if *choose != "" {
+		return runChoose(stdout, stderr, *choose, *asJSON)
 	}
 	if *hosts < 1 {
 		fmt.Fprintf(stderr, "gao xay: -hosts is how many hosts to print, so it is at least 1, not %d\n", *hosts)
@@ -71,6 +98,9 @@ flags:
 	}
 	if *boiler {
 		return runBoiler(stdout, stderr, files, *hosts, *asJSON)
+	}
+	if *over {
+		return runOverlap(stdout, stderr, files, *threshold, *asJSON)
 	}
 
 	banding := xay.Default()
@@ -103,6 +133,88 @@ flags:
 		return printJSON(stdout, stderr, xayRun{Banding: bandingOf(banding), Report: report})
 	}
 	printDedup(stdout, banding, report)
+	return 0
+}
+
+// runOverlap measures how much of each source is already in the others.
+//
+// It reads the source off the rows rather than off the command line, because a
+// part written by the ingest carries which source it came from, and a name typed
+// at a shell is a name that can be typed wrong.
+func runOverlap(stdout, stderr io.Writer, files []string, threshold float64, asJSON bool) int {
+	// The matrix is built at the wide banding, since a pair that was never
+	// proposed as a candidate cannot be scored at any threshold, and an overlap
+	// measured at the operating banding understates itself quietly.
+	o, err := xay.NewOverlap(xay.Wide())
+	if err != nil {
+		fmt.Fprintf(stderr, "gao xay: %v\n", err)
+		return 1
+	}
+	for _, name := range files {
+		if filepath.Ext(name) != ".parquet" {
+			text, err := os.ReadFile(name)
+			if err != nil {
+				fmt.Fprintf(stderr, "gao xay: %v\n", err)
+				return 1
+			}
+			if _, err := o.Add(filepath.Base(name), string(text)); err != nil {
+				fmt.Fprintf(stderr, "gao xay: %v\n", err)
+				return 1
+			}
+			continue
+		}
+		err := kho.ScanPart(name, func(r kho.Row) error {
+			source := r.Source
+			if source == "" {
+				source = "unnamed"
+			}
+			_, err := o.Add(source, r.Text)
+			return err
+		})
+		if err != nil {
+			fmt.Fprintf(stderr, "gao xay: %v\n", err)
+			return 1
+		}
+	}
+
+	m := o.Matrix(threshold)
+	if asJSON {
+		return printJSON(stdout, stderr, m)
+	}
+	fmt.Fprint(stdout, m)
+	return 0
+}
+
+// runChoose applies the rule to a set of ablation runs.
+//
+// It exits non zero when the set cannot support a choice, so a pipeline that
+// asks for a measured threshold and has not measured one stops rather than
+// quietly running on the default.
+func runChoose(stdout, stderr io.Writer, path string, asJSON bool) int {
+	b, err := os.ReadFile(path)
+	if err != nil {
+		fmt.Fprintf(stderr, "gao xay: %v\n", err)
+		return 1
+	}
+	var runs []xay.Ablation
+	if err := json.Unmarshal(b, &runs); err != nil {
+		fmt.Fprintf(stderr, "gao xay: %s: %v\n", path, err)
+		return 1
+	}
+	c, err := xay.Choose(runs)
+	if err != nil {
+		for _, problem := range xay.CheckAblations(runs) {
+			fmt.Fprintf(stderr, "gao xay: %s\n", problem)
+		}
+		if len(runs) == 0 {
+			fmt.Fprintf(stderr, "gao xay: %v\n", err)
+		}
+		return 1
+	}
+	if asJSON {
+		return printJSON(stdout, stderr, c)
+	}
+	fmt.Fprint(stdout, c)
 	return 0
 }
 

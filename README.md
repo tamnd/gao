@@ -81,6 +81,8 @@ gao sang -min-syllables 40 parts/*.parquet  # and what a different length floor 
 gao xay        parts/*.parquet              # mill: what the corpus holds more than one copy of
 gao xay -curve parts/*.parquet              # and what every deduplication threshold would cost
 gao xay -boiler parts/*.parquet             # and the furniture every page of a host carries
+gao xay -overlap parts/*.parquet            # and how much of each source is already in another one
+gao xay -choose runs.json                   # the threshold the ablation runs support, or the reason there is none
 gao soi        page.txt reading.txt         # judge a machine's reading of a page against what it says
 gao soi -matrix page.txt reading.txt        # and what each of the six tones was read as
 gao che        doc.txt                      # cover: tag over the personal data in a document
@@ -482,13 +484,57 @@ Two documents are copies of each other at 0.71 similarity or more, over 16 bands
 A pair at 0.71 is found 65.6% of the time and a pair at 0.5 is found 6.1% of the time.
 ```
 
-The threshold itself is not chosen here. Removing more duplicates is not better past some point, since the corpus starts losing documents that were merely similar, and removing fewer leaves the repetition in. Where that point is, is a question about this corpus and it is answered by training on both sides of it. So `gao xay -curve` produces what each threshold would retain and nothing in the package decides which one to use. The curve is built at 32 bands of 4 rows rather than at the operating point, because its knee is at 0.42 and a pair that was never proposed as a candidate cannot be scored at any threshold. A curve built at the operating banding would report that a threshold of 0.5 keeps exactly what 0.7 keeps, which is a statement about the index rather than about the corpus.
+The threshold itself is not chosen here. Removing more duplicates is not better past some point, since the corpus starts losing documents that were merely similar, and removing fewer leaves the repetition in. Where that point is, is a question about this corpus and it is answered by training on both sides of it. So `gao xay -curve` produces what each threshold would retain and the curve on its own picks nothing. The rule that does pick is below, and it takes the training runs rather than this table. The curve is built at 32 bands of 4 rows rather than at the operating point, because its knee is at 0.42 and a pair that was never proposed as a candidate cannot be scored at any threshold. A curve built at the operating banding would report that a threshold of 0.5 keeps exactly what 0.7 keeps, which is a statement about the index rather than about the corpus.
 
 Inside a bucket the members are compared against the first member rather than against each other. Boilerplate produces buckets of thousands, and the quadratic version of that comparison is the run not finishing. What it costs is a pair that lands in one bucket without either of them resembling the member that got there first, and that pair is caught in another band or through a third document, which is the same mechanism the bands are already relying on. The clusters are then closed with union find, the survivor is the longest document with the lowest id as the tiebreak, and the cluster id is the survivor's own id. Keeping the longest is deliberate: near duplicates usually differ by what one of them is missing, a page an extractor truncated or a copy that lost its last paragraph, and the longest is the one the others are missing something from.
 
 The answer does not depend on the order the documents arrived in. Union attaches the lower root, the representative is chosen by a total order rather than by whichever was seen first, and there is a test that runs the same documents forwards and backwards and requires the same clusters with the same identities. A stage without that property produces a different corpus on every rebuild, and every number anybody published about the last one becomes unreproducible.
 
 What is here is a shard, not the corpus. A signature is 1 KB, so four hundred million documents is 400 GB of signatures against a fleet whose largest box has 64 GB. Holding them is what lets one pass over a shard answer at every threshold the ablation asks about, and it is exactly why it does not scale to the whole thing. The corpus scale pass keeps only the band hashes, 128 bytes per document, and works one band at a time from a file sorted on disk in the way `gao dem overlap` sorts document keys. That pass is not written yet. The arithmetic that says it is needed is in the package documentation rather than waiting to be discovered on the box.
+
+### Choosing the threshold
+
+The curve says what each threshold costs and stops there. Which one to run is a question about this corpus, it is answered by training on both sides of the number and looking at what comes out, and `gao xay -choose runs.json` is the rule that turns those runs into one threshold. The rule is written down rather than applied by whoever is reading the table, because a rule that lives in somebody's head finds a winner every time it is asked, and a threshold picked out of eval noise is worse than a default. A default is at least honest about being one.
+
+The rule refuses more often than it answers, and the refusals are the substance. Fewer than three runs is two numbers and their noise rather than a shape. A run quoted without a standard error cannot be compared against another run, so the standard error is required rather than defaulted. A set where one run trained on twice the tokens measured the token count as much as the threshold, and no arithmetic afterwards can pull the two apart. A set spread across two boxes put the hardware in the comparison alongside the threshold. A set that sits entirely on one side of the number already in use cannot say whether that number is worth moving off.
+
+Two refusals are about the shape of the answer rather than the shape of the input. A set where every run is within two standard errors of every other run did not measure the threshold, it measured the eval's noise floor, and reporting that is the result of the ablation rather than a failure of it. A winner sitting at the edge of the measured range says the range was drawn in the wrong place, since the best threshold is somewhere past the edge and has not been run, and the answer to that is another training job rather than the edge.
+
+When the rule does answer, the winner has to beat the run nearest the default by more than two combined standard errors, and among the runs tied with the winner the one that keeps the most documents wins. A tie means the corpus does not care, and between two answers the corpus does not care about, the one that throws away less is right. Deduplicating harder than the evidence supports removes documents for reasons an ablation at ablation scale cannot see, and a low threshold folds together two reports of the same event that share a wire copy paragraph and nothing else.
+
+```
+threshold 0.80, chosen from the ablation
+0.80 scored 46.00 against 42.00 at the default's nearest run, which is more than 2 standard errors, and nothing tied with it keeps more documents
+
+threshold   retention    score  tied
+0.60            71.0%    41.00
+0.70            79.0%    42.00
+0.80            84.0%    46.00  yes
+0.90            91.0%    41.50
+
+4 runs of 8B tokens each on gamingpc, scored on vi-cloze, with the score plus or minus its own standard error.
+```
+
+Those four scores are made up, and the table above is what the rule prints rather than what the ablation found, because the ablation has not been run. The runs happen on `gamingpc`, which is the only box on the fleet with a GPU, and the box is carried on every run rather than written down beside it. `gao xay -choose` exits non zero when the set cannot support a choice, so a pipeline that asks for a measured threshold and has not measured one stops instead of quietly running on 0.71.
+
+### How much of each source is already in the others
+
+Five Hugging Face sources are ingested and every one of them is built out of Common Crawl. Adding their published token counts together is the number nobody should quote, because a document that appears in HPLT and in FineWeb2 and in CulturaX has been counted three times, and there is no way to know how far off that sum is except by measuring it. `gao xay -overlap parts/*.parquet` measures it. It builds one index over every source's documents rather than one per source, since the question is whether two sources hold the same document and that is answered by them landing in the same cluster, and it reads which source a row came from off the row rather than off the command line.
+
+What comes out is containment in each direction rather than one similarity per pair, and the asymmetry is the point. GlotCC is a fraction of the size of HPLT, so "most of GlotCC is already in HPLT" and "a little of HPLT is already in GlotCC" are the same fact stated twice, and only the first is worth acting on. A symmetric similarity between two sets of wildly different size is a number that reports mostly the size difference. Beside the containments each source gets the share of its documents that nothing else holds, which is what ingesting that source bought, and it cannot be read off the shared counts: a document in three sources is shared with each of the other two and unique to none of them.
+
+```
+22 distinct documents across 3 sources at threshold 0.80, against 35 counted one source at a time, which is 1.59 times over
+
+of this       documents     only      hplt  fineweb2    glotcc
+hplt                 18    44.4%    100.0%     55.6%     16.7%
+fineweb2             13    23.1%     76.9%    100.0%     23.1%
+glotcc                4    25.0%     75.0%     75.0%    100.0%
+
+A row reads: this share of the source on the left is also in the source above.
+```
+
+Those counts are off a fixture rather than off the corpus. The real matrix wants a pass over one part from each of the five sources on `server1`, and it is an open item on S1 rather than a number to quote yet. The measurement is built at 32 bands of 4 rows for the same reason the curve is, and it takes a threshold rather than assuming one, because how much two sources overlap depends on what counts as the same document and hiding that behind one figure is how a matrix gets quoted wrong. The membership of each document is a bitset in a `uint64`, which is why the measurement holds at most 64 sources: half a billion memberships is four gigabytes at eight bytes each and thirty two at anything wider.
 
 ### The half document identity cannot see
 
