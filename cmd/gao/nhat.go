@@ -169,19 +169,28 @@ type nhatRun struct {
 
 func printRoster(w io.Writer, ros nhat.Roster) {
 	tw := tabwriter.NewWriter(w, 0, 0, 2, ' ', 0)
-	fmt.Fprint(tw, "benchmark\torigin\trevision\tdrops at\tsource\n")
+	fmt.Fprint(tw, "benchmark\torigin\trevision\thome\tdrops at\tsource\n")
 	for _, e := range ros.Benchmarks {
 		held := fmt.Sprintf("%d windows", nhat.DropAt)
 		if e.HeldOut {
 			held = "1 window, held out"
 		}
-		fmt.Fprintf(tw, "%s\t%s\t%s\t%s\t%s\n", e.Name, e.Origin, e.Version, held, e.Source)
+		home := e.Home
+		if home == "" {
+			home = "none"
+		}
+		fmt.Fprintf(tw, "%s\t%s\t%s\t%s\t%s\t%s\n", e.Name, e.Origin, shortRevision(e.Version), home, held, e.Source)
 	}
 	_ = tw.Flush()
 
 	fmt.Fprintf(w, "\nRoster %s, %d benchmarks. It only grows.\n", ros.Version, len(ros.Benchmarks))
-	if unpinned := ros.Unpinned(); len(unpinned) > 0 {
-		fmt.Fprintf(w, "%d of them have no revision pinned. A release cannot go out until they do, because a release note that says a benchmark was checked has to say which revision of it was checked.\n", len(unpinned))
+	blocking := ros.Blocking()
+	if len(blocking) == 0 {
+		return
+	}
+	fmt.Fprintf(w, "\n%d of them have no revision pinned. A release cannot go out until they do, because a release note that says a benchmark was checked has to say which revision of it was checked.\n", len(blocking))
+	for _, b := range blocking {
+		fmt.Fprintf(w, "\n%s\n", b)
 	}
 }
 

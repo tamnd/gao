@@ -70,7 +70,22 @@ type Entry struct {
 	// Version is the benchmark's own revision, not the roster's. Two releases
 	// checked against different revisions of the same benchmark have not been
 	// checked against the same thing.
+	//
+	// It is an object id or it is Unpinned. A version number is not a revision,
+	// because the files behind 2.0 can be reuploaded and 2.0 will still be what
+	// the release note says.
 	Version string `json:"version"`
+
+	// Home is where the authoritative copy lives, as a [Home] address, so that
+	// the revision above is something a reader can go and ask for. An entry
+	// with a revision and no home is a number nobody can check.
+	Home string `json:"home,omitempty"`
+
+	// Pending is why the revision is not pinned, for the entries that are not.
+	// It is required when there is no revision and it is the difference between
+	// a roster that has twelve gaps in it and a roster that knows what its gaps
+	// are waiting on.
+	Pending string `json:"pending,omitempty"`
 
 	// Origin is Native, Translated or Neutral.
 	Origin string `json:"origin"`
@@ -280,7 +295,7 @@ func (ros Roster) Grew(older Roster) error {
 func (ros Roster) Unpinned() []string {
 	var out []string
 	for _, e := range ros.Benchmarks {
-		if e.Version == Unpinned || e.Version == "" {
+		if !e.Pinned() {
 			out = append(out, e.Name)
 		}
 	}
@@ -311,6 +326,9 @@ func (ros Roster) check() error {
 		case Native, Translated, Neutral:
 		default:
 			return fmt.Errorf("nhat: %s has origin %q, and a benchmark is %s, %s or %s", e.Name, e.Origin, Native, Translated, Neutral)
+		}
+		if err := e.checkPin(); err != nil {
+			return err
 		}
 	}
 	return nil

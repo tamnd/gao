@@ -26,6 +26,14 @@ func writeJSON(t *testing.T, dir, name, body string) string {
 	return path
 }
 
+// The revisions in these fixtures are object ids because that is what a roster
+// takes. They are made up rather than real, and they are not the same on the two
+// rows, so a report that printed one where the other belongs would show it.
+const (
+	nhatVMLU = "1111111111111111111111111111111111111111"
+	nhatMMLU = "2222222222222222222222222222222222222222"
+)
+
 // nhatRoster is a two benchmark roster, one native and one translated, so that a
 // report has both to show.
 func nhatRoster(t *testing.T, dir string) string {
@@ -33,8 +41,8 @@ func nhatRoster(t *testing.T, dir string) string {
 	return writeJSON(t, dir, "roster.json", `{
 	  "version": "test-1",
 	  "benchmarks": [
-	    {"name": "vmlu", "version": "1", "origin": "native", "source": "vmlu.ai", "note": "questions and options"},
-	    {"name": "mmlu-vi", "version": "1", "origin": "translated", "source": "the harness", "note": "questions and options"}
+	    {"name": "vmlu", "version": "`+nhatVMLU+`", "home": "git:https://example.vn/vmlu", "origin": "native", "source": "vmlu.ai", "note": "questions and options"},
+	    {"name": "mmlu-vi", "version": "`+nhatMMLU+`", "home": "hf:example/mmlu-vi", "origin": "translated", "source": "the harness", "note": "questions and options"}
 	  ]
 	}`)
 }
@@ -45,8 +53,8 @@ func nhatList(t *testing.T, dir string) string {
 	  "version": "list-1",
 	  "roster": "test-1",
 	  "benchmarks": [
-	    {"name": "vmlu", "version": "1", "origin": "native", "items": ["`+nhatItem+`"]},
-	    {"name": "mmlu-vi", "version": "1", "origin": "translated", "items": ["`+nhatOther+`"]}
+	    {"name": "vmlu", "version": "`+nhatVMLU+`", "origin": "native", "items": ["`+nhatItem+`"]},
+	    {"name": "mmlu-vi", "version": "`+nhatMMLU+`", "origin": "translated", "items": ["`+nhatOther+`"]}
 	  ]
 	}`)
 }
@@ -170,7 +178,7 @@ func TestNhatRefusesAListThatIsMissingARosteredBenchmark(t *testing.T) {
 	  "version": "list-1",
 	  "roster": "test-1",
 	  "benchmarks": [
-	    {"name": "vmlu", "version": "1", "origin": "native", "items": ["`+nhatItem+`"]}
+	    {"name": "vmlu", "version": "`+nhatVMLU+`", "origin": "native", "items": ["`+nhatItem+`"]}
 	  ]
 	}`)
 	path := writeText(t, dir, "a.txt", nhatProse+"\n")
