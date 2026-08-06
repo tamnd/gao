@@ -33,6 +33,7 @@ func commands() []command {
 		{"chia", "divide: route a PDF to direct extraction, to a legacy transcode, or to OCR", runChia},
 		{"dau", "the mark: build and score the diacritic restoration task set out of the corpus", runDau},
 		{"dem", "count: fetch the tokenizer that defines a gao token, print what an ingest counted", runDem},
+		{"dien", "fill in: build and score the cloze proxy the ablation slate is run against", runDien},
 		{"gat", "work with acquisition: print the ingest manifest, check it for drift", runGat},
 		{"kho", "work with the store: verify a snapshot, generate a signing key", runKho},
 		{"luat", "print the legal position: counsel questions, license determinations, what ships", runLuat},
