@@ -79,6 +79,7 @@ gao dau grade -items vi-diacritic.jsonl answers.jsonl  # and score a model's ans
 
 gao kho release --snapshot gao-v1.0         # store and publish
 gao kho verify  snapshots/gao-v1.0          # check a snapshot against its manifest
+gao kho reproduce snapshots/gao-v1.0        # rebuild its bytes and check they come out the same
 gao kho remove  -from a -to b -snapshot b -key gao.key -reason takedown <docid>  # take a document back out
 gao kho datasets                            # where processed data is written, and how to read it
 gao kho push  part.parquet                  # send one file to the store, skipping what is already there
@@ -103,6 +104,24 @@ That checks four things: the manifest is internally consistent, the merkle root 
 Pass `-quick` to check the manifest and the signature without rehashing several hundred gigabytes. It answers a different question and it is not enough to accept a download.
 
 Without `-key` the signature is checked against the key embedded in the manifest, which proves the snapshot was signed by somebody rather than that it was signed by us. The published key goes in the release notes, and a verifier written against it is ten lines in any language: the key file is one line of hex and nothing else.
+
+## Rebuilding a snapshot to check the bytes
+
+The release has to be reproducible by somebody who does not trust us, and that claim is two claims that get quoted as one. The first is that the pipeline computes the same documents from the same inputs. The second is that writing those documents produces the same file. Only the second can be checked from a snapshot on its own, because the inputs are not in it, and it is the one that has to hold first: until it does, a stage that reruns to something different is indistinguishable from a compressor that does, and neither result means anything.
+
+```
+gao kho reproduce snapshots/gao-v1.0
+```
+
+That rebuilds every shard from the documents that shard holds and compares the result against the recorded hash. The documents are the same by construction, which is the point rather than a weakness. What can differ is the compressor version, a writer setting, or something in gao, so the report prints the versions of everything that decides bytes and the failure message says the corpus is intact, because otherwise the first response to a mismatch is somebody replacing a disk.
+
+Nothing is written to disk. The rebuild is compared against the recording as it is produced, so a 512 MB shard costs a buffer rather than 512 MB of free space, which is what lets it run on `server1` inside 5 GB. When a shard does not come back, the report gives the byte offset where the two first differ and which frame of the segment that offset falls in, since the answer "somewhere in a 512 MB file" is not an answer. An offset past every frame is a different fault from one inside a frame: it means the documents compressed identically and the index written after them did not.
+
+The snapshot is verified before any of this, because whether bytes rebuild to what a manifest says is not worth asking until something has established that the manifest is the one that was signed.
+
+Stages get what checking they can have. A stage that is a function of the document can be checked against a snapshot without its inputs, by asking whether the document is a fixed point of it: normalizing an already normalized document, or classifying an already accepted one, has to change nothing. So `phoi` and `sang` run over every document as it streams past, and a snapshot cleaned by a different version than the manifest names comes back with a count and five document identities to go and open. It does not prove the stage ran on the right inputs. It catches the failure that otherwise surfaces months later as a model that trains badly for no visible reason.
+
+Every other stage is listed as not checked, with the reason. An ingest stage cannot be re-run without the network and a deduplication stage cannot be re-run against one document at a time. A report that lists only what it checked reads as a report that checked everything, which is the specific way this kind of tool lies.
 
 ## Taking a document back out
 

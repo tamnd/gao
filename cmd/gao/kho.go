@@ -27,6 +27,8 @@ func runKho(stdout, stderr io.Writer, args []string) int {
 		return runKhoVerify(stdout, stderr, args[1:])
 	case "remove":
 		return runKhoRemove(stdout, stderr, args[1:])
+	case "reproduce":
+		return runKhoReproduce(stdout, stderr, args[1:])
 	case "keygen":
 		return runKhoKeygen(stdout, stderr, args[1:])
 	case "datasets":
@@ -53,6 +55,7 @@ func khoUsage(w io.Writer) {
 subcommands:
   verify    check a snapshot against its manifest
   remove    take documents out of a snapshot, into a new one
+  reproduce rebuild a snapshot's bytes and check they come out the same
   keygen    generate a snapshot signing key
   datasets  print the dataset repos processed data is written to
   columns   print the columns a published parquet file carries
