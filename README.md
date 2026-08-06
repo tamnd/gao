@@ -64,6 +64,9 @@ gao bien canon < seeds.txt                  # the frontier: one spelling per pag
 gao bien shape -count < frontier.txt        # what templates a frontier is made of, heaviest first
 gao bien budget -shapes < frontier.txt      # what the budget would ask for, and what it would refuse
 
+gao mam ct -counts < ct.json                # the seed: hosts Certificate Transparency names, heaviest first
+gao mam ct -direct -seed seed.txt < ct.json # and which of them a seed list did not already have
+
 gao gat fetch -warc gao.warc.gz URL         # fetch a page and keep the bytes the site actually served
 gao gat warc  gao.warc.gz                   # what is in an archive: one line per record
 gao gat warc  -uri URL gao.warc.gz          # a page back out of the archive, without asking the site again
@@ -784,6 +787,16 @@ The header block was the part that had a real bug in it. A reconstructed HTTP re
 
 Beside the bytes go the parts of the fetch that leave no trace in them: the robots rule that allowed the page, what the response said about text and data mining and in which mechanism it said it, and where a redirect pointed if one did. Those are conclusions the crawler reached at a moment that will not come back, and a page in an archive without them is a page somebody has to guess about a year later.
 
+Before any of that there has to be a seed set, and the seed set is the one input to a crawl that cannot be crawled for. Every other decision the frontier makes is about URLs it has already been shown. The Vietnamese problem here is specific rather than general: there is no VNNIC zone file, so there is no list of `.vn` domains to start from, and the lists that circulate are search engine exports that carry exactly the bias this crawl exists to correct. They contain the sites a search engine already found worth indexing.
+
+`mam` takes the route that has no opinion. Every publicly trusted certificate issued since 2018 is logged in public, because browsers stopped trusting the ones that were not, and a certificate names the hosts it is valid for. So Certificate Transparency is incidentally a list of hosts somebody was willing to prove they controlled, with nothing in it about whether the host is interesting. For a country with no zone file that is the closest thing to one there is. What comes out is leads rather than sites: a host may be gone, may be an internal service, may be a certificate provisioned and never used. That is the right trade, because a dead lead costs one request that fails fast and a missing host costs a site that never enters the corpus at all.
+
+Most of the work is refusing things in the logs that are not websites. Every certificate is logged twice, as a precertificate and as itself, and a host under continuous renewal has a fresh pair every ninety days, so counting rows overstates hosts by more than an order of magnitude. A subject alternative name can be an email address, an underscore label that is a DNS record rather than a host, or a bare address. And the suffix test is on a label boundary rather than on the string, because `khachhang.vn.vendor.com` is a shape staging environments really use and it is not a Vietnamese host.
+
+A wildcard is the interesting one. `*.vnexpress.vn` is not a host you can fetch, and dropping it loses the fact that `vnexpress.vn` is real, so the name under the star is kept. That immediately runs into registrars, who hold wildcards for the second level suffixes, and `.vn` has `com.vn`, `edu.vn`, `gov.vn` and the province names under it. Seeding those means asking for pages at names that have never resolved to a web server. The public suffix list handles most of it and is incomplete for `.vn`: it carries some provinces and not others, so `ho-chi-minh.vn` comes through as a registrable name. That is left alone rather than patched with a hand written list of provinces, since a hand written list goes stale silently. What covers the gap is evidence instead. Every host records how many certificates named it outright as against through a wildcard, and a name that only ever appeared below a star is what a registrar wildcard looks like and what a real site does not.
+
+`gao mam ct -seed seed.txt` subtracts a list we already have, which is the measurement rather than a convenience. This route is worth running only to the extent that it names hosts the seed list does not, and P03-7 puts a number on that: 200,000 or more `.vn` hosts absent from the seed. Counting what it found instead of what it added would let a route that discovered nothing look like a success.
+
 ## Why this is not just another crawler
 
 Three problems in Vietnamese text processing are load bearing, and general pipelines get all three wrong.
@@ -802,6 +815,7 @@ There is a fourth, and it is the reason spaces mislead everyone: Vietnamese writ
 cmd/gao/     the single binary
 gat/         acquisition: Hugging Face, Common Crawl, crawl, media
 bien/        the frontier: canonical URLs, shapes, what a host has earned
+mam/         the seed: hosts and repositories nobody handed us a list of
 dem/         counting: the tokenizer that defines a gao token, and the counts
 phoi/        normalization: Unicode, orthography, encoding repair
 sang/        filtering: language ID, heuristics, quality classification
