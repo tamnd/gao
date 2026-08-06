@@ -69,6 +69,9 @@ gao mam ct -direct -seed seed.txt < ct.json # and which of them a seed list did 
 gao mam oai < repositories.txt              # which university repositories will hand over a catalog
 gao mam oai -links -from 2024-01-01 BASE    # and the URLs in one, ready for the frontier
 
+gao suat yield.jsonl                        # a rate: net yield per target class, read while the crawl runs
+gao suat -json yield.jsonl                  # the same reading, for whatever watches the crawl overnight
+
 gao gat fetch -warc gao.warc.gz URL         # fetch a page and keep the bytes the site actually served
 gao gat warc  gao.warc.gz                   # what is in an archive: one line per record
 gao gat warc  -uri URL gao.warc.gz          # a page back out of the archive, without asking the site again
@@ -1066,6 +1069,64 @@ Almost all of the work in that harvester is about not reporting a working reposi
 
 Two smaller things are about what the records actually contain rather than about the protocol. `dc:identifier` is repeatable and is mostly not a URL: it carries ISSNs, DOIs, call numbers and citation strings, with the handle link sitting among them, so taking the first one takes a citation about as often as a link. And `dc:language` is whatever the deposit form defaulted to, which on a lot of DSpace installs is `en_US` on a thesis written entirely in Vietnamese. It is kept as a hint that travels with the record and it is not believed, because deciding what language a document is in is `sang`'s job and it reads the text.
 
+## Reading the crawl while it is still running
+
+One number decides whether the crawl was worth running, and it is net yield: unique documents kept per fetch made. The plan is written against 0.15, and the kill criterion says stop below 0.08 once a hundred million fetches are behind it. Neither of those is worth anything unless somebody can act on it at fetch one hundred million rather than read about it at fetch seven hundred million, and a yield computed when the crawl finishes is a post mortem on a decision the budget already made. `suất` is a rate, and the meter has to exist before the thing it measures.
+
+Net rather than gross is where crawlers flatter themselves. A fetch that came back 200 with a full page of HTML under it has produced nothing if the page is already in the store, or is furniture with no prose under it, or is a calendar for 2031, and a crawler reporting on responses would call any of this a success at 0.98. So every fetch is accounted for by outcome and by name: kept, duplicate, empty, rejected, refused, failed. A checkpoint whose outcomes do not sum to its fetches is refused rather than reported, because the cheapest way to improve a yield is to quietly stop counting a category, and that failure arrives looking like good news.
+
+The crawl has not started. What follows is the meter reading a run that has not happened, which is the only order these two can be built in.
+
+```
+$ gao suat yield.jsonl
+class       fetches  documents  yield  tokens  hosts   objected
+forum       47.6M    9.6M       0.201  8.6B    119.0k  0.41%
+news        33.6M    5.5M       0.163  2.7B    84.0k   0.26%
+education   9.8M     1.8M       0.186  2.0B    24.5k   0.07%
+government  11.2M    1.6M       0.143  1.1B    28.0k   0.09%
+other       11.2M    1.8M       0.163  547.7M  28.0k   0.33%
+commerce    26.6M    2.5M       0.094  502.0M  66.5k   0.52%
+
+all         140.0M   22.8M      0.163  15.5B   350.0k  0.34%
+
+gao-crawl-2026-09 at 140.0M on server1, measured at 28 checkpoints.
+The last stretch alone yielded 0.142, which is the number that moves before the cumulative one does.
+P03-5 is holding: forums have produced 8.6B tokens against 2.7B from news archives.
+The classifier placed 92.0% of fetches into one of the five target classes.
+
+continue: net yield is 0.163 against a plan of 0.15.
+```
+
+The per class rows are the part that changes what happens next. This crawl exists because Common Crawl caps fetches per host, which is the right call for covering the web and the wrong one for covering a single language, and forums are the class that cap hurts most: twenty years of threads behind one hostname, most of it prose nobody else kept. P03-5 says forums will beat news archives on tokens, and the table settles that while there is still budget left to move. A per class yield that arrives at the end is a fact about a decision somebody already made. The classes are ranked by tokens rather than by documents, because a forum thread and a news lede are both one document and are not the same amount of Vietnamese.
+
+The window line is there because a cumulative yield over a hundred and forty million fetches is a number that barely moves. Whatever changed last week is a rounding error against everything before it, so a crawl watched only on the cumulative figure is a crawl nobody is watching. In the reading above the last stretch alone is 0.142 against a cumulative 0.163, which is the frontier working through the good hosts first and is exactly what nobody notices until it has been true for a month.
+
+Objections are answered before yield is. They are counted per host rather than per fetch, because one operator objecting once about a host we took ten thousand pages from is one objection, and counting it per fetch would let a single complaint look like a crisis while a thousand quiet ones stayed invisible. Past 2% of crawled hosts the crawl halves its rate, and that verdict comes out ahead of anything the yield has to say, since a disappointing yield is a budget conversation and somebody asking us to stop is a thing to answer today.
+
+```
+$ gao suat yield-low.jsonl
+class       fetches  documents  yield  tokens  hosts   objected
+forum       40.8M    3.5M       0.086  3.2B    102.0k  0.41%
+news        28.8M    2.0M       0.070  1.0B    72.0k   0.26%
+education   8.4M     672.0k     0.080  739.2M  21.0k   0.07%
+government  9.6M     588.0k     0.061  411.6M  24.0k   0.09%
+other       9.6M     672.0k     0.070  201.6M  24.0k   0.33%
+commerce    22.8M    924.0k     0.041  184.8M  57.0k   0.52%
+
+all         120.0M   8.4M       0.070  5.7B    300.0k  0.34%
+
+gao-crawl-2026-09 at 120.0M on server1, measured at 24 checkpoints.
+The last stretch alone yielded 0.027, which is the number that moves before the cumulative one does.
+P03-5 is holding: forums have produced 3.2B tokens against 1.0B from news archives.
+The classifier placed 92.0% of fetches into one of the five target classes.
+
+stop: net yield is 0.070 after 120M fetches, below the kill line of 0.08, so gao-crawl contributes around 9B rather than 60B and the corpus lands near 250B.
+```
+
+A kill criterion is only useful if it says what stopping costs, so the verdict carries the arithmetic rather than the threshold it crossed. The same reading exits 2 there and exits 1 on a run that does not add up, because those are different events and a script driving this at three in the morning has to be able to tell a crawl that should stop from a report that cannot be trusted.
+
+Two things it refuses to do. It will not fire the kill criterion on a young crawl, because yield in the first tens of millions of fetches is a measurement of the seed list rather than of the web, and stopping a crawl for being young is the one way this meter could do real damage. And it will not compute a curve out of measurements that are not continuous: checkpoints more than five million fetches apart are refused, since the gap between them is where a yield stopped being something anybody watched and became something somebody reconstructed afterward.
+
 ## What the corpus is for
 
 A corpus is a means to a model, and the model has a plan: a trillion token instances, 66% Vietnamese, three phases that get longer and more curated as they go, and a continued pretraining comparison that decides whether any of this was worth doing before a from scratch run is funded. That plan lives in `nau`, in Go, rather than in a document, because a mixture table is arithmetic and arithmetic written in prose is arithmetic nobody checks. `gao nau check` runs in CI and fails on a budget whose components do not add up, a phase that reads 98% of itself, and a comparison whose arms differ in two things at once.
@@ -1109,6 +1170,7 @@ cmd/gao/     the single binary
 gat/         acquisition: Hugging Face, Common Crawl, crawl, media
 bien/        the frontier: canonical URLs, shapes, what a host has earned
 mam/         the seed: hosts and repositories nobody handed us a list of
+suat/        a rate: net yield per target class, read while the crawl is still running
 dem/         counting: the tokenizer that defines a gao token, and the counts
 phoi/        normalization: Unicode, orthography, encoding repair
 sang/        filtering: language ID, heuristics, quality classification
