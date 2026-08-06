@@ -193,11 +193,15 @@ func TestEveryFieldTheSignatureCoversBreaksIt(t *testing.T) {
 			m.Tombstones = []Tombstone{{DocID: doc.SumString("gone"), Reason: "takedown", RemovedAt: sealedAt}}
 		}},
 		{"the root", func(m *Manifest) { m.Root = doc.SumString("not the root") }},
+		{"a license class", func(m *Manifest) { m.Counts.Licenses[1].Class = doc.LicenseOpen }},
+		{"a license document count", func(m *Manifest) { m.Counts.Licenses[0].Documents++ }},
+		{"a license byte count", func(m *Manifest) { m.Counts.Licenses[0].Bytes++ }},
+		{"a license token count", func(m *Manifest) { m.Counts.Licenses[0].Tokens++ }},
 	}
 
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			m := manifest(4)
+			m := licensed(manifest(4))
 			if err := m.Seal(signingKey(t), sealedAt); err != nil {
 				t.Fatalf("Seal: %v", err)
 			}
@@ -309,5 +313,95 @@ func TestReadManifestRefusesAFutureVersion(t *testing.T) {
 func TestReadManifestReportsAMissingFile(t *testing.T) {
 	if _, err := ReadManifest(t.TempDir()); !errors.Is(err, os.ErrNotExist) {
 		t.Fatalf("ReadManifest on an empty directory = %v, want os.ErrNotExist", err)
+	}
+}
+
+// licensed fills in a breakdown that adds up, splitting a manifest's documents
+// across the four classes a determination can produce.
+func licensed(m *Manifest) *Manifest {
+	c := &m.Counts
+	rest := License{Documents: c.Documents, Bytes: c.Bytes, Tokens: c.Tokens}
+	take := func(class doc.LicenseClass, docs, bytes, tokens int64) {
+		c.Licenses = append(c.Licenses, License{Class: class, Documents: docs, Bytes: bytes, Tokens: tokens})
+		rest = rest.Add(License{Documents: -docs, Bytes: -bytes, Tokens: -tokens})
+	}
+	take(doc.LicenseOpen, c.Documents/2, c.Bytes/2, c.Tokens/2)
+	take(doc.LicenseRestricted, c.Documents/4, c.Bytes/4, c.Tokens/4)
+	take(doc.LicenseUnredistributable, c.Documents/8, c.Bytes/8, c.Tokens/8)
+	take(doc.LicensePermissiveAttribution, rest.Documents, rest.Bytes, rest.Tokens)
+	return m
+}
+
+// The number a corpus quotes and the number somebody can download are two
+// numbers, and a release that states only the first has described the size of
+// something nobody can have.
+func TestThePublishableSubsetIsStatedApartFromTheTotal(t *testing.T) {
+	m := licensed(manifest(4))
+	if err := m.Seal(signingKey(t), sealedAt); err != nil {
+		t.Fatal(err)
+	}
+
+	pub, held := m.Counts.Publishable(), m.Counts.Withheld()
+	if pub.Documents+held.Documents != m.Counts.Documents {
+		t.Fatalf("published %d plus withheld %d is not %d", pub.Documents, held.Documents, m.Counts.Documents)
+	}
+	if pub.Documents >= m.Counts.Documents {
+		t.Error("everything in the snapshot came back publishable, so the split is not being read")
+	}
+	if held.Documents == 0 {
+		t.Error("nothing came back withheld, and the restricted rows are what the number exists for")
+	}
+	for _, l := range m.Counts.Licenses {
+		if l.Class == doc.LicenseRestricted && l.Documents == 0 {
+			t.Error("the restricted row is empty, so the fixture is not testing anything")
+		}
+	}
+}
+
+// A partial breakdown produces a publishable count smaller than the truth for
+// no stated reason, and nobody reading it can tell that from a corpus that is
+// genuinely mostly withheld.
+func TestALicenseBreakdownThatDoesNotAddUpIsRefused(t *testing.T) {
+	for _, tt := range []struct {
+		name  string
+		spoil func(*Manifest)
+		want  string
+	}{
+		{"a class left out", func(m *Manifest) { m.Counts.Licenses = m.Counts.Licenses[:2] }, "adds up to"},
+		{"the same class twice", func(m *Manifest) {
+			m.Counts.Licenses = append(m.Counts.Licenses, License{Class: doc.LicenseOpen})
+		}, "two rows for open"},
+		{"bytes that do not agree", func(m *Manifest) { m.Counts.Licenses[0].Bytes++ }, "bytes of text"},
+		{"tokens that do not agree", func(m *Manifest) { m.Counts.Licenses[0].Tokens++ }, "tokens"},
+		{"a document with no determination", func(m *Manifest) {
+			m.Counts.Licenses = append(m.Counts.Licenses, License{Class: doc.LicenseUnknown, Documents: 1})
+			m.Counts.Documents++
+			m.Shards[0].Documents++
+		}, "no license determination"},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			m := licensed(manifest(4))
+			tt.spoil(m)
+			err := m.Seal(signingKey(t), sealedAt)
+			if err == nil {
+				t.Fatal("sealed anyway")
+			}
+			if !strings.Contains(err.Error(), tt.want) {
+				t.Errorf("the error does not say what is wrong: %v", err)
+			}
+		})
+	}
+}
+
+// A snapshot from a stage that has not made the determination yet has nothing
+// to break down, and an empty list says so rather than claiming everything is
+// publishable or nothing is.
+func TestASnapshotWithNoDeterminationYetSealsWithoutABreakdown(t *testing.T) {
+	m := manifest(4)
+	if err := m.Seal(signingKey(t), sealedAt); err != nil {
+		t.Fatal(err)
+	}
+	if got := m.Counts.Publishable(); got.Documents != 0 {
+		t.Errorf("a snapshot with no breakdown reported %d publishable documents", got.Documents)
 	}
 }

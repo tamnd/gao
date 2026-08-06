@@ -135,6 +135,9 @@ flags:
 	}
 	fmt.Fprintf(stdout, "  signer    %s\n", report.Signer)
 	fmt.Fprintf(stdout, "  documents %d\n", report.Documents)
+	if pub := report.Publishable; pub.Documents > 0 {
+		fmt.Fprintf(stdout, "  of those  %d may be redistributed, %s of text\n", pub.Documents, may.Size(pub.Bytes))
+	}
 	if *quick {
 		fmt.Fprintf(stdout, "  shards    %d listed, none hashed because -quick was given\n", report.Shards)
 		fmt.Fprintln(stdout, "\nthe manifest is coherent and signed, and the bytes were not checked")

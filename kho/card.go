@@ -168,6 +168,36 @@ func cardCounts(b *strings.Builder, m *Manifest) {
 		}
 		b.WriteString("\n")
 	}
+	cardLicenses(b, c)
+}
+
+// cardLicenses is the part of the card a reader checks before downloading
+// anything, which is how much of what is described above they can actually have.
+func cardLicenses(b *strings.Builder, c Counts) {
+	if len(c.Licenses) == 0 {
+		return
+	}
+
+	b.WriteString("## What of it ships\n\n")
+	b.WriteString("| license | documents | text | size |\n| --- | --- | --- | --- |\n")
+	for _, l := range c.Licenses {
+		if l.Documents == 0 {
+			continue
+		}
+		ships := "withheld"
+		if l.Class.Publishable() {
+			ships = "published"
+		}
+		fmt.Fprintf(b, "| %s | %d | %s | %s |\n", l.Class, l.Documents, ships, may.Size(l.Bytes))
+	}
+
+	pub, held := c.Publishable(), c.Withheld()
+	fmt.Fprintf(b, "\nThis file carries %d of the %d documents, which is %s of the %s the snapshot holds.\n",
+		pub.Documents, c.Documents, may.Size(pub.Bytes), may.Size(c.Bytes))
+	if held.Documents > 0 {
+		fmt.Fprintf(b, "The other %d are counted here and not passed on, because a number that quietly disappears reads as a number that was never there.\n", held.Documents)
+	}
+	b.WriteString("\n")
 }
 
 func cardStages(b *strings.Builder, m *Manifest) {

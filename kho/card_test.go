@@ -2,6 +2,7 @@ package kho
 
 import (
 	"crypto/ed25519"
+	"fmt"
 	"strings"
 	"testing"
 	"time"
@@ -304,5 +305,21 @@ func TestNoFrontMatterValueCarriesAColon(t *testing.T) {
 				t.Errorf("%s: %q carries a colon, so it does not parse as one value", d.Name, line)
 			}
 		}
+	}
+}
+
+// The card is what a reader sees before deciding to download 400 GB, so the
+// number that belongs on it is how much of the corpus they actually get.
+func TestTheCardSaysHowMuchOfTheCorpusShips(t *testing.T) {
+	m := licensed(released(t))
+	card := Card(published(t), m)
+	for _, want := range []string{"What of it ships", "restricted", "withheld", "published"} {
+		if !strings.Contains(card, want) {
+			t.Errorf("the card does not mention %q", want)
+		}
+	}
+	pub := m.Counts.Publishable()
+	if !strings.Contains(card, fmt.Sprintf("carries %d of the %d documents", pub.Documents, m.Counts.Documents)) {
+		t.Errorf("the card does not state the shippable subset against the total:\n%s", card)
 	}
 }
