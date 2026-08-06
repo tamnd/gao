@@ -265,3 +265,104 @@ func TestAYieldFileThatIsNotThereSaysSo(t *testing.T) {
 		t.Errorf("the error is not attributed: %s", errOut)
 	}
 }
+
+// suatFalling writes a run where forums stop paying in the last window while
+// their cumulative number, five good stretches deep, barely notices.
+func suatFalling(t *testing.T, n int) string {
+	t.Helper()
+	points := make([]suat.Point, 0, n)
+	for i := 1; i <= n; i++ {
+		p := suatPoint(int64(i)*suat.Stride, 0.18)
+		if i == n {
+			prev := points[len(points)-1].By[suat.Forum]
+			f := p.By[suat.Forum]
+			f.Tokens = prev.Tokens + (f.Tokens-prev.Tokens)/8
+			p.By[suat.Forum] = f
+		}
+		points = append(points, p)
+	}
+	return suatFile(t, points...)
+}
+
+func TestTheNextStretchIsDividedOnWhatAFetchBuysNow(t *testing.T) {
+	out, errOut, code := exec(t, "suat", "-next", "100000000", suatFalling(t, 6))
+	if code != 0 {
+		t.Fatalf("exit %d: %s\n%s", code, out, errOut)
+	}
+	for _, want := range []string{
+		"the next 100.0M, divided on the last 5.0M",
+		"share",
+		"already been read",
+		"decided on the last",
+	} {
+		if !strings.Contains(out, want) {
+			t.Errorf("%q is missing from the division:\n%s", want, out)
+		}
+	}
+
+	// Forums are still the largest class in the table above and are still being
+	// cut in the division below it, which is the whole point of measuring the
+	// window rather than the crawl.
+	table := out[strings.Index(out, "the next 100.0M"):]
+	for _, line := range strings.Split(table, "\n") {
+		if strings.Contains(line, "forum") && strings.Contains(line, "less") {
+			return
+		}
+	}
+	t.Errorf("forums were not cut after they stopped paying:\n%s", out)
+}
+
+func TestWithoutTheFlagThereIsNoDivision(t *testing.T) {
+	out, _, code := exec(t, "suat", suatRun(t, 4, 0.18))
+	if code != 0 {
+		t.Fatalf("exit %d", code)
+	}
+	if strings.Contains(out, "divided on the last") {
+		t.Errorf("a division nobody asked for was printed:\n%s", out)
+	}
+}
+
+// A division nobody can act on is refused rather than printed with a caveat.
+func TestADivisionMadeOnOneCheckpointIsRefused(t *testing.T) {
+	out, _, code := exec(t, "suat", "-next", "100000000", suatRun(t, 1, 0.18))
+	if code != 1 {
+		t.Fatalf("exit %d, want 1:\n%s", code, out)
+	}
+	if !strings.Contains(out, "moved on history") {
+		t.Errorf("the report does not say why the division was refused:\n%s", out)
+	}
+}
+
+func TestTheDivisionIsAlsoMachineReadable(t *testing.T) {
+	out, _, code := exec(t, "suat", "-next", "100000000", "-json", suatFalling(t, 6))
+	if code != 0 {
+		t.Fatalf("exit %d:\n%s", code, out)
+	}
+	var got struct {
+		Budget struct {
+			Stretch int64 `json:"stretch"`
+			Window  int64 `json:"window"`
+			Slices  []struct {
+				Class string  `json:"class"`
+				Move  string  `json:"move"`
+				Share float64 `json:"share"`
+			} `json:"slices"`
+		} `json:"budget"`
+	}
+	if err := json.Unmarshal([]byte(out), &got); err != nil {
+		t.Fatalf("%v:\n%s", err, out)
+	}
+	if got.Budget.Stretch != 100_000_000 || got.Budget.Window != suat.Stride {
+		t.Errorf("stretch %d on a window of %d", got.Budget.Stretch, got.Budget.Window)
+	}
+	var total float64
+	for _, s := range got.Budget.Slices {
+		total += s.Share
+	}
+	if len(got.Budget.Slices) != len(suat.Classes)-1 {
+		t.Errorf("%d classes were given a share", len(got.Budget.Slices))
+	}
+	if total < 0.999 || total > 1.001 {
+		t.Errorf("the shares add up to %.4f", total)
+	}
+}

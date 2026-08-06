@@ -14,8 +14,9 @@ func runSuat(stdout, stderr io.Writer, args []string) int {
 	fs.SetOutput(stderr)
 	asJSON := fs.Bool("json", false, "print JSON")
 	crawl := fs.String("crawl", "gao-crawl-2026-09", "the crawl these measurements came from")
+	next := fs.Int64("next", 0, "divide this many further fetches between the target classes")
 	fs.Usage = func() {
-		fmt.Fprint(stderr, `usage: gao suat [-crawl name] [-json] yield.jsonl
+		fmt.Fprint(stderr, `usage: gao suat [-crawl name] [-next fetches] [-json] yield.jsonl
 
 Read the crawl's net yield while it is still running.
 
@@ -33,6 +34,13 @@ outcomes do not sum to its fetches is refused.
 The per class breakdown is the part that changes what happens next. Forums are
 the class Common Crawl's per host cap hurts most and the class this crawl exists
 for, and a per class yield that only arrives at the end cannot move a budget.
+
+Give -next a fetch count and it divides that many further fetches between the
+classes. The division is made on tokens per fetch in the last window rather than
+over the whole crawl, because a class whose hosts have already been read goes on
+looking good in a cumulative number for a long time. A class whose operators are
+objecting is halted regardless of what it pays, and no class is ever cut to
+nothing, since a class nobody measures cannot be found to have recovered.
 
 Exits 1 if the run is not a continuous measurement, or 2 if the crawl should
 stop.
@@ -71,6 +79,11 @@ flags:
 		report.Trend = d
 		report.Trended = true
 	}
+	if *next > 0 {
+		b := r.Budget(*next)
+		report.Budget = &b
+		report.Faults = b.Faults
+	}
 
 	if *asJSON {
 		if code := printJSON(stdout, stderr, report); code != 0 {
@@ -102,6 +115,10 @@ type suatReport struct {
 
 	Trend   float64 `json:"trend,omitempty"`
 	Trended bool    `json:"trended"`
+
+	// Budget is the next stretch of fetches divided between the classes, and nil
+	// unless somebody asked for one.
+	Budget *suat.Budget `json:"budget,omitempty"`
 
 	Faults []string `json:"faults,omitempty"`
 }
@@ -135,6 +152,10 @@ func printSuat(w io.Writer, p suat.Point, r suatReport) {
 	}
 	fmt.Fprintf(w, "The classifier placed %.1f%% of fetches into one of the five target classes.\n", 100*p.Classified())
 
+	if r.Budget != nil {
+		printSuatBudget(w, *r.Budget)
+	}
+
 	if len(r.Faults) > 0 {
 		fmt.Fprintf(w, "\n%s:\n", plural(len(r.Faults), "fault"))
 		for _, f := range r.Faults {
@@ -143,6 +164,23 @@ func printSuat(w io.Writer, p suat.Point, r suatReport) {
 		return
 	}
 	fmt.Fprintf(w, "\n%s: %s.\n", r.Verdict.Call, r.Verdict.Why)
+}
+
+func printSuatBudget(w io.Writer, b suat.Budget) {
+	fmt.Fprintf(w, "\nthe next %s, divided on the last %s:\n", fetchCount(b.Stretch), fetchCount(b.Window))
+	tw := tabwriter.NewWriter(w, 0, 0, 2, ' ', 0)
+	fmt.Fprint(tw, "  class\tmove\tshare\tfetches\tnow\tbefore\n")
+	for _, s := range b.Slices {
+		fmt.Fprintf(tw, "  %s\t%s\t%.0f%%\t%s\t%.1f\t%.1f\n",
+			s.Class, s.Move, 100*s.Share, fetchCount(s.Gets(b.Stretch)), s.PerFetch, s.Average)
+	}
+	_ = tw.Flush()
+	for _, s := range b.Moving() {
+		fmt.Fprintf(w, "  %s\n", s.Why)
+	}
+	if b.Settled() {
+		fmt.Fprintf(w, "\n%s.\n", b.Verdict())
+	}
 }
 
 // rate prints a share the way an objection rate is discussed, which is in

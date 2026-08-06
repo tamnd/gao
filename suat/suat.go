@@ -299,6 +299,9 @@ func (r *Run) check() error {
 		if p.Total().Documents < prev.Total().Documents {
 			problems = append(problems, fmt.Errorf("the point at %d keeps fewer documents than the point at %d, and a cumulative count does not go down", p.At, prev.At))
 		}
+		if p.Total().Tokens < prev.Total().Tokens {
+			problems = append(problems, fmt.Errorf("the point at %d is worth fewer tokens than the point at %d, and a cumulative count does not go down", p.At, prev.At))
+		}
 		prev = p
 	}
 	if len(problems) > 0 {

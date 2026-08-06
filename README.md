@@ -75,6 +75,7 @@ gao mam oai -links -from 2024-01-01 BASE    # and the URLs in one, ready for the
 
 gao suat yield.jsonl                        # a rate: net yield per target class, read while the crawl runs
 gao suat -json yield.jsonl                  # the same reading, for whatever watches the crawl overnight
+gao suat -next 100000000 yield.jsonl        # what the per class numbers say to do with the next hundred million fetches
 
 gao gat fetch -warc gao.warc.gz URL         # fetch a page and keep the bytes the site actually served
 gao gat warc  gao.warc.gz                   # what is in an archive: one line per record
@@ -1612,6 +1613,35 @@ stop: net yield is 0.070 after 120M fetches, below the kill line of 0.08, so gao
 A kill criterion is only useful if it says what stopping costs, so the verdict carries the arithmetic rather than the threshold it crossed. The same reading exits 2 there and exits 1 on a run that does not add up, because those are different events and a script driving this at three in the morning has to be able to tell a crawl that should stop from a report that cannot be trusted.
 
 Two things it refuses to do. It will not fire the kill criterion on a young crawl, because yield in the first tens of millions of fetches is a measurement of the seed list rather than of the web, and stopping a crawl for being young is the one way this meter could do real damage. And it will not compute a curve out of measurements that are not continuous: checkpoints more than five million fetches apart are refused, since the gap between them is where a yield stopped being something anybody watched and became something somebody reconstructed afterward.
+
+### Moving the budget the per class numbers were measured for
+
+A per class yield that nobody acts on is a table. The reason it is measured continuously is that the next hundred million fetches can be divided differently from the last hundred million, so `-next` does the dividing and prints its reasoning.
+
+```
+$ gao suat -next 100000000 yield.jsonl
+the next 100.0M, divided on the last 5.0M:
+  class       move  share  fetches  now    before
+  education   more  39%    39.1M    204.9  204.9
+  government  hold  22%    21.6M    99.8   99.8
+  news        hold  19%    18.6M    81.5   81.5
+  forum       less  12%    12.5M    89.9   181.2
+  commerce    hold  8%     8.1M     18.9   18.9
+  education pays 204.9 tokens a fetch against 79.9 across the crawl, which is far enough above the line to be worth moving budget on
+  forum pays 89.9 tokens a fetch now against 181.2 over the crawl, which is the shape of a class whose hosts with text have already been read
+
+education takes 39% of the next 100.0M at 204.9 tokens a fetch against 79.9 across the crawl, decided on the last 5.0M rather than on the whole run.
+```
+
+Look at what happened to forums between the two tables. Above, forums are the largest class in the crawl by a wide margin and the reason the crawl exists at all. Below, they are being cut. Both are true. The cumulative row is twenty seven good stretches of production plus one bad one, and it will go on reading as the best class in the crawl for weeks after the good hosts have been read, because a hundred and forty million fetches of history do not move for five million fetches of news. The window is the only place where a class that has stopped paying looks like a class that has stopped paying.
+
+Tokens per fetch rather than yield, for the same reason the table above is ranked by tokens. A forum thread and a two line news brief are both one document, and a budget divided on documents per fetch buys the brief. What a fetch handed to a class actually returns is the number that decides where the next fetch goes, and it is compared against what the crawl as a whole is returning rather than against a threshold somebody picked, since the question is not whether a class is good but whether it is better than the alternative use of the same fetch.
+
+Objections come out of the yield conversation entirely. A class whose operators are asking us to stop gets nothing regardless of what it pays, because more fetches into that class are tokens bought with the takedown path, and the per class figure is the point: news archives objecting at 4% while the crawl sits at 0.6% overall is a fact that the crawl wide number is built to hide.
+
+Nothing is ever cut to zero. Every class still in the crawl keeps at least a twentieth of the next stretch, and that floor is not politeness. A class cut to nothing produces no further measurements, so it can never be found to have recovered, and one bad stretch quietly becomes a decision nobody revisits. The same instinct is why a class that was not fetched at all in the window is held rather than cut: no evidence is not bad evidence.
+
+And a division nobody can act on is refused rather than printed with a caveat. One checkpoint means every number available is cumulative, which is a division made on history. A class with fewer than a quarter of a million fetches behind it in the window is a class whose share turns on which threads the crawler happened to reach. A classifier that left more than a quarter of the crawl in `other` means this is dividing three quarters of a crawl and calling it the whole one. Each of those exits 1 with the sentence rather than a number.
 
 ## Keeping the forum and throwing the page away
 
