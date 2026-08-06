@@ -30,6 +30,8 @@ func runGat(stdout, stderr io.Writer, args []string) int {
 		return runGatHF(stdout, stderr, args[1:])
 	case "ledger":
 		return runGatLedger(stdout, stderr, args[1:])
+	case "agent":
+		return runGatAgent(stdout, stderr, args[1:])
 	case "help", "-h", "--help":
 		gatUsage(stdout)
 		return 0
@@ -48,9 +50,51 @@ subcommands:
   drift  ask every host whether it still serves the revision we pinned
   hf     fetch the pinned files, resuming from whatever a previous run finished
   ledger print what an ingest has already finished
+  agent  print the User-Agent the crawler sends, and where it points
 
 run 'gao gat <subcommand> -h' for the flags of a single subcommand.
 `)
+}
+
+// runGatAgent prints what a webmaster is going to see in a log.
+//
+// It exists so that the answer to "what does your crawler call itself" is a
+// command rather than a grep. A published identity that has to be read out of
+// the source is not published.
+func runGatAgent(stdout, stderr io.Writer, args []string) int {
+	fs := flag.NewFlagSet("gat agent", flag.ContinueOnError)
+	fs.SetOutput(stderr)
+	fs.Usage = func() {
+		fmt.Fprint(stderr, `usage: gao gat agent
+
+Prints the User-Agent header this build sends, the product token a site writes
+in robots.txt to address it, and the contact page every request points at.
+
+The two strings are different on purpose. A robots.txt rule is matched against
+the token and never against the header, so a site that writes
+
+  User-agent: gaobot
+  Disallow: /
+
+has addressed this crawler, and a crawler comparing that line against its whole
+header would find no match and carry on. That is a real bug in real crawlers and
+this is the command that shows the two are not the same thing.
+`)
+	}
+	if err := fs.Parse(args); err != nil {
+		return 2
+	}
+	if fs.NArg() != 0 {
+		fs.Usage()
+		return 2
+	}
+
+	fmt.Fprintf(stdout, "user agent   %s\n", gat.Agent(version))
+	fmt.Fprintf(stdout, "robots token %s\n", gat.Bot)
+	fmt.Fprintf(stdout, "contact      %s\n", gat.Contact)
+	fmt.Fprint(stdout, "\nA site blocks this crawler by writing, in robots.txt:\n\n")
+	fmt.Fprintf(stdout, "  User-agent: %s\n  Disallow: /\n", gat.Bot)
+	return 0
 }
 
 func runGatPins(stdout, stderr io.Writer, args []string) int {
