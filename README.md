@@ -85,6 +85,8 @@ gao xay -overlap parts/*.parquet            # and how much of each source is alr
 gao xay -choose runs.json                   # the threshold the ablation runs support, or the reason there is none
 gao soi        page.txt reading.txt         # judge a machine's reading of a page against what it says
 gao soi -matrix page.txt reading.txt        # and what each of the six tones was read as
+gao tach       thread.html                  # separate: read a forum page as the thread it is
+gao tach -text thread.html                  # and print the conversation, which is what to check first
 gao che        doc.txt                      # cover: tag over the personal data in a document
 gao che -level L2 -report parts/*.parquet   # and what a corpus holds, per kind, before covering it
 gao nhat -benchmarks                        # pick out the grit: what gao is judged on, and it only grows
@@ -988,6 +990,29 @@ The tension the whole budget is downstream of is that the run is a trillion toke
 
 `gao nau fleet` answers the question somebody will ask on the day they read the fleet inventory and the training plan together. Every other stage in this project runs on server1, server2, server3 and gamingpc, so the assumption that training does too is the natural one to make. It is wrong by 853 times: a from scratch run is planned for 256 accelerators at 80 GB each and the fleet has one card with 24 GB. Stating it as a ratio rather than as "does not fit" is what stops somebody proposing a smaller batch size as though the gap were a factor of two. What the fleet does here is prepare the data, generate the synthetic slice on the one GPU, and run the evaluations that decide the gate, which is the part worth keeping on hardware nobody else controls.
 
+## Keeping the posts instead of the menu
+
+Forums are the largest single body of native Vietnamese prose on the open web, written by people to be read by people, in the register nobody produces on purpose for a dataset. They are also the page class every general crawler handles worst, and those two facts are the same fact. Generic article extraction is built for a page with one body of text on it. A forum thread is thirty bodies of text with a menu wrapped around each one, so an extractor that looks for the largest single block finds the sidebar, keeps it, and throws the conversation away. `gao tach` reads the page as the thread it is.
+
+Posts are found structurally rather than by recognizing forum software. A thread is a run of sibling elements that share a tag and a class and each hold real text, which describes phpBB, XenForo, Discourse, vBulletin, and the hand rolled PHP that a surprising share of Vietnamese forum traffic still runs on. A list of class names for known engines would be shorter to write and would age into a list of engines nobody uses. The one thing that shape does not separate is a forum index, whose rows repeat down the page exactly the way posts do, so there is a second test: a post is prose with the occasional link in it and an index row is a link with a reply count beside it. A candidate that is more anchor than sentence is not a post.
+
+Three things come out and none of them are the post. Navigation goes first, by element rather than by class, because `nav`, `header`, `footer`, and `aside` mean what they mean by the standard. Quoted text goes next, and this is the decision worth arguing with, because in a thread where each reply quotes the post above it the same sentences appear three and four times, and a corpus built from that carries its own duplicates inside single documents where deduplication cannot see them. It would be found later as a thread that deduplicates to nothing, which is the expensive way to find it. Last, any line appearing verbatim in more than one post is dropped, which is what a signature is, and also what "Gửi từ điện thoại" is, and per post navigation, without needing a rule for each. The cost is that a thread where everybody replies with the same two words yields nothing, which is the right answer for that thread.
+
+The byline gets one rule of its own, because the repeated line rule cannot reach it. Every forum template puts the poster's name in a small block with the join date and the post count beside it, and the post count differs per member, so it never repeats and it lands in the corpus once for every member who has posted once, which is most of a forum. The block is dropped whole, on the single condition that nothing in it runs as long as a sentence, which is what tells a profile box apart from a post that happens to open with a name.
+
+```
+$ gao tach thread.html baiviet.html
+page          posts  kept  dropped  quoted  repeated  yield  thread
+thread.html   4      897   1177     206     4         43.2%  Hỏi về bộ gõ tiếng Việt trên Linux
+baiviet.html  .      .     .        .       .         .      not a thread
+
+1 of 2 pages read as threads, holding 4 posts and 897 characters.
+43.2% of the text on those pages was the thread and the rest was what surrounds it.
+206 characters of quotation came out, along with 4 lines that appeared under more than one post.
+```
+
+A page that is not a thread comes back as one, which is a routing answer rather than a failure, and it is counted rather than skipped, because an extractor that quietly declines half its input looks identical to one that had half as much input. The dropped and quoted counts are printed for the same reason: an extractor throwing away well over half of every page is either working exactly as intended or badly broken, and the yield alone does not say which.
+
 ## Dividing the pile before extracting any of it
 
 A pile of Vietnamese PDFs is three piles, and they cost different amounts of money. A born digital file with a working text layer costs milliseconds. The same page typeset in 2003 with a one byte Vietnamese font costs the same milliseconds and then has to be transcoded and checked, because its text layer extracts as `Coäng hoøa xaõ hoäi chuû nghóa Vieät Nam` and every stage downstream will take that for Vietnamese. A scanned page costs a GPU second and comes back with an error rate. There is one GPU on the fleet, so the only number that decides what the extraction slice costs is how much of the pile lands on the third route, and that number is not knowable from anything except counting. `gao chia` counts it.
@@ -1024,6 +1049,7 @@ phoi/        normalization: Unicode, orthography, encoding repair
 sang/        filtering: language ID, heuristics, quality classification
 soi/         judging a reading: character and diacritic error rates, tone confusion
 xay/         milling: deduplication, boilerplate removal
+tach/        separating: reading a forum page as the thread it is
 chia/        dividing: which of three ways a PDF is extracted, and what that costs
 che/         covering: Vietnamese personal data, found and tagged over
 nhat/        decontamination: the benchmark roster, and what of it the corpus holds
