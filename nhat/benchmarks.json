@@ -192,7 +192,7 @@
     {
       "name": "vi-adherence",
       "version": "unpinned",
-      "pending": "Version 1.0 is 24 pairs and lives in ngai rather than on the Hub. It gets a revision when the set is published, and it grows by somebody writing pairs rather than by a run finishing.",
+      "pending": "Built by gao and not built yet. Written for this benchmark, so it is waiting on people rather than on a run.",
       "origin": "native",
       "source": "built by gao, doc 10 section 1.2",
       "note": "1,000 Vietnamese prompts with no language instruction. Written for this benchmark."
