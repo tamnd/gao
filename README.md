@@ -174,6 +174,7 @@ gao chon score bases.jsonl                  # and what the measurements say, if 
 gao hieu model                              # the effect: the from scratch architecture and what a token of it costs
 gao hieu plan -gpus 64                      # the compute that run needs, in the hours it gets booked in
 gao hieu read steps.jsonl                   # what the hardware actually gave back, tenth of the run by tenth
+gao hieu spot -mean 4h                      # how often to checkpoint on capacity that gets taken back
 
 gao chia -why report.pdf                    # route one PDF: direct extraction, legacy transcode, or OCR
 gao chia *.pdf                              # and the routing distribution over a pile of them
@@ -1222,6 +1223,30 @@ The other half is the hardware, and this is the milestone's own phrasing: utiliz
 The reading back is where the word continuously earns its place on the checklist. A run that starts at 45% and finishes at 22% averages 34%, which is above the line the architecture would be changed at, and is a run that is dying. Utilization degrades for reasons that all arrive gradually. The sequence length extends. The routing goes imbalanced and a quarter of the experts take most of the tokens. A node degrades and every all-reduce waits on it. Averaging over the run is exactly the operation that hides all three, so `gao hieu read` cuts the log into tenths, reports the worst one, states the drift from the first tenth to the last, and writes its verdict against the sustained figure. Sustaining 40% is the claim the gate makes. Touching it once in the first hour is not.
 
 Two things in a log are faults rather than rows with something missing. A step that does not say what it ran on cannot be turned into a utilization figure at all, and a run whose steps came off two different kinds of accelerator cannot be folded into one either. The second is not hypothetical: the same milestone asks for spot instance handling that survives preemption, and a job that restarted onto different hardware and carried on reporting against the old peak is what that failure looks like from the log.
+
+## How often to checkpoint when the capacity gets taken back
+
+The compute for a run this size is affordable on spot capacity and not much else, and spot capacity is taken back on a schedule nobody here sets. So the run is going to be interrupted, repeatedly, and the only decision anyone gets to make about it is how often it checkpoints. That decision is not a preference. Checkpoint too rarely and every preemption throws away hours of gradient. Checkpoint too often and the run spends its life writing to disk instead of training. Both mistakes look identical from the outside, which is a slow run, and both get argued about instead of computed.
+
+Daly's first order result settles it: the interval is the square root of twice the checkpoint cost times the mean time between interruptions. `gao hieu spot` is that formula plus the two things it does not tell you.
+
+```
+checkpoint  427 GB at 14 bytes a parameter, 2 minutes to write
+capacity    taken back every 4.0 hours, and 12 minutes to be training again
+confirm     2 minutes before the store says it holds the save
+interval    every 29 minutes, which is the square root of twice the write times the time between preemptions
+overhead    18.0% of wall clock is not gradient, against a ceiling of 33%
+at risk     29 minutes per preemption, which is half an interval plus the confirmation and the restart
+retained    1 on the fleet, reaching 29 minutes back
+```
+
+Fourteen bytes a parameter is the first number people get wrong, and it is wrong by a factor of seven. A published checkpoint is bf16 weights, which is 61 GB here and cannot resume anything. A checkpoint that survives a preemption carries the fp32 master copy and both AdamW moments as well, which is 427 GB, and the run that budgeted for the small one discovers the difference at the worst possible moment. The second number that gets left out is everything on either side of the write. Twelve minutes to reacquire capacity and get back to the step counter, and two more before the store confirms it holds the bytes, are paid on every preemption whatever the interval is, and dropping them understates the overhead here by about a third.
+
+The first thing the formula does not tell you is that there is a regime where no interval works. When writing and confirming a checkpoint takes a meaningful fraction of the time between preemptions, the run is interrupted during the save more often than it finishes one, and the optimum is a real number describing a run that makes no progress at all. That is a state to detect and get out of rather than to tune inside, so it is reported as its own fault with its own sentence. Next to it is the softer version, where a checkpoint does land but the overhead has eaten the discount. Spot is priced at roughly a third of on demand, so a run losing more than a third of its wall clock to interruption is paying on demand prices for spot reliability, and the same architecture at a 45 minute preemption cadence loses 59% and exits nonzero for exactly that reason.
+
+The second is that a checkpoint that was written is not yet a checkpoint. It counts when the store confirms it holds those bytes, which is the same distinction the rotation is built around and it fails the same way: from the training host afterwards, a checkpoint that landed and one that was half written when the instance went away look identical. If the confirmation window is as long as the interval, the run is never more than one unconfirmed save away from having no checkpoint at all, and that is refused separately rather than folded into the overhead.
+
+The last line is the retention budget against real disk. The fleet has 467 GB free, a resumable checkpoint is 427 GB, so the fleet holds exactly one and a run can only ever be rewound to its last save. That is a fact worth having written down before somebody notices at hour nine that something went wrong at hour six. Keeping weights only instead holds seven of them and reaches back 33 minutes, which is a different budget for a different question, and the command says which one it counted rather than leaving the reader to assume.
 
 ## Publishing a slice without a second copy of the corpus
 
