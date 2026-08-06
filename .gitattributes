@@ -4,3 +4,9 @@
 # so these are checked out exactly as they were committed.
 phoi/testdata/*.in  -text
 phoi/testdata/*.out -text
+
+# The labeled set is measured, and a measurement that reports one recall on one
+# platform and another somewhere else is not a measurement. Its line endings are
+# part of the document, so they are checked out as they were committed. The
+# detectors are held to reading either ending by a test rather than by this.
+che/testdata/recall/*.txt -text

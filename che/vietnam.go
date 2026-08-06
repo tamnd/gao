@@ -52,6 +52,14 @@ var addressCues = []string{
 	"huyện", "thành phố", "tỉnh", "tp.", "tp", "q.", "p.", "kp.",
 }
 
+// notAWay opens with a word from the address cues and does not name a place.
+// A hotline is an đường dây, literally a line, and a contact block that gives an
+// address and a hotline in the same sentence reads as one long address chain
+// without this: the chain walks on past the address into the phone number, the
+// number ends up inside the address span, and a phone number that was found is
+// dropped for overlapping something bigger.
+var notAWay = []string{"đường dây"}
+
 // provinces is every province and centrally run city, under both numberings.
 //
 // Vietnam went from sixty three units to thirty four on 1 July 2025. A corpus
@@ -119,25 +127,63 @@ var cues = map[Kind][]string{
 const cueWindow = 60
 
 // cuedBefore reports whether one of the cues for k appears in the text just
-// before offset. The text is lowercased by the caller once per document rather
+// before offset.
+func cuedBefore(lowered string, at int, k Kind) bool {
+	_, ok := cueGap(lowered, at, k)
+	return ok
+}
+
+// cueGap reports how far the nearest cue for k sits before a number, in bytes
+// between the end of the cue and the start of the number, and whether there was
+// one at all. The text is lowercased by the caller once per document rather
 // than once per candidate, since a document holds many numbers and one lower
 // case copy of itself.
-func cuedBefore(lowered string, at int, k Kind) bool {
-	start := at - cueWindow
-	if start < 0 {
-		start = 0
-	}
-	if at > len(lowered) {
-		at = len(lowered)
-	}
+//
+// The distance is measured in the window it was found in, and a cue found with
+// its tone marks off is measured in the bare window, which is a few bytes
+// shorter for the same words. That makes the two slightly incomparable and it
+// does not matter: the number is only ever used to decide which of two cues is
+// nearer, and two cues that are within a few bytes of each other are not the
+// case this is for.
+func cueGap(lowered string, at int, k Kind) (int, bool) {
+	start := max(at-cueWindow, 0)
+	at = min(at, len(lowered))
 	window := lowered[start:at]
 	bare := phoi.Bare(window)
+
+	gap, found := 0, false
 	for i, cue := range cues[k] {
-		if strings.Contains(window, cue) || strings.Contains(bare, bareCues[k][i]) {
-			return true
+		for _, c := range []struct{ hay, needle string }{{window, cue}, {bare, bareCues[k][i]}} {
+			at := strings.LastIndex(c.hay, c.needle)
+			if at < 0 {
+				continue
+			}
+			if d := len(c.hay) - (at + len(c.needle)); !found || d < gap {
+				gap, found = d, true
+			}
 		}
 	}
-	return false
+	return gap, found
+}
+
+// nearestCue picks between the kinds a number could be, by which one the text
+// named closest to it.
+//
+// A contact block names two kinds of identifier inside one cue window often
+// enough to matter: "điện thoại 028 3845 2210, mã số thuế đơn vị 0301 447 926"
+// puts a phone cue and a tax cue both within sixty bytes of the tax code, and
+// taking them in a fixed order files the tax code under whichever kind the code
+// happens to check first. Each number belongs to the word next to it.
+func nearestCue(lowered string, at int, kinds ...Kind) (Kind, bool) {
+	best, gap, found := Kind(""), 0, false
+	for _, k := range kinds {
+		d, ok := cueGap(lowered, at, k)
+		if !ok || (found && d >= gap) {
+			continue
+		}
+		best, gap, found = k, d, true
+	}
+	return best, found
 }
 
 // bareCues is the same list with the marks taken off, in the same order, built

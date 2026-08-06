@@ -16,9 +16,11 @@ func runChe(stdout, stderr io.Writer, args []string) int {
 	level := fs.String("level", "L1", "how much to cover: L0 records only, L1 covers identifiers, L2 also covers names and addresses")
 	report := fs.Bool("report", false, "print what was found instead of the covered text")
 	spans := fs.Bool("spans", false, "with -report, list every span, including the text it matched")
-	asJSON := fs.Bool("json", false, "with -report, print JSON")
+	asJSON := fs.Bool("json", false, "with -report or -recall, print JSON")
+	recall := fs.Bool("recall", false, "measure the detectors against the labeled set built into this binary")
 	fs.Usage = func() {
 		fmt.Fprint(stderr, `usage: gao che [-level L0|L1|L2] [-report [-spans] [-json]] [file...]
+       gao che -recall [-json]
 
 Cover the personal data in a document. With no file it reads standard input,
 and the covered text goes to standard output, so this is a filter in the same
@@ -46,12 +48,30 @@ With -spans it also lists each span with the text it matched. That prints
 personal data to the terminal on purpose, because reading the matches is the
 only way to see a detector firing on something it should not.
 
+With -recall it reads no files at all. It runs the detectors over a set of
+documents that carry their own answers, built into this binary, and prints what
+each detector found of what was marked. That is the number to quote when
+somebody asks how much personal data the corpus still holds, and the misses are
+printed with it because a recall figure with no list of what it lost is not
+worth much.
+
 flags:
 `)
 		fs.PrintDefaults()
 	}
 	if err := fs.Parse(args); err != nil {
 		return 2
+	}
+	if *recall {
+		if *report || *spans {
+			fmt.Fprintln(stderr, "gao che: -recall measures the labeled set built into this binary, so it has nothing to report on")
+			return 2
+		}
+		if len(fs.Args()) > 0 {
+			fmt.Fprintln(stderr, "gao che: -recall reads the labeled set built into this binary rather than a file")
+			return 2
+		}
+		return runCheRecall(stdout, stderr, *asJSON)
 	}
 	lv, ok := che.ParseLevel(*level)
 	if !ok {
@@ -111,6 +131,56 @@ flags:
 	}
 	printChe(stdout, lv, rows, tally)
 	return 0
+}
+
+// runCheRecall prints how much of a set of hand marked documents the detectors
+// find. It takes no files, because the set it measures is the point: a recall
+// figure measured on whatever the caller happened to pass in is a figure nobody
+// can compare against anybody else's.
+func runCheRecall(stdout, stderr io.Writer, asJSON bool) int {
+	set, err := che.Labeled()
+	if err != nil {
+		fmt.Fprintf(stderr, "gao che: %v\n", err)
+		return 1
+	}
+	s := che.Measure(set)
+	if asJSON {
+		return printJSON(stdout, stderr, s)
+	}
+	printCheRecall(stdout, s)
+	return 0
+}
+
+func printCheRecall(w io.Writer, s che.Score) {
+	tw := tabwriter.NewWriter(w, 0, 0, 2, ' ', 0)
+	fmt.Fprint(tw, "detector\tmarked\tcovered\trecall\tfound\tprecision\n")
+	for _, k := range che.Kinds() {
+		c := s.ByKind[k]
+		fmt.Fprintf(tw, "%s\t%d\t%d\t%s\t%d\t%s\n",
+			string(k), c.Gold, c.Hit, percent(c.Recall()), c.Found, percent(c.Precision()))
+	}
+	fmt.Fprintf(tw, "all\t%d\t%d\t%s\t%d\t%s\n",
+		s.Total.Gold, s.Total.Hit, percent(s.Total.Recall()), s.Total.Found, percent(s.Total.Precision()))
+	_ = tw.Flush()
+
+	fmt.Fprintf(w, "\n%d documents, marked by hand, %d spans in them.\n", s.Documents, s.Total.Gold)
+	fmt.Fprintln(w, "A span counts as covered only when a found span of the same kind holds all of it.")
+
+	if len(s.Missed) > 0 {
+		fmt.Fprintf(w, "\nNot covered:\n")
+		for _, m := range s.Missed {
+			why := ""
+			if m.Partial {
+				why = ", covered in part"
+			}
+			fmt.Fprintf(w, "  %-8s %s: %s%s\n", string(m.Span.Kind), m.Document, m.Span.Text, why)
+		}
+	}
+	for _, k := range che.Kinds() {
+		for _, m := range s.Spurious[k] {
+			fmt.Fprintf(w, "  %-8s %s: %s, and nothing there is marked\n", string(k), m.Document, m.Span.Text)
+		}
+	}
 }
 
 type cheRow struct {

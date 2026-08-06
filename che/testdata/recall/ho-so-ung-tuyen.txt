@@ -1,0 +1,13 @@
+HỒ SƠ ỨNG TUYỂN VỊ TRÍ KẾ TOÁN TỔNG HỢP
+
+Họ và tên: {{name:Đặng Minh Khoa}}. Ngày sinh: 4 tháng 11 năm 1995. Giới tính: nam. Căn cước công dân: {{cccd:031095004712}}, cấp ngày 20 tháng 5 năm 2021.
+
+Điện thoại: {{phone:0356 802 194}}. Thư điện tử: {{email:khoa.dang95@outlook.com}}. Chỗ ở hiện nay: {{address:số 9 ngõ 210 đường Lê Lai, phường Máy Chai, quận Ngô Quyền, Hải Phòng}}.
+
+Trình độ: cử nhân kế toán, Đại học Kinh tế Quốc dân, tốt nghiệp năm 2017, loại khá. Chứng chỉ kế toán trưởng cấp năm 2021.
+
+Kinh nghiệm: năm năm làm kế toán tổng hợp tại một công ty thương mại có quy mô khoảng bốn mươi người. Phụ trách sổ sách, tờ khai thuế hàng quý, đối chiếu công nợ và làm việc với đơn vị kiểm toán. Quen dùng phần mềm Misa và Excel ở mức tốt.
+
+Mong muốn: công việc ổn định tại Hải Phòng hoặc Hà Nội, mức lương thỏa thuận theo năng lực. Có thể đi làm sau hai tuần kể từ khi nhận được thông báo.
+
+Người tham chiếu là chị {{name:Bùi Thu Hà}}, kế toán trưởng công ty cũ, số điện thoại {{phone:0912 447 806}}.
