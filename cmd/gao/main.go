@@ -40,6 +40,7 @@ func commands() []command {
 		{"don", "clear away: whether the crawl gets its bytes off the box faster than it writes them", runDon},
 		{"gat", "work with acquisition: print the ingest manifest, check it for drift", runGat},
 		{"gieo", "to sow: the generator card for gao-synth, and the recipe it is written against", runGieo},
+		{"hieu", "the effect: what fraction of the hardware a training run turns into gradient", runHieu},
 		{"kho", "work with the store: verify a snapshot, generate a signing key", runKho},
 		{"kim", "the needle: vi-needle, whether a long context in Vietnamese is read or skimmed", runKim},
 		{"lat", "a slice: check a release slice is a view over its snapshot rather than a second copy of it", runLat},
