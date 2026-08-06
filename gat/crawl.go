@@ -141,14 +141,37 @@ type Crawler struct {
 	maxBody int64
 
 	mu      sync.Mutex
-	robots  map[string]*Robots
+	sites   map[string]*published
 	blocked map[string]string
 
-	// reading is one gate per host, held while its robots.txt is being fetched.
-	// Twenty workers starting on one host is the ordinary shape of a crawl, and
-	// without this they fetch the same file twenty times: politely, one at a
-	// time, and twenty times.
+	// reading is one gate per host, held while its published files are being
+	// fetched. Twenty workers starting on one host is the ordinary shape of a
+	// crawl, and without this they fetch the same two files twenty times:
+	// politely, one at a time, and twenty times.
 	reading map[string]chan struct{}
+}
+
+// A published is the two files a site puts up for crawlers to read, fetched once
+// per host and kept for the rest of the run.
+//
+// They answer different questions and are treated differently when they cannot
+// be read. robots.txt decides whether a page may be fetched, so a file we could
+// not read stops the fetch. tdmrep.json decides what may be done with a page
+// that was fetched, and there is a second gate on that at the write into the
+// store, so a file we could not read is written into the record and the crawl
+// carries on. Stopping instead would hand any site a way to end its own crawl by
+// misconfiguring a file most sites do not have.
+type published struct {
+	robots *Robots
+
+	// tdm is the well known file, nil when the site does not publish one, which
+	// is almost every site.
+	tdm *TDMRep
+
+	// tdmNote is set when the file was there and could not be read. It goes
+	// into the record of every page fetched from the host, because a
+	// reservation we could not read is a fact about the fetch.
+	tdmNote string
 }
 
 // NewCrawler returns a crawler with these options.
@@ -157,7 +180,7 @@ func NewCrawler(o CrawlOptions) *Crawler {
 		client:  o.Client,
 		polite:  o.Polite,
 		maxBody: o.MaxBody,
-		robots:  map[string]*Robots{},
+		sites:   map[string]*published{},
 		blocked: map[string]string{},
 		reading: map[string]chan struct{}{},
 	}
@@ -216,11 +239,11 @@ func (c *Crawler) Get(ctx context.Context, rawurl string) (*Visit, error) {
 		return nil, fmt.Errorf("%w: %s said %s", ErrBlocked, host, why)
 	}
 
-	robots, err := c.Robots(ctx, u)
+	site, err := c.published(ctx, u)
 	if err != nil {
 		return nil, err
 	}
-	decision := robots.Check(Bot, u.RequestURI())
+	decision := site.robots.Check(Bot, u.RequestURI())
 	if !decision.Allowed {
 		return nil, fmt.Errorf("%w: %s, by %q", ErrDeclined, rawurl, decision.Rule)
 	}
@@ -236,7 +259,7 @@ func (c *Crawler) Get(ctx context.Context, rawurl string) (*Visit, error) {
 		Status:  got.status,
 		Header:  got.header,
 		Body:    got.body,
-		Reserve: ReadHeaders(got.header, Bot),
+		Reserve: site.reserve(u.EscapedPath()).Merge(ReadHeaders(got.header, Bot)),
 		Robots:  decision,
 	}
 	if loc := got.header.Get("Location"); loc != "" && got.status >= 300 && got.status < 400 {
@@ -254,8 +277,18 @@ func (c *Crawler) Get(ctx context.Context, rawurl string) (*Visit, error) {
 // ask is not a file we may ask for at any rate we like. It is not itself checked
 // against robots.txt, for the obvious reason.
 func (c *Crawler) Robots(ctx context.Context, u *url.URL) (*Robots, error) {
+	site, err := c.published(ctx, u)
+	if err != nil {
+		return nil, err
+	}
+	return site.robots, nil
+}
+
+// published returns what the host has put up for crawlers, fetching both files
+// the first time and keeping them for the rest of the run.
+func (c *Crawler) published(ctx context.Context, u *url.URL) (*published, error) {
 	host := u.Host
-	r, err := c.readRobots(ctx, u)
+	site, err := c.readPublished(ctx, u)
 	if err != nil {
 		return nil, err
 	}
@@ -263,18 +296,18 @@ func (c *Crawler) Robots(ctx context.Context, u *url.URL) (*Robots, error) {
 	// The delay is checked here rather than only where the file is read, so a
 	// host asking for longer than a crawl waits answers the same way for every
 	// URL on it, without its robots.txt being fetched again for each one.
-	if d, ok := c.polite.Learn(host, r); !ok {
+	if d, ok := c.polite.Learn(host, site.robots); !ok {
 		return nil, fmt.Errorf("%w: %s asked for %v between requests, which is longer than a crawl waits", ErrBusy, host, d)
 	}
-	return r, nil
+	return site, nil
 }
 
-// readRobots returns the cached file or fetches it, with one fetch per host even
-// when twenty workers arrive at once.
-func (c *Crawler) readRobots(ctx context.Context, u *url.URL) (*Robots, error) {
+// readPublished returns the cached files or fetches them, with one fetch per
+// host even when twenty workers arrive at once.
+func (c *Crawler) readPublished(ctx context.Context, u *url.URL) (*published, error) {
 	host := u.Host
-	if r, ok := c.cached(host); ok {
-		return r, nil
+	if site, ok := c.cached(host); ok {
+		return site, nil
 	}
 
 	gate := c.gate(host)
@@ -287,11 +320,11 @@ func (c *Crawler) readRobots(ctx context.Context, u *url.URL) (*Robots, error) {
 
 	// Whoever held the gate has finished by now, and the usual outcome for
 	// everybody but the first worker is that the answer is already here.
-	if r, ok := c.cached(host); ok {
-		return r, nil
+	if site, ok := c.cached(host); ok {
+		return site, nil
 	}
 
-	var r *Robots
+	site := &published{}
 	file := &url.URL{Scheme: u.Scheme, Host: host, Path: "/robots.txt"}
 	got, err := c.fetch(ctx, host, file.String())
 	switch {
@@ -304,25 +337,82 @@ func (c *Crawler) readRobots(ctx context.Context, u *url.URL) (*Robots, error) {
 		// already recorded by the time this returns.
 		return nil, err
 	case got.status == http.StatusOK:
-		r = ReadRobots(got.body)
+		site.robots = ReadRobots(got.body)
 	default:
 		// A 404 is a site with no file and therefore no objection. Anything
 		// else the server answered with is an answer, and RobotsUnavailable
 		// decides which way each one falls.
-		r = RobotsUnavailable(got.status)
+		site.robots = RobotsUnavailable(got.status)
+	}
+	// The delay the file asked for applies to the very next request, and the
+	// very next request is ours. A host asking for longer than a crawl waits is
+	// not asked for its second file at all, since nothing on it is going to be
+	// fetched: published reports that to the caller.
+	if _, ok := c.polite.Learn(host, site.robots); ok {
+		c.readTDMRep(ctx, u, site)
 	}
 
 	c.mu.Lock()
-	c.robots[host] = r
+	c.sites[host] = site
 	c.mu.Unlock()
-	return r, nil
+	return site, nil
 }
 
-func (c *Crawler) cached(host string) (*Robots, bool) {
+// TDMRepPath is the well known location, fixed by the specification.
+const TDMRepPath = "/.well-known/tdmrep.json"
+
+// readTDMRep asks the host for its well known file, once, on the way in.
+//
+// This costs one request per host and it is the request worth making. TDMRep is
+// the only mechanism that states a reservation for a whole site rather than on
+// every response, so a site that has bothered to publish one has said something
+// deliberate, and a crawler that only read response headers would miss it on
+// every page and record a consent state of open for all of them.
+//
+// It is checked against robots.txt like anything else. A site that disallowed
+// the path has not made an exception for us, and the note that goes in the
+// record says the file was not read rather than that it was not there.
+func (c *Crawler) readTDMRep(ctx context.Context, u *url.URL, site *published) {
+	if d := site.robots.Check(Bot, TDMRepPath); !d.Allowed {
+		site.tdmNote = "tdmrep " + TDMRepPath + ": not read, robots.txt disallows it"
+		return
+	}
+
+	file := &url.URL{Scheme: u.Scheme, Host: u.Host, Path: TDMRepPath}
+	got, err := c.fetch(ctx, u.Host, file.String())
+	switch {
+	case err != nil:
+		site.tdmNote = "tdmrep " + TDMRepPath + ": not read, " + err.Error()
+	case got.status == http.StatusNotFound || got.status == http.StatusGone:
+		// The ordinary case, and not worth a note. A site with no file has not
+		// reserved anything, which is exactly what an empty reservation says.
+	case got.status != http.StatusOK:
+		site.tdmNote = fmt.Sprintf("tdmrep %s: not read, the server answered %d", TDMRepPath, got.status)
+	default:
+		rep, err := ReadTDMRep(got.body)
+		if err != nil {
+			site.tdmNote = "tdmrep " + TDMRepPath + ": published and unreadable, " + err.Error()
+			return
+		}
+		site.tdm = rep
+	}
+}
+
+// reserve is what this site published about one path, before anything the
+// response itself said.
+func (p *published) reserve(path string) Reservation {
+	r := p.tdm.For(path)
+	if p.tdmNote != "" {
+		r.Said = append(r.Said, p.tdmNote)
+	}
+	return r
+}
+
+func (c *Crawler) cached(host string) (*published, bool) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	r, ok := c.robots[host]
-	return r, ok
+	site, ok := c.sites[host]
+	return site, ok
 }
 
 func (c *Crawler) gate(host string) chan struct{} {
@@ -419,7 +509,7 @@ func (c *Crawler) block(host, why string) {
 func (c *Crawler) Hosts() (seen, blocked int) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	return len(c.robots), len(c.blocked)
+	return len(c.sites), len(c.blocked)
 }
 
 // retryAfter reads the header in both of the forms the specification allows, and

@@ -11,6 +11,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/tamnd/gao/doc"
 	"github.com/tamnd/gao/gat"
 	"github.com/tamnd/gao/vo"
 )
@@ -296,13 +297,13 @@ func TestTheSitesCrawlDelayReachesTheSchedule(t *testing.T) {
 		}
 	}
 
-	// Three requests went out: robots.txt, then two pages. The first waited for
-	// nothing and each of the others waited the thirty seconds the site asked
-	// for. The delay is learned from the file, so it applies from the request
-	// after the one that fetched it.
+	// Four requests went out: robots.txt, the well known file, then two pages.
+	// The first waited for nothing and every one after it waited the thirty
+	// seconds the site asked for, including ours. The delay is read out of the
+	// first file, so it applies to everything from the second request on.
 	waits := clk.waits()
-	if len(waits) != 3 {
-		t.Fatalf("the schedule was consulted %d times for three requests: %v", len(waits), waits)
+	if len(waits) != 4 {
+		t.Fatalf("the schedule was consulted %d times for four requests: %v", len(waits), waits)
 	}
 	for i, w := range waits[1:] {
 		if w != 30*time.Second {
@@ -600,5 +601,204 @@ func TestManyWorkersOnOneHostDoNotOverlap(t *testing.T) {
 	}
 	if n := s.askedFor("/robots.txt"); n != 1 {
 		t.Errorf("twenty workers fetched robots.txt %d times", n)
+	}
+}
+
+// The well known file is the only mechanism that states a reservation for a
+// whole site rather than on every response, so a site that publishes one has
+// said something deliberate and a crawler that only read response headers would
+// record every page on it as open.
+func TestASiteWideReservationIsReadOnceAndAppliedToEveryPage(t *testing.T) {
+	s := newSite(t, map[string]http.HandlerFunc{
+		"/robots.txt": text("User-agent: *\nAllow: /\n"),
+		gat.TDMRepPath: text(`[
+			{"location": "/*", "tdm-reservation": 1, "tdm-policy": "https://example.vn/dieu-khoan"}
+		]`),
+		"/a": text("a"),
+		"/b": text("b"),
+	})
+	c, _ := crawler(t, gat.CrawlOptions{})
+
+	for _, path := range []string{"/a", "/b"} {
+		v, err := get(t, c, s.URL+path)
+		if err != nil {
+			t.Fatalf("%s: %v", path, err)
+		}
+		if !v.Reserve.NoTrain {
+			t.Errorf("%s came back with no reservation and the site reserved everything", path)
+		}
+		if v.Reserve.Consent() != doc.ConsentNoTrain {
+			t.Errorf("%s came back as consent %q", path, v.Reserve.Consent())
+		}
+		if v.Reserve.Policy != "https://example.vn/dieu-khoan" {
+			t.Errorf("%s lost the policy the site pointed at: %q", path, v.Reserve.Policy)
+		}
+	}
+	if n := s.askedFor(gat.TDMRepPath); n != 1 {
+		t.Errorf("the well known file was fetched %d times for two pages", n)
+	}
+}
+
+// A site can reserve everything and then release one directory, which is how
+// these files are actually written, and the release has to survive the trip
+// through the crawler rather than only through the parser.
+func TestTheLongestLocationInTheWellKnownFileWins(t *testing.T) {
+	s := newSite(t, map[string]http.HandlerFunc{
+		"/robots.txt": text("User-agent: *\nAllow: /\n"),
+		gat.TDMRepPath: text(`[
+			{"location": "/*", "tdm-reservation": 1},
+			{"location": "/mo/*", "tdm-reservation": 0}
+		]`),
+		"/kin/bai": text("kin"),
+		"/mo/bai":  text("mo"),
+	})
+	c, _ := crawler(t, gat.CrawlOptions{})
+
+	closed, err := get(t, c, s.URL+"/kin/bai")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !closed.Reserve.NoTrain {
+		t.Error("a path under the site wide reservation came back open")
+	}
+
+	open, err := get(t, c, s.URL+"/mo/bai")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if open.Reserve.NoTrain {
+		t.Error("the directory the site released is still reserved")
+	}
+	// Released is not the same as unasked. The record has to show that the file
+	// was read and said this path was free, because that is a site answering
+	// rather than a site nobody asked.
+	if len(open.Reserve.Signals()) == 0 {
+		t.Error("a path the site explicitly released carries no record of it having been asked")
+	}
+}
+
+// Almost every site has no such file, and the ordinary case has to be quiet.
+// A 404 is a site that reserved nothing, and writing a note about it on every
+// page would fill the record with the absence of a file.
+func TestMostSitesHaveNoWellKnownFileAndSayNothingAboutIt(t *testing.T) {
+	s := newSite(t, map[string]http.HandlerFunc{
+		"/robots.txt": text("User-agent: *\nAllow: /\n"),
+		"/bai-viet":   text("<p>noi dung</p>"),
+	})
+	c, _ := crawler(t, gat.CrawlOptions{})
+
+	v, err := get(t, c, s.URL+"/bai-viet")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if v.Reserve.Reserved() {
+		t.Error("a site with no well known file came back reserved")
+	}
+	if got := v.Reserve.Signals()["tdmrep"]; got != "" {
+		t.Errorf("a site with no well known file left %q in the record", got)
+	}
+	if v.Reserve.Consent() != doc.ConsentOpen {
+		t.Errorf("a site that was asked and said nothing came back as %q", v.Reserve.Consent())
+	}
+}
+
+// The asymmetry with robots.txt, stated as a test. robots.txt decides whether a
+// page may be fetched, so a file we could not read stops the fetch. This one
+// decides what may be done with a page already fetched, and there is a second
+// gate on that at the write into the store, so a file we could not read is
+// written into the record and the crawl carries on. Stopping instead would hand
+// any site a way to end its own crawl by misconfiguring a file most sites do not
+// have.
+func TestAWellKnownFileThatCannotBeReadIsRecordedRatherThanGuessed(t *testing.T) {
+	broken := func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(http.StatusInternalServerError) }
+	s := newSite(t, map[string]http.HandlerFunc{
+		"/robots.txt":  text("User-agent: *\nAllow: /\n"),
+		gat.TDMRepPath: broken,
+		"/bai-viet":    text("<p>noi dung</p>"),
+	})
+	c, _ := crawler(t, gat.CrawlOptions{})
+
+	v, err := get(t, c, s.URL+"/bai-viet")
+	if err != nil {
+		t.Fatalf("a broken well known file stopped the crawl: %v", err)
+	}
+	said := v.Reserve.Signals()["tdmrep"]
+	if !strings.Contains(said, "not read") || !strings.Contains(said, "500") {
+		t.Errorf("the record says %q about a file that answered 500", said)
+	}
+	if v.Reserve.NoTrain {
+		t.Error("a file we could not read was read as a reservation, which is a guess")
+	}
+}
+
+// Published and unparseable is a different finding from missing, and the record
+// says which. A site with a typo in its JSON has tried to say something.
+func TestAWellKnownFileThatIsNotJSONSaysSoInTheRecord(t *testing.T) {
+	s := newSite(t, map[string]http.HandlerFunc{
+		"/robots.txt":  text("User-agent: *\nAllow: /\n"),
+		gat.TDMRepPath: text("khong phai json"),
+		"/bai-viet":    text("<p>noi dung</p>"),
+	})
+	c, _ := crawler(t, gat.CrawlOptions{})
+
+	v, err := get(t, c, s.URL+"/bai-viet")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if said := v.Reserve.Signals()["tdmrep"]; !strings.Contains(said, "unreadable") {
+		t.Errorf("the record says %q about a file that is not JSON", said)
+	}
+}
+
+// The well known file is a path like any other and robots.txt applies to it. A
+// site that disallowed it has not made an exception for us, and the record says
+// the file was not read rather than that it was not there.
+func TestAWellKnownFileTheSiteDisallowedIsNotFetched(t *testing.T) {
+	s := newSite(t, map[string]http.HandlerFunc{
+		"/robots.txt":  text("User-agent: *\nDisallow: /.well-known/\n"),
+		gat.TDMRepPath: text(`[{"location": "/*", "tdm-reservation": 1}]`),
+		"/bai-viet":    text("<p>noi dung</p>"),
+	})
+	c, _ := crawler(t, gat.CrawlOptions{})
+
+	v, err := get(t, c, s.URL+"/bai-viet")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if n := s.askedFor(gat.TDMRepPath); n != 0 {
+		t.Errorf("a path robots.txt disallowed was fetched %d times", n)
+	}
+	if said := v.Reserve.Signals()["tdmrep"]; !strings.Contains(said, "robots.txt disallows it") {
+		t.Errorf("the record says %q about a file we were not allowed to read", said)
+	}
+}
+
+// Two statements about one page combine the restrictive way, and the pair worth
+// testing is the one where they disagree: a site wide file that released this
+// path and a response header that reserved it. Honoring the permissive one would
+// turn a site saying no into a site saying yes.
+func TestTheHeaderAndTheWellKnownFileCombineTheRestrictiveWay(t *testing.T) {
+	s := newSite(t, map[string]http.HandlerFunc{
+		"/robots.txt":  text("User-agent: *\nAllow: /\n"),
+		gat.TDMRepPath: text(`[{"location": "/*", "tdm-reservation": 0}]`),
+		"/bai-viet": func(w http.ResponseWriter, r *http.Request) {
+			w.Header().Set("X-Robots-Tag", "noai")
+			_, _ = w.Write([]byte("<p>noi dung</p>"))
+		},
+	})
+	c, _ := crawler(t, gat.CrawlOptions{})
+
+	v, err := get(t, c, s.URL+"/bai-viet")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !v.Reserve.NoTrain {
+		t.Error("a header reserving the page lost to a file releasing it")
+	}
+	// Both statements are in the record, because the conclusion is one word and
+	// the evidence is two mechanisms.
+	signals := v.Reserve.Signals()
+	if signals["tdmrep"] == "" || signals["robots"] == "" {
+		t.Errorf("the record kept one of the two statements and not the other: %v", signals)
 	}
 }
