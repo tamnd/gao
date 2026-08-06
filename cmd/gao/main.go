@@ -29,6 +29,7 @@ func commands() []command {
 	return []command{
 		{"box", "print the fleet inventory and the disk budget it implies", runBox},
 		{"che", "cover: find the personal data in a document and tag over it", runChe},
+		{"dau", "the mark: build and score the diacritic restoration task set out of the corpus", runDau},
 		{"dem", "count: fetch the tokenizer that defines a gao token, print what an ingest counted", runDem},
 		{"gat", "work with acquisition: print the ingest manifest, check it for drift", runGat},
 		{"kho", "work with the store: verify a snapshot, generate a signing key", runKho},
