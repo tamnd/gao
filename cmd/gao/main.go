@@ -34,6 +34,7 @@ func commands() []command {
 		{"che", "cover: find the personal data in a document and tag over it", runChe},
 		{"chia", "divide: route a PDF to direct extraction, to a legacy transcode, or to OCR", runChia},
 		{"chim", "to sink: what an FP8 E4M3 step lost to zero, which the loss curve will not tell anybody", runChim},
+		{"cho", "to wait: what the crawl actually left between requests to one host, on a real box under load", runCho},
 		{"chon", "choose: score the base models against the six criteria, in the order they were written", runChon},
 		{"chot", "close the ledger: the evaluation harness, fixed and hashed before any result exists", runChot},
 		{"dau", "the mark: build and score the diacritic restoration task set out of the corpus", runDau},
