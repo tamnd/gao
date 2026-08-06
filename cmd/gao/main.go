@@ -27,6 +27,7 @@ type command struct {
 
 func commands() []command {
 	return []command{
+		{"bien", "the frontier: canonicalize URLs, shape them, and say what the budget would ask for", runBien},
 		{"box", "print the fleet inventory and the disk budget it implies", runBox},
 		{"che", "cover: find the personal data in a document and tag over it", runChe},
 		{"dau", "the mark: build and score the diacritic restoration task set out of the corpus", runDau},
