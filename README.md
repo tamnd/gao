@@ -105,6 +105,10 @@ gao chot harness                            # close the ledger: the evaluation h
 gao chot digest                             # the digest every published result has to carry
 gao chot audit results.json                 # and whether a set of results is the one the harness asked for
 
+gao gieo recipe                             # to sow: the gao-synth recipe, fixed and hashed before a token exists
+gao gieo recipe -prompts                    # the prompts verbatim, which is what reproducing it needs
+gao gieo card synth/gao-synth-1.0           # check a generator card against the recipe it names
+
 gao lat -snapshot snapshots/gao-v1.0 slices/*  # a slice: check a release slice is a view rather than a copy
 gao lat -snapshot snapshots/gao-v1.0 -head snapshots/gao-v1.1 slices/*  # and whether a removal has left one stale
 
@@ -829,6 +833,53 @@ The rule underneath all of it is that a verifier has to be beatable only by doin
 
 Every verifier runs on CPU, without a network, and returns the same verdict for the same two strings every time. Seven arms sampling in parallel each produce rollouts faster than one GPU can score them, so a verifier that wants a card becomes the bottleneck it exists to feed, and the interface takes no context and no client to make that hard to get wrong. Grading runs anywhere on the fleet. The sampling that produces the rollouts is the part that needs `gamingpc`.
 
+## Making text once there is no more of it to find
+
+Everything up to here harvests. The crawl, the Hugging Face union, the PDFs and the transcripts are all Vietnamese somebody already wrote, and the whole project is arranged around finding it, reading it correctly, and throwing away the parts that are not worth keeping. That runs out. Deduplication collapses the web harder than anybody expects the first time they measure it, and past the edge of what is left the only move available is to make text rather than to find it. The mixture spends 150 billion tokens doing that, which is more than the legal and spoken registers put together.
+
+Making text is where corpora go wrong, so this one makes it under a rule: the generator rephrases rather than invents. `gieo` is to sow, and every document it produces has a real Vietnamese document behind it that a person wrote, taken from the educational slice rather than from the corpus at large, because rephrasing text that was already poor produces poor text in a new voice. That property is worth something only if it is enforced, so the recipe names the slice by digest and a recipe that does not pin its source is refused as invention wearing a rephrase's name.
+
+The recipe is fixed and hashed before a token of output exists. It holds the generator and its revision, the registers with their prompts verbatim, the decoding settings including the seed, the gates with their config hashes, and the roster the output is checked against. It lives in the source rather than in a file somebody edits, because that is the only version of committing to something in advance that means anything: changing it is a diff on a pull request with a reviewer on it, not a file edited the afternoon the numbers came out.
+
+```
+$ gao gieo recipe
+gao-synth is model-generated Vietnamese: qwen3-235b-a22b-instruct rephrasing gao-edu in 4 registers, at temperature 0.8 with seed 20260401, filtered by 6 gates. It is not natural text and it is never counted as any.
+
+generator  qwen3-235b-a22b-instruct@2026-04-11
+read gao   no
+source     gao-edu at a9f34a5444eb
+target     150.0B tokens
+decoding   temperature 0.8, top_p 0.95, 4096 tokens, seed 20260401
+roster     nhat-2026.08
+digest     dbff94782b24372314c769b245e209b882830e5233de5708d5b3898c27a994fb
+
+4 registers:
+  bao-chi     the register most Vietnamese prose on the web is already written in, kept so the rephrase does not drift away from what the corpus looks like
+  giang-giai  the explanatory register, which is where the long dependencies are and which the crawled web has the least of
+  hoi-dap     dialog, which is the shape of most of what anybody will actually ask the model, and which almost nothing in the natural corpus is written as
+  tom-luoc    compression, which teaches the model what in a document is load bearing, and the only style here that produces fewer tokens than it reads
+
+6 gates:
+  vi-only        5334c64fa157  a generator asked for Vietnamese answers in English more often than anybody expects, particularly at the end of a long document
+  faithful       8ebcaf855ae5  a rephrase that invents a number is not a rephrase, and it is the failure that survives every other gate here because the text reads perfectly
+  not-a-copy     8cad63589b4f  output that is the source back again spends GPU hours to add a duplicate, which the dedup pass would then remove anyway
+  degenerate     3d234d3ca080  the loop a sampled generator falls into, which is fluent for a paragraph and then is not text at all
+  refusal        9b50b1850a05  the model talking about the task instead of doing it, which is training data for a habit nobody wants
+  contamination  1f25ea1ccf71  a generated document that reproduces a benchmark item puts the answer in the training set, and the evaluation afterward is scoring memorization
+```
+
+The `read gao` line is there because a model trained on gao rephrasing gao is the corpus fed back into itself, and the tokens that come out carry no information the corpus did not already have. It is a field rather than an assumption, and a recipe that answers yes is refused before anything is generated.
+
+Four registers rather than one is the defense against the failure that has no symptom. A model asked to rephrase returns a narrower distribution than it was given, every time, and 150 billion tokens of narrowed Vietnamese inside a trillion token mixture is a real change to what the model learns with nothing in the output that looks wrong. Four registers only help if they differ, so two styles sharing a prompt is refused rather than counted twice, and greedy decoding is refused for the same reason: at temperature zero each register is the one continuation its prompt admits, and the four of them collapse toward a single voice. Registers rather than temperatures, because a register moves the syntax and the vocabulary while a temperature only moves the tail.
+
+`gao gieo recipe -prompts` prints the prompts as they are, with the recipe digest above them, which is what somebody reproducing this actually needs. They are in Vietnamese, since that is the language of the task, and a prompt with nowhere for the source document to go is refused as a prompt that rephrases nothing.
+
+The card is the recipe plus what happened when it ran: how much came out, what each gate rejected, what the contamination check found, which box it ran on with which batch settings, and what it cost in GPU hours. It carries the digest of the recipe it was produced under, so a prompt quietly improved after seeing the output produces a card that no longer matches what it claims to be. Two things on it are checked harder than the rest. The rejection counts have to add up to what came out minus what was kept, because a card whose arithmetic does not close is describing a run nobody was watching. And a rejection rate of zero is refused outright, because generated text that passed every gate did not pass them, it did not meet them, and in a release note that reads exactly like a generator that was very good.
+
+Synthetic text goes to `vietnamese-synthetic-text` and nowhere else, and it is never summed into a natural count anywhere in the project. A generated document sitting in a repo of natural Vietnamese is a document somebody downloads believing a person wrote it, and no amount of metadata further down undoes the first impression. A card reporting any contaminated output at all is not publishable, since a generated document that reproduces a benchmark item puts the answer into the training set and every evaluation afterward is scoring memorization.
+
+None of this has run yet. `gao-synth` generation needs `gamingpc`, which is the only box in the fleet with a GPU the generator fits on, and the card records the box and the batch settings so that the throughput on it is a number somebody else can reproduce rather than one they have to take our word for. The recipe is closed and hashed now, before any of that, which is the point.
+
 ## Publishing a slice without a second copy of the corpus
 
 A release ships more than one artifact. There is the educational shard, the legal shard, the ten billion token cut for somebody with one card, each with its own repo and its own dataset card, because a person who wants the legal text should not have to download a terabyte to find it. The obvious way to build one is to select the rows and write them out again, and that is what most corpora do.
@@ -1149,6 +1200,7 @@ nhat/        decontamination: the benchmark roster, and what of it the corpus ho
 dau/         the mark: the diacritic restoration task set, built out of the corpus
 dien/        filling in: the cloze proxy the ablation slate is scored by
 cham/        marking: the verifiers the reinforcement learning arms are trained against
+gieo/        to sow: the generator card for gao-synth, and the recipe it is written against
 lat/         a slice: release slices as views over a snapshot rather than copies of it
 chot/        closing the ledger: the evaluation harness, fixed and hashed before any result exists
 kho/         the store: records, manifests, snapshots, signing
