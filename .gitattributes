@@ -13,6 +13,12 @@ phoi/testdata/legacy/*.bytes -text
 phoi/testdata/legacy/*.txt   -text
 phoi/testdata/legacy/*.iconv -text
 
+# The coverage set carries copies of three of those legacy fixtures, and a test
+# checks each copy against what it was copied from. A copy checked out with
+# different line endings than its original is a copy that has drifted, which is
+# what the test is there to catch and not something a checkout should cause.
+dem/testdata/coverage/*.txt -text
+
 # The labeled set is measured, and a measurement that reports one recall on one
 # platform and another somewhere else is not a measurement. Its line endings are
 # part of the document, so they are checked out as they were committed. The
