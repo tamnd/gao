@@ -49,6 +49,7 @@ func commands() []command {
 		{"sang", "sift: measure documents and say which of them are Vietnamese prose", runSang},
 		{"soi", "hold a reading up to the light: measure what a machine read against what the page says", runSoi},
 		{"suat", "a rate: the crawl's net yield, per target class, read while it is still running", runSuat},
+		{"theo", "to follow: vi-adherence, whether the answer comes back in the language the question was asked in", runTheo},
 		{"thu", "to try: the forty run ablation slate, fixed before any of it runs, and what came back", runThu},
 		{"version", "print the version", runVersion},
 		{"xay", "mill: find the documents a corpus holds more than one copy of", runXay},
