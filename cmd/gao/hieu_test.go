@@ -251,3 +251,81 @@ func TestHieuReadWantsExactlyOneLog(t *testing.T) {
 		t.Fatalf("exit %d, want 2: %s", code, errOut)
 	}
 }
+
+// Compute this size is bought on capacity that gets taken back, so how often
+// the run checkpoints is what decides how much of the invoice becomes gradient.
+func TestTheCheckpointIntervalIsComputedRatherThanChosen(t *testing.T) {
+	out, errOut, code := exec(t, "hieu", "spot")
+	if code != 0 {
+		t.Fatalf("exit %d: %s\n%s", code, out, errOut)
+	}
+	for _, want := range []string{"427 GB", "14 bytes a parameter", "square root of twice the write", "at risk", "retained"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("the plan does not mention %q:\n%s", want, out)
+		}
+	}
+	if !strings.Contains(out, "the fleet holds exactly one") {
+		t.Errorf("the retention budget against 467 GB is not stated:\n%s", out)
+	}
+}
+
+// The regime worth detecting rather than tuning inside: a write that outlasts
+// the capacity means the run never lands a checkpoint at all, and the formula
+// still returns a number there.
+func TestCapacityTakenBackFasterThanASaveIsNotAnIntervalProblem(t *testing.T) {
+	out, _, code := exec(t, "hieu", "spot", "-mean", "90s")
+	if code != 1 {
+		t.Fatalf("exit %d, want 1:\n%s", code, out)
+	}
+	if !strings.Contains(out, "no interval fixes that") {
+		t.Errorf("the verdict suggests tuning the interval:\n%s", out)
+	}
+}
+
+// Weights are a seventh of a resumable checkpoint, and the two get confused
+// constantly, so the retention budget has to say which one it counted.
+func TestAPublishableCheckpointIsNotAResumableOne(t *testing.T) {
+	out, _, code := exec(t, "hieu", "spot", "-weights")
+	if code != 0 {
+		t.Fatalf("exit %d:\n%s", code, out)
+	}
+	if !strings.Contains(out, "61 GB") || !strings.Contains(out, "the fleet holds 7 of them") {
+		t.Errorf("the weights only retention budget is not reported:\n%s", out)
+	}
+}
+
+func TestTheSpotPlanIsAlsoMachineReadable(t *testing.T) {
+	out, _, code := exec(t, "hieu", "spot", "-json")
+	if code != 0 {
+		t.Fatalf("exit %d:\n%s", code, out)
+	}
+	var report struct {
+		Bytes    int     `json:"bytes_per_param"`
+		Interval float64 `json:"interval_seconds"`
+		Overhead float64 `json:"overhead"`
+		Ceiling  float64 `json:"ceiling"`
+		Survives bool    `json:"survives"`
+		Keeps    int     `json:"keeps"`
+	}
+	if err := json.Unmarshal([]byte(out), &report); err != nil {
+		t.Fatalf("%v:\n%s", err, out)
+	}
+	if report.Bytes != 14 || report.Keeps != 1 || !report.Survives {
+		t.Errorf("the report came back %+v", report)
+	}
+	if report.Interval < 1500 || report.Interval > 2100 {
+		t.Errorf("the interval is %.0f seconds", report.Interval)
+	}
+	if report.Overhead <= 0 || report.Overhead >= report.Ceiling {
+		t.Errorf("the overhead is %.3f against a ceiling of %.3f", report.Overhead, report.Ceiling)
+	}
+}
+
+func TestSpotRefusesNumbersItCannotComputeFrom(t *testing.T) {
+	if _, _, code := exec(t, "hieu", "spot", "-rate", "0"); code != 2 {
+		t.Error("a write rate of zero did not read as a usage error")
+	}
+	if _, _, code := exec(t, "hieu", "spot", "extra"); code != 2 {
+		t.Error("an argument spot does not take was accepted")
+	}
+}

@@ -24,6 +24,8 @@ func runHieu(stdout, stderr io.Writer, args []string) int {
 		return runHieuPlan(stdout, stderr, args[1:])
 	case "read":
 		return runHieuRead(stdout, stderr, args[1:])
+	case "spot":
+		return runHieuSpot(stdout, stderr, args[1:])
 	case "help":
 		hieuUsage(stdout)
 		return 0
@@ -38,6 +40,7 @@ func hieuUsage(w io.Writer) {
 	fmt.Fprint(w, `usage: gao hieu model [-json]
        gao hieu plan  [-instance NAME] [-precision fp8|bf16] [-gpus N] [-mfu F] [-seq N] [-json]
        gao hieu read  steps.jsonl [-windows N] [-json]
+       gao hieu spot  [-mean D] [-restart D] [-confirm D] [-rate GB/s] [-free GB] [-json]
 
 The effect: what fraction of the hardware a training run turns into gradient.
 
@@ -54,6 +57,11 @@ A single measurement is not a measurement either. A run that starts at 45% and
 ends at 22% averages 34%, which is above the line the architecture would be
 changed at and is a run that is dying. read cuts the log into windows, reports
 the worst one, and writes the verdict against that rather than against the mean.
+
+spot is the other half of the same budget. Compute this size is affordable on
+capacity that gets taken back, so how often the run checkpoints decides how much
+of the invoice becomes gradient, and there is a regime where no interval works
+at all.
 
 flags:
 `)
@@ -194,6 +202,106 @@ func runHieuPlan(stdout, stderr io.Writer, args []string) int {
 	fmt.Fprintf(stdout, "\nUtilization is what is being bought here. At %.0f%% this run costs %.0f accelerator hours, and at half of that it costs twice as many, which is the same run and twice the invoice.\n",
 		*mfu*100, hours)
 	return 0
+}
+
+func runHieuSpot(stdout, stderr io.Writer, args []string) int {
+	fs := flag.NewFlagSet("hieu spot", flag.ContinueOnError)
+	fs.SetOutput(stderr)
+	asJSON := fs.Bool("json", false, "print JSON")
+	mean := fs.Duration("mean", 4*time.Hour, "mean time between preemptions on the capacity being bought")
+	restart := fs.Duration("restart", 12*time.Minute, "preemption to training again, including reading the checkpoint back")
+	confirm := fs.Duration("confirm", 2*time.Minute, "how long the store takes to confirm it holds a checkpoint")
+	rate := fs.Float64("rate", 4, "checkpoint write rate in GB/s across every rank that writes")
+	free := fs.Float64("free", 467, "free disk on the fleet the checkpoints are retained on, in GB")
+	weights := fs.Bool("weights", false, "size the checkpoint as publishable weights rather than as something a run can resume from")
+	fs.Usage = func() { hieuUsage(stderr); fs.PrintDefaults() }
+	if err := fs.Parse(args); err != nil {
+		return 2
+	}
+	if fs.NArg() != 0 {
+		fs.Usage()
+		return 2
+	}
+	if *rate <= 0 || *mean <= 0 {
+		fmt.Fprint(stderr, "gao hieu: the write rate and the time between preemptions are what the interval is computed from, and neither can be zero\n")
+		return 2
+	}
+
+	m := hieu.Com()
+	bytes := hieu.Resumable
+	if *weights {
+		bytes = hieu.WeightsOnly
+	}
+	s := hieu.Spot{
+		Checkpoint: hieu.Checkpoint{Params: m.Params(), Bytes: bytes, Rate: *rate * 1e9},
+		Mean:       *mean, Restart: *restart, Confirm: *confirm,
+	}
+	keep := hieu.Retention{Checkpoint: s.Checkpoint, Free: int64(*free * 1e9), Interval: s.Interval()}
+
+	report := hieuSpotReport{
+		Model: m.Name, Bytes: bytes, Size: s.Checkpoint.Size(),
+		Write: s.Checkpoint.Cost().Seconds(), Mean: mean.Seconds(),
+		Interval: s.Interval().Seconds(), Lost: s.Lost(s.Interval()).Seconds(),
+		Overhead: s.Best(), Ceiling: hieu.Survivable,
+		Survives: s.Survives(), Blocking: s.Blocking(), Verdict: s.Verdict(),
+		Keeps: keep.Keeps(), Reach: keep.Reach().Seconds(), Retention: keep.Verdict(),
+	}
+	if *asJSON {
+		if code := printJSON(stdout, stderr, report); code != 0 {
+			return code
+		}
+	} else {
+		printHieuSpot(stdout, s, keep)
+	}
+	if s.Survives() {
+		return 0
+	}
+	return 1
+}
+
+type hieuSpotReport struct {
+	Model string `json:"model"`
+
+	// Bytes is per parameter, which is the whole difference between a checkpoint
+	// the fleet can retain and one it cannot.
+	Bytes int     `json:"bytes_per_param"`
+	Size  int64   `json:"checkpoint_bytes"`
+	Write float64 `json:"write_seconds"`
+	Mean  float64 `json:"mean_seconds"`
+
+	Interval float64 `json:"interval_seconds"`
+	Lost     float64 `json:"lost_per_preemption_seconds"`
+	Overhead float64 `json:"overhead"`
+	Ceiling  float64 `json:"ceiling"`
+
+	Survives bool     `json:"survives"`
+	Blocking []string `json:"blocking,omitempty"`
+	Verdict  string   `json:"verdict"`
+
+	Keeps     int     `json:"keeps"`
+	Reach     float64 `json:"reach_seconds"`
+	Retention string  `json:"retention"`
+}
+
+func printHieuSpot(w io.Writer, s hieu.Spot, keep hieu.Retention) {
+	tw := tabwriter.NewWriter(w, 0, 0, 2, ' ', 0)
+	fmt.Fprintf(tw, "checkpoint\t%.0f GB at %d bytes a parameter, %s to write\n",
+		float64(s.Checkpoint.Size())/1e9, s.Checkpoint.Bytes, span(s.Checkpoint.Cost()))
+	fmt.Fprintf(tw, "capacity\ttaken back every %s, and %s to be training again\n", span(s.Mean), span(s.Restart))
+	fmt.Fprintf(tw, "confirm\t%s before the store says it holds the save\n", span(s.Confirm))
+	fmt.Fprintf(tw, "interval\tevery %s, which is the square root of twice the write times the time between preemptions\n", span(s.Interval()))
+	fmt.Fprintf(tw, "overhead\t%.1f%% of wall clock is not gradient, against a ceiling of %.0f%%\n", 100*s.Best(), 100*hieu.Survivable)
+	fmt.Fprintf(tw, "at risk\t%s per preemption, which is half an interval plus the confirmation and the restart\n", span(s.Lost(s.Interval())))
+	fmt.Fprintf(tw, "retained\t%d on the fleet, reaching %s back\n", keep.Keeps(), span(keep.Reach()))
+	_ = tw.Flush()
+
+	fmt.Fprintf(w, "\n%s\n", s.Verdict())
+	if why := s.Blocking(); len(why) > 1 {
+		for _, one := range why[1:] {
+			fmt.Fprintf(w, "  and %s\n", one)
+		}
+	}
+	fmt.Fprintf(w, "\n%s\n", keep.Verdict())
 }
 
 type hieuPlanReport struct {
