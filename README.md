@@ -181,6 +181,7 @@ gao hieu plan -gpus 64                      # the compute that run needs, in the
 gao hieu read steps.jsonl                   # what the hardware actually gave back, tenth of the run by tenth
 gao hieu spot -mean 4h                      # how often to checkpoint on capacity that gets taken back
 gao chim -loss 2.3141 -bf16 2.3139 step.jsonl  # to sink: what the FP8 cast lost to zero, which the loss curve will not say
+gao keo resumes.jsonl                       # to pull: what it costs to get back into a run once the host is gone
 
 gao chia -why report.pdf                    # route one PDF: direct extraction, legacy transcode, or OCR
 gao chia *.pdf                              # and the routing distribution over a pile of them
@@ -1387,6 +1388,32 @@ The second is that a checkpoint that was written is not yet a checkpoint. It cou
 
 The last line is the retention budget against real disk. The fleet has 467 GB free, a resumable checkpoint is 427 GB, so the fleet holds exactly one and a run can only ever be rewound to its last save. That is a fact worth having written down before somebody notices at hour nine that something went wrong at hour six. Keeping weights only instead holds seven of them and reaches back 33 minutes, which is a different budget for a different question, and the command says which one it counted rather than leaving the reader to assume.
 
+### Getting back in once the host is gone
+
+Retention says where the checkpoint is. It does not say that anybody has ever started from it, and those are different claims. The milestone item is the second one and it is written in the negative for a reason: resume tested from a checkpoint pulled back from the fleet, not only from one sitting on the training host. A resume tested on the machine that wrote the checkpoint reads it out of the page cache, never crosses a network, never checks it against its digest, and reads it back at exactly the rank count that wrote it. All four of those are paths that do not run on the day it matters, because on that day the host has been taken back and the only copy left is the one that streamed off it. `gao keo` reads a restart drill.
+
+```
+$ gao keo resumes.jsonl
+step   from   source                     size      pull      ranks     provision  load    restart  of interval  drift    digest
+24000  fleet  server3                    104.3 GB  12 MB/s   32 of 64  18m        10m40s  2h58m    148%         +0.0016  ok
+41000  store  open-index/com-8B-cpt-gao  104.3 GB  238 MB/s  64 of 64  10m        10m40s  28m8s    23%          +0.0009  ok
+
+com-8B-cpt-gao, 104.3 GB of training state at 8B of parameters.
+A restart may cost 25% of a checkpoint interval in provisioning, pull and load, before a step of the lost training is recomputed.
+The loss either side of a resume may move 0.01, and a resume that verified its bytes and came back higher than that kept the weights and dropped the moments.
+The fleet copy came back intact and costs 2h58m to get back into, which is 148% of a 2h interval, so it is the copy that survives rather than the copy a live restart reads.
+
+com-8B-cpt-gao came back from the fleet copy at step 24000 intact, 32 ranks reading what 64 wrote, and the cheapest way back in is 28m8s from open-index/com-8B-cpt-gao at 23% of a 2h checkpoint interval
+```
+
+That first row is the whole reason to run the drill rather than assume it. The fleet copy is correct: the digest computed after the pull matches the one written with the checkpoint, the loss came back within noise of where it was written, and thirty two ranks read what sixty four wrote, so the reshard works. It is also unusable as a restart, because 104 GB over the link these boxes have is nearly three hours, and a run that checkpoints every two hours cannot spend three getting back to where it was. Correct and unaffordable are different answers and the command gives both, which turns the item's own test into a design decision: the fleet is where a checkpoint is retained and the store is where a live restart reads from, and the fleet copy earns its place by being the one that is still there rather than by being the fast one.
+
+A resume is three claims underneath that and they fail differently. The bytes came back, which is the digest, and it is checked after the pull rather than before because the copy it could have been compared against was on the host that is gone. It came back onto different hardware, which is the rank count, since a reclaimed instance is replaced by whatever capacity was free and a checkpoint read at the count that wrote it has only tested the layout that already worked. And the state came back, which is the loss at the first step after the resume against the loss at the step it was written.
+
+The third is the one worth the package. A loader that restores the weights and quietly drops the optimizer moments produces a run that trains, whose curve recovers over a few hundred steps, and which has thrown away whatever the moments were worth. Nothing about it looks like a failure an hour later, and the digest is no help at all, because the bytes are right and something in them was not read. So a resume that verified and came back more than 0.01 of loss higher is a fault with its own sentence rather than a number in a column, and coming back lower is a fault too, since that is a resume onto a later checkpoint than the one it says it read.
+
+Those numbers are invented. No arm of S7 has run, and the compute for the three of them is not booked yet. What is not invented is the shape of the answer, which is that the copy that survives a reclaim and the copy a restart reads may not be the same copy, and that is a thing to find out from a drill rather than from a preemption.
+
 ## What sorting a shard by host is worth
 
 Shards are assigned by hash, and that is right for every reason except one. A hash shard is a uniform sample of the corpus, so a stage that processes shard 7 sees what a stage processing all 750 sees, a bug that only shows up on one source shows up in every shard rather than in one file nobody opened, and two copies of a document land together by construction, which is what makes deduplication tractable at all.
@@ -1989,6 +2016,7 @@ chon/        to choose: the base model criteria, in the order they bind
 hieu/        the effect: what fraction of the hardware a training run turns into gradient
 chim/        to sink: what an FP8 E4M3 step lost to zero, and the checks that catch it
 nhip/        the beat: what each pipeline stage runs at, with the box on every number
+keo/         to pull: what a restart costs once the training host has been taken back
 may/         the fleet: the four boxes this actually runs on
 ```
 
