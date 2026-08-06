@@ -702,6 +702,10 @@ Ten questions are with counsel, and each carries the position gao acts on until 
 
 There are two things this project will not do for tokens. No pirated sources: not shadow libraries, not book piracy dumps, not mirrors of paywalled journals, however routine their use has become elsewhere. And no quiet inclusion of reserved material: a reservation is honored, and if counsel says the allowance permits training on reserved text anyway, the model card will say that we did, because the model card is where a rightsholder looks.
 
+Honoring a reservation is code before it is a policy. `gat` reads all three of the ways a site can state one: the `X-Robots-Tag` header, the same directives written into a meta element, and TDMRep, both the two response headers and the `/.well-known/tdmrep.json` file, where the longest location that matches a path is the one that applies. What comes back is what the site said, in its own spelling, recorded per fetch and carried with the document rather than folded into a flag, because a decision taken later has to be taken against the statement and not against somebody's memory of it. Two statements about one page combine the restrictive way, since reading a site say no twice and honoring the permissive one is a way of getting to yes. A page that reserves indexing and a page that reserves mining both end up out of the corpus, and the record says which of the two it was, because gao is a training corpus and keeping a page while promising not to train on it is a promise nobody downstream could check.
+
+The header has one piece of syntax worth naming, since getting it wrong fails quietly and in the flattering direction. A line may open with a crawler name and a colon, and `unavailable_after` carries a colon of its own, so the two are told apart by knowing the directive names rather than by counting colons. A parser that counts colons reads `noindex, unavailable_after: 25 Jun 2010` as a line addressed to a crawler nobody is called and drops the `noindex` with it.
+
 ## Why this is not just another crawler
 
 Three problems in Vietnamese text processing are load bearing, and general pipelines get all three wrong.
