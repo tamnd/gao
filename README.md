@@ -160,6 +160,10 @@ gao nau reconcile                           # what the budget buys against what 
 gao nau arms                                # the continued pretraining comparison and the recipe it shares
 gao nau check                               # everything in the plan that cannot be true at once
 
+gao hieu model                              # the effect: the from scratch architecture and what a token of it costs
+gao hieu plan -gpus 64                      # the compute that run needs, in the hours it gets booked in
+gao hieu read steps.jsonl                   # what the hardware actually gave back, tenth of the run by tenth
+
 gao chia -why report.pdf                    # route one PDF: direct extraction, legacy transcode, or OCR
 gao chia *.pdf                              # and the routing distribution over a pile of them
 
@@ -1136,6 +1140,34 @@ Synthetic text goes to `vietnamese-synthetic-text` and nowhere else, and it is n
 
 None of this has run yet. `gao-synth` generation needs `gamingpc`, which is the only box in the fleet with a GPU the generator fits on, and the card records the box and the batch settings so that the throughput on it is a number somebody else can reproduce rather than one they have to take our word for. The recipe is closed and hashed now, before any of that, which is the point.
 
+## What fraction of the hardware becomes gradient
+
+The gate on the from scratch run is 40% model FLOPs utilization in FP8 and the kill criterion is 25% after a week of tuning, which makes utilization the number that decides whether the most expensive thing in this project continues. A number with that job should not be an estimate somebody did once in a spreadsheet, so `gao hieu` computes it and reads it back off the run.
+
+Half of it is knowing what a token costs, which is a property of the architecture rather than of the hardware.
+
+```
+com-30B-A3B-base
+params     30.5B, of which 2.9B are multiplied against per token
+layers     48, 12 attending to the whole sequence and 36 to a 4096 window
+experts    128 routed, 8 per token, and 1 shared by every token
+attention  16 query heads and 2 key value heads of 128
+predict    1 extra token per position, which costs a module the size of a layer
+
+sequence  per token    of which attention
+4k        22.5 GFLOPs  23%
+32k       28.3 GFLOPs  39%
+128k      42.9 GFLOPs  60%
+```
+
+Two things in that table are worth stating because they are routinely got wrong. The embedding table is a lookup rather than a multiply, so it counts toward the parameters and not toward the arithmetic, and counting it as active is how a sparse model gets reported as more expensive than it is. And the attention term does not scale with parameters at all, it scales with how far each query looks, so it is a fifth of the bill during the 4k phase and most of it by 128k. That is the reason long context extension is a phase with its own utilization number instead of a line at the end of the run: measuring once at 4k and quoting the figure through the extension reports a run getting steadily worse as a run holding steady.
+
+The other half is the hardware, and this is the milestone's own phrasing: utilization without hardware is not a number. Forty percent of an H100 and forty percent of a 4090 differ by a factor of three in tokens per second and by more than that in money. So every reading carries the instance type and the precision, the peaks in the table are dense rather than the sparsity-doubled figures from the marketing page, and an A100 is on the list specifically so that planning an FP8 run onto one fails as arithmetic rather than in week two. `gao hieu plan` turns all of it into the unit compute is actually booked in, which is accelerator hours, and it says out loud what the fleet's single RTX 4090 would do with the job: about a thousand days.
+
+The reading back is where the word continuously earns its place on the checklist. A run that starts at 45% and finishes at 22% averages 34%, which is above the line the architecture would be changed at, and is a run that is dying. Utilization degrades for reasons that all arrive gradually. The sequence length extends. The routing goes imbalanced and a quarter of the experts take most of the tokens. A node degrades and every all-reduce waits on it. Averaging over the run is exactly the operation that hides all three, so `gao hieu read` cuts the log into tenths, reports the worst one, states the drift from the first tenth to the last, and writes its verdict against the sustained figure. Sustaining 40% is the claim the gate makes. Touching it once in the first hour is not.
+
+Two things in a log are faults rather than rows with something missing. A step that does not say what it ran on cannot be turned into a utilization figure at all, and a run whose steps came off two different kinds of accelerator cannot be folded into one either. The second is not hypothetical: the same milestone asks for spot instance handling that survives preemption, and a job that restarted onto different hardware and carried on reporting against the old peak is what that failure looks like from the log.
+
 ## Publishing a slice without a second copy of the corpus
 
 A release ships more than one artifact. There is the educational shard, the legal shard, the ten billion token cut for somebody with one card, each with its own repo and its own dataset card, because a person who wants the legal text should not have to download a terabyte to find it. The obvious way to build one is to select the rows and write them out again, and that is what most corpora do.
@@ -1550,6 +1582,7 @@ xoa/         the takedown register: who asked, when, and when it was done
 doc/         schema and contracts shared across stages
 luat/        the legal position: license determinations, publication posture
 nau/         the training plan: the token budget, the curriculum, the arms
+hieu/        the effect: what fraction of the hardware a training run turns into gradient
 may/         the fleet: the four boxes this actually runs on
 ```
 
