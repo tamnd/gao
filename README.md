@@ -93,6 +93,8 @@ gao xay -overlap parts/*.parquet            # and how much of each source is alr
 gao xay -choose runs.json                   # the threshold the ablation runs support, or the reason there is none
 gao soi        page.txt reading.txt         # judge a machine's reading of a page against what it says
 gao soi -matrix page.txt reading.txt        # and what each of the six tones was read as
+gao tach       thread.html                  # separate: read a forum page as the thread it is
+gao tach -text thread.html                  # and print the conversation, which is what to check first
 gao che        doc.txt                      # cover: tag over the personal data in a document
 gao che -level L2 -report parts/*.parquet   # and what a corpus holds, per kind, before covering it
 gao nhat -benchmarks                        # pick out the grit: what gao is judged on, and it only grows
@@ -113,6 +115,9 @@ gao ngai grade replies.jsonl                # both numbers off one set, and how 
 gao theo items                              # to follow: vi-adherence, a line per prompt shape and what that shape invites
 gao theo items -prompts                     # every prompt verbatim, with the sentence saying why it is in the set
 gao theo grade replies.jsonl                # the whole answer read rather than the top, and how far in it turned
+gao chot harness                            # close the ledger: the evaluation harness, fixed before any result exists
+gao chot digest                             # the digest every published result has to carry
+gao chot audit results.json                 # and whether a set of results is the one the harness asked for
 
 gao thu slate                               # to try: the forty run ablation slate, fixed before any of it runs
 gao thu slate -knobs                        # and what the forty runs are actually for, one line per question
@@ -1114,6 +1119,57 @@ The predicate alone is not enough for somebody outside to reproduce a slice, whi
 One containment failure survives into a world with no copies, and it is the reason a slice records its license classes rather than inheriting them. Vietnamese Wikipedia lives in a repo of its own so that its share alike term stays contained to it. A slice that pulls those rows into a permissively licensed repo undoes that while copying nothing at all, so the target repo is checked against what the slice says it carries, and a slice pointed at a working repo or at a repo nobody declared is refused outright.
 
 Slices overlap and are meant to: a document can be both educational and legal. `lat.Overlap` says by how much, because the slices do not sum to the corpus and a reader adding them up will otherwise get a number larger than what was published.
+## Closing the ledger before the numbers exist
+
+The continued pretraining slice compares three arms on the same base model and the same token budget, changing only which corpus they read: gao, CulturaX, and CulturaX put through gao's own filters. The person running that comparison is the person who wants gao to win. Nobody involved is dishonest and it does not matter, because the ways this goes wrong are not lies. They are a benchmark added because it looked interesting after the numbers came in, a benchmark dropped because the run did not finish, a shot count changed to match a paper, a prompt reworded between arms. Each of those is defensible on its own and together they are a comparison that says whatever its author wanted.
+
+So the harness is fixed first and hashed. `chốt sổ` is to close the ledger. Everything that decides what the comparison says is written down before any arm is trained: seventeen benchmarks, the prompt for each one verbatim, the shot count and the seed the shots are drawn with, the metric, and the rule for getting an answer out of the output. `gao chot harness` prints it.
+
+```
+$ gao chot harness
+harness 2026-08-06, closed against roster 2026-08-06
+393fdd426026bcc60b9a05c02f5bf21f707b5aae30ca1e015f275554ee55a7d4
+
+arms, named before any of them was trained:
+  com-8B-cpt-gao
+  com-8B-cpt-culturax
+  com-8B-cpt-culturax-filtered
+
+benchmark     origin      metric     shots  seed      answer from  revision
+vmlu          native      accuracy   5      20260806  likelihood   b0225316f4ea
+vimmrc        native      accuracy   0      .         likelihood   b017d98136a6
+uit-viquad    native      f1         3      20260806  first-line   unpinned
+vinli         native      accuracy   5      20260806  likelihood   unpinned
+uit-vsfc      native      accuracy   5      20260806  likelihood   7b56c6cb1c9c
+visfd         native      f1         5      20260806  first-line   4b11ec2e4e97
+vihsd         native      f1         5      20260806  likelihood   88e81b36ca37
+victsd        native      f1         5      20260806  likelihood   65a073f2c484
+phomt         native      chrf       5      20260806  first-line   d4b9bf14888b
+mmlu-vi       translated  accuracy   5      20260806  likelihood   18e6c8e65b20
+arc-vi        translated  accuracy   25     20260806  likelihood   69b0991ee606
+hellaswag-vi  translated  accuracy   10     20260806  likelihood   9d31dc982bd6
+humaneval     neutral     pass-rate  0      .         code-block   7dce6050a7d6
+mbpp          neutral     pass-rate  3      20260806  code-block   4bb6404fdc6c
+vi-cloze      native      accuracy   0      .         likelihood   unpinned
+vi-diacritic  native      der        5      20260806  whole        unpinned
+vi-adherence  native      accuracy   0      .         whole        unpinned
+
+17 tasks over 3 arms, so this harness promises 51 numbers.
+
+5 of these run on a benchmark whose revision the roster has not pinned:
+  uit-viquad, vi-adherence, vi-cloze, vi-diacritic, vinli
+A result on an unpinned benchmark is a number nobody else can reproduce, so these are what stands between this harness and a published comparison.
+```
+
+The digest is the enforcement. Every published result carries the digest of the harness it was scored under, so two result sets whose digests differ stop claiming to be comparable without anybody having to remember why. Changing the prompt, the shot count, the seed, the metric, the extraction rule, or the set of arms or tasks all move it. Improving a note does not, deliberately, because punishing somebody for writing a clearer explanation teaches them to stop writing explanations. The canonical form the digest is taken over length-prefixes every value, so no prompt can be written to look like the start of the next field and no two different harnesses hash the same.
+
+`gao chot audit results.json` puts the results next to the harness and exits non-zero when they disagree. It fails a missing number exactly as loudly as an extra one. A benchmark that arrives with the results arrived after them, and a benchmark that was on the harness before the run does not come off it after. The second is the one that actually happens, it is committed by accident, and it is easy to explain away as a run that did not finish. A gap in the table is printed as a gap rather than as a zero, since on accuracy a zero is the worst score there is rather than no score, and an arm that did not report would read as an arm that failed.
+
+Which numbers are best is a separate question from which are present, so the audit prints the winner per task and the diacritic error rate runs the other way, the one metric here where smaller wins. Getting that backwards hands the comparison to whichever arm is worst at Vietnamese.
+
+Three of the seventeen are on the harness to catch a win that is not one. `mmlu-vi` sits beside `vmlu` so the gap between a translated set and a native one can be read, and an arm that gains on the translation and not on the original has learned something about translationese. `humaneval` and `mbpp` are there because continued pretraining on Vietnamese can be paid for out of the base model's code ability, and a gain bought that way is not a gain worth having.
+
+Nothing has been trained yet, which is the point. The harness is closed, the digest is in the tests so that a change to it fails the build, and the five unpinned revisions are the work list standing between this and a comparison somebody outside can run. Training the three arms is a `gamingpc` item.
 
 ## Where the corpus lives
 
@@ -1371,6 +1427,29 @@ The tension the whole budget is downstream of is that the run is a trillion toke
 
 `gao nau fleet` answers the question somebody will ask on the day they read the fleet inventory and the training plan together. Every other stage in this project runs on server1, server2, server3 and gamingpc, so the assumption that training does too is the natural one to make. It is wrong by 853 times: a from scratch run is planned for 256 accelerators at 80 GB each and the fleet has one card with 24 GB. Stating it as a ratio rather than as "does not fit" is what stops somebody proposing a smaller batch size as though the gap were a factor of two. What the fleet does here is prepare the data, generate the synthetic slice on the one GPU, and run the evaluations that decide the gate, which is the part worth keeping on hardware nobody else controls.
 
+## Keeping the posts instead of the menu
+
+Forums are the largest single body of native Vietnamese prose on the open web, written by people to be read by people, in the register nobody produces on purpose for a dataset. They are also the page class every general crawler handles worst, and those two facts are the same fact. Generic article extraction is built for a page with one body of text on it. A forum thread is thirty bodies of text with a menu wrapped around each one, so an extractor that looks for the largest single block finds the sidebar, keeps it, and throws the conversation away. `gao tach` reads the page as the thread it is.
+
+Posts are found structurally rather than by recognizing forum software. A thread is a run of sibling elements that share a tag and a class and each hold real text, which describes phpBB, XenForo, Discourse, vBulletin, and the hand rolled PHP that a surprising share of Vietnamese forum traffic still runs on. A list of class names for known engines would be shorter to write and would age into a list of engines nobody uses. The one thing that shape does not separate is a forum index, whose rows repeat down the page exactly the way posts do, so there is a second test: a post is prose with the occasional link in it and an index row is a link with a reply count beside it. A candidate that is more anchor than sentence is not a post.
+
+Three things come out and none of them are the post. Navigation goes first, by element rather than by class, because `nav`, `header`, `footer`, and `aside` mean what they mean by the standard. Quoted text goes next, and this is the decision worth arguing with, because in a thread where each reply quotes the post above it the same sentences appear three and four times, and a corpus built from that carries its own duplicates inside single documents where deduplication cannot see them. It would be found later as a thread that deduplicates to nothing, which is the expensive way to find it. Last, any line appearing verbatim in more than one post is dropped, which is what a signature is, and also what "Gửi từ điện thoại" is, and per post navigation, without needing a rule for each. The cost is that a thread where everybody replies with the same two words yields nothing, which is the right answer for that thread.
+
+The byline gets one rule of its own, because the repeated line rule cannot reach it. Every forum template puts the poster's name in a small block with the join date and the post count beside it, and the post count differs per member, so it never repeats and it lands in the corpus once for every member who has posted once, which is most of a forum. The block is dropped whole, on the single condition that nothing in it runs as long as a sentence, which is what tells a profile box apart from a post that happens to open with a name.
+
+```
+$ gao tach thread.html baiviet.html
+page          posts  kept  dropped  quoted  repeated  yield  thread
+thread.html   4      897   1177     206     4         43.2%  Hỏi về bộ gõ tiếng Việt trên Linux
+baiviet.html  .      .     .        .       .         .      not a thread
+
+1 of 2 pages read as threads, holding 4 posts and 897 characters.
+43.2% of the text on those pages was the thread and the rest was what surrounds it.
+206 characters of quotation came out, along with 4 lines that appeared under more than one post.
+```
+
+A page that is not a thread comes back as one, which is a routing answer rather than a failure, and it is counted rather than skipped, because an extractor that quietly declines half its input looks identical to one that had half as much input. The dropped and quoted counts are printed for the same reason: an extractor throwing away well over half of every page is either working exactly as intended or badly broken, and the yield alone does not say which.
+
 ## Dividing the pile before extracting any of it
 
 A pile of Vietnamese PDFs is three piles, and they cost different amounts of money. A born digital file with a working text layer costs milliseconds. The same page typeset in 2003 with a one byte Vietnamese font costs the same milliseconds and then has to be transcoded and checked, because its text layer extracts as `Coäng hoøa xaõ hoäi chuû nghóa Vieät Nam` and every stage downstream will take that for Vietnamese. A scanned page costs a GPU second and comes back with an error rate. There is one GPU on the fleet, so the only number that decides what the extraction slice costs is how much of the pile lands on the third route, and that number is not knowable from anything except counting. `gao chia` counts it.
@@ -1409,6 +1488,7 @@ sang/        filtering: language ID, heuristics, quality classification
 xep/         to place: the gao-refset draw and rubric the quality classifier is trained against
 soi/         judging a reading: character and diacritic error rates, tone confusion
 xay/         milling: deduplication, boilerplate removal
+tach/        separating: reading a forum page as the thread it is
 chia/        dividing: which of three ways a PDF is extracted, and what that costs
 che/         covering: Vietnamese personal data, found and tagged over
 nhat/        decontamination: the benchmark roster, and what of it the corpus holds
@@ -1421,6 +1501,7 @@ ngai/        to hesitate: vi-overrefusal, the paired set both refusal numbers co
 theo/        to follow: vi-adherence, whether the answer stays in the language it was asked in
 gieo/        to sow: the generator card for gao-synth, and the recipe it is written against
 lat/         a slice: release slices as views over a snapshot rather than copies of it
+chot/        closing the ledger: the evaluation harness, fixed and hashed before any result exists
 kho/         the store: records, manifests, snapshots, signing
 vo/          the reject store: dropped documents and why they were dropped
 xoa/         the takedown register: who asked, when, and when it was done
