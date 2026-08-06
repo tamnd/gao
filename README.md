@@ -105,6 +105,12 @@ gao xoa status                              # the takedown register: what is ope
 gao xoa check                               # and whether the file itself holds anything that cannot be true
 gao xoa url -fetched 2026-03-01 URL         # what a filed request does to one URL, at the fetch and at the store
 
+gao nau budget                              # the 1 T token mixture, one line per component
+gao nau curriculum                          # the three phases and what each one reads
+gao nau reconcile                           # what the budget buys against what the curriculum spends
+gao nau arms                                # the continued pretraining comparison and the recipe it shares
+gao nau check                               # everything in the plan that cannot be true at once
+
 gao box                                     # the fleet, and the disk budget it implies
 gao luat                                    # the legal position and what it lets us publish
 ```
@@ -825,6 +831,18 @@ Almost all of the work in that harvester is about not reporting a working reposi
 
 Two smaller things are about what the records actually contain rather than about the protocol. `dc:identifier` is repeatable and is mostly not a URL: it carries ISSNs, DOIs, call numbers and citation strings, with the handle link sitting among them, so taking the first one takes a citation about as often as a link. And `dc:language` is whatever the deposit form defaulted to, which on a lot of DSpace installs is `en_US` on a thesis written entirely in Vietnamese. It is kept as a hint that travels with the record and it is not believed, because deciding what language a document is in is `sang`'s job and it reads the text.
 
+## What the corpus is for
+
+A corpus is a means to a model, and the model has a plan: a trillion token instances, 66% Vietnamese, three phases that get longer and more curated as they go, and a continued pretraining comparison that decides whether any of this was worth doing before a from scratch run is funded. That plan lives in `nau`, in Go, rather than in a document, because a mixture table is arithmetic and arithmetic written in prose is arithmetic nobody checks. `gao nau check` runs in CI and fails on a budget whose components do not add up, a phase that reads 98% of itself, and a comparison whose arms differ in two things at once.
+
+The tension the whole budget is downstream of is that the run is a trillion tokens and there are roughly three hundred billion natural Vietnamese tokens in existence. Three moves close the gap, and each one is a separate line because each one fails in its own way. Repetition degrades past about four passes. Synthesis narrows the distribution. Anchor languages buy the reasoning that Vietnamese web text does not contain, and dilute the Vietnamese the run exists to learn. `gao nau budget` prints all twelve lines with the argument for each of them, and it prints the number the crawl is actually aimed at, which is 309 billion tokens of distinct natural Vietnamese rather than the 379 you get by adding every unique count together. The quality tiers are slices of the web and not separate corpora, so `gao-web-hq` and `gao-edu` are extra passes over text that `gao-web` already holds. A plan that counts them as new text asks another team for seventy billion tokens that do not need to exist, and a table cannot catch that about itself.
+
+`gao nau reconcile` is the part worth running. The budget says what the run buys and the curriculum says what it spends, and the two were written by different arguments: the budget from what exists and how many times it is safe to read, the curriculum from what a model needs early against what it needs late. Nothing makes them agree except somebody multiplying them out, and when we did, they did not. The curriculum reads the general web slice well over once where the budget buys it once, the budget holds more English than any phase spends, and machine translated Vietnamese has a budget line and no place in any phase at all. Those are decisions nobody has made yet rather than bugs, so each one is recorded as a numbered question against the component it is about, and `check` enforces the register in both directions: a gap wider than a point of the run with nobody's name on it fails, and so does a question about a gap that has since closed.
+
+`gao nau arms` is the comparison, locked before any of it runs. Three arms, and the third is the one most projects skip: gao, CulturaX as it ships, and CulturaX through gao's own cleaning. Without that third arm a win for gao says the corpus is better and does not say whether that is because it is larger or because it is cleaner, and those two answers have completely different consequences. The arms carry the data and nothing else, because everything that is not data is one shared recipe, so there is nowhere to put a second difference.
+
+`gao nau fleet` answers the question somebody will ask on the day they read the fleet inventory and the training plan together. Every other stage in this project runs on server1, server2, server3 and gamingpc, so the assumption that training does too is the natural one to make. It is wrong by 853 times: a from scratch run is planned for 256 accelerators at 80 GB each and the fleet has one card with 24 GB. Stating it as a ratio rather than as "does not fit" is what stops somebody proposing a smaller batch size as though the gap were a factor of two. What the fleet does here is prepare the data, generate the synthetic slice on the one GPU, and run the evaluations that decide the gate, which is the part worth keeping on hardware nobody else controls.
+
 ## Why this is not just another crawler
 
 Three problems in Vietnamese text processing are load bearing, and general pipelines get all three wrong.
@@ -856,6 +874,7 @@ vo/          the reject store: dropped documents and why they were dropped
 xoa/         the takedown register: who asked, when, and when it was done
 doc/         schema and contracts shared across stages
 luat/        the legal position: license determinations, publication posture
+nau/         the training plan: the token budget, the curriculum, the arms
 may/         the fleet: the four boxes this actually runs on
 ```
 

@@ -36,6 +36,7 @@ func commands() []command {
 		{"kho", "work with the store: verify a snapshot, generate a signing key", runKho},
 		{"luat", "print the legal position: counsel questions, license determinations, what ships", runLuat},
 		{"mam", "the seed: find hosts nobody handed us a list of", runMam},
+		{"nau", "cook: the training plan, its token budget, its curriculum, and the arithmetic between them", runNau},
 		{"nhat", "pick out the grit: find the documents that hold a benchmark gao is judged on", runNhat},
 		{"phoi", "normalize Vietnamese text, or report what normalizing it would do", runPhoi},
 		{"plan", "print the build plan: slices, gates, and kill criteria", runPlan},
