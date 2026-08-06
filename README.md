@@ -111,6 +111,9 @@ gao nau reconcile                           # what the budget buys against what 
 gao nau arms                                # the continued pretraining comparison and the recipe it shares
 gao nau check                               # everything in the plan that cannot be true at once
 
+gao chia -why report.pdf                    # route one PDF: direct extraction, legacy transcode, or OCR
+gao chia *.pdf                              # and the routing distribution over a pile of them
+
 gao box                                     # the fleet, and the disk budget it implies
 gao luat                                    # the legal position and what it lets us publish
 ```
@@ -843,6 +846,18 @@ The tension the whole budget is downstream of is that the run is a trillion toke
 
 `gao nau fleet` answers the question somebody will ask on the day they read the fleet inventory and the training plan together. Every other stage in this project runs on server1, server2, server3 and gamingpc, so the assumption that training does too is the natural one to make. It is wrong by 853 times: a from scratch run is planned for 256 accelerators at 80 GB each and the fleet has one card with 24 GB. Stating it as a ratio rather than as "does not fit" is what stops somebody proposing a smaller batch size as though the gap were a factor of two. What the fleet does here is prepare the data, generate the synthetic slice on the one GPU, and run the evaluations that decide the gate, which is the part worth keeping on hardware nobody else controls.
 
+## Dividing the pile before extracting any of it
+
+A pile of Vietnamese PDFs is three piles, and they cost different amounts of money. A born digital file with a working text layer costs milliseconds. The same page typeset in 2003 with a one byte Vietnamese font costs the same milliseconds and then has to be transcoded and checked, because its text layer extracts as `Coäng hoøa xaõ hoäi chuû nghóa Vieät Nam` and every stage downstream will take that for Vietnamese. A scanned page costs a GPU second and comes back with an error rate. There is one GPU on the fleet, so the only number that decides what the extraction slice costs is how much of the pile lands on the third route, and that number is not knowable from anything except counting. `gao chia` counts it.
+
+`chia` does not parse PDF. It is a linear scan over the objects with FlateDecode and object streams handled, which is enough to answer one question per document and cheap enough to answer it for millions of them. A real parser would be slower, would pull in a dependency that has to be trusted with hostile input, and would answer a question nobody asked. Object streams are handled because they are not optional: anything written this century puts the page tree and the font dictionaries inside a compressed object stream, and a scanner that stops at the top level finds no pages in a completely ordinary document and reports it as broken. That failure is silent in the way that matters, since the document looks damaged rather than the scanner looking incomplete.
+
+The decision is three measurements. Characters shown per page, against a floor of 100, decides route O. The floor is not one, because a scan is rarely purely a scan: it carries a letterhead, a page number, a watermark, or a stamp from whatever assembled it, and a floor of one sends every one of those to direct extraction and produces a document holding the word `Trang` and nothing else. Then `phoi.Detect` runs over the shown bytes, exactly the bytes, not mapped through the font's encoding first, because mapping them would erase the evidence the decision is made on. If it names an encoding, the document is route L and the encoding travels with it. Otherwise it is route T. The third measurement, the share of stream bytes that are image data, is reported rather than decided on, and it is bytes rather than page area because working out how much of a page an image covers means tracking the transformation matrix through the content stream, which is most of a renderer.
+
+There is a fourth outcome and it is deliberate. A document that is encrypted, or has no header, or has no pages the scan can find, comes back unroutable with the reason instead of being guessed at. Encryption is the case worth having: an encrypted document's streams decompress to nothing and its text layer looks exactly like an absent one, so a router without this check sends a perfectly good page to OCR and produces a bill rather than an error.
+
+The distribution carries the box it was counted on, like every other measurement here, because a routing distribution with no hardware attached is not reproducible and the whole point of it is to be a cost estimate somebody else can check.
+
 ## Why this is not just another crawler
 
 Three problems in Vietnamese text processing are load bearing, and general pipelines get all three wrong.
@@ -867,6 +882,7 @@ phoi/        normalization: Unicode, orthography, encoding repair
 sang/        filtering: language ID, heuristics, quality classification
 soi/         judging a reading: character and diacritic error rates, tone confusion
 xay/         milling: deduplication, boilerplate removal
+chia/        dividing: which of three ways a PDF is extracted, and what that costs
 che/         covering: Vietnamese personal data, found and tagged over
 nhat/        decontamination: the benchmark roster, and what of it the corpus holds
 kho/         the store: records, manifests, snapshots, signing
