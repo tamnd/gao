@@ -100,6 +100,9 @@ gao cham roster                             # mark: the seven specialists, and w
 gao cham dau -rollouts rollouts.jsonl parts/*.parquet  # grade restoration rollouts against the pages they came from
 gao cham trich -register instruments.jsonl rollouts.jsonl  # grade legal citations against the instruments that exist
 
+gao lat -snapshot snapshots/gao-v1.0 slices/*  # a slice: check a release slice is a view rather than a copy
+gao lat -snapshot snapshots/gao-v1.0 -head snapshots/gao-v1.1 slices/*  # and whether a removal has left one stale
+
 gao kho release --snapshot gao-v1.0         # store and publish
 gao kho verify  snapshots/gao-v1.0          # check a snapshot against its manifest
 gao kho reproduce snapshots/gao-v1.0        # rebuild its bytes and check they come out the same
@@ -821,6 +824,42 @@ The rule underneath all of it is that a verifier has to be beatable only by doin
 
 Every verifier runs on CPU, without a network, and returns the same verdict for the same two strings every time. Seven arms sampling in parallel each produce rollouts faster than one GPU can score them, so a verifier that wants a card becomes the bottleneck it exists to feed, and the interface takes no context and no client to make that hard to get wrong. Grading runs anywhere on the fleet. The sampling that produces the rollouts is the part that needs `gamingpc`.
 
+## Publishing a slice without a second copy of the corpus
+
+A release ships more than one artifact. There is the educational shard, the legal shard, the ten billion token cut for somebody with one card, each with its own repo and its own dataset card, because a person who wants the legal text should not have to download a terabyte to find it. The obvious way to build one is to select the rows and write them out again, and that is what most corpora do.
+
+The reason not to is not the disk, though the arithmetic is bad enough on its own. It is that a copy is a second place a document lives. When a takedown arrives, `gao kho remove` rewrites the shard that holds the document and seals a new snapshot carrying a tombstone, because snapshots are immutable and a removal is a new one rather than an edit to an old one. A copy does not hear about that. The document stays published in the slice, under our name, after somebody has been told it was removed, and nothing in the system knows.
+
+So a slice holds no bytes. `lát` is a slice, and `lat` records which of the parent's shards a slice draws from, how much of each, and the predicate that selected it. Reading the slice is reading the parent's Parquet with the predicate applied, which is one line against the Hub, and there is only ever one copy of a row.
+
+```
+$ gao lat -snapshot snapshots/gao-v1.0 slices/gao-edu slices/gao-legal slices/gao-10B
+slice      repo                   shards  documents  share  text     state
+gao-edu    vietnamese-web-text    774     31734000   7.7%   76.2 GB  a view over gao-v1.0
+gao-legal  vietnamese-legal-text  774     7275600    1.8%   17.5 GB  a view over gao-v1.0
+gao-10B    vietnamese-web-text    774     13699800   3.3%   32.9 GB  a view over gao-v1.0
+
+3 slices over gao-v1.0, holding 52709400 of its 412000200 documents.
+None of them holds a byte of its own, and published as copies they would have duplicated 126.5 GB of text.
+Every slice is a view over exactly the snapshot it names, and every one goes to a repo that admits what it carries.
+```
+
+What a view costs is that it can go stale, and the whole design is arranged so that going stale is loud. A slice pins the parent by manifest digest rather than by name, so a snapshot resealed under the same name is caught rather than followed. Pass the head of the lineage and the removal shows up as what it is.
+
+```
+$ gao lat -snapshot snapshots/gao-v1.0 -head snapshots/gao-v1.1 slices/gao-edu
+gao-edu:
+  lat: stale slice: gao-edu is a view over gao-v1.0, which gao-v1.1 has superseded carrying 2 tombstones, so re-derive it before it is published again
+```
+
+It is reported rather than resolved. Re-deriving a slice is one pass of the predicate over the parent and costs nothing worth mentioning, while a check that quietly followed the lineage forward would hide the only event anybody needs to be told about.
+
+The predicate alone is not enough for somebody outside to reproduce a slice, which is why each member also carries a digest over the identities it selects, sorted. A filter that means something slightly different on a different engine still returns rows and the rows still look fine, and the membership digest is what turns that from a thing you hope about into a thing you check. Two engines returning the same rows in a different order agree, because the identities are sorted before they are hashed, and a difference that survives sorting is a real difference in what was selected.
+
+One containment failure survives into a world with no copies, and it is the reason a slice records its license classes rather than inheriting them. Vietnamese Wikipedia lives in a repo of its own so that its share alike term stays contained to it. A slice that pulls those rows into a permissively licensed repo undoes that while copying nothing at all, so the target repo is checked against what the slice says it carries, and a slice pointed at a working repo or at a repo nobody declared is refused outright.
+
+Slices overlap and are meant to: a document can be both educational and legal. `lat.Overlap` says by how much, because the slices do not sum to the corpus and a reader adding them up will otherwise get a number larger than what was published.
+
 ## Where the corpus lives
 
 gao runs on four real machines with 500 GB of free disk between them, and the corpus is 1188 GB of extracted text, 396 GB compressed. It does not fit, and it does not fit by enough that no amount of tidying changes the answer. `gao box` prints the arithmetic.
@@ -1030,6 +1069,7 @@ nhat/        decontamination: the benchmark roster, and what of it the corpus ho
 dau/         the mark: the diacritic restoration task set, built out of the corpus
 dien/        filling in: the cloze proxy the ablation slate is scored by
 cham/        marking: the verifiers the reinforcement learning arms are trained against
+lat/         a slice: release slices as views over a snapshot rather than copies of it
 kho/         the store: records, manifests, snapshots, signing
 vo/          the reject store: dropped documents and why they were dropped
 xoa/         the takedown register: who asked, when, and when it was done

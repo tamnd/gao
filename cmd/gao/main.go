@@ -37,6 +37,7 @@ func commands() []command {
 		{"dien", "fill in: build and score the cloze proxy the ablation slate is run against", runDien},
 		{"gat", "work with acquisition: print the ingest manifest, check it for drift", runGat},
 		{"kho", "work with the store: verify a snapshot, generate a signing key", runKho},
+		{"lat", "a slice: check a release slice is a view over its snapshot rather than a second copy of it", runLat},
 		{"luat", "print the legal position: counsel questions, license determinations, what ships", runLuat},
 		{"mam", "the seed: find hosts nobody handed us a list of", runMam},
 		{"nau", "cook: the training plan, its token budget, its curriculum, and the arithmetic between them", runNau},
