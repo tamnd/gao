@@ -182,6 +182,7 @@ gao chia *.pdf                              # and the routing distribution over 
 
 gao box                                     # the fleet, and the disk budget it implies
 gao box peak -ran 6h disk.jsonl             # what a run actually held on disk, against the ceiling and against the arithmetic
+gao nhip stages.jsonl                       # the beat: what each pipeline stage runs at, with the box on every number
 gao luat                                    # the legal position and what it lets us publish
 ```
 
@@ -1494,6 +1495,35 @@ That trace is invented, since the ingestion has not run. What is not invented is
 
 The refusals are about how the trace was taken rather than about what it says. A peak sampled every five minutes is not a peak, because a worker can take a shard, write it, push it and delete it inside a five minute gap and the watcher will report the quiet either side of it. Thirty seconds is the resolution, and it comes from what allocates rather than from what looked reasonable. A watcher that started late or stopped early missed the start and the flush, which is exactly where a run allocates hardest, so the trace has to cover the run and the run's length is stated separately rather than inferred from the trace, since a trace cannot notice that it stopped. A sample that does not say how many workers were running cannot be read against a prediction that is per worker. And a peak is a fact about one machine, so a trace holding samples from two of them is refused rather than maximized over.
 
+## What each stage runs at, and on which box
+
+The milestone item reads like bookkeeping: publish throughput per stage with the box label attached to every number. It is on the list because a rate without a box is not a rate. Normalization has twenty four cores under it on `gamingpc` and four on `server1`, so the same stage differs by six times between two machines in the same rack, and a plan built from whichever box happened to be free that afternoon is wrong in both directions at once. It says the pipeline is fast enough when it is not, or it books three weeks of a machine that would have taken four days. `gao nhip` is the table with the label on every row.
+
+```
+$ gao nhip stages.jsonl
+stage      box       workers  docs/s  per worker  read     scaling  peak rss  resident  hours
+dedup      server3   8        632     79.0        3 MB/s   88%      2.1 GB    16.8 GB   88
+filter     server3   8        914     114.2       4 MB/s   89%      1.3 GB    10.4 GB   61
+normalize  server3   8        1519    189.9       6 MB/s   96%      1.1 GB    8.8 GB    37
+classify   gamingpc  24       2520    105.0       10 MB/s  93%      2.3 GB    55.2 GB   22
+
+4 stages, costed over 200M documents from the plan estimate.
+One pass of the whole pipeline is 207 hours, which is the sum of the stages rather than the slowest of them, since each one is its own pass over parquet.
+The memory line is 2.5 GB per worker, because server3 has eight cores and 23.5 GB and wants all eight busy.
+
+dedup is the slowest stage at 632 documents a second on server3, so an estimated 200M documents costs 88 hours of the pipeline's 207, with the worst worker holding 2.3 GB of a 2.5 GB ceiling
+```
+
+The box label is necessary and it is not sufficient. Two of those rows say the same thing about their stage and disagree about which number to quote: `classify` is by far the fastest stage in the `docs/s` column and the second slowest per worker, because it is the only one that ran on the machine with twenty four cores in it. The column that travels between boxes is the per worker one, so it sits next to the total rather than instead of it, and a reading that does not say how many workers produced it is refused rather than divided. A rate over an unknown number of cores cannot be planned against a box with a known number, and a run with more workers than the box has threads is oversubscription reported as throughput.
+
+The memory half of the item is per worker and the arithmetic is `server3`'s. It has eight cores, it wants all eight busy, and it has 23 GB, so eight workers at 2.5 GB each is 20 and the rest is the operating system and the page cache that every Parquet read goes through. That is the whole derivation of the 2.5 GB ceiling, and on `server3` it is strictly the tighter of the two lines: nothing has to be rechecked when a stage adds a worker, because eight of them at the ceiling already fit. The whole box check underneath it never fires there and fires immediately on `server1`, which makes it the thing that catches a stage being quietly moved onto the small machine because the big one was busy.
+
+Parallel efficiency is in the table for the same reason the worker count is. All eight cores busy is a claim about efficiency and top is a claim about occupancy, and a stage running at eight workers that returns four workers' worth of throughput satisfies the second while failing the first. So the efficiency is measured against a single worker run of the same stage and reported, rather than divided away into a per core rate that flatters a stage bound by something other than the cores. Above linear is refused too: more throughput than there are cores to produce it means one of the two readings came off a warm cache.
+
+The total is a sum and not a maximum, because these stages are four separate passes over Parquet rather than one streamed graph, and the difference between 207 hours and 88 is the difference between booking a machine for nine days and for four. Every hours figure is linear in the document count, which is a plan estimate off roughly 205 billion tokens until an ingest counts, so the sentence says which of the two it is printing. The rest of the refusals are about how the reading was taken: under ten thousand documents it is the first shard and a warm cache, under a minute it is mostly whatever else the box was doing that minute, a stage measured somewhere other than where it runs is an observation rather than the number the plan is built on, and a reading that claims `server3` with thirty two threads on it is checked against the fleet inventory and told which of the two is lying.
+
+Those numbers are invented. Nothing has run at this scale yet, and the point of the table is that when it does, no number in it will be quotable without the box beside it.
+
 ## Whether the bytes leave faster than they arrive
 
 Everything above says a stage writes a file, pushes it, and deletes it, and that peak disk is therefore small no matter how large the corpus is. That is true of ingestion, where the input is a file already sitting in the store and a worker that falls behind simply takes longer. It is not automatically true of the crawl, which produces bytes at a rate nobody chose and cannot be asked to wait. If the pushing does not keep up with the writing then every other decision in this project is downstream of a disk that filled at three in the morning with nobody watching. `gao don fit` is that question as arithmetic.
@@ -1877,6 +1907,7 @@ nau/         the training plan: the token budget, the curriculum, the arms
 chon/        to choose: the base model criteria, in the order they bind
 hieu/        the effect: what fraction of the hardware a training run turns into gradient
 chim/        to sink: what an FP8 E4M3 step lost to zero, and the checks that catch it
+nhip/        the beat: what each pipeline stage runs at, with the box on every number
 may/         the fleet: the four boxes this actually runs on
 ```
 
