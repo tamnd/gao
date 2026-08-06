@@ -53,6 +53,7 @@ func commands() []command {
 		{"thu", "to try: the forty run ablation slate, fixed before any of it runs, and what came back", runThu},
 		{"version", "print the version", runVersion},
 		{"xay", "mill: find the documents a corpus holds more than one copy of", runXay},
+		{"xep", "to place: the gao-refset draw and rubric, fixed before a document is labeled", runXep},
 		{"xoa", "the takedown register: who asked us to remove something, and how long it took", runXoa},
 		{"help", "print this help", nil}, // handled in main so it can see the table
 	}
