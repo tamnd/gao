@@ -99,6 +99,10 @@ gao kho datasets                            # where processed data is written, a
 gao kho push  part.parquet                  # send one file to the store, skipping what is already there
 gao kho card  -dataset vietnamese-web-text  # generate a repo's dataset card from its snapshot manifest
 
+gao xoa status                              # the takedown register: what is open, and how long each request took
+gao xoa check                               # and whether the file itself holds anything that cannot be true
+gao xoa url -fetched 2026-03-01 URL         # what a filed request does to one URL, at the fetch and at the store
+
 gao box                                     # the fleet, and the disk budget it implies
 gao luat                                    # the legal position and what it lets us publish
 ```
@@ -155,6 +159,18 @@ The shards that held none of the named documents are copied across byte for byte
 Naming a document that is not in the snapshot fails the run and writes nothing, even when every other identity was found. A takedown answered with a signature and a report that quietly covers three documents out of four is the worst outcome available, because everybody involved reads it as done, and an identity that is not there is far more likely to be a mistyped hash than an empty request. Running the same removal twice is not an error: the second run finds the documents already tombstoned and says so, which is what makes this safe to put in a script that might get retried.
 
 What happens to the parent afterwards is a publication decision rather than a storage one. Whether it is withdrawn, kept for the people who already have it, or left up, is a question for whoever answered the request, and this command will not answer it for them.
+
+## Who asked, and how long it took
+
+[LIEN-HE.md](LIEN-HE.md) promises a response inside 72 hours to anybody who asks us to stop crawling their site or to remove what we already have, and it says the real time for each request is recorded in public. [GO-BO.toml](GO-BO.toml) is that record, and `gao xoa` is what reads it. It is a file in the repository rather than a row in a database, because a promise about response times that only the operator can audit is a promise nobody can check.
+
+Publishing an address and honoring what arrives at it are different things, and the difference only shows up on the day somebody writes. So the register binds at two gates rather than one. The gate at the fetch takes effect from the moment the request was made, including on requests nobody has acted on yet, since the alternative is a crawler that keeps hitting a site that asked it to stop for as long as it takes an operator to wake up and edit a file. The gate at the store is a different question with a different answer: a request scoped to stop leaves what was already published alone, an erase takes everything whenever it was fetched, and a document fetched after the request was made goes either way, because that fetch should never have happened and the gap between somebody asking and somebody acting is ours rather than theirs.
+
+The clock starts when the issue was opened and not when we read it. Measuring from the moment somebody noticed is the easiest way to report an excellent response time and the surest way to report nothing at all. The number that describes the promise is the worst case rather than the median, since a median hides exactly the request that broke it.
+
+A takedown for `example.vn` covers `www.example.vn` and `tin.example.vn`, because that is what somebody filing one means by their site. It does not cover `notexample.vn`, which a plain string suffix would take, and taking it would drop a stranger's site out of the corpus on the strength of a request that was never about them.
+
+The register is empty today, and `gao xoa status` reports that nothing has been measured rather than a perfect record. A path nobody has used is a path nobody has tested, and a report that prints a median of zero hours and everything honored describes a system that has never done anything as one that has never failed. CI runs `gao xoa check` and `gao xoa status` on every change, so a row with the dates the wrong way round and a request past the response time both fail the build.
 
 ## What goes in
 
@@ -833,6 +849,7 @@ che/         covering: Vietnamese personal data, found and tagged over
 nhat/        decontamination: the benchmark roster, and what of it the corpus holds
 kho/         the store: records, manifests, snapshots, signing
 vo/          the reject store: dropped documents and why they were dropped
+xoa/         the takedown register: who asked, when, and when it was done
 doc/         schema and contracts shared across stages
 luat/        the legal position: license determinations, publication posture
 may/         the fleet: the four boxes this actually runs on

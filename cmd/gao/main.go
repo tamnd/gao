@@ -43,6 +43,7 @@ func commands() []command {
 		{"soi", "hold a reading up to the light: measure what a machine read against what the page says", runSoi},
 		{"version", "print the version", runVersion},
 		{"xay", "mill: find the documents a corpus holds more than one copy of", runXay},
+		{"xoa", "the takedown register: who asked us to remove something, and how long it took", runXoa},
 		{"help", "print this help", nil}, // handled in main so it can see the table
 	}
 }

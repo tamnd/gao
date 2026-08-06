@@ -123,15 +123,33 @@ jobs:
           path: cover.out
           retention-days: 7
 
+  takedown:
+    name: takedown register
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+          check-latest: true
+      # LIEN-HE.md promises a response inside 72 hours and says the real time
+      # for each request is public. This is the job that keeps that from being
+      # a sentence in a file nobody reads: check fails on a row that cannot be
+      # true, and status fails on a request that is past the promise.
+      - name: The register reads
+        run: go run ./cmd/gao xoa check
+      - name: Nothing is past the response time we promised
+        run: go run ./cmd/gao xoa status
+
   ci-complete:
     name: ci-complete
     if: always()
-    needs: [build-test, tidy, vet, lint, race, coverage]
+    needs: [build-test, tidy, vet, lint, race, coverage, takedown]
     runs-on: ubuntu-latest
     steps:
       - name: gate on every job
         run: |
-          results="${{ needs.build-test.result }} ${{ needs.tidy.result }} ${{ needs.vet.result }} ${{ needs.lint.result }} ${{ needs.race.result }} ${{ needs.coverage.result }}"
+          results="${{ needs.build-test.result }} ${{ needs.tidy.result }} ${{ needs.vet.result }} ${{ needs.lint.result }} ${{ needs.race.result }} ${{ needs.coverage.result }} ${{ needs.takedown.result }}"
           echo "results: $results"
           for r in $results; do
             if [ "$r" != "success" ]; then
