@@ -74,6 +74,7 @@ gao mam oai < repositories.txt              # which university repositories will
 gao mam oai -links -from 2024-01-01 BASE    # and the URLs in one, ready for the frontier
 
 gao suat yield.jsonl                        # a rate: net yield per target class, read while the crawl runs
+gao cho hosts.jsonl                         # to wait: what the crawl left between requests to one host, on a real box under load
 gao suat -json yield.jsonl                  # the same reading, for whatever watches the crawl overnight
 gao suat -next 100000000 yield.jsonl        # what the per class numbers say to do with the next hundred million fetches
 
@@ -1851,6 +1852,34 @@ Nothing is ever cut to zero. Every class still in the crawl keeps at least a twe
 
 And a division nobody can act on is refused rather than printed with a caveat. One checkpoint means every number available is cumulative, which is a division made on history. A class with fewer than a quarter of a million fetches behind it in the window is a class whose share turns on which threads the crawler happened to reach. A classifier that left more than a quarter of the crawl in `other` means this is dividing three quarters of a crawl and calling it the whole one. Each of those exits 1 with the sentence rather than a number.
 
+### What the crawl actually left between requests
+
+A crawl delay is configured once, in a file, in seconds. Between that number and the wire there is a scheduler, a connection pool, a retry path, a redirect that lands on the same site under a different name, and a DNS answer with two addresses in it. Any of them can put two requests on the wire a hundred milliseconds apart while the configuration still reads four seconds. Nothing in the crawl notices, because the crawl is watching throughput and the thing that went wrong is a gap.
+
+So the checklist item does not ask for the delay to be configured, it asks for per host concurrency and crawl delay verified on the real box under real load rather than in a simulator, and those are two separate requirements. A scheduler that keeps its promises with one fetch in flight is not evidence about the same scheduler with four hundred of them competing for four cores. `gao cho` reads the gaps back off a run and refuses a reading taken on an idle box instead of reporting it with a note.
+
+```
+$ gao cho hosts.jsonl
+host                box      fetches  watched  delay  robots  shortest gap  mean gap  of required  in flight  429 and 503
+thuvienphapluat.vn  server1  178      60m      20.0s  none    20.1s         20.2s     101%         1 of 1     0%
+tuoitre.vn          server1  688      60m      4.0s   5.0s    5.1s          5.2s      102%         2 of 2     0.3%
+diendan.hocmai.vn   server1  351      60m      10.0s  10.0s   10.2s         10.2s     102%         1 of 1     0.3%
+vnexpress.net       server1  842      60m      4.0s   none    4.1s          4.3s      103%         2 of 2     0.4%
+
+gao-crawl-2026-09, 4 hosts watched under 412 fetches in flight at the lowest.
+A reading needs 100 fetches in flight box wide to have been taken under load, since a delay held by a scheduler with nothing else to do is not the delay it will hold.
+The delay that binds is the larger of ours and the one robots.txt asks for, and the shortest gap is what it is measured against rather than the mean.
+1 host asked for a longer gap than the crawl's own delay, and what they got is the number they asked for.
+
+the crawl held its delay on 4 hosts under 412 fetches in flight on server1, and the closest it came was 20.10s on thuvienphapluat.vn against the 20s that host was owed.
+```
+
+That block is invented, since the crawl has not started and there is nothing yet to read the gaps off. The shape of it is the argument. The column that decides the verdict is the shortest gap and not the mean, because the mean is what hides this failure: a crawl that put two requests 300 milliseconds apart and then waited nine seconds in a queue reports a mean of 4.9 seconds against a configured 4 and looks polite in every direction except the one that matters to the site.
+
+Four things are checked and they fail differently. The shortest gap against the delay that binds, which is the crawl doing what it was told. The delay we configured against the one robots.txt asked for, since the larger of those two is what has to be held and it is often not ours. The peak requests in flight to one host against the cap, because a crawl can hold every gap on every connection and still have six connections open, which is the same load arriving in parallel instead of in sequence. And the share of answers that came back 429 or 503, which is the site's own opinion of our crawl delay, and it outranks the number we read out of its robots file.
+
+Robots asking for more than we configured is deliberately not a fault. The configured delay is a floor and robots is read per host while the crawl runs, so a host that asks for ten seconds and gets them is the system working. What is a fault is a host that asked for ten and got four, and that is caught by the same column, since the delay that binds is the one the margin is computed against.
+
 ## Keeping the forum and throwing the page away
 
 The table above says forums are the biggest class in the crawl and the reason the crawl exists at all, and there is one thing that quietly turns that into nothing. Generic article extraction works by finding the densest run of text on a page and keeping it. That is the right rule for a news article, which is one block of prose in a frame of furniture. A forum thread is forty small blocks of prose separated by furniture, none of them dense enough to win, and the densest single run on a thread page is very often the sidebar listing the thirty most recent threads. Point a generic extractor at a forum and it returns the navigation, drops the conversation, and reports success, on every page.
@@ -1959,6 +1988,7 @@ xoa/         the takedown register: who asked, when, and when it was done
 doc/         schema and contracts shared across stages
 luat/        the legal position: license determinations, publication posture
 nau/         the training plan: the token budget, the curriculum, the arms
+cho/         to wait: what a crawl left between requests to one host, read off a run under load
 chon/        to choose: the base model criteria, in the order they bind
 ghep/        to graft: what expanding a base vocabulary bought, and what the run paid for it
 hieu/        the effect: what fraction of the hardware a training run turns into gradient
