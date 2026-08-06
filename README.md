@@ -82,6 +82,10 @@ gao boc thread.html                         # to husk: the conversation out of a
 gao boc -text -furniture thread.html        # the posts, and the repeated lines that were dropped to get them
 gao boc -json pages/*.html                  # over a crawl, where the number that matters is how many held a thread
 
+gao don fit                                 # clear away: whether bytes leave the box faster than the crawl writes them
+gao don fit -uplink 1500000                 # and what a slower link does, which is give the disk a deadline
+gao don read rotation.jsonl                 # what the rotation did, and whether it deleted anything unconfirmed
+
 gao phoi       doc.txt                      # dry: normalize a document and write it out
 gao phoi -report ingest/*.txt               # what normalizing did, per document, with a total
 gao phoi -report -total parts/*.parquet     # and over parts, where the total is the part anybody reads
@@ -1252,6 +1256,33 @@ The columns are the contract, so they are written out in `kho/parquet.go` rather
 
 A column list is not the same as a schema somebody can use, so [SCHEMA.md](SCHEMA.md) is every column with its type, the stage that fills it, and one sentence about what it holds. It is generated from the type that writes the files, by `gao kho schema -md`, and a test fails when the file in the repository has fallen behind. Half of that is free and the other half is the part that matters: the names and the types are read off the writer and cannot drift, and the meanings are written by hand beside it, so a column added without a sentence explaining it fails the build rather than shipping as a header nobody outside this repository can interpret. The page also says the things a reader would otherwise have to infer from the data and get wrong. Nothing is nullable, so a field no stage filled in arrives as an empty string or a zero rather than as a null, which is a real trade and is stated rather than discovered. The spans in `pii_spans` are there at redaction levels 0 and 1 and gone at level 2, because publishing the offsets of what was removed alongside the text it was removed from hands most of it back.
 
+## Whether the bytes leave faster than they arrive
+
+Everything above says a stage writes a file, pushes it, and deletes it, and that peak disk is therefore small no matter how large the corpus is. That is true of ingestion, where the input is a file already sitting in the store and a worker that falls behind simply takes longer. It is not automatically true of the crawl, which produces bytes at a rate nobody chose and cannot be asked to wait. If the pushing does not keep up with the writing then every other decision in this project is downstream of a disk that filled at three in the morning with nobody watching. `gao don fit` is that question as arithmetic.
+
+```
+box      server1, 118.5 GB free, 20.0 GB reserved
+scratch  98.5 GB, and the crawl stops fetching at 78.8 GB
+fill     5.2 MB per second, at 200 fetches of 26.0 kB
+uplink   12.5 MB per second
+volume   1.0 GB, closing every 3 minutes and pushing in 80 seconds
+confirm  5 minutes, during which nothing may be deleted
+held     3.0 GB, which is the open volume and 2 in flight
+outage   4.2 hours of store outage before fetching has to stop
+
+server1 holds 3.0 GB in steady state against a 78.8 GB mark, and the store can be unreachable for 4.2 hours before fetching has to stop
+```
+
+Three numbers decide it, and the first is the only one people usually check. The crawl fetches 200 pages a second and each one adds about 26 kB to the archive, so the disk fills at 5.2 MB per second against an uplink that clears 12.5 MB per second. That comparison is necessary and it is not sufficient, which is where capacity plans go wrong. The second number is the open file. A WARC being written cannot be pushed, so at any moment there is a volume on the disk that is not a candidate for going anywhere, and the size of it is a choice: a smaller volume rotates sooner and costs more requests, a larger one holds more of the box hostage. The third is the confirmation window. An upload returning success is not the store telling you it holds those bytes, and between the two there is a gap during which the local copy is the only copy that is known to exist.
+
+Steady state is those three added up rather than the first one alone. It is the open volume, plus everything written while the previous volume was uploading, plus everything written while the store was being asked whether it has it. On `server1` that is 3.0 GB, which is the open gigabyte and two more in flight behind it. The number is small, and it is small because the uplink is fast, not because the design is careful. Slow the link to 1.5 MB per second and the same command answers differently: the backlog goes to 7.0 GB and the crawl does not start at all, because the disk reaches the mark in 5.9 hours and no cleanup pass recovers a rate that is losing.
+
+The mark is 80% of scratch, and reaching it stops fetching rather than starting a delete. That is the rule the whole package exists to protect. A disk filling up is an incident, and the tempting response to an incident is to free space, and the only space there is to free is bytes nobody has confirmed are anywhere else. Pausing the crawl is recoverable in every case and losing an hour of fetching is a cost anybody would pay. Deleting an unconfirmed volume is recoverable in no case, and the worst part of it is that it works: the disk goes down, the crawl carries on, and the missing hour is discovered a month later when a shard count comes up short.
+
+The last line is the one worth carrying around. `server1` tolerates 4.2 hours of the store being unreachable before fetching has to stop, which is a real operational fact stated in hours rather than a vague sense that there is some slack. It is also the arithmetic behind the checklist item that said 111 GB of free disk is a few hours of fetching, which was written as an assertion and is now a thing the program computes from the inventory. Every input can be argued with on the command line, and `-box server2` gets the answer the fleet was always going to give: 8 GB free is less than the reserve, so there is no scratch at all and the plan fails before the first file is even closed.
+
+Arithmetic is a plan, and a plan is not evidence. A crawl that ran for six weeks either deleted only bytes the store had confirmed or it did not, and afterwards the two are indistinguishable from the disk, because in both cases the file is gone. The only place that difference survives is what was written down while it happened, so the rotation logs one line per file per step and `gao don read` folds it back up. Four states, in the order they happen: resident, pushed, verified, reclaimed. Reaching reclaimed without having been seen at verified is the fault the package was written to catch, and it is reported as the sentence a person needs rather than as a count, naming the file and how much crawl is now in a state nobody can resolve. Three others come with it: a verification with no upload behind it, which passed against whatever was already at that path, a file reported with two different hashes, which is the one case where the upload succeeded and the bytes are still wrong, and a file that went somewhere without recording where. The reader refuses nothing and returns everything, because a log with a fault in it is a log whose other lines are still the only record of what happened.
+
 ## Measuring a corpus that is not on the box
 
 Pushing each part and deleting it is what lets four machines process a corpus several times their disk, and the bill for it arrives the moment somebody asks a question about the whole thing. The question that matters most is how much of the five sources is the same document twice. FineWeb2 and GlotCC are both extracted from Common Crawl, so some of the overlap is not in doubt, and how much of it there is decides whether the corpus is the sum of its sources or a good deal less. Nobody publishing a number like that should be estimating it, and downloading 900 GB back to count it properly is not available on this fleet.
@@ -1572,6 +1603,7 @@ bien/        the frontier: canonical URLs, shapes, what a host has earned, and w
 mam/         the seed: hosts and repositories nobody handed us a list of
 suat/        a rate: net yield per target class, read while the crawl is still running
 boc/         to husk: the posts out of a forum thread, and the page they were wrapped in left behind
+don/         clearing away: whether the crawl gets its bytes off the box faster than it writes them
 dem/         counting: the tokenizer that defines a gao token, and the counts
 phoi/        normalization: Unicode, orthography, encoding repair
 sang/        filtering: language ID, heuristics, quality classification
