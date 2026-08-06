@@ -3,6 +3,8 @@ package main
 import (
 	"bytes"
 	"errors"
+	"net/http"
+	"net/http/httptest"
 	"strings"
 	"testing"
 
@@ -343,5 +345,99 @@ func TestGatAgentIsInTheSubcommandList(t *testing.T) {
 	}
 	if !strings.Contains(out, "agent") {
 		t.Errorf("agent is not in the gat subcommand list:\n%s", out)
+	}
+}
+
+// gao gat fetch is the crawler doing one page, and what it has to print is the
+// part of that a person cannot see in the page itself.
+func fetchSite(t *testing.T, routes map[string]http.HandlerFunc) *httptest.Server {
+	t.Helper()
+	s := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if h, ok := routes[r.URL.Path]; ok {
+			h(w, r)
+			return
+		}
+		http.NotFound(w, r)
+	}))
+	t.Cleanup(s.Close)
+	return s
+}
+
+func html(body string) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/html; charset=utf-8")
+		_, _ = w.Write([]byte(body))
+	}
+}
+
+func TestGatFetchPrintsTheDecisionAndNotJustThePage(t *testing.T) {
+	s := fetchSite(t, map[string]http.HandlerFunc{
+		"/robots.txt": html("User-agent: *\nAllow: /\n"),
+		"/bai-viet":   html("<p>xin chào</p>"),
+	})
+
+	out, errOut, code := exec(t, "gat", "fetch", "-delay", "1ms", s.URL+"/bai-viet")
+	if code != 0 {
+		t.Fatalf("gao gat fetch: exit %d\n%s\n%s", code, out, errOut)
+	}
+	for _, want := range []string{"robots", "status", "200", "mining", "next"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("gao gat fetch does not print %q:\n%s", want, out)
+		}
+	}
+	// The page itself is not the output. A summary that quietly included the
+	// body would be a summary nobody could read.
+	if strings.Contains(out, "xin chào") {
+		t.Errorf("gao gat fetch printed the page instead of what happened to it:\n%s", out)
+	}
+}
+
+func TestGatFetchRefusesWhatRobotsRefusesAndSaysWhy(t *testing.T) {
+	s := fetchSite(t, map[string]http.HandlerFunc{
+		"/robots.txt":       html("User-agent: gaobot\nDisallow: /thanh-vien/\n"),
+		"/thanh-vien/nguoi": html("<p>ho so</p>"),
+	})
+
+	out, errOut, code := exec(t, "gat", "fetch", "-delay", "1ms", s.URL+"/thanh-vien/nguoi")
+	if code != 1 {
+		t.Fatalf("a disallowed URL: exit %d, want 1\n%s\n%s", code, out, errOut)
+	}
+	if !strings.Contains(errOut, "robots") {
+		t.Errorf("the refusal does not say it came from robots.txt:\n%s", errOut)
+	}
+	if !strings.Contains(errOut, "Disallow: /thanh-vien/") {
+		t.Errorf("the refusal does not name the rule that caused it:\n%s", errOut)
+	}
+}
+
+func TestGatFetchWithBodyWritesTheBytesAndNothingElse(t *testing.T) {
+	const page = "<p>xin chào</p>"
+	s := fetchSite(t, map[string]http.HandlerFunc{
+		"/robots.txt": html("User-agent: *\nAllow: /\n"),
+		"/bai-viet":   html(page),
+	})
+
+	out, _, code := exec(t, "gat", "fetch", "-delay", "1ms", "-body", s.URL+"/bai-viet")
+	if code != 0 {
+		t.Fatalf("gao gat fetch -body: exit %d", code)
+	}
+	if out != page {
+		t.Errorf("gao gat fetch -body wrote %q, want %q", out, page)
+	}
+}
+
+func TestGatFetchNeedsSomethingToFetch(t *testing.T) {
+	if _, _, code := exec(t, "gat", "fetch"); code != 2 {
+		t.Errorf("gao gat fetch with no URL: exit %d, want 2", code)
+	}
+}
+
+func TestGatFetchIsInTheSubcommandList(t *testing.T) {
+	out, _, code := exec(t, "gat", "help")
+	if code != 0 {
+		t.Fatalf("gao gat help: exit %d", code)
+	}
+	if !strings.Contains(out, "fetch") {
+		t.Errorf("fetch is not in the gat subcommand list:\n%s", out)
 	}
 }
