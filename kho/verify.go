@@ -21,6 +21,12 @@ type Report struct {
 	Documents int64
 	Bytes     int64
 
+	// Publishable is the part of the snapshot that may be redistributed, which
+	// is a smaller number than Documents and is the one a reader downloading
+	// this corpus actually gets. It is zero when the snapshot carries no
+	// license breakdown.
+	Publishable License
+
 	// Failures lists the shards whose bytes did not match, by name.
 	Failures []string
 }
@@ -83,6 +89,8 @@ func Verify(dir string, opts ...VerifyOption) (*Report, error) {
 		Signer:    m.Signature.PublicKey,
 		Shards:    len(m.Shards),
 		Documents: m.Counts.Documents,
+
+		Publishable: m.Counts.Publishable(),
 	}
 
 	if err := m.check(); err != nil {

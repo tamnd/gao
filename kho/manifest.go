@@ -75,6 +75,67 @@ type Counts struct {
 	// BySource and ByRejectReason are the breakdowns every release note prints.
 	BySource       map[string]int64 `toml:"by_source,omitempty"`
 	ByRejectReason map[string]int64 `toml:"by_reject_reason,omitempty"`
+
+	// Licenses is the snapshot broken down by what may be redistributed, one
+	// row per class, in class order.
+	//
+	// It is here rather than derived at publication time because the total and
+	// the shippable subset are two different numbers and a corpus that quotes
+	// only the first has told you the size of something you cannot download.
+	// The split is a property of the snapshot: it is fixed when the documents
+	// are, it does not change when somebody builds a release out of them, and
+	// it is covered by the signature so it cannot be restated afterwards.
+	Licenses []License `toml:"license,omitempty"`
+}
+
+// License is the part of a snapshot that carries one redistribution status.
+//
+// Three numbers rather than one because the three are quoted in three different
+// places and they do not move together. A corpus size is quoted in tokens, a
+// download size is quoted in bytes, and a document count is what a card's size
+// category is computed from, and a restricted slice can be a tenth of the
+// documents and a third of the tokens.
+type License struct {
+	Class doc.LicenseClass `toml:"class"`
+
+	Documents int64 `toml:"documents"`
+	Bytes     int64 `toml:"bytes"`
+	Tokens    int64 `toml:"tokens"`
+}
+
+// Add sums two rows, for the totals that span classes.
+func (l License) Add(o License) License {
+	l.Documents += o.Documents
+	l.Bytes += o.Bytes
+	l.Tokens += o.Tokens
+	return l
+}
+
+// Publishable is the part of the snapshot that may appear in a published
+// artifact, which is the open and permissive-attribution classes and nothing
+// else. It is the number a release note has to state next to the total rather
+// than instead of it.
+func (c Counts) Publishable() License {
+	var out License
+	for _, l := range c.Licenses {
+		if l.Class.Publishable() {
+			out = out.Add(l)
+		}
+	}
+	return out
+}
+
+// Withheld is the rest: processed, counted, and not passed on. A withheld
+// document is still counted, because a number that quietly disappears reads as
+// a number that was never there.
+func (c Counts) Withheld() License {
+	var out License
+	for _, l := range c.Licenses {
+		if !l.Class.Publishable() {
+			out = out.Add(l)
+		}
+	}
+	return out
 }
 
 // Shard is one shard file in the snapshot.
@@ -244,6 +305,13 @@ func (m *Manifest) Digest() doc.Hash {
 	num(c.Rejected)
 	table(c.BySource)
 	table(c.ByRejectReason)
+	num(int64(len(c.Licenses)))
+	for _, l := range c.Licenses {
+		num(int64(l.Class))
+		num(l.Documents)
+		num(l.Bytes)
+		num(l.Tokens)
+	}
 
 	num(int64(len(m.Shards)))
 	for _, s := range m.Shards {
@@ -374,6 +442,7 @@ func (m *Manifest) check() error {
 		problems = append(problems, fmt.Errorf("natural %d plus synthetic %d is not the document count %d",
 			m.Counts.Natural, m.Counts.Synthetic, m.Counts.Documents))
 	}
+	problems = append(problems, m.Counts.checkLicenses()...)
 	if m.Counts.Tokens > 0 && m.Counts.Tokenizer == "" {
 		problems = append(problems, errors.New("a token count without a tokenizer is not a token count"))
 	}
@@ -435,4 +504,47 @@ func hashFile(path string) (doc.Hash, int64, error) {
 		return doc.Hash{}, 0, err
 	}
 	return doc.Hash(d.Sum(nil)[:doc.HashSize]), n, nil
+}
+
+// checkLicenses is the rule that keeps the publishable number honest.
+//
+// The breakdown is optional, because a snapshot from a stage that has not made
+// the determination yet has nothing to break down and an empty list says so. If
+// it is there it has to be complete, because a partial breakdown produces a
+// publishable count that is smaller than the truth for no stated reason, and
+// nobody reading a release note can tell which of those two it is looking at.
+func (c Counts) checkLicenses() []error {
+	if len(c.Licenses) == 0 {
+		return nil
+	}
+
+	var problems []error
+	seen := make(map[doc.LicenseClass]bool, len(c.Licenses))
+	var total License
+	for _, l := range c.Licenses {
+		switch {
+		case !l.Class.Valid():
+			problems = append(problems, fmt.Errorf("the license breakdown has a row for %s, which is not a class", l.Class))
+		case seen[l.Class]:
+			problems = append(problems, fmt.Errorf("the license breakdown has two rows for %s", l.Class))
+		case l.Class == doc.LicenseUnknown && l.Documents > 0:
+			problems = append(problems, fmt.Errorf("%d documents have no license determination, and the ingest contract does not accept one", l.Documents))
+		}
+		seen[l.Class] = true
+		total = total.Add(l)
+	}
+
+	if total.Documents != c.Documents {
+		problems = append(problems, fmt.Errorf("the license breakdown adds up to %d documents and the snapshot holds %d",
+			total.Documents, c.Documents))
+	}
+	if total.Bytes != c.Bytes {
+		problems = append(problems, fmt.Errorf("the license breakdown adds up to %d bytes of text and the counts block says %d",
+			total.Bytes, c.Bytes))
+	}
+	if c.Tokens > 0 && total.Tokens != c.Tokens {
+		problems = append(problems, fmt.Errorf("the license breakdown adds up to %d tokens and the counts block says %d",
+			total.Tokens, c.Tokens))
+	}
+	return problems
 }
