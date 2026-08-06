@@ -36,6 +36,7 @@ func commands() []command {
 		{"dau", "the mark: build and score the diacritic restoration task set out of the corpus", runDau},
 		{"dem", "count: fetch the tokenizer that defines a gao token, print what an ingest counted", runDem},
 		{"dien", "fill in: build and score the cloze proxy the ablation slate is run against", runDien},
+		{"don", "clear away: whether the crawl gets its bytes off the box faster than it writes them", runDon},
 		{"gat", "work with acquisition: print the ingest manifest, check it for drift", runGat},
 		{"gieo", "to sow: the generator card for gao-synth, and the recipe it is written against", runGieo},
 		{"kho", "work with the store: verify a snapshot, generate a signing key", runKho},
