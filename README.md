@@ -119,6 +119,7 @@ gao dien validate recipes.json              # whether the proxy agrees with full
 gao cham roster                             # mark: the seven specialists, and which of their verifiers are written
 gao cham dau -rollouts rollouts.jsonl parts/*.parquet  # grade restoration rollouts against the pages they came from
 gao cham trich -register instruments.jsonl rollouts.jsonl  # grade legal citations against the instruments that exist
+gao giu retention.jsonl                     # to keep: what the distillation kept of each specialist, against merging the same checkpoints
 gao ngai items                              # to hesitate: vi-overrefusal, a line per topic and the line each one draws
 gao ngai items -pairs                       # every pair verbatim, which is the only way to check where that line falls
 gao ngai grade replies.jsonl                # both numbers off one set, and how often a pair was treated the same way
@@ -1049,6 +1050,40 @@ The rule underneath all of it is that a verifier has to be beatable only by doin
 
 Every verifier runs on CPU, without a network, and returns the same verdict for the same two strings every time. Seven arms sampling in parallel each produce rollouts faster than one GPU can score them, so a verifier that wants a card becomes the bottleneck it exists to feed, and the interface takes no context and no client to make that hard to get wrong. Grading runs anywhere on the fleet. The sampling that produces the rollouts is the part that needs `gamingpc`.
 
+### What the distillation kept of each specialist
+
+Seven specialists trained in parallel are seven models, and what ships is one. The distillation step is what turns them back into a single set of weights, and P09-2 says it recovers 90% or more of each specialist's gain while averaging the same seven checkpoints in weight space recovers 70% or less. Both halves have to hold. Distillation keeping 90% is not a result on its own, since the thing it is supposed to beat costs an afternoon and no GPU hours, and if merging keeps 88% then the honest reading is that seven training runs bought two points.
+
+The word in the milestone is individually, and that is the whole of why this command exists. Retention has a mean, everybody reports the mean, and the mean is the one number nobody can act on. Six specialists at 93% and one at 65% average 87%, which reads as a good result, and the model behind it answers legal questions with citations most of the way back to where it started.
+
+```
+$ gao giu retention.jsonl
+specialist      benchmark        gain   kept  merging  runs  spread
+legal-citation  vi-legal-qa      +13.5  65%   34%      5     1.1
+summary         vi-xlsum         +8.7   90%   63%      5     0.5
+dialect         vi-dialect-nlu   +12.8  90%   54%      5     0.8
+math            vi-gsm8k         +18.8  91%   61%      5     0.9
+code            vi-humaneval     +14.6  91%   61%      5     1.3
+ocr-correction  ocr-eval-vi      +15.5  92%   62%      5     0.7
+diacritics      vlsp-diacritics  +17.8  94%   59%      5     0.6
+
+mean                                    87%   56%
+
+gao-8b-distilled, distilled from 7 specialists.
+P09-2 asks for 90% kept by distillation and 70% or less by averaging the same checkpoints.
+The mean of 87% is 22 points above legal-citation, so it is not a number to quote on its own.
+
+legal-citation kept 65% of its gain on vi-legal-qa against a floor of 90%, and the panel averages 87%, which is the arithmetic of a model that works and a model that does not.
+```
+
+Those numbers are invented, since none of the seven have been trained. The shape is not. Six arms carrying and one dropping is the ordinary outcome of distilling several specialists into a model that has to serve all of them, and it is the outcome the mean is worst at describing. So the table is sorted worst first, the verdict is written against the bottom line rather than the average, and when the mean sits more than twenty points above the worst the report says so on the line where it prints the mean.
+
+Retention is a ratio of two differences, distilled minus base over specialist minus base, which means it carries the evaluation's own noise twice. A specialist that gained 1.5 points on a benchmark whose five runs vary by 1.0 has a retention number that is mostly the benchmark, and it will read as 130% one week and 40% the next while nothing about the model changed. Those are refused rather than reported, along with a specialist evaluated once, since a single run has no spread to read a gain against.
+
+Two more things get refused, both because they are the interesting failures rather than the obvious ones. A distilled model scoring above its own teacher is not a triumph, and the two explanations for it are a specialist nobody trained to convergence and a benchmark that leaked into the distillation data, so it stops rather than being written down as 108%. A panel of five specialists is not a panel, because the two nobody got round to evaluating are not a random two, and a retention averaged over the arms that worked is a retention over the arms that worked.
+
+All of it runs on `gamingpc`, and it has to, since a retention is a difference between two scores and two scores measured on different cards differ by the cards. The panel refuses to combine them.
+
 ## Whether the model will talk about Vietnam
 
 Ask a model tuned on English safety data about land reform in the north, about the boat people, about the 1979 border war, about what a folk remedy is for, and a large share of the time it declines. Every one of those refusals looks responsible on its own. Together they are a model that will not discuss the country it was built for, and nothing in a harm refusal score catches it, because refusing more scores better on that number. The model looks safer the worse it gets.
@@ -1761,6 +1796,7 @@ dien/        filling in: the cloze proxy the ablation slate is scored by
 thu/         to try: the forty run ablation slate, and the results read against it
 tin/         to believe: whether the cloze proxy at 1.4B orders recipes the way the real benchmark does at 8B
 cham/        marking: the verifiers the reinforcement learning arms are trained against
+giu/         to keep: what the distillation kept of each specialist, against merging the same checkpoints
 ngai/        to hesitate: vi-overrefusal, the paired set both refusal numbers come off
 theo/        to follow: vi-adherence, whether the answer stays in the language it was asked in
 kim/         the needle: vi-needle, whether a long context in Vietnamese is read or skimmed
