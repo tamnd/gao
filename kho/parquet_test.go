@@ -86,6 +86,7 @@ func TestThePublishedColumnsAreTheOnesWrittenDown(t *testing.T) {
 		"robots_hash",
 		"tdm_signals.key_value.key",
 		"tdm_signals.key_value.value",
+		"consent",
 		"lang",
 		"lang_score",
 		"diacritics",
@@ -173,6 +174,7 @@ func parquetNames(t reflect.Type) []string {
 func TestADocumentSurvivesTheRoundTrip(t *testing.T) {
 	in := sample(7)
 	in.TDMSignals = map[string]string{"tdmrep": "0"}
+	in.Consent = doc.ConsentOpen
 	in.Heuristics = map[string]float32{"mean_line_length": 63.5}
 	in.ContamFlags = []string{"vmlu"}
 	in.UpstreamFields = map[string]string{"bucket": "9"}
@@ -269,6 +271,50 @@ func TestADocumentOfAClassTheRepoDoesNotCarryIsRefused(t *testing.T) {
 		if !strings.Contains(err.Error(), want) {
 			t.Errorf("the refusal does not mention %q: %v", want, err)
 		}
+	}
+}
+
+// A page that reserved itself does not go into a published text repo, whatever
+// its license says. The two are separate questions and a permissive license is
+// not an answer to the second one.
+func TestAPageThatReservedItselfIsRefusedByAPublishedTextRepo(t *testing.T) {
+	for _, said := range []doc.Consent{doc.ConsentNoTrain, doc.ConsentNoIndex} {
+		t.Run(string(said), func(t *testing.T) {
+			in := sample(1)
+			in.LicenseClass = doc.LicenseOpen
+			in.Consent = said
+
+			var buf bytes.Buffer
+			w := NewParquetWriter(&buf, textDataset(t), stamp)
+			err := w.Append(in)
+			if !errors.Is(err, ErrNotAdmitted) {
+				t.Fatalf("appending a %s document to a public text repo gave %v, want ErrNotAdmitted", said, err)
+			}
+			if !strings.Contains(err.Error(), string(said)) {
+				t.Errorf("the refusal does not say what the page said: %v", err)
+			}
+		})
+	}
+}
+
+// The working repos take it. Processing material is not publishing it, and a
+// reserved document that cannot be written anywhere is a document that gets
+// dropped on the floor instead of counted.
+func TestAWorkingRepoTakesAPageThatReservedItself(t *testing.T) {
+	staging, ok := Lookup("vietnamese-text-staging")
+	if !ok {
+		t.Fatal("vietnamese-text-staging is not in the dataset table")
+	}
+	if staging.Public() {
+		t.Fatal("vietnamese-text-staging is published, and this test needs the repo that is not")
+	}
+	in := sample(1)
+	in.Consent = doc.ConsentNoTrain
+
+	var buf bytes.Buffer
+	w := NewParquetWriter(&buf, staging, stamp)
+	if err := w.Append(in); err != nil {
+		t.Fatalf("a working repo refused a reserved document: %v", err)
 	}
 }
 

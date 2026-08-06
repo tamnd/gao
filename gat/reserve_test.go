@@ -1,10 +1,12 @@
 package gat
 
 import (
+	"maps"
 	"net/http"
 	"slices"
 	"testing"
 
+	"github.com/tamnd/gao/doc"
 	"github.com/tamnd/gao/vo"
 )
 
@@ -26,7 +28,7 @@ func TestAPageThatSaysNothingReservesNothing(t *testing.T) {
 	if r.Reserved() {
 		t.Errorf("a response with no reservation on it came back as %+v", r)
 	}
-	if r.Consent() != "open" {
+	if r.Consent() != doc.ConsentOpen {
 		t.Errorf("the consent state is %q and it should be open", r.Consent())
 	}
 	if len(r.Said) != 0 {
@@ -40,17 +42,17 @@ func TestTheHeaderIsRead(t *testing.T) {
 		line    string
 		index   bool
 		train   bool
-		consent string
+		consent doc.Consent
 	}{
-		{"noindex", "noindex", true, false, "no-index"},
-		{"none is both", "none", true, false, "no-index"},
-		{"noai", "noai", false, true, "no-train"},
-		{"noimageai", "noimageai", false, true, "no-train"},
-		{"a list", "noarchive, nosnippet, noai", false, true, "no-train"},
-		{"capitals", "NoIndex", true, false, "no-index"},
-		{"one for us by name", agent + ": noai", false, true, "no-train"},
-		{"one for somebody else", "googlebot: noindex", false, false, "open"},
-		{"nothing we care about", "nofollow, noarchive", false, false, "open"},
+		{"noindex", "noindex", true, false, doc.ConsentNoIndex},
+		{"none is both", "none", true, false, doc.ConsentNoIndex},
+		{"noai", "noai", false, true, doc.ConsentNoTrain},
+		{"noimageai", "noimageai", false, true, doc.ConsentNoTrain},
+		{"a list", "noarchive, nosnippet, noai", false, true, doc.ConsentNoTrain},
+		{"capitals", "NoIndex", true, false, doc.ConsentNoIndex},
+		{"one for us by name", agent + ": noai", false, true, doc.ConsentNoTrain},
+		{"one for somebody else", "googlebot: noindex", false, false, doc.ConsentOpen},
+		{"nothing we care about", "nofollow, noarchive", false, false, doc.ConsentOpen},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
 			r := ReadHeaders(headers("X-Robots-Tag", tt.line), agent)
@@ -280,5 +282,66 @@ func TestAReservationIsHonoredAndSaysWhatInItsOwnWords(t *testing.T) {
 				t.Errorf("the detail is %q and should be %q", detail, tt.detail)
 			}
 		})
+	}
+}
+
+// The record carries one column per mechanism, because the question asked of it
+// later is which mechanism a site used. A flat list of directives cannot tell a
+// site that publishes a well known file from one that adds a header to one page.
+func TestWhatWasSaidIsGroupedByTheMechanismThatSaidIt(t *testing.T) {
+	r := ReadHeaders(headers(
+		"X-Robots-Tag", "noarchive, noai",
+		"TDM-Reservation", "1",
+		"TDM-Policy", "https://example.vn/policy",
+	), agent)
+
+	tdm, err := ReadTDMRep([]byte(`[{"location": "/tin-tuc/*", "tdm-reservation": 1}]`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := r.Merge(tdm.For("/tin-tuc/mot-bai-viet")).Signals()
+
+	want := map[string]string{
+		"robots": "noarchive, noai",
+		"tdm":    "tdm-reservation: 1, tdm-policy: https://example.vn/policy",
+		"tdmrep": "tdmrep /tin-tuc/: reserved",
+	}
+	if !maps.Equal(got, want) {
+		t.Errorf("recorded %v and should have recorded %v", got, want)
+	}
+}
+
+func TestAPageThatSaidNothingCarriesNoSignals(t *testing.T) {
+	if got := ReadHeaders(headers("Content-Type", "text/html"), agent).Signals(); got != nil {
+		t.Errorf("a page that said nothing recorded %v", got)
+	}
+}
+
+// The column and the evidence have to agree, because the contract rejects a
+// document that carries reservations it read and a consent state that does not
+// follow from them.
+func TestTheColumnAndTheEvidenceGoIntoTheRecordTogether(t *testing.T) {
+	for _, tt := range []struct {
+		line    string
+		consent doc.Consent
+	}{
+		{"noai", doc.ConsentNoTrain},
+		{"noindex", doc.ConsentNoIndex},
+		{"nosnippet", doc.ConsentOpen},
+	} {
+		r := ReadHeaders(headers("X-Robots-Tag", tt.line), agent)
+		var d doc.Document
+		d.TDMSignals, d.Consent = r.Signals(), r.Consent()
+		if d.Consent != tt.consent {
+			t.Errorf("%q became %q and should be %q", tt.line, d.Consent, tt.consent)
+		}
+		if len(d.TDMSignals) == 0 {
+			t.Errorf("%q left no evidence behind", tt.line)
+		}
+		// A fetch that asked is never unasked, which is the state the
+		// contract reads as nobody having looked.
+		if d.Consent == doc.ConsentUnasked {
+			t.Errorf("%q was read and came back as unasked", tt.line)
+		}
 	}
 }

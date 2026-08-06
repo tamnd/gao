@@ -88,8 +88,59 @@ type Crawl struct {
 	RobotsHash     Hash   `json:"robots_hash,omitzero"`
 
 	// TDMSignals records the machine-readable text and data mining reservations
-	// the response carried: TDMRep, X-Robots-Tag, and noai meta tags.
+	// the response carried: TDMRep, X-Robots-Tag, and noai meta tags. It is
+	// keyed by the mechanism and holds what that mechanism said, in the
+	// spelling the site used, because "reserved" is a conclusion and
+	// `tdm-reservation: 1` is what happened.
 	TDMSignals map[string]string `json:"tdm_signals,omitempty"`
+
+	// Consent is what the page said about being kept and being trained on,
+	// read off TDMSignals and reduced to one word. See [Consent].
+	Consent Consent `json:"consent,omitempty"`
+}
+
+// Consent is a document's own statement about being used, in one word.
+//
+// It is a column rather than a pair of booleans because a document that may not
+// be kept is not a document with a flag on it, and because the two reservations
+// are nested in practice: a site that will not be indexed will not be trained on
+// either.
+//
+// The zero value is the important one. It means nobody asked, which is the true
+// state of every document that came out of somebody else's corpus, and it is not
+// the same as a site that was asked and said yes. Defaulting it to open would
+// turn a column nobody filled in into a permission nobody gave.
+type Consent string
+
+// The consent states.
+const (
+	// ConsentUnasked is the zero value: this document reached the store by a
+	// path that did not read a reservation. Every ingested corpus is here.
+	ConsentUnasked Consent = ""
+
+	// ConsentOpen is a page that was asked and reserved nothing.
+	ConsentOpen Consent = "open"
+
+	// ConsentNoTrain is a page that reserved its text and data mining rights,
+	// through TDMRep or one of the AI specific directives.
+	ConsentNoTrain Consent = "no-train"
+
+	// ConsentNoIndex is a page that asked not to be kept at all.
+	ConsentNoIndex Consent = "no-index"
+)
+
+// Valid reports whether c is one of the four states.
+func (c Consent) Valid() bool {
+	switch c {
+	case ConsentUnasked, ConsentOpen, ConsentNoTrain, ConsentNoIndex:
+		return true
+	}
+	return false
+}
+
+// Reserved reports whether the page said no to something.
+func (c Consent) Reserved() bool {
+	return c == ConsentNoTrain || c == ConsentNoIndex
 }
 
 // Language is the output of language identification.
@@ -243,9 +294,15 @@ func (d *Document) Natural() bool {
 }
 
 // Publishable reports whether the document may appear in a published artifact at
-// the given redaction level. Both conditions have to hold: the license has to
-// permit redistribution, and the row has to have been redacted at least as
-// strictly as the artifact requires.
+// the given redaction level. Three conditions have to hold: the license has to
+// permit redistribution, the row has to have been redacted at least as strictly
+// as the artifact requires, and the page must not have reserved itself.
+//
+// The consent check is here rather than only at the fetch because a reservation
+// that is honored in one place is a reservation that is honored while that place
+// is the only way in. A document can enter the store before its reservation is
+// read, from a path that predates this column, or from a site that changed its
+// mind, and the publish step is the last point where anybody can still act on it.
 func (d *Document) Publishable(at RedactionLevel) bool {
-	return d.LicenseClass.Publishable() && d.PIILevel >= at
+	return d.LicenseClass.Publishable() && d.PIILevel >= at && !d.Consent.Reserved()
 }

@@ -43,6 +43,7 @@ func TestRecordRoundTrips(t *testing.T) {
 	in := valid()
 	in.Heuristics = map[string]float32{"mean_line_len": 61.4, "punct_ratio": 0.041}
 	in.TDMSignals = map[string]string{"tdmrep": "1"}
+	in.Consent = ConsentNoTrain
 	in.DupCluster = Cluster{0xde, 0xad, 0xbe, 0xef}
 	in.DupClusterSize = 12
 	in.ContamFlags = []string{"vmlu"}
@@ -127,5 +128,82 @@ func TestSyntheticIsNotNatural(t *testing.T) {
 	}
 	if Source("made-up").Natural() {
 		t.Error("an undefined source counts as natural")
+	}
+}
+
+// The zero value is unasked rather than open, and the distinction is the reason
+// the column exists. Every document out of somebody else's corpus is unasked,
+// and defaulting that to open would turn a column nobody filled in into a
+// permission nobody gave.
+func TestTheZeroConsentIsNobodyHavingAsked(t *testing.T) {
+	var d Document
+	if d.Consent != ConsentUnasked {
+		t.Errorf("the zero consent is %q", d.Consent)
+	}
+	if !d.Consent.Valid() {
+		t.Error("unasked is not a valid state, and every ingested document is in it")
+	}
+	if d.Consent.Reserved() {
+		t.Error("a document nobody asked came back as having reserved something")
+	}
+	if ConsentOpen.Reserved() {
+		t.Error("a page that reserved nothing came back as having reserved something")
+	}
+	for _, c := range []Consent{ConsentNoTrain, ConsentNoIndex} {
+		if !c.Reserved() {
+			t.Errorf("%q is not a reservation", c)
+		}
+	}
+	if Consent("no-ai").Valid() {
+		t.Error("a state nothing produces was accepted")
+	}
+}
+
+// A reservation honored at the fetch and forgotten at the publish is a
+// reservation that was not honored. The publish step is the last place anybody
+// can still act on it.
+func TestAReservedDocumentIsNotPublishable(t *testing.T) {
+	d := valid()
+	d.LicenseClass = LicenseOpen
+	d.PIILevel = RedactStrict
+	if !d.Publishable(RedactStandard) {
+		t.Fatal("a permissive, redacted document with nothing said about it is not publishable")
+	}
+
+	for _, c := range []Consent{ConsentNoTrain, ConsentNoIndex} {
+		d.Consent = c
+		if d.Publishable(RedactStandard) {
+			t.Errorf("a document whose page said %q is publishable", c)
+		}
+	}
+
+	d.Consent = ConsentOpen
+	if !d.Publishable(RedactStandard) {
+		t.Error("a document whose page was asked and reserved nothing is not publishable")
+	}
+}
+
+// The shape a dropped honor check takes is evidence in the row with the
+// conclusion softened, so the contract refuses that shape rather than trusting
+// whichever stage was supposed to fill the column.
+func TestEvidenceWithoutAConclusionIsRefused(t *testing.T) {
+	d := valid()
+	d.TDMSignals = map[string]string{"robots": "noai"}
+	err := d.Admit()
+	if err == nil {
+		t.Fatal("a document carrying reservations it read with no consent state was admitted")
+	}
+	if !strings.Contains(err.Error(), "consent is unset") {
+		t.Errorf("the error is %q and does not say what is missing", err)
+	}
+
+	d.Consent = ConsentNoTrain
+	if err := d.Admit(); err != nil {
+		t.Errorf("a document that recorded both was rejected: %v", err)
+	}
+
+	d.Consent = "reserved"
+	if err := d.Admit(); err == nil {
+		t.Error("a consent state nothing produces was admitted")
 	}
 }
