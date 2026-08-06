@@ -25,6 +25,8 @@ func runKho(stdout, stderr io.Writer, args []string) int {
 	switch args[0] {
 	case "verify":
 		return runKhoVerify(stdout, stderr, args[1:])
+	case "remove":
+		return runKhoRemove(stdout, stderr, args[1:])
 	case "keygen":
 		return runKhoKeygen(stdout, stderr, args[1:])
 	case "datasets":
@@ -50,6 +52,7 @@ func khoUsage(w io.Writer) {
 
 subcommands:
   verify    check a snapshot against its manifest
+  remove    take documents out of a snapshot, into a new one
   keygen    generate a snapshot signing key
   datasets  print the dataset repos processed data is written to
   columns   print the columns a published parquet file carries
@@ -142,6 +145,170 @@ func loadVerifyKey(s string) (ed25519.PublicKey, error) {
 		return pub, nil
 	}
 	return kho.LoadPublicKey(s)
+}
+
+func runKhoRemove(stdout, stderr io.Writer, args []string) int {
+	fs := flag.NewFlagSet("kho remove", flag.ContinueOnError)
+	fs.SetOutput(stderr)
+	from := fs.String("from", "", "the snapshot to remove from, which is not modified")
+	to := fs.String("to", "", "the directory to write the new snapshot to, which must not already hold one")
+	name := fs.String("snapshot", "", "the new snapshot's name")
+	keyPath := fs.String("key", "", "path to the signing key for the new snapshot")
+	reason := fs.String("reason", "", "why, one of "+strings.Join(kho.Reasons(), ", "))
+	note := fs.String("note", "", "a line for whoever reads the record later, which must not quote the document")
+	list := fs.String("list", "", "read document ids from a file, one per line, instead of from the arguments")
+	verbose := fs.Bool("v", false, "print each shard as it is dealt with")
+	fs.Usage = func() {
+		fmt.Fprint(stderr, `usage: gao kho remove -from DIR -to DIR -snapshot NAME -key FILE -reason REASON [flags] [docid...]
+
+Takes documents out of a published snapshot. This is the one command here that
+destroys data on purpose, so it is worth knowing exactly what it does.
+
+It does not edit the snapshot named by -from. A snapshot is immutable and its
+manifest is signed, so a removal writes a new snapshot that names the old one as
+its parent and carries a tombstone for every document taken out. A tombstone
+keeps the document identity and nothing else: no text, no url, no host. What
+happens to the parent afterwards, whether it is withdrawn or left up for the
+people who already have it, is a publication decision this command will not make
+for you.
+
+The parent has to verify completely before anything is written, and the shards
+that held none of the named documents are copied across byte for byte with the
+hashes the parent recorded for them. A takedown that touches two shards out of
+750 rewrites two files.
+
+Naming a document that is not in the parent fails the run and writes nothing,
+even if the other identities were all found. A takedown answered with a
+signature and a report that quietly covers three documents out of four is the
+worst outcome available here, because everybody involved reads it as done, and
+an identity that is not there is far more likely to be the wrong identity than
+an empty request. Running the same removal twice is not an error: the second run
+finds the documents already tombstoned and says so.
+
+The key is read from a file rather than the command line, because an argument
+ends up in somebody's shell history.
+
+flags:
+`)
+		fs.PrintDefaults()
+	}
+	if err := fs.Parse(args); err != nil {
+		return 2
+	}
+	switch {
+	case *from == "", *to == "", *name == "", *keyPath == "":
+		fs.Usage()
+		return 2
+	}
+	if !slices.Contains(kho.Reasons(), *reason) {
+		fmt.Fprintf(stderr, "gao kho remove: -reason must be one of %s\n", strings.Join(kho.Reasons(), ", "))
+		return 2
+	}
+
+	ids, err := removalIDs(fs.Args(), *list)
+	if err != nil {
+		fmt.Fprintf(stderr, "gao kho remove: %v\n", err)
+		return 2
+	}
+	if len(ids) == 0 {
+		fmt.Fprintln(stderr, "gao kho remove: no documents named, so there is nothing to remove")
+		return 2
+	}
+
+	key, err := kho.LoadPrivateKey(*keyPath)
+	if err != nil {
+		fmt.Fprintf(stderr, "gao kho remove: %v\n", err)
+		return 1
+	}
+
+	rs := make([]kho.Removal, len(ids))
+	for i, id := range ids {
+		rs[i] = kho.Removal{DocID: id, Reason: *reason, Note: *note}
+	}
+
+	opts := []kho.RemoveOption{}
+	if *verbose {
+		opts = append(opts, kho.RemoveProgress(func(shard string, rewritten bool) {
+			what := "copied"
+			if rewritten {
+				what = "rewritten"
+			}
+			fmt.Fprintf(stdout, "  %s  %s\n", shard, what)
+		}))
+	}
+
+	report, err := kho.Remove(*from, *to, *name, key, rs, opts...)
+	if err != nil {
+		// An identity that is not in the parent gets the identities printed out
+		// rather than run together in one line, because the next thing anybody
+		// does is go and look for the one they mistyped.
+		if report != nil && len(report.NotFound) > 0 {
+			fmt.Fprintf(stderr, "gao kho remove: %d of the identities given are not in %s:\n", len(report.NotFound), report.Parent)
+			for _, id := range report.NotFound {
+				fmt.Fprintf(stderr, "  %s\n", id)
+			}
+			fmt.Fprintln(stderr, "nothing was written, because a removal that answers for some of a request and not the rest is the outcome everybody reads as done")
+			return 1
+		}
+		fmt.Fprintf(stderr, "gao kho remove: %v\n", err)
+		return 1
+	}
+
+	fmt.Fprintf(stdout, "snapshot %s\n", report.Snapshot)
+	fmt.Fprintf(stdout, "  parent    %s\n", report.Parent)
+	fmt.Fprintf(stdout, "  removed   %d documents, reason %s\n", len(report.Removed), *reason)
+	if len(report.Tombstoned) > 0 {
+		fmt.Fprintf(stdout, "  already   %d were tombstoned by an earlier removal\n", len(report.Tombstoned))
+	}
+	fmt.Fprintf(stdout, "  shards    %d rewritten, %d copied byte for byte\n", len(report.Rewritten), len(report.Copied))
+	fmt.Fprintf(stdout, "  documents %d remain\n", report.Counts.Documents)
+
+	// The new snapshot is checked here as well as sealed, because the only thing
+	// worse than a takedown that did not happen is one everybody believes did.
+	if _, err := kho.Verify(*to, kho.TrustKey(key.Public().(ed25519.PublicKey))); err != nil {
+		fmt.Fprintf(stderr, "gao kho remove: the snapshot was written and does not verify: %v\n", err)
+		return 1
+	}
+
+	fmt.Fprintln(stdout, "\nok")
+	return 0
+}
+
+// removalIDs collects the document identities to remove, from the arguments or
+// from a file.
+//
+// A file is worth supporting because a request naming forty documents is a
+// request somebody has in a file already, and retyping forty hashes onto a
+// command line is how the wrong one gets removed. Blank lines and lines starting
+// with # are skipped, so the file can carry the reference number it came in
+// under.
+func removalIDs(args []string, list string) ([]doc.Hash, error) {
+	lines := slices.Clone(args)
+	if list != "" {
+		b, err := os.ReadFile(list)
+		if err != nil {
+			return nil, err
+		}
+		for _, line := range strings.Split(string(b), "\n") {
+			line = strings.TrimSpace(line)
+			if line == "" || strings.HasPrefix(line, "#") {
+				continue
+			}
+			lines = append(lines, line)
+		}
+	}
+
+	out := make([]doc.Hash, 0, len(lines))
+	for _, line := range lines {
+		// Everything after the identity is left for whoever wrote the file, which
+		// is usually the title or the reference the request came in under.
+		id, err := doc.ParseHash(strings.Fields(line)[0])
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, id)
+	}
+	return out, nil
 }
 
 func runKhoKeygen(stdout, stderr io.Writer, args []string) int {

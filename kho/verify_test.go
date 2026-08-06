@@ -28,7 +28,12 @@ func snapshot(t *testing.T, n, shards int) (dir string, pub ed25519.PublicKey) {
 	}
 	for _, rec := range recs {
 		m.Counts.Documents += int64(rec.Documents)
-		m.Counts.Bytes += rec.Bytes
+	}
+	// Counts.Bytes is the text, not the files. The shard records carry the
+	// compressed size, which is roughly a third of it and is a different number
+	// with the same name.
+	for i := range n {
+		m.Counts.Bytes += int64(len(sample(i).Text))
 	}
 	m.Counts.Natural = m.Counts.Documents
 

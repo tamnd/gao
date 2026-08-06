@@ -1,6 +1,7 @@
 package main
 
 import (
+	"crypto/ed25519"
 	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
@@ -588,5 +589,297 @@ func TestKhoCardIsInTheSubcommandList(t *testing.T) {
 	}
 	if !strings.Contains(out, "card") {
 		t.Errorf("the subcommand list does not mention card:\n%s", out)
+	}
+}
+
+// removableSnapshot writes a signed snapshot with a complete counts block, and
+// the signing key beside it, which is what a removal needs and a verify does
+// not. The counts are complete because a removal arrives at the child's by
+// subtracting from the parent's, so a fixture with zeros in it would produce a
+// snapshot claiming a negative number of characters.
+func removableSnapshot(t *testing.T, n, shards int) (dir, keyPath string, docs []*doc.Document) {
+	t.Helper()
+	dir = t.TempDir()
+
+	set, err := kho.NewShardSet[*doc.Document](dir, shards, func(d *doc.Document) doc.Hash { return d.DocID })
+	if err != nil {
+		t.Fatalf("NewShardSet: %v", err)
+	}
+	m := &kho.Manifest{
+		Snapshot:  "2026-09",
+		CreatedAt: time.Date(2026, 9, 30, 12, 0, 0, 0, time.UTC),
+		Pipeline:  "0.1.0",
+		Box:       "server1",
+		Stages:    []kho.Stage{{Name: "gat@0.1.0", ConfigHash: doc.SumString("gat config")}},
+	}
+	m.Counts.BySource = map[string]int64{}
+	for i := range n {
+		d := document(t, i)
+		if err := set.Append(d); err != nil {
+			t.Fatalf("Append: %v", err)
+		}
+		docs = append(docs, d)
+		m.Counts.Documents++
+		m.Counts.Natural++
+		m.Counts.Bytes += int64(len(d.Text))
+		m.Counts.Chars += int64(d.NChars)
+		m.Counts.BySource[string(d.Source)]++
+	}
+	shardRecs, err := set.Close()
+	if err != nil {
+		t.Fatalf("Close: %v", err)
+	}
+	m.Shards = shardRecs
+
+	_, priv, err := kho.GenerateKey()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := m.Seal(priv, m.CreatedAt); err != nil {
+		t.Fatalf("Seal: %v", err)
+	}
+	if err := kho.WriteManifest(dir, m); err != nil {
+		t.Fatalf("WriteManifest: %v", err)
+	}
+
+	keyPath = filepath.Join(t.TempDir(), "gao.key")
+	if err := kho.WritePrivateKey(keyPath, priv); err != nil {
+		t.Fatal(err)
+	}
+	return dir, keyPath, docs
+}
+
+func TestKhoRemoveTakesADocumentOutAndSaysWhatItCost(t *testing.T) {
+	src, key, docs := removableSnapshot(t, 40, 4)
+	dst := filepath.Join(t.TempDir(), "2026-09-r1")
+
+	out, errOut, code := exec(t, "kho", "remove",
+		"-from", src, "-to", dst, "-snapshot", "2026-09-r1",
+		"-key", key, "-reason", "takedown", "-note", "request 118",
+		docs[7].DocID.String())
+	if code != 0 {
+		t.Fatalf("gao kho remove: exit %d, want 0\n%s\n%s", code, out, errOut)
+	}
+	for _, want := range []string{"2026-09-r1", "parent    2026-09", "removed   1", "39 remain", "ok"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("output does not mention %q:\n%s", want, out)
+		}
+	}
+	// A removal that touched one shard is supposed to say that it left the other
+	// three alone, because that is the difference between a takedown answered in
+	// minutes and one answered tomorrow.
+	if !strings.Contains(out, "1 rewritten, 3 copied") {
+		t.Errorf("output does not account for the shards it did not rewrite:\n%s", out)
+	}
+}
+
+func TestKhoRemoveLeavesASnapshotThatVerifies(t *testing.T) {
+	src, key, docs := removableSnapshot(t, 40, 4)
+	dst := filepath.Join(t.TempDir(), "2026-09-r1")
+
+	if _, errOut, code := exec(t, "kho", "remove",
+		"-from", src, "-to", dst, "-snapshot", "2026-09-r1",
+		"-key", key, "-reason", "legal", docs[3].DocID.String()); code != 0 {
+		t.Fatalf("gao kho remove: exit %d\n%s", code, errOut)
+	}
+
+	pub, err := kho.LoadPrivateKey(key)
+	if err != nil {
+		t.Fatal(err)
+	}
+	out, errOut, code := exec(t, "kho", "verify", "-key",
+		hex.EncodeToString(pub.Public().(ed25519.PublicKey)), dst)
+	if code != 0 {
+		t.Fatalf("the removal wrote a snapshot that does not verify: exit %d\n%s", code, errOut)
+	}
+	if !strings.Contains(out, "parent    2026-09") {
+		t.Errorf("the new snapshot does not name its parent:\n%s", out)
+	}
+	if !strings.Contains(out, "documents 39") {
+		t.Errorf("the new snapshot does not hold 39 documents:\n%s", out)
+	}
+}
+
+// A request naming four documents of which one is a typo is a request nobody
+// has answered yet, and half answering it is worse than not starting, because a
+// signed snapshot reads as done.
+func TestKhoRemoveWillNotAnswerHalfARequest(t *testing.T) {
+	src, key, docs := removableSnapshot(t, 40, 4)
+	dst := filepath.Join(t.TempDir(), "2026-09-r1")
+	missing := doc.SumString("a document that was never crawled")
+
+	out, errOut, code := exec(t, "kho", "remove",
+		"-from", src, "-to", dst, "-snapshot", "2026-09-r1",
+		"-key", key, "-reason", "takedown",
+		docs[1].DocID.String(), missing.String())
+	if code != 1 {
+		t.Fatalf("gao kho remove: exit %d, want 1\n%s\n%s", code, out, errOut)
+	}
+	if !strings.Contains(errOut, missing.String()) {
+		t.Errorf("the error does not name the identity that was not found:\n%s", errOut)
+	}
+	if strings.Contains(errOut, docs[1].DocID.String()) {
+		t.Errorf("the error names an identity that was found:\n%s", errOut)
+	}
+	if !strings.Contains(errOut, "nothing was written") {
+		t.Errorf("the error does not say the snapshot was not written:\n%s", errOut)
+	}
+	if _, err := os.Stat(dst); err == nil {
+		t.Fatal("a removal that could not answer the whole request left a directory behind")
+	}
+}
+
+func TestKhoRemoveOnAnIdentityThatIsNotThereWritesNothing(t *testing.T) {
+	src, key, _ := removableSnapshot(t, 40, 4)
+	dst := filepath.Join(t.TempDir(), "2026-09-r1")
+
+	_, errOut, code := exec(t, "kho", "remove",
+		"-from", src, "-to", dst, "-snapshot", "2026-09-r1",
+		"-key", key, "-reason", "takedown",
+		doc.SumString("not in the corpus").String())
+	if code != 1 {
+		t.Fatalf("gao kho remove: exit %d, want 1\n%s", code, errOut)
+	}
+	if _, err := os.Stat(filepath.Join(dst, "manifest.toml")); err == nil {
+		t.Fatal("a removal that found nothing still signed a snapshot")
+	}
+}
+
+func TestKhoRemoveReadsAListOfIdentities(t *testing.T) {
+	src, key, docs := removableSnapshot(t, 40, 4)
+	dst := filepath.Join(t.TempDir(), "2026-09-r1")
+
+	list := filepath.Join(t.TempDir(), "request-118.txt")
+	body := "# request 118, received 2026-10-02\n\n" +
+		docs[2].DocID.String() + "  the first article\n" +
+		docs[9].DocID.String() + "\n" +
+		docs[21].DocID.String() + "  the one with the photograph\n"
+	if err := os.WriteFile(list, []byte(body), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	out, errOut, code := exec(t, "kho", "remove",
+		"-from", src, "-to", dst, "-snapshot", "2026-09-r1",
+		"-key", key, "-reason", "privacy", "-list", list)
+	if code != 0 {
+		t.Fatalf("gao kho remove -list: exit %d, want 0\n%s\n%s", code, out, errOut)
+	}
+	if !strings.Contains(out, "removed   3") {
+		t.Errorf("the list was not read as three documents:\n%s", out)
+	}
+	if !strings.Contains(out, "37 remain") {
+		t.Errorf("the counts do not come down by three:\n%s", out)
+	}
+}
+
+// Running the same takedown twice is what happens when a script is retried, and
+// it has to be safe and has to say what it found.
+func TestKhoRemoveTwiceReportsTheDocumentAlreadyGone(t *testing.T) {
+	src, key, docs := removableSnapshot(t, 40, 4)
+	tmp := t.TempDir()
+	first, second := filepath.Join(tmp, "r1"), filepath.Join(tmp, "r2")
+	id := docs[5].DocID.String()
+
+	if _, errOut, code := exec(t, "kho", "remove", "-from", src, "-to", first,
+		"-snapshot", "2026-09-r1", "-key", key, "-reason", "takedown", id); code != 0 {
+		t.Fatalf("the first removal failed: %s", errOut)
+	}
+	out, errOut, code := exec(t, "kho", "remove", "-from", first, "-to", second,
+		"-snapshot", "2026-09-r2", "-key", key, "-reason", "takedown", id)
+	if code != 0 {
+		t.Fatalf("the second removal failed: exit %d\n%s\n%s", code, out, errOut)
+	}
+	if !strings.Contains(out, "already   1") {
+		t.Errorf("the rerun does not say the document was already tombstoned:\n%s", out)
+	}
+}
+
+func TestKhoRemoveVerboseAccountsForEveryShard(t *testing.T) {
+	src, key, docs := removableSnapshot(t, 40, 4)
+	dst := filepath.Join(t.TempDir(), "2026-09-r1")
+	m, err := kho.ReadManifest(src)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	out, errOut, code := exec(t, "kho", "remove", "-v",
+		"-from", src, "-to", dst, "-snapshot", "2026-09-r1",
+		"-key", key, "-reason", "takedown", docs[0].DocID.String())
+	if code != 0 {
+		t.Fatalf("gao kho remove -v: exit %d\n%s", code, errOut)
+	}
+	for _, s := range m.Shards {
+		if !strings.Contains(out, s.Name) {
+			t.Errorf("-v did not account for %s:\n%s", s.Name, out)
+		}
+	}
+	if !strings.Contains(out, "rewritten") || !strings.Contains(out, "copied") {
+		t.Errorf("-v does not say which shards were rewritten and which were copied:\n%s", out)
+	}
+}
+
+func TestKhoRemoveWillNotWriteOverASnapshot(t *testing.T) {
+	src, key, docs := removableSnapshot(t, 40, 4)
+	other, _, _ := removableSnapshot(t, 40, 4)
+
+	_, errOut, code := exec(t, "kho", "remove",
+		"-from", src, "-to", other, "-snapshot", "2026-09-r1",
+		"-key", key, "-reason", "takedown", docs[0].DocID.String())
+	if code != 1 {
+		t.Fatalf("gao kho remove: exit %d, want 1", code)
+	}
+	if !strings.Contains(errOut, "already holds a snapshot") {
+		t.Errorf("the error does not say the destination is taken:\n%s", errOut)
+	}
+}
+
+func TestKhoRemoveWantsAReasonItKnows(t *testing.T) {
+	src, key, docs := removableSnapshot(t, 40, 4)
+	dst := filepath.Join(t.TempDir(), "2026-09-r1")
+
+	for _, reason := range []string{"", "because"} {
+		_, errOut, code := exec(t, "kho", "remove",
+			"-from", src, "-to", dst, "-snapshot", "2026-09-r1",
+			"-key", key, "-reason", reason, docs[0].DocID.String())
+		if code != 2 {
+			t.Fatalf("gao kho remove -reason %q: exit %d, want 2", reason, code)
+		}
+		for _, want := range kho.Reasons() {
+			if !strings.Contains(errOut, want) {
+				t.Errorf("the error does not offer %q:\n%s", want, errOut)
+			}
+		}
+	}
+}
+
+func TestKhoRemoveUsageErrors(t *testing.T) {
+	src, key, docs := removableSnapshot(t, 40, 4)
+	dst := filepath.Join(t.TempDir(), "2026-09-r1")
+	id := docs[0].DocID.String()
+
+	cases := map[string][]string{
+		"no source":      {"kho", "remove", "-to", dst, "-snapshot", "r1", "-key", key, "-reason", "takedown", id},
+		"no destination": {"kho", "remove", "-from", src, "-snapshot", "r1", "-key", key, "-reason", "takedown", id},
+		"no name":        {"kho", "remove", "-from", src, "-to", dst, "-key", key, "-reason", "takedown", id},
+		"no key":         {"kho", "remove", "-from", src, "-to", dst, "-snapshot", "r1", "-reason", "takedown", id},
+		"no documents":   {"kho", "remove", "-from", src, "-to", dst, "-snapshot", "r1", "-key", key, "-reason", "takedown"},
+		"not an id":      {"kho", "remove", "-from", src, "-to", dst, "-snapshot", "r1", "-key", key, "-reason", "takedown", "the third one"},
+	}
+	for name, args := range cases {
+		t.Run(name, func(t *testing.T) {
+			if _, _, code := exec(t, args...); code != 2 {
+				t.Fatalf("exit %d, want 2", code)
+			}
+		})
+	}
+}
+
+func TestKhoRemoveIsInTheSubcommandList(t *testing.T) {
+	out, _, code := exec(t, "kho", "help")
+	if code != 0 {
+		t.Fatalf("gao kho help: exit %d", code)
+	}
+	if !strings.Contains(out, "remove") {
+		t.Errorf("the subcommand list does not mention remove:\n%s", out)
 	}
 }

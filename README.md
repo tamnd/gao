@@ -76,6 +76,7 @@ gao nhat -list benchmarks.json parts/*.parquet  # and which documents hold a ben
 
 gao kho release --snapshot gao-v1.0         # store and publish
 gao kho verify  snapshots/gao-v1.0          # check a snapshot against its manifest
+gao kho remove  -from a -to b -snapshot b -key gao.key -reason takedown <docid>  # take a document back out
 gao kho datasets                            # where processed data is written, and how to read it
 gao kho push  part.parquet                  # send one file to the store, skipping what is already there
 gao kho card  -dataset vietnamese-web-text  # generate a repo's dataset card from its snapshot manifest
@@ -99,6 +100,25 @@ That checks four things: the manifest is internally consistent, the merkle root 
 Pass `-quick` to check the manifest and the signature without rehashing several hundred gigabytes. It answers a different question and it is not enough to accept a download.
 
 Without `-key` the signature is checked against the key embedded in the manifest, which proves the snapshot was signed by somebody rather than that it was signed by us. The published key goes in the release notes, and a verifier written against it is ten lines in any language: the key file is one line of hex and nothing else.
+
+## Taking a document back out
+
+Somebody will ask us to remove a document, and when they do it will be urgent. The mechanism is built for that day rather than for the day it was written.
+
+A snapshot is immutable and its manifest is signed, so nothing is edited in place. A removal writes a new snapshot that names the old one as its parent and carries a tombstone for every document taken out.
+
+```
+gao kho remove -from snapshots/gao-v1.0 -to snapshots/gao-v1.0-r1 \
+  -snapshot gao-v1.0-r1 -key gao.key -reason takedown -list request-118.txt
+```
+
+A tombstone keeps the document identity and nothing else. Not the text, not the URL, not the host. A tombstone that quotes what it removed has not removed it, and one that names the URL has published the fact that a particular page was the subject of a request, which is often the thing the person wanted taken down. The identity is kept because a later crawl that meets the same page has to recognize it and not fetch it again, and because somebody asking whether their document was removed deserves an answer they can check for themselves.
+
+The shards that held none of the named documents are copied across byte for byte and keep the hashes the parent recorded for them, so a takedown that touches two shards out of 750 rewrites two files. That is the difference between answering in minutes and answering tomorrow.
+
+Naming a document that is not in the snapshot fails the run and writes nothing, even when every other identity was found. A takedown answered with a signature and a report that quietly covers three documents out of four is the worst outcome available, because everybody involved reads it as done, and an identity that is not there is far more likely to be a mistyped hash than an empty request. Running the same removal twice is not an error: the second run finds the documents already tombstoned and says so, which is what makes this safe to put in a script that might get retried.
+
+What happens to the parent afterwards is a publication decision rather than a storage one. Whether it is withdrawn, kept for the people who already have it, or left up, is a question for whoever answered the request, and this command will not answer it for them.
 
 ## What goes in
 
