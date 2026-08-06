@@ -114,6 +114,18 @@ func (d *Document) Admit() error {
 		bad("diacritics is %q, want present, absent, or mixed", d.Diacritics)
 	}
 
+	// Consent. Unasked is allowed, because most documents come out of somebody
+	// else's corpus and nobody was there to ask. What is not allowed is a
+	// document that carries a reservation it read and then a state that does
+	// not follow from it, which is the shape a dropped honor check takes: the
+	// evidence is in the row and the conclusion has been quietly softened.
+	if !d.Consent.Valid() {
+		bad("consent is %q, want open, no-train, no-index, or unset", string(d.Consent))
+	}
+	if len(d.TDMSignals) > 0 && d.Consent == ConsentUnasked {
+		bad("tdm_signals holds %d reservations and consent is unset, so something read them and did not record what they said", len(d.TDMSignals))
+	}
+
 	// Licensing. Unknown is a valid value of the column and an invalid value for
 	// an admitted document: it means nobody looked.
 	switch {

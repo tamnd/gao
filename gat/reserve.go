@@ -28,6 +28,7 @@ import (
 	"slices"
 	"strings"
 
+	"github.com/tamnd/gao/doc"
 	"github.com/tamnd/gao/vo"
 )
 
@@ -68,14 +69,60 @@ func (r Reservation) Reserved() bool { return r.NoIndex || r.NoTrain }
 // Three states rather than a pair of booleans, because a document that may not
 // be kept is not a document with a flag on it, and the two reservations are
 // nested in practice: a site that will not be indexed will not be trained on.
-func (r Reservation) Consent() string {
+//
+// A page that reserved nothing is open rather than unasked. The difference is
+// the whole point of the column: [doc.ConsentUnasked] means nobody looked, and
+// only a fetch that looked can say open.
+func (r Reservation) Consent() doc.Consent {
 	switch {
 	case r.NoIndex:
-		return "no-index"
+		return doc.ConsentNoIndex
 	case r.NoTrain:
-		return "no-train"
+		return doc.ConsentNoTrain
 	default:
-		return "open"
+		return doc.ConsentOpen
+	}
+}
+
+// Signals is what each mechanism said, keyed by the mechanism, which is the form
+// the record carries it in.
+//
+// Keyed by mechanism rather than kept as one list because the question asked of
+// this column later is which mechanism a site used, not what order it wrote
+// things in. A site that publishes a well known file and a site that adds a
+// header to one page are doing different things, and a flat list of directives
+// cannot tell them apart. Where a mechanism said several things they are joined
+// in the order they were read.
+func (r Reservation) Signals() map[string]string {
+	if len(r.Said) == 0 {
+		return nil
+	}
+	out := make(map[string]string, 3)
+	for _, said := range r.Said {
+		k := mechanism(said)
+		if prev, ok := out[k]; ok {
+			out[k] = prev + ", " + said
+			continue
+		}
+		out[k] = said
+	}
+	return out
+}
+
+// mechanism names where a directive came from, by the shape of what was said.
+//
+// The three prefixes are the three ways of writing a reservation down, and they
+// are distinguishable because each one is recorded in its own spelling: the
+// well known file's entries carry the location they applied to, the two TDMRep
+// headers carry their own names, and everything left is a robots directive.
+func mechanism(said string) string {
+	switch {
+	case strings.HasPrefix(said, "tdmrep "):
+		return "tdmrep"
+	case strings.HasPrefix(said, "tdm-reservation:"), strings.HasPrefix(said, "tdm-policy:"):
+		return "tdm"
+	default:
+		return "robots"
 	}
 }
 
@@ -96,7 +143,7 @@ func (r Reservation) Reject() (vo.Reason, string, bool) {
 	if !r.Reserved() {
 		return "", "", false
 	}
-	return vo.ReasonRobots, r.Consent() + ": " + strings.Join(r.Said, ", "), true
+	return vo.ReasonRobots, string(r.Consent()) + ": " + strings.Join(r.Said, ", "), true
 }
 
 // Merge is the reservation of two statements about the same page.

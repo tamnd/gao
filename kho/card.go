@@ -206,6 +206,9 @@ func cardShipping(b *strings.Builder, d Dataset) {
 		fmt.Fprintf(b, "| %s | %s | %s |\n", c, cardYes(p.Text && d.Text), cardYes(p.Metadata))
 	}
 	b.WriteString("\nEvery row carries its own class in the `license_class` column, so a reader who needs a narrower set than this repo holds can filter for it rather than trust the repo name.\n\n")
+	if d.Text {
+		b.WriteString("A page that reserved its text and data mining rights is not here, whatever its license says. The two are separate questions and the reservation is honored at the write, so a page that said no cannot reach a published file through a stage that forgot to ask. The `consent` column records what each page said, and an empty value means nobody was there to ask, which is true of every document that came out of somebody else's corpus.\n\n")
+	}
 }
 
 func cardReading(b *strings.Builder, d Dataset, m *Manifest) {

@@ -73,6 +73,7 @@ type Row struct {
 	RobotsRule     string            `parquet:"robots_rule,dict"`
 	RobotsHash     doc.Hash          `parquet:"robots_hash"`
 	TDMSignals     map[string]string `parquet:"tdm_signals"`
+	Consent        string            `parquet:"consent,dict"`
 
 	Lang       string  `parquet:"lang,dict"`
 	LangScore  float32 `parquet:"lang_score"`
@@ -144,6 +145,7 @@ func RowOf(d *doc.Document) Row {
 		RobotsRule:     d.RobotsRule,
 		RobotsHash:     d.RobotsHash,
 		TDMSignals:     d.TDMSignals,
+		Consent:        string(d.Consent),
 
 		Lang:       d.Lang,
 		LangScore:  d.LangScore,
@@ -337,12 +339,27 @@ func NewParquetWriter(w io.Writer, d Dataset, s Stamp) *ParquetWriter {
 // before an upload rather than after a release. The check is the same one
 // [Dataset.Admits] makes, and having it at the write is what stops a stage from
 // being the place somebody has to remember it.
+//
+// A document whose own page reserved itself is refused the same way, and for the
+// same reason it is refused at the fetch: a reservation honored in one place is
+// honored only while that place is the only way in. The crawl is not the only
+// way in. A document can reach the store from a path that predates the column,
+// or from a site that has since changed its mind and been recrawled, and this is
+// the last point at which anybody can still act on what it said.
+//
+// A private working repo takes it anyway. Processing material is not publishing
+// it, which is the same distinction the restricted license class rests on, and
+// it is what lets a reserved document be counted and reported on rather than
+// vanishing without a number.
 func (p *ParquetWriter) Append(d *doc.Document) error {
 	if p.closed {
 		return errors.New("kho: append to a closed parquet file")
 	}
 	if !p.dataset.Admits(d.LicenseClass) {
 		return fmt.Errorf("%w: %s does not carry %s", ErrNotAdmitted, p.dataset.Name, d.LicenseClass)
+	}
+	if d.Consent.Reserved() && p.dataset.Public() && p.dataset.Text {
+		return fmt.Errorf("%w: %s publishes text and this page said %s", ErrNotAdmitted, p.dataset.Name, d.Consent)
 	}
 	p.buf = append(p.buf[:0], RowOf(d))
 	if _, err := p.w.Write(p.buf); err != nil {
