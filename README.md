@@ -96,6 +96,9 @@ gao dien build -count other/*.parquet -o vi-cloze.jsonl parts/*.parquet  # fill 
 gao dien baseline -items vi-cloze.jsonl other/*.parquet  # what picking the commonest candidate scores
 gao dien grade -items vi-cloze.jsonl answers.jsonl  # and score a model's answers against the set
 gao dien validate recipes.json              # whether the proxy agrees with full scale, or the slate is exploratory
+gao cham roster                             # mark: the seven specialists, and which of their verifiers are written
+gao cham dau -rollouts rollouts.jsonl parts/*.parquet  # grade restoration rollouts against the pages they came from
+gao cham trich -register instruments.jsonl rollouts.jsonl  # grade legal citations against the instruments that exist
 
 gao kho release --snapshot gao-v1.0         # store and publish
 gao kho verify  snapshots/gao-v1.0          # check a snapshot against its manifest
@@ -766,6 +769,58 @@ Below a correlation of 0.5 the slate is reported as exploratory rather than deci
 
 Building the real set over the corpus, and every proxy evaluation of it, runs on `gamingpc`, which is the box with the card. The generator, the baseline, the scoring and the validity measurement are written and tested here.
 
+## Training against a check rather than against a reward model
+
+Post-training here is supervised finetuning, then reinforcement learning run as parallel specialists, then distillation of the specialists back into one model. There is no reward model anywhere in it. A reward model is a second model whose mistakes become the first model's objective, and in Vietnamese the preference data it would be trained on would itself be translated, which makes those mistakes systematic rather than random. So every arm is trained against a program that says whether an answer is right, and `cham` is to mark a paper.
+
+The training loop is the part everybody publishes and the part that matters least. It is the same algorithm in a dozen repositories. The check is what decides what the model becomes, and almost nobody ships it. An unpublished verifier is an unfalsifiable reward: a number that cannot be reproduced, argued with, or shown to have been gamed. Everything in this package goes out with the weights.
+
+`gao cham roster` prints all seven arms, including the five that are specified and not built, each with the sentence that says what its reward would be computed from. A roster that listed only the finished verifiers would make the missing ones invisible, and what is absent from a reward stack is the part worth knowing about.
+
+Two of them are written. The first is diacritic restoration, which is the arm this corpus gets for free, since `phoi.Bare` turns any page into a prompt whose exact answer is the page. That is a training set the size of the corpus with no annotator in it, for a task that cannot be done without real Vietnamese.
+
+```
+$ gao cham dau -rollouts rollouts.jsonl -v page.txt
+the key holds 1 pages and refused 0
+
+Tieng Viet co sau thanh dieu, trong do nam thanh duoc ghi bang dau va mo...
+  4 rollouts, 4 checked, mean 0.372, spread 0.414
+  +1.52  dau: 1.000, 41 of 41 marks came back, and 42 of 42 syllables are exactly right
+  +0.28  dau: 0.488, 20 of 41 marks came back, and 24 of 42 syllables are exactly right
+  -0.90  dau: 0.000, 0 of 41 marks came back, and 7 of 42 syllables are exactly right
+  -0.90  dau: 0.000, the answer is not the page with marks added, so it rewrote the text rather than restoring it
+
+dau: 1 groups, 1 kept, which is 100% yield. 4 rollouts, 0% of them unchecked
+```
+
+The third rollout there is the question handed straight back, and it scores zero while still getting seven syllables right, because seven of them carry no mark. The fourth is a rewrite, and it scores zero rather than being aligned against the page: an alignment puts a judgment inside a reward, and a specialist that can collect partial credit for a paraphrase will learn to paraphrase.
+
+A verifier that cannot check is not a verifier that returns zero. An answer that the sampler stopped at the token limit has not been shown to be wrong, and scoring it zero teaches the model that long answers are bad, which is the opposite of what anyone wants from a long context model. So a verdict carries whether it was checked separately from what it scored, a group drops what it could not check instead of averaging it in, and the share that went ungraded is printed on every batch. That is the overlong filtering, and it lives in the verifier because only the verifier knows whether it managed to look at the answer.
+
+The group is its own baseline, which is the whole reason for sampling several answers to one prompt: no value network, just the mean of what this prompt produced this time. Under four checked rollouts there is no baseline to speak of, since a mean over two samples is one sample and its opposite. A group whose rewards all landed within 0.01 of each other is dropped rather than normalized, because dividing a centered reward by a spread that small turns rounding into a full sized gradient, and those groups then dominate the batch: the model gets trained hardest on the prompts that told it the least. The yield line says how many groups survived that, which is what a step of training cost against what it bought.
+
+The second written arm is legal citation, and it exists because Vietnamese legal drafting numbers instruments to a fixed form. A document is a number, a year, and a code naming the body that issued it. Only the Government issues a nghị định, so a nghị định whose code is not `NĐ-CP` is wrong however plausible it reads, and that is the exact shape a hallucinated citation takes: the right kind of thing, numbered like a real one, issued by a body that cannot issue it. The register of instruments that exist comes out of the legal shard, which is the one part of the corpus whose documents carry identifiers that either match something or do not.
+
+```
+$ gao cham trich -register instruments.jsonl -v rollouts.jsonl
+the register holds 3 instruments and the key 1 prompts
+
+Doanh nghiệp phải làm gì khi dữ liệu cá nhân của khách hàng bị lộ?
+  4 rollouts, 4 checked, mean 0.375, spread 0.415
+  +1.51  trich: 1.000, 1 of the 1 citations offered are among the 1 the answer had to rest on
+  -0.90  trich: 0.000, 0 of 1 citations landed, and 1 did not: 99/2024/NĐ-CP is not in the register, so it is a citation shaped string rather than a citation
+  -0.90  trich: 0.000, the answer cites nothing, and an answer that rests on nothing checkable is the thing this arm exists to stop
+  +0.30  trich: 0.500, 1 of the 3 citations offered are among the 1 the answer had to rest on
+
+trich: 1 groups, 1 kept, which is 100% yield. 4 rollouts, 0% of them unchecked
+```
+
+The reward is precision and recall together, because either one alone is trivially collected. Precision alone is had by citing one safe instrument in every answer and nothing else, which is the last rollout above scoring half. Recall alone is had by listing the whole register. The arm exists to remove invented citations without teaching the model to stop citing, and only the pair does that. A required instrument the register does not hold is refused rather than graded against, since nothing could win that item and a group where every rollout scores the same is a pass spent to learn nothing.
+
+The rule underneath all of it is that a verifier has to be beatable only by doing the task. The interesting failure of a verifiable reward is not that it is wrong, it is that it is right about something easier than the task. So each verifier ships with the answers that would beat it if it were built badly, as tests: the empty answer, the prompt handed back, the answer with the shape and none of the substance. A verifier that scores any of those above zero is a reward that trains the model to produce them.
+
+Every verifier runs on CPU, without a network, and returns the same verdict for the same two strings every time. Seven arms sampling in parallel each produce rollouts faster than one GPU can score them, so a verifier that wants a card becomes the bottleneck it exists to feed, and the interface takes no context and no client to make that hard to get wrong. Grading runs anywhere on the fleet. The sampling that produces the rollouts is the part that needs `gamingpc`.
+
 ## Where the corpus lives
 
 gao runs on four real machines with 500 GB of free disk between them, and the corpus is 1188 GB of extracted text, 396 GB compressed. It does not fit, and it does not fit by enough that no amount of tidying changes the answer. `gao box` prints the arithmetic.
@@ -974,6 +1029,7 @@ che/         covering: Vietnamese personal data, found and tagged over
 nhat/        decontamination: the benchmark roster, and what of it the corpus holds
 dau/         the mark: the diacritic restoration task set, built out of the corpus
 dien/        filling in: the cloze proxy the ablation slate is scored by
+cham/        marking: the verifiers the reinforcement learning arms are trained against
 kho/         the store: records, manifests, snapshots, signing
 vo/          the reject store: dropped documents and why they were dropped
 xoa/         the takedown register: who asked, when, and when it was done
