@@ -187,6 +187,7 @@ gao keo resumes.jsonl                       # to pull: what it costs to get back
 
 gao chia -why report.pdf                    # route one PDF: direct extraction, legacy transcode, or OCR
 gao chia *.pdf                              # and the routing distribution over a pile of them
+gao nghe tracks.jsonl                       # to listen: whether a transcript belongs to the audio it came off
 
 gao box                                     # the fleet, and the disk budget it implies
 gao box peak -ran 6h disk.jsonl             # what a run actually held on disk, against the ceiling and against the arithmetic
@@ -2019,6 +2020,40 @@ There is a fourth outcome and it is deliberate. A document that is encrypted, or
 
 The distribution carries the box it was counted on, like every other measurement here, because a routing distribution with no hardware attached is not reproducible and the whole point of it is to be a cost estimate somebody else can check.
 
+## Keeping a transcript nobody has the words for
+
+Speech is the one place in the pipeline where there is no reference. Every other stage can be checked against something: a reading against the page, a normalization against the original bytes, a count against the store. A transcript can only be checked against what was said, and nobody wrote that down, which is the entire reason the audio is worth transcribing. So there is no word error rate to publish here and there never will be at corpus scale.
+
+That is a smaller problem than it sounds, because the failure worth catching is not a wrong word. It is a decoder that meets a stretch of silence, or a bed of music, or a regional tone it has no model for, and starts emitting the same sentence until the file ends. The output is fluent Vietnamese. `gao sang` admits it as prose, because it is prose. `gao xay` does not see it, because the repetition is inside one document rather than across two. It reads as speech, and what it teaches a model is to repeat itself. The only place that failure can be caught is where the transcript is made, so `gao nghe` is a gate rather than a note in the extraction log.
+
+```
+$ gao nghe tracks.jsonl
+track                           source  box       length  speech  lines  distinct  longest run  syllables/s  VRAM    kept
+radio-yeu-nhac-trinh-so-12      asr     gamingpc  15m     11m     140    27.9%     61           3.3          9.4 GB  loop
+hocmai-vat-ly-12-bai-27         asr     gamingpc  59m     48m     731    94.1%     2            5.6          9.4 GB  written
+hocmai-vat-ly-12-bai-27         human   none      59m     48m     706    97.7%     2            5.6          none    yes
+vtv1-thoi-su-19h-2026-07-14     asr     gamingpc  45m     40m     612    97.7%     2            6.3          9.4 GB  yes
+vtc-phong-su-mien-tay-tap-4     asr     gamingpc  30m     25m     402    98.5%     1            5.9          9.4 GB  yes
+vov1-doc-truyen-dem-khuya-0731  asr     gamingpc  55m     50m     540    98.3%     1            5.2          9.4 GB  yes
+
+gao-voice, 3.4h of audio with 59m of it written by a person rather than decoded.
+A track is dropped when one line runs 3 times back to back, or under 60.0% of its lines are distinct, or the words do not fit the speech at 2.0 to 8.5 syllables a second.
+Bad recordings are a corpus and a bad decoder is a setting, so what is gated is the share of the hours lost rather than the count of the tracks, and the line is 10.0%.
+1 machine transcript superseded by subtitles a person wrote for the same recording, which is not hours lost.
+
+gao-voice holds 3.1h of transcript a corpus can take, 59m of it written by a person, and the nearest any admitted track came to a gate was hocmai-vat-ly-12-bai-27 keeping 97.7% of its lines distinct at 5.6 syllables a second of speech.
+```
+
+That block is invented, since no audio has been decoded yet. Three numbers do the work and none of them needs a reference. The longest run of one line back to back catches the loop while it is still short. The share of lines that are distinct catches it once the decoder has been stuck long enough to stop repeating consecutively, which happens when it alternates between two hallucinated sentences. Those two are the same failure seen from opposite ends, and the first row above fails both. The third number is syllables against seconds of speech, which catches the transcript that stopped early and the one that kept writing after the audio ran out. Vietnamese is syllable timed and lands near six a second in ordinary speech, so a track at one is missing most of its audio and a track at twelve invented some of it.
+
+The rate is measured against the seconds the timed lines cover rather than against the length of the recording, because silence is not slow speech. A lecture with a five minute gap in it while somebody writes on a board is a normal recording, and dividing its syllables by its wall clock would call it a failed decode.
+
+The gate is on hours rather than on tracks, and that is the load bearing choice. A few bad recordings are what a corpus is: somebody points a phone at a fan, a stream drops for a minute, a file is half music. A tenth of the hours coming back unusable is not a corpus, it is a decoder setting, and the difference between those two readings is what the operator needs. So one broken fifteen minute file inside three and a half hours passes with the file dropped and named, and the same failure across a tenth of the audio does not.
+
+Human authored subtitles and generated transcripts are counted apart rather than blended, and where a recording has both, the human track is admitted and the machine one is superseded. A superseded track is not a loss and is not counted as one, since the audio and the alignment are still worth keeping for `gao-voice`. It shows in the table as `written`, which is the word for what happened to it.
+
+Every generated transcript carries the box it was decoded on and the peak VRAM it needed, checked against the card that box actually has. There is one GPU on this fleet, so a decode reporting nine gigabytes off a machine with no card in it is not a result anybody can reproduce, and it is refused rather than footnoted.
+
 ## Why this is not just another crawler
 
 Three problems in Vietnamese text processing are load bearing, and general pipelines get all three wrong.
@@ -2049,6 +2084,7 @@ soi/         judging a reading: character and diacritic error rates, tone confus
 xay/         milling: deduplication, boilerplate removal
 tach/        separating: reading a forum page as the thread it is
 chia/        dividing: which of three ways a PDF is extracted, and what that costs
+nghe/        to listen: whether a transcript belongs to the audio it came off, with no reference to score it against
 che/         covering: Vietnamese personal data, found and tagged over
 nhat/        decontamination: the benchmark roster, and what of it the corpus holds
 dau/         the mark: the diacritic restoration task set, built out of the corpus
