@@ -53,6 +53,7 @@ func commands() []command {
 		{"mam", "the seed: find hosts nobody handed us a list of", runMam},
 		{"nau", "cook: the training plan, its token budget, its curriculum, and the arithmetic between them", runNau},
 		{"ngai", "to hesitate: vi-overrefusal, whether a model will talk about Vietnam, in pairs", runNgai},
+		{"nghe", "to listen: whether a transcript belongs to the audio it came off, without a reference to score it against", runNghe},
 		{"nhat", "pick out the grit: find the documents that hold a benchmark gao is judged on", runNhat},
 		{"nhip", "the beat: what each pipeline stage runs at, with the box on every number", runNhip},
 		{"phoi", "normalize Vietnamese text, or report what normalizing it would do", runPhoi},
