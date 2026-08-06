@@ -113,6 +113,9 @@ gao ngai grade replies.jsonl                # both numbers off one set, and how 
 gao theo items                              # to follow: vi-adherence, a line per prompt shape and what that shape invites
 gao theo items -prompts                     # every prompt verbatim, with the sentence saying why it is in the set
 gao theo grade replies.jsonl                # the whole answer read rather than the top, and how far in it turned
+gao kim frame                               # the needle: vi-needle, the grid the long context test is fixed on before it is built
+gao kim check items.jsonl                   # check a built set against that grid, before a model is asked anything
+gao kim grade -items items.jsonl -curve replies.jsonl  # read a run, with recall at every depth rather than one average
 
 gao thu slate                               # to try: the forty run ablation slate, fixed before any of it runs
 gao thu slate -knobs                        # and what the forty runs are actually for, one line per question
@@ -1032,6 +1035,42 @@ The gate is adherence at or above 98% and unmarked answers at or under 1%. The f
 
 No model has been graded against it yet. The set exists, the classifier exists, and the numbers arrive when there is something to point them at.
 
+## Whether a long context is read or skimmed
+
+The needle in a haystack test is the easiest benchmark in the field to pass and the easiest to build badly. Put one sentence into a wall of repeated filler, ask for it back, and every model above a certain size scores near 100%, which tells you nothing except that the test was easy. Three things are wrong with the usual version and all three are fixable, so `kim` fixes them. Kim is a needle.
+
+The haystack is real corpus prose rather than one paragraph repeated, which matters because a needle dropped into filler is the only novel text in the context and can be found by noticing that. Every item carries decoys, which are other values of the same shape sitting elsewhere in the same context, so the item cannot be solved by locating the only thing that looks like an answer. And some items have no needle at all, so a model that always produces its most plausible span is caught rather than rewarded, which is the single thing the standard test cannot see.
+
+```
+$ gao kim frame
+vi-needle: 144 items over 4 context lengths and 7 depths, 2 items apiece, 7.6 million tokens to run once
+
+frame 5da3e0715e97a43431c73ba8ad65ac9493f0934f0d9518d0fc5c03926d34dc2a
+
+plain   56 items  3.0M tokens  a fact stated once, with other values of its shape elsewhere in the context
+toned   56 items  3.0M tokens  the near miss is the same word marked differently, which is the item an English set cannot have
+split   24 items  1.3M tokens  two facts at two depths, which is reading a document rather than retrieving a span
+absent  8 items   0.4M tokens  no needle at all, so a model that always answers is caught rather than rewarded
+
+The gate is 90% recall overall, 80% at the longest length, at most 15 points
+between the best depth and the worst, at most 5% tone confusion, and at most
+5% of the items with no needle answered anyway.
+
+Nothing has been built yet. The haystacks come out of the corpus and the corpus
+is not ingested, so what is fixed here is the grid and the rules, which is the
+half a benchmark gets wrong by leaving until after it has results.
+```
+
+The toned items are the part of this that only a Vietnamese set can have. `Hoà` and `họa` differ by where a mark sits and they are different words, and a model whose tokenizer was fitted to English tends to reach the right region of the context and come back with the wrong one of them. Answering with the near miss is counted apart from missing, because it is a different bug with a different fix: a miss is a retrieval failure and a near miss is the tokenizer, and adding them together hides both.
+
+The split items ask for two facts placed at two depths in the same context, which is reading a document rather than retrieving a span. They are the items a model gets by holding the whole context rather than by finding the one place that matched, and they are the ones that fall over first as the context grows.
+
+What `grade` reports is the shape rather than the average. A model can clear 90% overall while answering nothing placed past the halfway mark, because the ends of a context are overrepresented in every grid that puts a needle at 0% and 100%. So the gate that matters most here is the spread, which is recall at the best depth minus recall at the worst, and 15 points is as far apart as those are allowed to be. Recall at the longest length is gated separately at 80%, since a number pooled over four lengths is carried by the short ones.
+
+The set has to be built to the grid before anything is asked of a model, and `gao kim check` refuses a set that is not: a hole in the grid is not a smaller benchmark, it is a benchmark whose average has quietly moved toward whichever squares were easy to build. The same rule the rest of this repo runs on applies here. The frame is hashed before results exist, a run split across two machines is two runs and is reported as such, and the answers that came back wrong are returned as a list of item IDs rather than as a count, so the failure can be looked at instead of argued about.
+
+Nothing has been run against it. The haystacks come out of the corpus and the corpus is not ingested yet, so what exists today is the grid, the rules and the grader, which is the half that has to be fixed first.
+
 ## Making text once there is no more of it to find
 
 Everything up to here harvests. The crawl, the Hugging Face union, the PDFs and the transcripts are all Vietnamese somebody already wrote, and the whole project is arranged around finding it, reading it correctly, and throwing away the parts that are not worth keeping. That runs out. Deduplication collapses the web harder than anybody expects the first time they measure it, and past the edge of what is left the only move available is to make text rather than to find it. The mixture spends 150 billion tokens doing that, which is more than the legal and spoken registers put together.
@@ -1419,6 +1458,7 @@ tin/         to believe: whether the cloze proxy at 1.4B orders recipes the way 
 cham/        marking: the verifiers the reinforcement learning arms are trained against
 ngai/        to hesitate: vi-overrefusal, the paired set both refusal numbers come off
 theo/        to follow: vi-adherence, whether the answer stays in the language it was asked in
+kim/         the needle: vi-needle, whether a long context in Vietnamese is read or skimmed
 gieo/        to sow: the generator card for gao-synth, and the recipe it is written against
 lat/         a slice: release slices as views over a snapshot rather than copies of it
 kho/         the store: records, manifests, snapshots, signing
