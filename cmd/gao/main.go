@@ -33,6 +33,7 @@ func commands() []command {
 		{"cham", "mark: grade sampled answers against a verifier, since a published reward is the only arguable one", runCham},
 		{"che", "cover: find the personal data in a document and tag over it", runChe},
 		{"chia", "divide: route a PDF to direct extraction, to a legacy transcode, or to OCR", runChia},
+		{"chim", "to sink: what an FP8 E4M3 step lost to zero, which the loss curve will not tell anybody", runChim},
 		{"chon", "choose: score the base models against the six criteria, in the order they were written", runChon},
 		{"dau", "the mark: build and score the diacritic restoration task set out of the corpus", runDau},
 		{"dem", "count: fetch the tokenizer that defines a gao token, print what an ingest counted", runDem},

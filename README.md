@@ -175,6 +175,7 @@ gao hieu model                              # the effect: the from scratch archi
 gao hieu plan -gpus 64                      # the compute that run needs, in the hours it gets booked in
 gao hieu read steps.jsonl                   # what the hardware actually gave back, tenth of the run by tenth
 gao hieu spot -mean 4h                      # how often to checkpoint on capacity that gets taken back
+gao chim -loss 2.3141 -bf16 2.3139 step.jsonl  # to sink: what the FP8 cast lost to zero, which the loss curve will not say
 
 gao chia -why report.pdf                    # route one PDF: direct extraction, legacy transcode, or OCR
 gao chia *.pdf                              # and the routing distribution over a pile of them
@@ -1326,6 +1327,36 @@ The reading back is where the word continuously earns its place on the checklist
 
 Two things in a log are faults rather than rows with something missing. A step that does not say what it ran on cannot be turned into a utilization figure at all, and a run whose steps came off two different kinds of accelerator cannot be folded into one either. The second is not hypothetical: the same milestone asks for spot instance handling that survives preemption, and a job that restarted onto different hardware and carried on reporting against the old peak is what that failure looks like from the log.
 
+### What the cast lost to zero
+
+The gate is 40% utilization in FP8, and the format that makes those numbers reachable is E4M3: four exponent bits, three mantissa bits, largest finite value 448, smallest subnormal a little under two thousandths. The whole format spans about eighteen binades where BF16 spans two hundred and fifty, and everything about training in it follows from that one fact. Weights sit inside comfortably. Activations mostly do. Gradients late in a long run do not, because a gradient tensor's live values spread over more range than the format has, and there is no scale factor that holds both ends of one at once.
+
+What makes this a command rather than an assertion is that the failure is silent by construction. A value that falls under the floor becomes zero, zero is a legal number, the matrix multiply succeeds, the optimizer steps, and the loss curve keeps going down, because most of the signal is in the large values and those are all still there. A run can empty a fifth of one layer's gradient for ten thousand steps and the only evidence is a model that comes out slightly worse than the BF16 run would have, by which point the tensors nobody recorded are gone. So the loss curve is not the check, and `gao chim` prints it beside the share of values that sank rather than instead of it.
+
+```
+$ gao chim -loss 2.3141 -bf16 2.3139 step.jsonl
+tensor                                    kind        live   flushed  clipped  scale  floor     head  cosine  range
+blocks.12.mlp.experts.7.down_proj.grad    gradient    16.8M  4.3%     0%       26900  1.29e-03  2.0x  0.9993  fits
+blocks.31.attn.qkv_proj.grad              gradient    25.2M  0.005%   0%       16000  1.76e-03  2.0x  0.9996  fits
+blocks.12.attn.out_proj.act               activation  5.0M   0%       0%       36.7   6.97e-03  2.0x  0.9994  fits
+blocks.12.mlp.experts.7.down_proj.weight  weight      16.8M  0%       0%       533    1.12e-02  2.0x  0.9998  fits
+
+4 tensors at step 42000 of com-30B-A3B-base, on gamingpc.
+E4M3 tops out at 448 and its floor is 0.001953125, so a value under 1.95e-03 times the scale is a zero.
+The lines are 0.10% of live values flushed, 0.01% clipped, and 0.999 against the same tensor in BF16.
+The FP8 loss is 2.3141 against BF16's 2.3139 on the same batch, which is 0.0002 apart and is not the check.
+
+blocks.12.mlp.experts.7.down_proj.grad flushed 4.3% of its live values to zero at step 42000 while its cosine held at 0.9993 and the loss stayed within 0.0002 of BF16, which is what silent means and why the curve is not the check.
+```
+
+The top row is the case the command is named for. Its cosine against BF16 is 0.9993, its loss is two ten thousandths from the reference, and four percent of its live values are gone. Every number anybody watches says the step was fine.
+
+Four things are read per tensor and none of them is enough on its own. The share of live values that landed on zero, which is over live values rather than over the tensor, since an activation that was three fifths zeros before the cast did not lose anything by being three fifths zeros after it. The share that clipped at 448, held to a tighter line, because clipping is a scale computed from an amax the tensor has since moved away from rather than a property of the format. How many steps of amax history the scale came off, since a delayed scale taken from four of them is the previous step's tensor with extra arithmetic. And the cosine against the same tensor computed in BF16 on the same step, which costs one reference forward and backward on a step somebody picks.
+
+The last column is the one that says stop rather than retune. A tensor whose values spread over more than 229376 does not fit in E4M3 under any scale at all, and the answer to that is that the tensor stays in BF16, not that somebody chooses a better margin. The reading also has to be consistent with itself, and the check for that is cheap: a tensor cannot have flushed anything to zero if its smallest recorded value still lands above the floor. That combination means the smallest value was read off the tensor after the cast, when the small ones were already gone, which is the ordinary way this gets instrumented wrong and then reports that nothing sank.
+
+Those numbers are invented. `com-30B-A3B-base` does not fit on the fleet by three orders of magnitude, and that slice does not start until the compute exists and is booked. The arithmetic and the refusals run anywhere, which is the reason to write them before the run rather than during it.
+
 ## How often to checkpoint when the capacity gets taken back
 
 The compute for a run this size is affordable on spot capacity and not much else, and spot capacity is taken back on a schedule nobody here sets. So the run is going to be interrupted, repeatedly, and the only decision anyone gets to make about it is how often it checkpoints. That decision is not a preference. Checkpoint too rarely and every preemption throws away hours of gradient. Checkpoint too often and the run spends its life writing to disk instead of training. Both mistakes look identical from the outside, which is a slow run, and both get argued about instead of computed.
@@ -1845,6 +1876,7 @@ luat/        the legal position: license determinations, publication posture
 nau/         the training plan: the token budget, the curriculum, the arms
 chon/        to choose: the base model criteria, in the order they bind
 hieu/        the effect: what fraction of the hardware a training run turns into gradient
+chim/        to sink: what an FP8 E4M3 step lost to zero, and the checks that catch it
 may/         the fleet: the four boxes this actually runs on
 ```
 
