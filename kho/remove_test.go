@@ -16,10 +16,10 @@ import (
 // removable builds a snapshot whose manifest carries the whole accounting, not
 // just the document count, because the thing a removal is most likely to get
 // wrong is the arithmetic and a fixture with zeroes in it would not notice.
-func removable(t *testing.T, n, shards int) (dir string, priv ed25519.PrivateKey) {
+func removable(t *testing.T, n, shards int, opts ...ShardOption) (dir string, priv ed25519.PrivateKey) {
 	t.Helper()
 	dir = t.TempDir()
-	recs := fan(t, dir, n, shards)
+	recs := fan(t, dir, n, shards, opts...)
 
 	m := &Manifest{
 		Snapshot:  "2026-09",
