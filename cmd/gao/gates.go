@@ -19,6 +19,7 @@ func runDemGates(stdout, stderr io.Writer, args []string) int {
 	oneIn := fs.Int("one-in", 1, "check one document in this many, chosen by document identity so the run is reproducible")
 	limit := fs.Int("n", 0, "stop after this many documents")
 	sample := fs.Int("sample", 5, "how many failing examples each gate names")
+	coverage := fs.Bool("coverage", false, "run the built in coverage set instead of files, which leaves no gate unrun")
 	fs.Usage = func() {
 		fmt.Fprint(stderr, `usage: gao dem gates -tokenizer PATH [flags] <file...>
 
@@ -52,6 +53,14 @@ the tokenizer was trained on rather than about the text it will see here.
 
 Files are Parquet parts or text files, and a text file is one document.
 
+-coverage runs the built in set instead: a few kilobytes holding every letter of
+the language, the same letters with their marks written separately, one document
+for each legacy encoding, and the mixed and numeric text T3 and T7 need. It
+leaves no gate unrun, it takes a millisecond, and it is fixed, so the same
+command on two boxes produces the same report or the two boxes differ. What it
+is not is a sample of the corpus: the fertility it prints is the fertility of a
+letter chart and it is not a number about gao.
+
 flags:
 `)
 		fs.PrintDefaults()
@@ -59,7 +68,7 @@ flags:
 	if err := fs.Parse(args); err != nil {
 		return 2
 	}
-	if *model == "" || fs.NArg() == 0 {
+	if *model == "" || (fs.NArg() == 0) != *coverage {
 		fs.Usage()
 		return 2
 	}
@@ -71,6 +80,12 @@ flags:
 	}
 
 	g := dem.NewGates(tok, dem.GateOptions{OneIn: *oneIn, Limit: *limit, Sample: *sample})
+	if *coverage {
+		for _, c := range dem.Coverage() {
+			g.Add(c.ID(), c.Text)
+		}
+		return printCoverage(stdout, stderr, g.Report())
+	}
 	for _, name := range fs.Args() {
 		if g.Full() {
 			break
@@ -87,9 +102,41 @@ flags:
 	return printGates(stdout, stderr, g.Report())
 }
 
+// printCoverage reports a run over the built in set.
+//
+// It judges the correctness gates and says nothing about eligibility, because
+// four kilobytes is not a sample of the corpus and T9 needs more text than that
+// before the rate it computes is a measurement. A run here answers the question
+// that comes first, which is whether the suite is measuring anything.
+func printCoverage(stdout, stderr io.Writer, report dem.GateReport) int {
+	printReport(stdout, report)
+	if report.Correct() {
+		fmt.Fprintf(stdout, "\nok, every gate about what %s does to text ran and passed on the coverage set\n", report.Tokenizer)
+		fmt.Fprint(stdout, "this is not eligibility, which needs the corpus and a throughput measured on it\n")
+		return 0
+	}
+	fmt.Fprintf(stderr, "\ngao dem gates: %s does not pass the coverage set\n", report.Tokenizer)
+	printFailures(stderr, report, func(g dem.Gate) bool { return g.Name == dem.ThroughputGate })
+	return 1
+}
+
 // printGates is the report, split out from the run so that what a failing gate
 // looks like on a terminal is testable without a 4.7 MB protobuf on the box.
 func printGates(stdout, stderr io.Writer, report dem.GateReport) int {
+	printReport(stdout, report)
+	if report.Eligible() {
+		fmt.Fprintf(stdout, "\nok, %s passed every gate on this sample\n", report.Tokenizer)
+		return 0
+	}
+
+	fmt.Fprintf(stderr, "\ngao dem gates: %s is not eligible\n", report.Tokenizer)
+	printFailures(stderr, report, nil)
+	return 1
+}
+
+// printReport writes the table and the examples, which read the same whether the
+// text came off a disk or out of the coverage set.
+func printReport(stdout io.Writer, report dem.GateReport) {
 	fmt.Fprintf(stdout, "tokenizer  %s, %d pieces\n", report.Tokenizer, report.Vocab)
 	fmt.Fprintf(stdout, "documents  %d\n", report.Documents)
 	fmt.Fprintf(stdout, "fertility  %.2f characters per token, %.2f tokens per syllable\n",
@@ -115,22 +162,22 @@ func printGates(stdout, stderr io.Writer, report dem.GateReport) int {
 		}
 	}
 
-	if report.Eligible() {
-		fmt.Fprintf(stdout, "\nok, %s passed every gate on this sample\n", report.Tokenizer)
-		return 0
-	}
+}
 
-	fmt.Fprintf(stderr, "\ngao dem gates: %s is not eligible\n", report.Tokenizer)
+// printFailures names what went wrong, in the order the gates are in. except is
+// the gates the caller did not judge the run by, which on the coverage set is
+// the throughput gate and nowhere else.
+func printFailures(stderr io.Writer, report dem.GateReport, except func(dem.Gate) bool) {
 	for _, gate := range report.Gates {
 		switch {
 		case gate.Audit || gate.Passed():
+		case except != nil && except(gate):
 		case !gate.Ran:
 			fmt.Fprintf(stderr, "  %s did not run: %s\n", gate.Name, gate.Why)
 		default:
 			fmt.Fprintf(stderr, "  %s failed %d of %d %s\n", gate.Name, gate.Failed, gate.Checked, gate.Unit)
 		}
 	}
-	return 1
 }
 
 // detail is the right hand column: whatever the gate has to say for itself,
