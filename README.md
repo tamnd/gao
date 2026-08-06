@@ -67,6 +67,8 @@ gao sang -min-syllables 40 parts/*.parquet  # and what a different length floor 
 gao xay        parts/*.parquet              # mill: what the corpus holds more than one copy of
 gao xay -curve parts/*.parquet              # and what every deduplication threshold would cost
 gao xay -boiler parts/*.parquet             # and the furniture every page of a host carries
+gao soi        page.txt reading.txt         # judge a machine's reading of a page against what it says
+gao soi -matrix page.txt reading.txt        # and what each of the six tones was read as
 gao che        doc.txt                      # cover: tag over the personal data in a document
 gao che -level L2 -report parts/*.parquet   # and what a corpus holds, per kind, before covering it
 gao nhat -benchmarks                        # pick out the grit: what gao is judged on, and it only grows
@@ -254,6 +256,44 @@ Two things the stage gives up are written down rather than left to be discovered
 The tables are not typed from memory, and where they came from is part of the claim. UniKey's `vnconv/data.cpp` was parsed programmatically rather than read; an independent transcription in the Rust port `marixdev/vnkey` agrees on all 186 letter entries of every charset, with the differences confined to the western symbol tail that is not shipped here; `iconv` covers TCVN3 as TCVN5712-1 and VISCII, and every code with one meaning agrees exactly; and the mojibake above is checked in the tests as characters rather than as bytes, so anybody who reads Vietnamese can read what is being claimed. UniKey is GPL-2.0, so its mappings are treated as facts about the encodings and re-expressed in gao's own structure rather than copied. TCVN3 and VNI-WIN are corroborated four ways. VPS and the BK HCM pair rest on two agreeing transcriptions of one lineage, which is the other reason the detector wants a margin before it reads a document as one of them.
 
 What is not known yet is how much of each source is in a font encoding, which is a number this stage can produce and has not been run wide enough to have. The report breaks it down by name for that reason, and measuring it over the corpus is a fleet item in the milestone rather than something a fixture can answer.
+
+## Judging a page a machine read
+
+A scan is not text until something reads it, and the number everybody uses to say how well it was read does not work on Vietnamese. `soi` is what you do to a grain of rice, hold it up to the light and look for the fracture, and this is the stage that holds a machine's reading up against what the page says.
+
+Start with the shape of the language, which is measured rather than asserted. About a quarter of the characters in running Vietnamese carry a mark of some kind and about a sixth carry a tone. Now take a reading at 2% character error rate, which is better than most engines manage on a clean scan and reads as an easy pass. Suppose all of that 2% is in the tone marks, which is exactly where an engine trained mostly on Latin script puts its errors. A sixth of the characters carry a tone, so 2% of the characters is one tone in eight, which is a wrong word in most sentences.
+
+That reading is not slightly damaged. `ma`, `má`, `mà`, `mả`, `mã` and `mạ` are six unrelated words, and a page that has lost the difference between them is still fluent Vietnamese made of words that exist, so every quality filter downstream passes it. A page with 2% of its letters smudged instead gets caught by the first filter it meets. The two score the same, and one of them quietly poisons a corpus.
+
+So the rates are reported separately and never averaged. Character error rate says how much of the page came through. Diacritic error rate is the share of the page's *marked* characters whose marks did not survive, and the denominator is the decision that makes it worth having: it moves for one reason instead of for every reason at once, and it is about four times as sensitive as a rate over all characters. On the 2% reading above the three numbers read 2%, 8% and 12%, and the last two are the ones somebody can act on.
+
+A Vietnamese letter is taken apart into three things that fail independently. The base letter. The letter's own mark, which is part of its identity rather than decoration on it, the circumflex of `â`, the breve of `ă`, the horn of `ư`, the stroke of `đ`. And the tone, one of six. Reading `ế` as `e` loses two of them, reading it as `ề` loses one, and reading it as `é` loses a different one and produces a real word meaning something else. All three are counted on their own line, because they come from different faults in the engine and they get fixed in different places. `đ` read as `d` has its own line too: it is not a tone error, the stroke survives every amount of Unicode normalization, and it is the single commonest thing a Latin trained engine gets wrong here.
+
+Ngang, the level tone, is a value rather than an absence. That is what lets the confusion matrix say which failure an engine has, and a dropped tone and a swapped tone are different engines. No engine has been run against this yet, so the matrix below is a sketch of the shape rather than a result, and it is the shape that carries the argument.
+
+```
+page \ read  ngang  huyền  sắc  hỏi  ngã  nặng
+ngang        .      .      .    .    .    .
+huyền        2      31     .    1    .    .
+sắc          9      .      54   .    .    2
+hỏi          4      .      .    12   6    .
+ngã          1      .      .    7    9    .
+nặng         6      .      1    .    .    28
+```
+
+Read the ngang column as the tones the engine could not see and the rest as the ones it could not tell apart. The two need different work: the first is resolution or preprocessing and the second is the model. The `hỏi` and `ngã` block above is the classic one, a hook and a tilde that are a few pixels apart at scanning resolution, and it is also the pair Vietnamese speakers in the south merge in speech, so a reading that confuses them is not always the scanner's fault.
+
+The corner where the ngang row meets the ngang column stays empty on purpose. Filling it would mean counting every space and every consonant on the page, and a matrix whose largest number is the spaces is a matrix nobody reads.
+
+```
+gao soi page.txt reading.txt                 # the two rates, side by side, for one page
+gao soi -matrix page.txt reading.txt         # and what each tone was read as
+gao soi -gate eval/*.txt                     # exit non zero if it misses the S4 gate, naming what failed
+```
+
+Several pairs in one run are one evaluation set and one score over all of it, not an average of per page scores, because a caption and a page of body text are not one vote each.
+
+Two things this does not do. It does not decide whether a reading is good enough: the thresholds live in the S4 milestone and are checked against these numbers rather than inside them. And it does not know what the page said, only what it was told the page said, so every figure here inherits whatever is wrong in the reference transcript. That is why the hand corrected evaluation set is a separate deliverable from the metric that reads it, and why no engine has a number here yet. The metric is written and tested. Measuring an engine with it needs real scans and real engines on `gamingpc`, which is a fleet item.
 
 ## Deciding what is a document
 
@@ -590,6 +630,7 @@ gat/         acquisition: Hugging Face, Common Crawl, crawl, media
 dem/         counting: the tokenizer that defines a gao token, and the counts
 phoi/        normalization: Unicode, orthography, encoding repair
 sang/        filtering: language ID, heuristics, quality classification
+soi/         judging a reading: character and diacritic error rates, tone confusion
 xay/         milling: deduplication, boilerplate removal
 che/         covering: Vietnamese personal data, found and tagged over
 nhat/        decontamination: the benchmark roster, and what of it the corpus holds
