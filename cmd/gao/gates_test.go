@@ -115,6 +115,56 @@ func TestDemGatesReportsTheDocumentsAGateDeclinedToLookAt(t *testing.T) {
 	}
 }
 
+func coverageRun(t *testing.T, report dem.GateReport) (string, string, int) {
+	t.Helper()
+	var stdout, stderr bytes.Buffer
+	code := printCoverage(&stdout, &stderr, report)
+	return stdout.String(), stderr.String(), code
+}
+
+// The coverage set is four kilobytes and T9 declines on it. A run that reported
+// that as a failed gate would be telling somebody their tokenizer is too slow
+// on the strength of a letter chart.
+func TestDemGatesOnTheCoverageSetDoesNotJudgeTheThroughput(t *testing.T) {
+	out, errOut, code := coverageRun(t, gateReport(
+		dem.Gate{Name: "T1", What: "decode(encode(x)) is x", Unit: "documents", Checked: 8, Ran: true},
+		dem.Gate{Name: "T9", What: "at least 20 MB/s on one core", Why: "encoding 4227 bytes took 248µs, and a rate computed from that is a reading of the clock"},
+		dem.Gate{Name: "T10", What: "no piece is reachable only from text gao would reject", Unit: "pieces", Checked: 261888, Failed: 12, Audit: true},
+	))
+
+	if code != 0 {
+		t.Fatalf("a coverage run with only T9 unrun: exit %d\n%s\n%s", code, out, errOut)
+	}
+	if !strings.Contains(out, "ran and passed on the coverage set") {
+		t.Errorf("the report does not say the coverage set passed:\n%s", out)
+	}
+	if !strings.Contains(out, "this is not eligibility") {
+		t.Errorf("the report lets a coverage run read as an eligibility decision:\n%s", out)
+	}
+	if strings.Contains(errOut, "T9") {
+		t.Errorf("T9 declining was reported as something wrong:\n%s", errOut)
+	}
+}
+
+// Everything else it does judge, and a correctness gate that did not run on the
+// set is the set failing rather than the tokenizer.
+func TestDemGatesOnTheCoverageSetStillJudgesTheRest(t *testing.T) {
+	out, errOut, code := coverageRun(t, gateReport(
+		dem.Gate{Name: "T6", What: "NFD and NFC encode the same", Unit: "documents", Checked: 8, Failed: 1, Ran: true},
+		dem.Gate{Name: "T9", What: "at least 20 MB/s on one core", Why: "a rate computed from that is a reading of the clock"},
+	))
+
+	if code != 1 {
+		t.Fatalf("a coverage run with T6 failing: exit %d\n%s", code, out)
+	}
+	if !strings.Contains(errOut, "T6 failed 1 of 8 documents") {
+		t.Errorf("the failure does not say what T6 found:\n%s", errOut)
+	}
+	if strings.Contains(out, "ran and passed") {
+		t.Errorf("a failing coverage run still reported a pass:\n%s", out)
+	}
+}
+
 func TestDemGatesUsageErrors(t *testing.T) {
 	if _, _, code := exec(t, "dem", "gates"); code != 2 {
 		t.Errorf("no tokenizer and no files: exit %d, want 2", code)
@@ -124,6 +174,11 @@ func TestDemGatesUsageErrors(t *testing.T) {
 	}
 	if _, _, code := exec(t, "dem", "gates", "page.txt"); code != 2 {
 		t.Errorf("files and no tokenizer: exit %d, want 2", code)
+	}
+	// The coverage set replaces the files rather than adding to them, so
+	// naming both is a question with two answers.
+	if _, _, code := exec(t, "dem", "gates", "-tokenizer", "t.model", "-coverage", "page.txt"); code != 2 {
+		t.Errorf("the coverage set and files: exit %d, want 2", code)
 	}
 
 	missing := filepath.Join(t.TempDir(), "nope.model")
@@ -149,7 +204,7 @@ func TestDemGatesIsInTheSubcommandList(t *testing.T) {
 	if code != 2 {
 		t.Errorf("gao dem gates -h: exit %d, want 2", code)
 	}
-	for _, want := range []string{"diacritic atomicity", "100.000%", "an audit rather than a threshold"} {
+	for _, want := range []string{"diacritic atomicity", "100.000%", "an audit rather than a threshold", "a sample of the corpus"} {
 		if !strings.Contains(errOut, want) {
 			t.Errorf("the usage does not explain %q:\n%s", want, errOut)
 		}

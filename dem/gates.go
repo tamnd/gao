@@ -233,13 +233,13 @@ func (g *Gates) Add(id doc.Hash, text string) bool {
 	g.tokens += int64(len(ps))
 
 	back := g.enc.Decode(identities(ps))
-	g.record(roundTrip, id.String(), back == text)
+	g.record(roundTrip, id.String(), intact(back, text))
 
 	bare := phoi.Bare(text)
 	g.record(roundTripBare, id.String(), g.roundTrips(bare))
 
 	if mixed(text) {
-		g.record(roundTripMixed, id.String(), back == text)
+		g.record(roundTripMixed, id.String(), intact(back, text))
 	}
 
 	if nfc := norm.NFC.String(text); nfc != text {
@@ -268,7 +268,27 @@ func (g *Gates) Add(id doc.Hash, text string) bool {
 
 // roundTrips is T1 on a string other than the document, which T2 needs.
 func (g *Gates) roundTrips(text string) bool {
-	return g.enc.Decode(identities(g.enc.Encode(text))) == text
+	return intact(g.enc.Decode(identities(g.enc.Encode(text))), text)
+}
+
+// intact reports whether a round trip came back with the text.
+//
+// The normalized form counts as coming back with it, and only for a document
+// that did not arrive normalized. That is not a loosening of T1, it is what
+// makes T1 and T6 possible to satisfy at the same time. T6 asks that a document
+// and its normalized form encode identically, and a tokenizer that satisfies it
+// on a document written with its marks separate has only one sequence of
+// identities to decode back, so one of the two forms is what it returns and the
+// other is what T1 would call a failure. No tokenizer can pass both readings, so
+// the strict one has to give somewhere, and this is the place: the corpus is NFC
+// by the time it reaches a tokenizer, because phoi normalizes at ingest, and a
+// round trip that comes back with the form the pipeline would have produced has
+// lost nothing anybody was going to keep.
+//
+// For a document that is already NFC, which is every document in the store, this
+// is a byte comparison and nothing else.
+func intact(back, text string) bool {
+	return back == text || back == norm.NFC.String(text)
 }
 
 // boundaries runs T4 and T5 over one document.
@@ -424,6 +444,31 @@ func (r GateReport) Eligible() bool {
 	return true
 }
 
+// Correct reports whether every gate about what a tokenizer does to text ran and
+// passed. It is the question the coverage set can answer, and it is a weaker
+// question than [GateReport.Eligible] by exactly one gate.
+//
+// T9 is the one left out. It is a measurement of the machine as much as of the
+// tokenizer, it needs more text than the coverage set holds before its number
+// means anything, and a suite that reported a four kilobyte run as an
+// eligibility decision would be handing somebody a claim they could not defend.
+func (r GateReport) Correct() bool {
+	for _, g := range r.Gates {
+		if g.Audit || g.Name == ThroughputGate {
+			continue
+		}
+		if !g.Passed() {
+			return false
+		}
+	}
+	return true
+}
+
+// ThroughputGate names T9. A report is a value and is judged by what is in it
+// rather than by the order it happens to be in, so the one gate that is treated
+// differently is found by name.
+const ThroughputGate = "T9"
+
 // Report closes the run and returns what it found.
 //
 // The three gates that are not per-document are settled here: T8 over the
@@ -532,10 +577,29 @@ func (g *Gates) spacing(word string) string {
 	}
 }
 
+// MinEncodeTime is how long a run has to have spent inside Encode before the
+// rate it computed is a measurement rather than a reading of the clock.
+//
+// It is a time and not a size on purpose. Below a few milliseconds the number is
+// dominated by the first call warming a cache and by whatever else the machine
+// was doing, and it swings by a factor of two between runs on an idle laptop. A
+// tokenizer slow enough to matter spends longer than this on any sample worth
+// timing, so the threshold costs nothing in the direction the gate is for.
+const MinEncodeTime = 10 * time.Millisecond
+
 // throughput settles T9.
+//
+// A run too short to time and a run with nothing in it are different findings
+// and are reported as different findings. A clock that did not tick is the first
+// of the two, not the second, and on Windows it is the ordinary case for a
+// sample this size rather than a curiosity.
 func (g *Gates) throughput(gate Gate) Gate {
-	if g.bytes == 0 || g.encoded == 0 {
+	if g.bytes == 0 {
 		gate.Why = "nothing was encoded"
+		return gate
+	}
+	if g.encoded < MinEncodeTime {
+		gate.Why = fmt.Sprintf("encoding %d bytes took %v, and a rate computed from that is a reading of the clock", g.bytes, g.encoded.Round(time.Microsecond))
 		return gate
 	}
 	rate := g.rate()

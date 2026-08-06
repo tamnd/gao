@@ -248,11 +248,16 @@ A mark comes off in two ways and the suite counts both. A boundary can land insi
 
 A gate that found nothing in the sample to run on is reported as not run, and a tokenizer is eligible only when all nine measured gates ran and passed. That distinction is the failure this suite is most likely to have in practice: point it at a thousand clean documents, three gates find nothing that applies, and a run that called that a pass prints ten green lines and means seven of them. The NFC gate says the same thing about itself in its own way, since a corpus that is already NFC compares every document against itself. The report gives the share of the sample that was not NFC as given, and when that share is zero it says so in as many words.
 
+Saying so is honest and it is not a fix, because a suite that has to be pointed at a hundred gigabytes before it can answer is a suite nobody runs while changing a tokenizer. So `-coverage` runs a built in set instead: a few kilobytes holding every one of the 134 letters of the language, the same letters with their marks written separately, one document for each of the six legacy encodings `phoi` reads, and the mixed and numeric text the other two gates ask for. It takes a millisecond, it leaves no gate unrun, and it is fixed, so the same command on `server1` and on `gammingpc` either produces the same report or the two boxes differ in something worth knowing about.
+
+What a coverage run answers is the question before the question. It is not a sample of the corpus and no number it prints is a number about gao, since fertility on a letter chart is fertility on a letter chart. It reports the nine correctness gates and declines to decide eligibility, and the throughput gate declines with it, because four kilobytes go through a tokenizer faster than the clock can be read and a rate computed from that is a reading of the clock rather than a measurement.
+
 The last gate is an audit rather than a threshold and it stays that way. It walks the vocabulary and prints the pieces made of characters this project strips: replacement characters, private use, invisible formatting, anything that is not NFC. A piece like that is a fact about the corpus the tokenizer was trained on rather than about the text it will see here, and one of them is a hint while a thousand is a different tokenizer. No threshold decides that, a person does.
 
 ```
 gao dem gates -tokenizer tokenizer.model parts/*.parquet
 gao dem gates -tokenizer tokenizer.model -one-in 100 parts/*.parquet  # and the same run over one document in a hundred
+gao dem gates -tokenizer tokenizer.model -coverage                    # or over the built in set, which leaves no gate unrun
 ```
 
 ## Normalizing before anything reads a character

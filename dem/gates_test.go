@@ -450,6 +450,26 @@ func TestASlowTokenizerFailsTheThroughputGate(t *testing.T) {
 	}
 }
 
+// A run too short to time and a run with nothing in it are different findings.
+// The clock on a Windows box does not tick often enough to tell a few kilobytes
+// of encoding from no encoding at all, and reporting the second when the first
+// happened would send somebody looking for the documents that went missing.
+func TestARunTooShortToTimeIsNotARunWithNothingInIt(t *testing.T) {
+	short := feed(newToy("quick", byRune), dem.GateOptions{}, gatePages...)
+	g := gate(t, short, "T9")
+	if g.Ran {
+		t.Fatalf("T9 timed %d bytes and reported %q", short.Chars, g.Note)
+	}
+	if !strings.Contains(g.Why, "reading of the clock") {
+		t.Errorf("T9 says %q, and what happened is that the run was too short to time", g.Why)
+	}
+
+	empty := feed(newToy("quick", byRune), dem.GateOptions{})
+	if why := gate(t, empty, "T9").Why; why != "nothing was encoded" {
+		t.Errorf("a run with no documents says %q", why)
+	}
+}
+
 // The suite against the tokenizer it exists to judge. Three pages are not the
 // ten million documents doc 07 asks for, so this is not the run that makes the
 // tokenizer eligible. It is the run that catches a change in the model or the
