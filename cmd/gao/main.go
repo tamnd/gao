@@ -52,6 +52,7 @@ func commands() []command {
 		{"nau", "cook: the training plan, its token budget, its curriculum, and the arithmetic between them", runNau},
 		{"ngai", "to hesitate: vi-overrefusal, whether a model will talk about Vietnam, in pairs", runNgai},
 		{"nhat", "pick out the grit: find the documents that hold a benchmark gao is judged on", runNhat},
+		{"nhip", "the beat: what each pipeline stage runs at, with the box on every number", runNhip},
 		{"phoi", "normalize Vietnamese text, or report what normalizing it would do", runPhoi},
 		{"plan", "print the build plan: slices, gates, and kill criteria", runPlan},
 		{"sang", "sift: measure documents and say which of them are Vietnamese prose", runSang},
