@@ -1,6 +1,7 @@
 package dem_test
 
 import (
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -12,9 +13,10 @@ import (
 	"github.com/tamnd/gao/doc"
 )
 
-// The gates are only worth having if they can fail, and the tokenizer this
-// project uses passes all ten, so every test below runs the suite against a
-// tokenizer written to break one rule and leave the others alone.
+// The gates are only worth having if they can fail, and on ordinary prose the
+// pinned tokenizer passes the ones it is judged by, so most tests below run the
+// suite against a tokenizer written to break one rule and leave the others
+// alone. The three at the bottom run it against the real one.
 //
 // A toy is a splitter, a vocabulary it fills in as it goes, and an optional way
 // of getting the text back wrong. That is enough to be a tokenizer for the
@@ -492,6 +494,124 @@ func TestThePinnedTokenizerAgainstTheGates(t *testing.T) {
 	}
 	t.Logf("fertility %.2f chars/token, %.2f tokens/syllable, %.1f MB/s",
 		r.CharsPerToken(), r.TokensPerSyllable(), r.MBPerSecond)
+}
+
+// The same tokenizer over the coverage set, which is the run that answers what
+// three pages cannot: every letter of the language, both spellings of each one,
+// and the text each of the six legacy encodings arrives as.
+//
+// It found two things and they are asserted below rather than summarized here.
+// Eligibility is not one of them and cannot be: four kilobytes decide nothing
+// about throughput and fertility on a letter chart is fertility on a letter
+// chart. What this asserts is that every gate about what the tokenizer does to
+// text had something to run on, which is the coverage set's whole job, and that
+// the round trip holds.
+func TestThePinnedTokenizerAgainstTheCoverageSet(t *testing.T) {
+	r := coverageRun(t)
+
+	for _, gate := range r.Gates {
+		if !gate.Audit && gate.Name != dem.ThroughputGate && !gate.Ran {
+			t.Errorf("%s did not run on the coverage set: %s", gate.Name, gate.Why)
+		}
+	}
+	// The three round trip gates are absolute and they hold, including on the
+	// letter this tokenizer has no piece for. Byte fallback keeps the bytes.
+	// What it does not keep is the letter, which is the next two tests.
+	for _, name := range []string{"T1", "T2", "T3"} {
+		passed(t, r, name)
+	}
+	for _, name := range []string{"T7", "T8", "T10"} {
+		g := gate(t, r, name)
+		t.Logf("%s %s: %d of %d %s, %s", g.Name, g.Status(), g.Failed, g.Checked, g.Unit, g.Note)
+	}
+}
+
+// The finding. Of the 134 letters of Vietnamese this tokenizer has a piece for
+// 133, and Ỵ is the one it does not. It arrives as three byte fallback tokens,
+// so a boundary lands inside the character, which is T4, and it parts the letter
+// from its mark, which is T5.
+//
+// The lower case ỵ is in the vocabulary, so this is a capitals problem, and
+// capitals are headlines and official documents rather than an edge case. THUỴ
+// ĐIỂN is Sweden. KIẾT LỴ is dysentery, which is what a health ministry circular
+// is about. Both come out with the last letter in pieces.
+//
+// The round trip survives it. What does not survive is the property T5 exists
+// for: a model trained on this can emit the first byte of Ỵ and then something
+// that is not the rest of it, which is a letter this language does not have.
+func TestThePinnedTokenizerHasNoPieceForOneLetterOfVietnamese(t *testing.T) {
+	tok := tokenizer(t)
+
+	var split []string
+	for _, r := range dem.Letters() {
+		if pieces := tok.Encode(string(r)); len(pieces) > 1 {
+			split = append(split, string(r))
+		}
+	}
+	if want := []string{"Ỵ"}; !slices.Equal(split, want) {
+		t.Errorf("%d of the 134 letters come apart, %q, and the pinned model comes apart on %q",
+			len(split), split, want)
+	}
+
+	// In a word rather than alone, because a letter chart is not evidence and
+	// a headline is.
+	for _, word := range []string{"THUỴ ĐIỂN", "KIẾT LỴ"} {
+		var joined string
+		var whole bool
+		for _, p := range tok.Encode(word) {
+			joined += p.Text
+			if strings.Contains(p.Text, "Ỵ") {
+				whole = true
+			}
+		}
+		if joined != word {
+			t.Errorf("%q does not come back from a round trip", word)
+		}
+		if whole {
+			t.Errorf("%q keeps its Ỵ whole, so the vocabulary is not the one this was pinned against", word)
+		}
+	}
+}
+
+// The other finding, which is the one T6 was written to make visible. This
+// tokenizer does not normalize, so the two spellings of a marked letter are two
+// different token sequences, and every mark in the decomposed document is parted
+// from its letter.
+//
+// This is a fact about the tokenizer and it is not a reason to reject it. gao
+// normalizes at ingest and nothing reaches a tokenizer before phoi has, so the
+// document this fails on is a document the corpus does not contain. It is
+// asserted here, on exactly one document and no other, because the day that
+// changes is the day the normalization step stopped running.
+func TestThePinnedTokenizerIsNotStableAcrossTheTwoSpellings(t *testing.T) {
+	r := coverageRun(t)
+
+	var decomposed dem.CoverageDoc
+	for _, c := range dem.Coverage() {
+		if c.Name == "chu-cai-tach" {
+			decomposed = c
+		}
+	}
+	if decomposed.Name == "" {
+		t.Fatal("the coverage set no longer holds the decomposed chart, and T6 has nothing to run on")
+	}
+
+	g := failed(t, r, "T6")
+	if g.Failed != 1 {
+		t.Errorf("T6 failed %d of %d documents, and one of them is written decomposed", g.Failed, g.Checked)
+	}
+	if !slices.Contains(g.Sample, decomposed.ID().String()) {
+		t.Errorf("T6 failed on %v, which is not the decomposed chart", g.Sample)
+	}
+}
+
+func coverageRun(t *testing.T) dem.GateReport {
+	t.Helper()
+	g := dem.NewGates(tokenizer(t), dem.GateOptions{})
+	for _, c := range dem.Coverage() {
+		g.Add(c.ID(), c.Text)
+	}
+	return g.Report()
 }
 
 // The report closes three gates that cannot be settled per document. Doing that
