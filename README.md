@@ -99,6 +99,9 @@ gao dien validate recipes.json              # whether the proxy agrees with full
 gao cham roster                             # mark: the seven specialists, and which of their verifiers are written
 gao cham dau -rollouts rollouts.jsonl parts/*.parquet  # grade restoration rollouts against the pages they came from
 gao cham trich -register instruments.jsonl rollouts.jsonl  # grade legal citations against the instruments that exist
+gao chot harness                            # close the ledger: the evaluation harness, fixed before any result exists
+gao chot digest                             # the digest every published result has to carry
+gao chot audit results.json                 # and whether a set of results is the one the harness asked for
 
 gao kho release --snapshot gao-v1.0         # store and publish
 gao kho verify  snapshots/gao-v1.0          # check a snapshot against its manifest
@@ -821,6 +824,58 @@ The rule underneath all of it is that a verifier has to be beatable only by doin
 
 Every verifier runs on CPU, without a network, and returns the same verdict for the same two strings every time. Seven arms sampling in parallel each produce rollouts faster than one GPU can score them, so a verifier that wants a card becomes the bottleneck it exists to feed, and the interface takes no context and no client to make that hard to get wrong. Grading runs anywhere on the fleet. The sampling that produces the rollouts is the part that needs `gamingpc`.
 
+## Closing the ledger before the numbers exist
+
+The continued pretraining slice compares three arms on the same base model and the same token budget, changing only which corpus they read: gao, CulturaX, and CulturaX put through gao's own filters. The person running that comparison is the person who wants gao to win. Nobody involved is dishonest and it does not matter, because the ways this goes wrong are not lies. They are a benchmark added because it looked interesting after the numbers came in, a benchmark dropped because the run did not finish, a shot count changed to match a paper, a prompt reworded between arms. Each of those is defensible on its own and together they are a comparison that says whatever its author wanted.
+
+So the harness is fixed first and hashed. `chốt sổ` is to close the ledger. Everything that decides what the comparison says is written down before any arm is trained: seventeen benchmarks, the prompt for each one verbatim, the shot count and the seed the shots are drawn with, the metric, and the rule for getting an answer out of the output. `gao chot harness` prints it.
+
+```
+$ gao chot harness
+harness 2026-08-06, closed against roster 2026-08-06
+393fdd426026bcc60b9a05c02f5bf21f707b5aae30ca1e015f275554ee55a7d4
+
+arms, named before any of them was trained:
+  com-8B-cpt-gao
+  com-8B-cpt-culturax
+  com-8B-cpt-culturax-filtered
+
+benchmark     origin      metric     shots  seed      answer from  revision
+vmlu          native      accuracy   5      20260806  likelihood   b0225316f4ea
+vimmrc        native      accuracy   0      .         likelihood   b017d98136a6
+uit-viquad    native      f1         3      20260806  first-line   unpinned
+vinli         native      accuracy   5      20260806  likelihood   unpinned
+uit-vsfc      native      accuracy   5      20260806  likelihood   7b56c6cb1c9c
+visfd         native      f1         5      20260806  first-line   4b11ec2e4e97
+vihsd         native      f1         5      20260806  likelihood   88e81b36ca37
+victsd        native      f1         5      20260806  likelihood   65a073f2c484
+phomt         native      chrf       5      20260806  first-line   d4b9bf14888b
+mmlu-vi       translated  accuracy   5      20260806  likelihood   18e6c8e65b20
+arc-vi        translated  accuracy   25     20260806  likelihood   69b0991ee606
+hellaswag-vi  translated  accuracy   10     20260806  likelihood   9d31dc982bd6
+humaneval     neutral     pass-rate  0      .         code-block   7dce6050a7d6
+mbpp          neutral     pass-rate  3      20260806  code-block   4bb6404fdc6c
+vi-cloze      native      accuracy   0      .         likelihood   unpinned
+vi-diacritic  native      der        5      20260806  whole        unpinned
+vi-adherence  native      accuracy   0      .         whole        unpinned
+
+17 tasks over 3 arms, so this harness promises 51 numbers.
+
+5 of these run on a benchmark whose revision the roster has not pinned:
+  uit-viquad, vi-adherence, vi-cloze, vi-diacritic, vinli
+A result on an unpinned benchmark is a number nobody else can reproduce, so these are what stands between this harness and a published comparison.
+```
+
+The digest is the enforcement. Every published result carries the digest of the harness it was scored under, so two result sets whose digests differ stop claiming to be comparable without anybody having to remember why. Changing the prompt, the shot count, the seed, the metric, the extraction rule, or the set of arms or tasks all move it. Improving a note does not, deliberately, because punishing somebody for writing a clearer explanation teaches them to stop writing explanations. The canonical form the digest is taken over length-prefixes every value, so no prompt can be written to look like the start of the next field and no two different harnesses hash the same.
+
+`gao chot audit results.json` puts the results next to the harness and exits non-zero when they disagree. It fails a missing number exactly as loudly as an extra one. A benchmark that arrives with the results arrived after them, and a benchmark that was on the harness before the run does not come off it after. The second is the one that actually happens, it is committed by accident, and it is easy to explain away as a run that did not finish. A gap in the table is printed as a gap rather than as a zero, since on accuracy a zero is the worst score there is rather than no score, and an arm that did not report would read as an arm that failed.
+
+Which numbers are best is a separate question from which are present, so the audit prints the winner per task and the diacritic error rate runs the other way, the one metric here where smaller wins. Getting that backwards hands the comparison to whichever arm is worst at Vietnamese.
+
+Three of the seventeen are on the harness to catch a win that is not one. `mmlu-vi` sits beside `vmlu` so the gap between a translated set and a native one can be read, and an arm that gains on the translation and not on the original has learned something about translationese. `humaneval` and `mbpp` are there because continued pretraining on Vietnamese can be paid for out of the base model's code ability, and a gain bought that way is not a gain worth having.
+
+Nothing has been trained yet, which is the point. The harness is closed, the digest is in the tests so that a change to it fails the build, and the five unpinned revisions are the work list standing between this and a comparison somebody outside can run. Training the three arms is a `gamingpc` item.
+
 ## Where the corpus lives
 
 gao runs on four real machines with 500 GB of free disk between them, and the corpus is 1188 GB of extracted text, 396 GB compressed. It does not fit, and it does not fit by enough that no amount of tidying changes the answer. `gao box` prints the arithmetic.
@@ -1030,6 +1085,7 @@ nhat/        decontamination: the benchmark roster, and what of it the corpus ho
 dau/         the mark: the diacritic restoration task set, built out of the corpus
 dien/        filling in: the cloze proxy the ablation slate is scored by
 cham/        marking: the verifiers the reinforcement learning arms are trained against
+chot/        closing the ledger: the evaluation harness, fixed and hashed before any result exists
 kho/         the store: records, manifests, snapshots, signing
 vo/          the reject store: dropped documents and why they were dropped
 xoa/         the takedown register: who asked, when, and when it was done
