@@ -138,6 +138,8 @@ gao theo grade replies.jsonl                # the whole answer read rather than 
 gao kim frame                               # the needle: vi-needle, the grid the long context test is fixed on before it is built
 gao kim check items.jsonl                   # check a built set against that grid, before a model is asked anything
 gao kim grade -items items.jsonl -curve replies.jsonl  # read a run, with recall at every depth rather than one average
+gao hoi questions.jsonl                     # to ask: whether a long document question needs the document, or only its first page
+gao hoi -rejects questions.jsonl            # and what every question that did not survive failed on
 gao chot harness                            # close the ledger: the evaluation harness, fixed before any result exists
 gao chot digest                             # the digest every published result has to carry
 gao chot audit results.json                 # and whether a set of results is the one the harness asked for
@@ -1335,6 +1337,48 @@ The set has to be built to the grid before anything is asked of a model, and `ga
 
 Nothing has been run against it. The haystacks come out of the corpus and the corpus is not ingested yet, so what exists today is the grid, the rules and the grader, which is the half that has to be fixed first.
 
+## Whether a question about a long document needs the document
+
+Retrieval is not reading. `kim` asks a model to find one sentence in a long context, which is a real skill and a narrow one, and a model can be very good at it while being unable to answer anything that requires holding two parts of a document together. So the other half of the long context claim is a question set, and question sets of this kind are easy to build and almost always measure something else.
+
+Three things go wrong and none of them is visible once the set is finished. The first is that the question can be answered with no document at all. Ask about a well known decree and a model answers from what it read in pretraining, so the set measures the corpus rather than the context window. Catching that means running every question closed book and throwing out the ones that came back right, which is cheap, and which almost nobody publishes. Here the closed book run is a field on every question and a question that was never put through it is not admitted, because a set full of unasked questions looks exactly like a set full of good ones.
+
+The second is that the answer sits in one span. A question whose evidence is a single contiguous stretch is a retrieval question wearing different clothes, and `kim` already measures retrieval with a needle and decoys. So the spans are part of the record, there have to be at least two of them, and the spread between the first and the last is checked as well, because two spans a paragraph apart are one span for this purpose. A question whose evidence all sits in the opening pages is answered by a model that reads the opening pages and stops.
+
+The third is the ladder. S8 extends context in three steps, and a set whose documents are all around forty thousand tokens says nothing about whether the step to 131k worked. The rungs are declared, every question is placed on the highest one its document clears, and a rung that stays thin is reported as a hole rather than averaged away.
+
+```
+$ gao hoi vi-longdoc-qa.jsonl
+rung     questions  share  floor  mean reach  mean spans  fills
+32,000   183        30.4%  20.0%  65.9%       2.3         yes
+65,536   238        39.5%  20.0%  66.0%       2.3         yes
+131,072  181        30.1%  20.0%  65.9%       2.3         yes
+
+kind      questions  share  mean reach  mean spans
+tong-hop  121        20.1%  65.8%       2.3
+so-sanh   121        20.1%  66.0%       2.3
+trinh-tu  121        20.1%  65.8%       2.3
+sua-doi   120        19.9%  66.2%       2.3
+dem-so    119        19.8%  66.0%       2.3
+
+602 of 648 questions survived their own checks, 29 of them thrown out for being answered with no document attached.
+They come off 120 documents and the one the set leans on hardest is ban-an-so-tham-2006-002 at 1.0% of it, against a 5.0% ceiling.
+
+vi-longdoc-qa-1.0 admits 602 of the 648 questions read, over 120 documents, each needing at least two places in its document and 66% of it on average. 29 questions were answered with no document attached and are out, which is the check most sets of this kind skip. Every rung of the context ladder is filled, so a score on this set separates a model that reads a long document from one that reads the start of it.
+```
+
+That set is invented, since the documents it would be built from are not extracted yet. The five kinds are the ones that need more than one place in a document by construction rather than by hope: two statements combined, two things compared, an order of events, a clause and the later clause that amended it, and a count of something the document holds more than one of. Writing a synthesis question that happens to be answerable from one paragraph is possible and the span check catches it, which is the point of recording spans rather than trusting the kind label.
+
+The last line of the second block is the dull check and it is the one this set would fail first. Long Vietnamese documents that can be redistributed are mostly legal and administrative, so a set built without a ceiling on how much any one document supplies turns into a legal reading benchmark by accident, and it does so while looking like a general one.
+
+```
+$ gao hoi vi-longdoc-qa.jsonl | tail -1
+vi-longdoc-qa-1.0 admits 602 of the 648 questions read, over 120 documents, each needing at least two places in its document and 66% of it on average. 29 questions were answered with no document attached and are out, which is the check most sets of this kind skip. The ladder has a hole in it, since 131,072 tokens holds 0.0% of the set against a 20% floor, so a result here cannot say whether the extension to that length worked.
+```
+
+That is the same set with every document above 131k shortened, which is what happens when the questions get written against whatever was convenient to read. It exits 2. The set is fine as a benchmark and useless for the thing it was commissioned for, and those two facts have to be reported separately or the second one disappears.
+
+
 ## Making text once there is no more of it to find
 
 Everything up to here harvests. The crawl, the Hugging Face union, the PDFs and the transcripts are all Vietnamese somebody already wrote, and the whole project is arranged around finding it, reading it correctly, and throwing away the parts that are not worth keeping. That runs out. Deduplication collapses the web harder than anybody expects the first time they measure it, and past the edge of what is left the only move available is to make text rather than to find it. The mixture spends 150 billion tokens doing that, which is more than the legal and spoken registers put together.
@@ -2272,6 +2316,7 @@ giu/         to keep: what the distillation kept of each specialist, against mer
 ngai/        to hesitate: vi-overrefusal, the paired set both refusal numbers come off
 theo/        to follow: vi-adherence, whether the answer stays in the language it was asked in
 kim/         the needle: vi-needle, whether a long context in Vietnamese is read or skimmed
+hoi/         to ask: vi-longdoc-qa, whether a question about a long document actually needs the document
 gieo/        to sow: the generator card for gao-synth, and the recipe it is written against
 lat/         a slice: release slices as views over a snapshot rather than copies of it
 cong/        to add up: the release counts, with what may be added to what enforced rather than assumed

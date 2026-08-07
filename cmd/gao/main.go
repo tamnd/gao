@@ -48,6 +48,7 @@ func commands() []command {
 		{"gieo", "to sow: the generator card for gao-synth, and the recipe it is written against", runGieo},
 		{"giu", "to keep: what the distilled model kept of each specialist's gain, against merging the same checkpoints", runGiu},
 		{"hieu", "the effect: what fraction of the hardware a training run turns into gradient", runHieu},
+		{"hoi", "to ask: whether a question about a long document actually needs the document", runHoi},
 		{"keo", "to pull: what it costs to get back into a training run once the host is gone", runKeo},
 		{"kho", "work with the store: verify a snapshot, generate a signing key", runKho},
 		{"kim", "the needle: vi-needle, whether a long context in Vietnamese is read or skimmed", runKim},
