@@ -37,6 +37,7 @@ func commands() []command {
 		{"cho", "to wait: what the crawl actually left between requests to one host, on a real box under load", runCho},
 		{"chon", "choose: score the base models against the six criteria, in the order they were written", runChon},
 		{"chot", "close the ledger: the evaluation harness, fixed and hashed before any result exists", runChot},
+		{"cong", "add up: what a release holds, what of it ships, and what the headline number is a count of", runCong},
 		{"dau", "the mark: build and score the diacritic restoration task set out of the corpus", runDau},
 		{"dem", "count: fetch the tokenizer that defines a gao token, print what an ingest counted", runDem},
 		{"dien", "fill in: build and score the cloze proxy the ablation slate is run against", runDien},
