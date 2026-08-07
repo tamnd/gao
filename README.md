@@ -58,6 +58,8 @@ gao dem counts ingest/                      # what the harvest counted, per sour
 gao dem keys   glotcc-abc1234               # read a snapshot's document identities back out of the store
 gao dem overlap keys/*.keys                 # what the sources have in common, counted rather than sampled
 gao dem verify -level counts -counts ingest/  # check a published count against the store it came from
+gao uoc -source hplt-v3 -parts 1214 -bytes 703000000000 -seed hplt-v3-2026-08 sample.jsonl  # to estimate: what a sampled count is worth, as an interval
+gao uoc -exact 176000000000 -source hplt-v3 -parts 1214 -bytes 703000000000 -seed hplt-v3-2026-08 sample.jsonl  # and whether the exact count, once there is one, landed inside it
 gao gat cc     --snapshots all              # recover Vietnamese from Common Crawl
 gao gat crawl  --policy crawl.toml          # crawl the Vietnamese web directly
 gao gat media  --from crawl                 # fetch PDFs, audio, video
@@ -410,6 +412,43 @@ Given a log of readings the same command folds them onto the roster, ranks what 
 Two readings of one tokenizer over the same text on two different boxes have to come back identical, and that is the cheapest reproducibility check anywhere in this project. The arithmetic is a division, the input is a fixed file, and the whole thing takes seconds. When the two disagree it is a locale, a normalization difference, or a tokenizer file that is not the one that was pinned, and all three of those are wrong everywhere else in the pipeline too. Finding one here costs an afternoon. Finding it after the counts are published costs the counts.
 
 Which is why the report counts boxes rather than readings. The same tokenizer measured twice on `server1` is a repeat and not a reproduction, and it is the failure most likely to go through unnoticed, because in any summary that counts readings the two look identical. That one is named as a fault in its own sentence, and the command exits non zero on it, on a candidate nobody measured, and on any disagreement, so a pipeline gets the answer without reading the prose.
+
+## Counting a corpus nobody has finished reading
+
+The 176B this file quotes for HPLT v3 is not a count. It is a rate taken off a handful of shards and multiplied out, and the honest way to write it down is as an interval with the sample size attached. The one number in this project that was actually counted is GlotCC `vie-Latn_0`, at 983,022,920 tokens over 3,228,869,043 characters, which is 0.234 tokens a byte. Everything larger than that is an estimate until a fleet run says otherwise, and `gao uoc` is what turns the estimate into something a reader can argue with.
+
+The estimator is a ratio rather than a mean, and the reason is that the manifest is already exact about one of the two quantities. HPLT publishes a part count and a byte total, so 703 GB is known before anything is fetched, and the sample only has to establish tokens per byte. The alternative, mean tokens per part times the part count, has to carry the spread of the shard sizes as well, and that spread is large: parts run from 220 MB to 2 GB, and a sample that happened to draw the big ones reports a total half again too high without anything in it looking wrong. Both estimators are printed, because the gap between them is the argument for the manifest rather than a footnote to it.
+
+```
+$ gao uoc -source "hplt-v3 vie_Latn" -snapshot gao-2026-09 -seed hplt-v3-2026-08 \
+    -parts 1214 -bytes 703000000000 sample.jsonl
+estimator       tokens  interval          width  leans on
+ratio on bytes  168.1B  164.4B to 171.8B  2.2%   703.0 GB of pinned bytes
+mean per part   263.2B  .                 .      1214 parts, sizes unread
+
+hplt-v3 vie_Latn, 44 of 1214 parts read at seed hplt-v3-2026-08, which is 3.6% of the source and 0.239 tokens a byte.
+The two estimators differ by 95.1B, which is what the manifest total is worth here rather than what the extra reading would have cost.
+
+hplt-v3 vie_Latn estimates 168.1B tokens, 164.4B to 171.8B at 95%, off 44 of 1214 parts, and what gets published is the interval rather than its middle
+```
+
+That sample is invented, since nothing has been ingested. The 95.1B gap between the two rows is not an artifact of the invention. It is what drawing 44 shards that average 872 MB out of a source whose shards average 579 MB does to an estimator that cannot see either figure, and it is the ordinary result of sampling by hand, because large shards are the ones people reach for when they want the rate to settle quickly.
+
+Three things are refused rather than estimated. A sample that names no seed gets none, since parts somebody opened until the number looked right have no sampling distribution and an interval drawn on them is a decoration. A sample under thirty parts gets none either, because a narrow interval off eight shards reads as precision instead of as the guess it is, and a wrong number with a confidence interval on it travels further than a wrong number without one. And a part whose bytes disagree with what the manifest pins for it is a part off some other snapshot, which is a mistake that a total will never show, since the arithmetic works perfectly either way.
+
+Above 5% width the command exits 2, and it says what closing the interval would cost before it stops. Halving an interval costs four times the sample, not twice, and that is the number people guess wrong in both directions: the ones who think another handful of shards will settle it, and the ones who think an interval this wide means starting over. So the report prices it in parts, off the sample already read, and the answer is usually that the reading is affordable and nobody had worked out that it was.
+
+The check that makes any of this cost something is `-exact`. Once a real count exists it goes back in, and the command says whether it landed inside the interval that was published.
+
+```
+$ gao uoc -exact 176000000000 -source "hplt-v3 vie_Latn" ... sample.jsonl
+hplt-v3 vie_Latn counted exactly 176.0B, outside the 164.4B to 171.8B that was published and 4.5% off the estimate,
+so the sample missed and every ratio quoted against the estimate was quoted against a number that was wrong
+```
+
+That last clause is the whole reason the command exists. The 300B claim in this README is stated as 1.7x HPLT, and the tokenizer comparison, the mixture weights and the disk budget are all quoted against the same estimate. When the estimate misses, none of those are wrong by a little in some private way. They are wrong by the amount it missed by, in public, in a file people have already read. Writing the interval down first is what makes that a correction instead of a discovery.
+
+The sample has to come off a real box. Reading 44 shards of HPLT is a download and a tokenizer pass on `server1`, `server2`, `server3` or `gammingpc`, and a rate measured on a laptop over three shards somebody had lying around is the failure this command was written to make visible rather than one it can catch.
 
 ## Normalizing before anything reads a character
 
@@ -2121,6 +2160,7 @@ suat/        a rate: net yield per target class, read while the crawl is still r
 boc/         to husk: the posts out of a forum thread, and the page they were wrapped in left behind
 don/         clearing away: whether the crawl gets its bytes off the box faster than it writes them
 dem/         counting: the tokenizer that defines a gao token, and the counts
+uoc/         to estimate: what a sampled count is worth, as an interval and as a stopping rule
 phoi/        normalization: Unicode, orthography, encoding repair
 sang/        filtering: language ID, heuristics, quality classification
 xep/         to place: the gao-refset draw and rubric the quality classifier is trained against
