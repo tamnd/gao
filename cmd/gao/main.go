@@ -41,6 +41,7 @@ func commands() []command {
 		{"dau", "the mark: build and score the diacritic restoration task set out of the corpus", runDau},
 		{"dem", "count: fetch the tokenizer that defines a gao token, print what an ingest counted", runDem},
 		{"dien", "fill in: build and score the cloze proxy the ablation slate is run against", runDien},
+		{"dinh", "to attach: page images kept joined to the text that came off them, and moved off the box that made them", runDinh},
 		{"don", "clear away: whether the crawl gets its bytes off the box faster than it writes them", runDon},
 		{"gat", "work with acquisition: print the ingest manifest, check it for drift", runGat},
 		{"ghep", "to graft: what adding Vietnamese tokens to a base vocabulary bought and cost", runGhep},
