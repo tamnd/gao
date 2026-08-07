@@ -143,6 +143,8 @@ gao hoi -rejects questions.jsonl            # and what every question that did n
 gao chot harness                            # close the ledger: the evaluation harness, fixed before any result exists
 gao chot digest                             # the digest every published result has to carry
 gao chot audit results.json                 # and whether a set of results is the one the harness asked for
+gao doan                                    # to guess: the predictions register, written before any of it was measured
+gao doan -slice S1 -results results.jsonl   # one slice of it, with whatever has come back put next to what was claimed
 
 gao thu slate                               # to try: the forty run ablation slate, fixed before any of it runs
 gao thu slate -knobs                        # and what the forty runs are actually for, one line per question
@@ -1738,6 +1740,55 @@ Three of the seventeen are on the harness to catch a win that is not one. `mmlu-
 
 Nothing has been trained yet, which is the point. The harness is closed, the digest is in the tests so that a change to it fails the build, and the four unpinned revisions are the work list standing between this and a comparison somebody outside can run. Training the three arms is a `gamingpc` item.
 
+## What this project said would happen, before it happened
+
+A specification made of decisions cannot be wrong about anything. Every line in it is a plan, and a plan that meets the world gets quietly edited into the plan that would have worked, which is the same document with the risk taken out of it after the fact. So fifty eight predictions were written across the spec before a byte was ingested, each one a number or a comparison that some later measurement either lands inside or does not, and `gao doan` is where they live in code. Đoán is to guess.
+
+Being wrong is not what the register guards against. Two thirds right is the honest target, and a register that comes back entirely right means the predictions were written to be met rather than to be tested, which is both the more common failure and the harder one to see from outside. What it guards against is the three ways a register launders a bad forecast, none of which need anybody to lie.
+
+The first is editing the claim after the number arrives, which turns a miss into a hit with a one word diff. So the claims are hashed together, the digest prints with the table, and it is pinned in a test: changing a claim is a diff on a pull request with a reviewer on it rather than an afternoon's work once the numbers are in. A result carries the claim it was scored against as well as the identifier, and a result whose claim is not the one the register holds is refused rather than applied, because a register that guesses which of two wordings a number was measured against has already given up the thing it is for.
+
+The second is dropping the prediction that missed. A prediction leaves the register only as a withdrawal carrying a reason, withdrawals stay on the published table, and they are capped at a tenth, because past that the rate describes what was pulled rather than what was predicted. The register also refuses to change size at all, so a deletion fails a build.
+
+The third is scoring the register early, while the cheap predictions have landed and the expensive ones have not. The rate is not quoted as a reading on the spec until half the register has resolved, and until then the report says so in place of a number.
+
+```
+$ gao doan
+slice  title                           predictions  open  right  wrong  pulled  rate
+S0     Foundations and law             .            0     0      0      0       .
+S1     Hugging Face ingestion          1            1     0      0      0       .
+S2     Cleaning pipeline               8            8     0      0      0       .
+S3     The crawl                       8            8     0      0      0       .
+S4     Multimodal extraction           8            8     0      0      0       .
+S5     Tokenizer and ablation harness  9            9     0      0      0       .
+S6     Corpus release                  6            6     0      0      0       .
+S7     The continued pretraining gate  3            3     0      0      0       .
+S8     Synthesis and from-scratch      5            5     0      0      0       .
+S9     Post-training and release       10           10    0      0      0       .
+
+gao-predictions holds 58 predictions across 9 of the 10 slices in the build plan, and its digest is ee4b35363bf4. None of them has a result, which is the only state a register can be in before the work runs, and it is published in that state so that a claim edited later changes a value somebody already has.
+```
+
+That table is the whole point and it is entirely empty, which is what a register looks like when it is published at the right time. S0 carries no predictions because its gate is a set of questions for counsel rather than a set of measurements, and it prints as a dot rather than a zero so that nothing to be wrong about does not read as a slice nobody wrote predictions for. Each prediction is filed under the slice whose work produces the measurement, which is why the numbering does not run in slice order: P03-1 is the first prediction of the acquisition document and S1 measures it, while the rest of that block belongs to the crawl. Four slices have gates that stand on a named prediction, and a gate naming a prediction the register does not hold is refused, since a gate on a forecast nobody wrote down is a gate that can be argued away.
+
+Results arrive as a file rather than as an edit. The run below is invented, because the only prediction with a real reading against it today is P07-5, and one shard of one source is not a resolution.
+
+```
+$ gao doan -results results.jsonl | tail -9
+1 prediction came back wrong:
+  P07-5: measured Gemma-3 fertility on gao is 3.0 characters per token give or take 0.15
+    3.28 characters per token, outside the band on the high side, measured by gao dem fertility on server3
+
+1 prediction was withdrawn:
+  P04-6: the whole extraction stage costs under 6,000 GPU hours
+    the extraction stage was cut to born digital PDFs after the OCR gate, so the GPU hours this predicts are never spent
+
+These measurements did not go on the register:
+  P05-1 was measured against a claim the register does not hold, so either the claim was edited after the number landed or the result belongs to an older register
+```
+
+The misses print in full whatever else was asked for, with the reading, the command that produced it and the box it ran on, because a register that reports its hits and counts its misses is a scoreboard. The box is checked against the fleet rather than taken on trust, so a number that came off somewhere nobody can find is refused with the rest, and the run exits non-zero when anything was refused. P05-1 above is the case worth watching: it was scored against a shorter, softer version of its claim, and taking it would have recorded a hit against a prediction that no longer exists.
+
 ## Where the corpus lives
 
 gao runs on four real machines with 500 GB of free disk between them, and the corpus is 1188 GB of extracted text, 396 GB compressed. It does not fit, and it does not fit by enough that no amount of tidying changes the answer. `gao box` prints the arithmetic.
@@ -2321,6 +2372,7 @@ gieo/        to sow: the generator card for gao-synth, and the recipe it is writ
 lat/         a slice: release slices as views over a snapshot rather than copies of it
 cong/        to add up: the release counts, with what may be added to what enforced rather than assumed
 chot/        closing the ledger: the evaluation harness, fixed and hashed before any result exists
+doan/        to guess: the predictions register, written before the measurements and scored against them
 kho/         the store: records, manifests, snapshots, signing
 vo/          the reject store: dropped documents and why they were dropped
 xoa/         the takedown register: who asked, when, and when it was done
