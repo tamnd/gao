@@ -149,6 +149,9 @@ gao gieo recipe                             # to sow: the gao-synth recipe, fixe
 gao gieo recipe -prompts                    # the prompts verbatim, which is what reproducing it needs
 gao gieo card synth/gao-synth-1.0           # check a generator card against the recipe it names
 
+gao cong counts.jsonl                       # add up: what a release holds and what the headline is a count of
+gao cong -json counts.jsonl                 # the same, for whatever writes the dataset card
+
 gao lat -snapshot snapshots/gao-v1.0 slices/*  # a slice: check a release slice is a view rather than a copy
 gao lat -snapshot snapshots/gao-v1.0 -head snapshots/gao-v1.1 slices/*  # and whether a removal has left one stale
 
@@ -1507,6 +1510,47 @@ The predicate alone is not enough for somebody outside to reproduce a slice, whi
 One containment failure survives into a world with no copies, and it is the reason a slice records its license classes rather than inheriting them. Vietnamese Wikipedia lives in a repo of its own so that its share alike term stays contained to it. A slice that pulls those rows into a permissively licensed repo undoes that while copying nothing at all, so the target repo is checked against what the slice says it carries, and a slice pointed at a working repo or at a repo nobody declared is refused outright.
 
 Slices overlap and are meant to: a document can be both educational and legal. `lat.Overlap` says by how much, because the slices do not sum to the corpus and a reader adding them up will otherwise get a number larger than what was published.
+## Adding up a release without letting the addition decide anything
+
+`cộng` is to add. The arithmetic here is a sum, and every hard part of it is about what may be added to what. A corpus assembled from five ingested sources, a crawl, a recovery pass, three extraction routes and a generator does not have one number. It has several, and the way this gets published wrong is not a bad sum. It is a good sum over rows that had no business being in the same column.
+
+Three separations are load bearing. Natural text and generated text are never added, and the headline is the natural one, because somebody who downloads a corpus of Vietnamese believes a person wrote it and nothing further down the dataset card undoes that first impression. The publishable subset is stated apart from the total, since license class is a per document column and a corpus whose publishable subset is unstated is one nobody can safely use. And per source contribution is a table rather than a line, because where the tokens came from is what anybody checking the headline asks second.
+
+Two counts are refused rather than added. Counts from two tokenizers, since two tokenizers are two units and their sum is a number in neither of them. And counts off two snapshots, since a release is a snapshot rather than a date, and adding across them publishes a corpus that did not exist at any one moment. A group that appears twice for the same source, origin and license class is also refused, and that one is worth the code on its own: a doubled row is the single mistake a total cannot show, because the sum of it adds up perfectly.
+
+Two ratios say whether a column counted what it says it counted. Vietnamese in UTF-8 spends two bytes on every vowel carrying a tone mark, so a row storing about one byte a character counted the bytes of something that was not Vietnamese. And every tokenizer measured for this project spends between one and a half and two and a half tokens on a syllable, so a row outside one to three came from a tokenizer other than the one it names, whatever it names.
+
+```
+$ gao cong counts.jsonl
+source             documents  bytes     characters  syllables  tokens  share
+hplt-v3            238M       210.0 GB  157.0B      45.8B      87.3B   33.9%
+gao-crawl-2026-09  412M       186.0 GB  139.0B      40.5B      77.2B   30.0%
+fineweb2           96M        74.0 GB   55.6B       16.2B      30.9B   12.0%
+gao-pdf            12M        54.5 GB   40.9B       11.9B      22.7B   8.8%
+culturax           61M        48.0 GB   36.1B       10.5B      20.0B   7.8%
+glotcc             44M        34.0 GB   25.6B       7.5B       14.2B   5.5%
+phap-luat          2M         9.8 GB    7.3B        2.1B       4.1B    1.6%
+gao-voice          1M         2.6 GB    1.9B        0.6B       1.1B    0.4%
+
+license class           documents  tokens  share  ships
+open                    807M       215.4B  83.7%  yes
+permissive-attribution  53M        31.3B   12.2%  yes
+restricted              6M         9.7B    3.8%   held
+unredistributable       1M         1.1B    0.4%   held
+
+gao-v1.0, counted off gao-2026-09 in gao-64k tokens.
+The headline is 257.5B of natural tokens over 867M documents, and it is the natural number because a reader who downloads a Vietnamese corpus believes a person wrote it.
+21.7B of generated text sits beside it on its own line, added to nothing, since 257.5B and 279.2B are answers to different questions.
+246.7B of the headline ships and 10.8B stays in the store, which license class decides rather than preference.
+
+Against the corpora the claim is written over, that is 1.5x HPLT v3 vie_Latn, 2.5x PhoGPT, 4.6x CulturaX.
+gao-v1.0 came back at 257.5B of natural tokens against the 300.0B claimed, which is still 1.5x HPLT v3 vie_Latn, 2.5x PhoGPT, 4.6x CulturaX, and those are the ratios the headline gets restated with.
+```
+
+The numbers above are invented. No source has been ingested and the crawl has not started, so this is the shape of the answer rather than the answer.
+
+The last two lines are the point of the whole package. The claim in this README is 300B natural tokens, which is 1.7x HPLT v3, 2.9x PhoGPT and 5.4x CulturaX, and the kill criterion for the release slice says that under 250B the project publishes the real number and restates those ratios. So the ratios are computed from the number that came back rather than written down beside it, because a ratio restated by hand is a ratio that gets restated once, in the release note, while the three other places it appears keep quoting the claim. Missing the target and tripping the kill criterion are different events with different consequences and the exit code tells them apart: 1 when the counts are not a release count at all, 2 when the corpus came in under the floor, 0 when it is short but alive, with the shortfall stated in the verdict rather than rounded away.
+
 ## Closing the ledger before the numbers exist
 
 The continued pretraining slice compares three arms on the same base model and the same token budget, changing only which corpus they read: gao, CulturaX, and CulturaX put through gao's own filters. The person running that comparison is the person who wants gao to win. Nobody involved is dishonest and it does not matter, because the ways this goes wrong are not lies. They are a benchmark added because it looked interesting after the numbers came in, a benchmark dropped because the run did not finish, a shot count changed to match a paper, a prompt reworded between arms. Each of those is defensible on its own and together they are a comparison that says whatever its author wanted.
@@ -2098,6 +2142,7 @@ theo/        to follow: vi-adherence, whether the answer stays in the language i
 kim/         the needle: vi-needle, whether a long context in Vietnamese is read or skimmed
 gieo/        to sow: the generator card for gao-synth, and the recipe it is written against
 lat/         a slice: release slices as views over a snapshot rather than copies of it
+cong/        to add up: the release counts, with what may be added to what enforced rather than assumed
 chot/        closing the ledger: the evaluation harness, fixed and hashed before any result exists
 kho/         the store: records, manifests, snapshots, signing
 vo/          the reject store: dropped documents and why they were dropped
