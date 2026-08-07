@@ -195,6 +195,8 @@ gao keo resumes.jsonl                       # to pull: what it costs to get back
 
 gao chia -why report.pdf                    # route one PDF: direct extraction, legacy transcode, or OCR
 gao chia *.pdf                              # and the routing distribution over a pile of them
+gao dinh pages.jsonl                        # to attach: page images still joined to the text that came off them
+gao dinh -free 40000000000 pages.jsonl      # and whether what is still on the box fits the disk the box has left
 gao nghe tracks.jsonl                       # to listen: whether a transcript belongs to the audio it came off
 
 gao box                                     # the fleet, and the disk budget it implies
@@ -377,7 +379,7 @@ A mark comes off in two ways and the suite counts both. A boundary can land insi
 
 A gate that found nothing in the sample to run on is reported as not run, and a tokenizer is eligible only when all nine measured gates ran and passed. That distinction is the failure this suite is most likely to have in practice: point it at a thousand clean documents, three gates find nothing that applies, and a run that called that a pass prints ten green lines and means seven of them. The NFC gate says the same thing about itself in its own way, since a corpus that is already NFC compares every document against itself. The report gives the share of the sample that was not NFC as given, and when that share is zero it says so in as many words.
 
-Saying so is honest and it is not a fix, because a suite that has to be pointed at a hundred gigabytes before it can answer is a suite nobody runs while changing a tokenizer. So `-coverage` runs a built in set instead: a few kilobytes holding every one of the 134 letters of the language, the same letters with their marks written separately, one document for each of the six legacy encodings `phoi` reads, and the mixed and numeric text the other two gates ask for. It takes a millisecond, it leaves no gate unrun, and it is fixed, so the same command on `server1` and on `gammingpc` either produces the same report or the two boxes differ in something worth knowing about.
+Saying so is honest and it is not a fix, because a suite that has to be pointed at a hundred gigabytes before it can answer is a suite nobody runs while changing a tokenizer. So `-coverage` runs a built in set instead: a few kilobytes holding every one of the 134 letters of the language, the same letters with their marks written separately, one document for each of the six legacy encodings `phoi` reads, and the mixed and numeric text the other two gates ask for. It takes a millisecond, it leaves no gate unrun, and it is fixed, so the same command on `server1` and on `gamingpc` either produces the same report or the two boxes differ in something worth knowing about.
 
 What a coverage run answers is the question before the question. It is not a sample of the corpus and no number it prints is a number about gao, since fertility on a letter chart is fertility on a letter chart. It reports the nine correctness gates and declines to decide eligibility, and the throughput gate declines with it, because four kilobytes go through a tokenizer faster than the clock can be read and a rate computed from that is a reading of the clock rather than a measurement.
 
@@ -451,7 +453,7 @@ so the sample missed and every ratio quoted against the estimate was quoted agai
 
 That last clause is the whole reason the command exists. The 300B claim in this README is stated as 1.7x HPLT, and the tokenizer comparison, the mixture weights and the disk budget are all quoted against the same estimate. When the estimate misses, none of those are wrong by a little in some private way. They are wrong by the amount it missed by, in public, in a file people have already read. Writing the interval down first is what makes that a correction instead of a discovery.
 
-The sample has to come off a real box. Reading 44 shards of HPLT is a download and a tokenizer pass on `server1`, `server2`, `server3` or `gammingpc`, and a rate measured on a laptop over three shards somebody had lying around is the failure this command was written to make visible rather than one it can catch.
+The sample has to come off a real box. Reading 44 shards of HPLT is a download and a tokenizer pass on `server1`, `server2`, `server3` or `gamingpc`, and a rate measured on a laptop over three shards somebody had lying around is the failure this command was written to make visible rather than one it can catch.
 
 ## Normalizing before anything reads a character
 
@@ -1134,7 +1136,7 @@ That is the same set with the arm composed the way somebody would compose it in 
 
 The translated arm is held out of the mixture rather than taken out of it afterwards. That is the whole of what keeping translated examples separate means here: they are composed, counted and trained on in their own run, and they do not go into the pot the headline set is poured from. Deciding that after the mixing is the one thing that cannot be done.
 
-Everything in this milestone runs on the fleet. The diacritic restoration examples are generated on `server1`, `server2`, `server3` or `gammingpc` straight out of the corpus, since stripping tone marks is cheap and the corpus is the only input it needs. The audits are read by people. The finetuning itself does not fit on a 24 GB card and the compute for it is not booked yet, which is stated in the milestone rather than worked around.
+Everything in this milestone runs on the fleet. The diacritic restoration examples are generated on `server1`, `server2`, `server3` or `gamingpc` straight out of the corpus, since stripping tone marks is cheap and the corpus is the only input it needs. The audits are read by people. The finetuning itself does not fit on a 24 GB card and the compute for it is not booked yet, which is stated in the milestone rather than worked around.
 
 ## Training against a check rather than against a reward model
 
@@ -2153,6 +2155,44 @@ There is a fourth outcome and it is deliberate. A document that is encrypted, or
 
 The distribution carries the box it was counted on, like every other measurement here, because a routing distribution with no hardware attached is not reproducible and the whole point of it is to be a cost estimate somebody else can check.
 
+## Keeping the picture of the page next to what was read off it
+
+A scanned page has to be rendered to an image before any engine can read it. The image exists either way, so keeping it costs storage and no compute, and throwing it away means paying the same GPU seconds again the day somebody wants to train a model that reads Vietnamese documents rather than Vietnamese sentences. That is the whole argument for retaining page images, and it is a good one.
+
+The argument for checking them is different and it is the reason `gao dinh` exists. A page image is worth nothing on its own and everything as a pair: this picture, this text. A pair that is off by one page is worse than no pair, because it teaches a wrong association, it is indistinguishable from a correct pair once it has been written, and there is no later stage that can find it. A set with two percent of its pairs shifted does not fail anywhere. It produces a model that reads pages slightly wrong, forever, for a reason nobody can trace.
+
+So the join is checked rather than assumed. The key is the document and the page number inside it, both halves carry it, and a document whose pages come back as 1, 2 and 4 is reported rather than renumbered. Renumbering is the operation that turns one missing page into a whole document silently shifted, which is exactly the failure with no symptom.
+
+```
+$ gao dinh pages.jsonl
+route  pages  share  rendered  pairs  lost  renders weigh  characters
+T      3103   49.9%  0         0      0     .              10M
+L      624    10.0%  624       624    0     486 MB         2M
+O      2495   40.1%  2495      2492   3     1.9 GB         8M
+
+pairs             3116 of 3119 rendered  99.9% against a 99.0% line
+lost              3 of 6222 pages        0.0% against a 2.0% line
+blank             16 of 6222 pages       a fact about the documents rather than the pipeline
+in the store      2.1 GB of 2.4 GB       the copies on the box can go
+still on the box  242 MB                 against a 186.3 GB window, which the box has room for
+
+gao-pdf-2026-09 pairs 3,116 pages of the 3,119 pages something had to render, out of 6,222 pages across 260 documents, and the pairs are what the vision work later reads rather than the pages. 2.1 GB of 2.4 GB reached the store and 242 MB is still on the box, which is inside the 186.3 GB window.
+```
+
+That batch is invented, since no PDF has been extracted yet. The attachment share is measured against the pages something had to render rather than against every page in the batch, and that denominator is the one choice in this command worth arguing about. Half of the pile above is born digital and was read out of its text layer, so nothing ever rendered it and there is no image to attach. Counting those as unattached would put the figure at 50% and make it a report about the routing, which `gao chia` already publishes. A scanned page with no image is a different thing entirely and is refused, because something read that page and there is nothing left to check what it read against.
+
+Ink carries for the same reason the page number does. A page with no marks on it that produced two thousand characters of text is a pair that is wrong, and the arithmetic that catches it is a comparison rather than a model. A blank page with no text off it is just a blank page, which is a normal thing for a scanned document to contain, so it is counted and not refused. A page with marks that came back with six characters is a page the extraction lost, which is a fact about the engine rather than about the pairing, and it is reported separately with its own line.
+
+The disk half is the fleet gate. `gamingpc` has 307 GB free, a page at 300 dpi is most of a megabyte, and a million pages is more than the box holds, so the run does not fit on the machine that produces it. The images go to the store as they are made and the box keeps a window rather than the run. Whether the drain keeps up with the write is a rate and rates are what `gao don` measures. What is asked here is the smaller question that has to be true first, which is whether anything is being left behind at all, and `-free` narrows the window to what the box actually has left when that is less than the window the project sets.
+
+```
+$ gao dinh pages.jsonl | tail -2
+1 document did not come back whole, and the missing numbers are printed rather than closed up because closing a gap shifts every pair after it:
+  vbpl-2010-050 runs to page 19 and is missing page 6
+```
+
+One page failed to render out of a document of nineteen. The command exits 1 and prints the number, and the fix is to rerun that document rather than to accept a set where page 7 onward is captioned with the text of the page before it.
+
 ## Keeping a transcript nobody has the words for
 
 Speech is the one place in the pipeline where there is no reference. Every other stage can be checked against something: a reading against the page, a normalization against the original bytes, a count against the store. A transcript can only be checked against what was said, and nobody wrote that down, which is the entire reason the audio is worth transcribing. So there is no word error rate to publish here and there never will be at corpus scale.
@@ -2218,6 +2258,7 @@ soi/         judging a reading: character and diacritic error rates, tone confus
 xay/         milling: deduplication, boilerplate removal
 tach/        separating: reading a forum page as the thread it is
 chia/        dividing: which of three ways a PDF is extracted, and what that costs
+dinh/        to attach: page images kept joined to the text that came off them, and moved off the box that made them
 nghe/        to listen: whether a transcript belongs to the audio it came off, with no reference to score it against
 che/         covering: Vietnamese personal data, found and tagged over
 nhat/        decontamination: the benchmark roster, and what of it the corpus holds
