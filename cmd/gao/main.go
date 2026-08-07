@@ -67,6 +67,7 @@ func commands() []command {
 		{"theo", "to follow: vi-adherence, whether the answer comes back in the language the question was asked in", runTheo},
 		{"thu", "to try: the forty run ablation slate, fixed before any of it runs, and what came back", runThu},
 		{"tin", "to believe: whether the cheap benchmark orders recipes the way the expensive one does", runTin},
+		{"tron", "to mix: the finetuning set composed with native origin kept a column rather than a note", runTron},
 		{"uoc", "to estimate: what a sampled count is worth, as an interval and as a stopping rule", runUoc},
 		{"version", "print the version", runVersion},
 		{"xay", "mill: find the documents a corpus holds more than one copy of", runXay},
