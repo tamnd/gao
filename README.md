@@ -122,6 +122,9 @@ gao dien build -count other/*.parquet -o vi-cloze.jsonl parts/*.parquet  # fill 
 gao dien baseline -items vi-cloze.jsonl other/*.parquet  # what picking the commonest candidate scores
 gao dien grade -items vi-cloze.jsonl answers.jsonl  # and score a model's answers against the set
 gao dien validate recipes.json              # whether the proxy agrees with full scale, or the slate is exploratory
+gao tron -slate                             # to mix: the finetuning slate, and what each capability is on it for
+gao tron sft.jsonl                          # a composed set, with native origin kept a column rather than a note
+gao tron -json sft.jsonl                    # the same, for whatever writes the model card
 gao cham roster                             # mark: the seven specialists, and which of their verifiers are written
 gao cham dau -rollouts rollouts.jsonl parts/*.parquet  # grade restoration rollouts against the pages they came from
 gao cham trich -register instruments.jsonl rollouts.jsonl  # grade legal citations against the instruments that exist
@@ -1085,6 +1088,53 @@ The three baseline runs are also one recipe rather than three. Ranking them sepa
 Below 0.5 the slice is dead and the cost is real: the forty run slate is reported as exploratory rather than decisive, every threshold falls back to a published default from the literature, and each one goes into the release notes flagged as unvalidated rather than presented as tuned. Between 0.5 and 0.7 is a third state that most write-ups collapse into one of the other two, and it is the honest answer often enough to be worth keeping. The slate's findings go out with the caveat attached rather than without it or not at all.
 
 Nothing has been scored at either scale yet, which is the point of building this now. A validity study written after the ablation results arrive is a study whose thresholds move until the answer is the one somebody wanted.
+
+## Composing an instruction set where the origin survives the mixing
+
+Vietnamese has an instruction data problem English does not. Most Vietnamese instruction sets are translations of English ones, and a model finetuned on them writes Vietnamese that reads like translated English: fluent, grammatical, and wrong in a way a native speaker hears in one sentence and a benchmark does not hear at all. The failure is not that translated data gets used. Everybody uses it and there is not enough native data to avoid it. The failure is that it goes into the same pot as the native data, the pot gets a size and a name, and after that nobody can say which half the model learned its register from.
+
+So origin is a column rather than a note in the model card. Every slice declares what wrote it, all three origins are trained on, and the report keeps them apart, because the claim this project makes is about the native half and a claim about a half needs the half to still be findable after the mixing.
+
+```
+$ gao tron -name com-1.0-sft sft.jsonl
+capability  examples  share  target  native  floor  holds
+hoi-dap     176,000   22.0%  22.0%   84.1%   80.0%  yes
+viet        144,000   18.0%  18.0%   95.8%   95.0%  yes
+doc-hieu    112,000   14.0%  14.0%   87.5%   85.0%  yes
+tom-tat     96,000    12.0%  12.0%   87.5%   85.0%  yes
+dau-cau     80,000    10.0%  10.0%   100.0%  98.0%  yes
+ma-nguon    80,000    10.0%  10.0%   37.5%   30.0%  yes
+phap-ly     64,000    8.0%   8.0%    96.9%   95.0%  yes
+dich        48,000    6.0%   6.0%    25.0%   20.0%  yes
+
+origin      slices  examples  turns      share of the mixture
+native      8       652,000   1,956,000  81.5%
+translated  7       148,000   444,000    18.5%
+
+150,000 translated examples are held aside for the comparison arm rather than poured in, which is the difference between measuring origin later and not being able to.
+The comparison runs over 7 capabilities and leaves out dau-cau, named here because a comparison that drops a capability quietly is a comparison of a different set.
+100.0% of the mixture could be rebuilt by somebody outside this project, which is what the license classes leave rather than what the model card would like to say.
+
+com-1.0-sft holds 800,000 examples over 8 capabilities, 652,000 of them native and 148,000 translated, and the two are reported apart because a set that adds them cannot answer the question it was built for. The arms run at 150,000 each and their mixes agree within 0.2 points, so what a comparison of them measures is origin.
+```
+
+That set is invented. Nothing has been collected and the model does not exist. The floors are not invented, and neither is the reason each one sits where it does. Writing is at 95% native because register is the first thing a translation flattens and writing is the capability the whole claim is about. Legal question answering is at 95% because a translated legal example is a confident answer about another country's law. Diacritic restoration is at 98% because it comes out of the corpus with its answers already known and has no translated form worth the name. Code is at 30%, because the code is language neutral and only the prose around it is not. Translation is at 20%, since it is the one capability on the slate where a translated example is the task rather than the defect.
+
+A native label is a claim about a person, and provenance metadata on instruction data is wrong often enough that it gets checked rather than believed. A slice claiming native origin carries a count of examples a Vietnamese speaker read and a count of those whose label held. Under two hundred read, or under 95% holding, the slice is reported as unproven and stops counting as native. It does not quietly become translated either, since that would be a second guess dressed as a correction.
+
+The part that is easy to get wrong is the comparison. P09-3 says native origin beats translated origin on Vietnamese writing quality by a wide margin, and P10-5 says human raters can tell the two apart above 80%. Both need two arms that differ in origin and in nothing else, and there are two ordinary ways to end up without that. A native arm of 650,000 examples against a translated arm of 40,000 measures the training set size. A native arm heavy on writing against a translated arm heavy on question answering measures the capability mix.
+
+```
+$ gao tron sft.jsonl
+The two arms differ by 37.1 points on viet against a 3.0 point line,
+so a result would be a measurement of the capability mix rather than of the origin.
+```
+
+That is the same set with the arm composed the way somebody would compose it in a hurry, which is to say out of whatever translated data was easiest to get, and translated Vietnamese writing data is the easiest of all of it. The command exits 2 on it. Both arms run at the size of the smaller one, their per capability shares have to agree within three points, and a capability one side holds nothing of is named as excluded rather than dropped in silence, since a comparison that drops a capability is a comparison of a different set from the one that got published.
+
+The translated arm is held out of the mixture rather than taken out of it afterwards. That is the whole of what keeping translated examples separate means here: they are composed, counted and trained on in their own run, and they do not go into the pot the headline set is poured from. Deciding that after the mixing is the one thing that cannot be done.
+
+Everything in this milestone runs on the fleet. The diacritic restoration examples are generated on `server1`, `server2`, `server3` or `gammingpc` straight out of the corpus, since stripping tone marks is cheap and the corpus is the only input it needs. The audits are read by people. The finetuning itself does not fit on a 24 GB card and the compute for it is not booked yet, which is stated in the milestone rather than worked around.
 
 ## Training against a check rather than against a reward model
 
@@ -2175,6 +2225,7 @@ dau/         the mark: the diacritic restoration task set, built out of the corp
 dien/        filling in: the cloze proxy the ablation slate is scored by
 thu/         to try: the forty run ablation slate, and the results read against it
 tin/         to believe: whether the cloze proxy at 1.4B orders recipes the way the real benchmark does at 8B
+tron/        to mix: the finetuning set composed with native origin kept a column rather than a note
 cham/        marking: the verifiers the reinforcement learning arms are trained against
 giu/         to keep: what the distillation kept of each specialist, against merging the same checkpoints
 ngai/        to hesitate: vi-overrefusal, the paired set both refusal numbers come off
