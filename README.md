@@ -62,6 +62,8 @@ gao dem overlap keys/*.keys                 # what the sources have in common, c
 gao dem verify -level counts -counts ingest/  # check a published count against the store it came from
 gao uoc -source hplt-v3 -parts 1214 -bytes 703000000000 -seed hplt-v3-2026-08 sample.jsonl  # to estimate: what a sampled count is worth, as an interval
 gao uoc -exact 176000000000 -source hplt-v3 -parts 1214 -bytes 703000000000 -seed hplt-v3-2026-08 sample.jsonl  # and whether the exact count, once there is one, landed inside it
+gao tang -source hplt-v3 layers.jsonl       # the layers: what an estimate taken bucket by bucket is worth over the buckets nobody opened
+gao tang -source hplt-v3 -quoted 176000000000 layers.jsonl  # and whether the number this project publishes is one the reading covers
 gao gat cc     --snapshots all              # recover Vietnamese from Common Crawl
 gao gat crawl  --policy crawl.toml          # crawl the Vietnamese web directly
 gao gat media  --from crawl                 # fetch PDFs, audio, video
@@ -528,6 +530,48 @@ so the sample missed and every ratio quoted against the estimate was quoted agai
 That last clause is the whole reason the command exists. The 300B claim in this README is stated as 1.7x HPLT, and the tokenizer comparison, the mixture weights and the disk budget are all quoted against the same estimate. When the estimate misses, none of those are wrong by a little in some private way. They are wrong by the amount it missed by, in public, in a file people have already read. Writing the interval down first is what makes that a correction instead of a discovery.
 
 The sample has to come off a real box. Reading 44 shards of HPLT is a download and a tokenizer pass on `server1`, `server2`, `server3` or `gamingpc`, and a rate measured on a laptop over three shards somebody had lying around is the failure this command was written to make visible rather than one it can catch.
+
+## The five buckets that got read and the five that did not
+
+There is a second thing wrong with the 176B and `gao uoc` cannot see it. HPLT does not ship its Vietnamese as one pile. It ships ten quality buckets, and the reading behind that number opened five of them at 40 MB each and weighted what it found by what each bucket takes on disk. That is stratified sampling, it is a sensible way to read a corpus nobody has time to read all of, and the interval `uoc` prints is the wrong interval for it. A sampling interval narrows as the sample grows. Reading the same five buckets a hundred times harder narrows it to nothing while leaving the estimate exactly as wrong as it was, because nothing inside those five says anything at all about the other five.
+
+`gao tang` is the same reading with the layers kept apart. Tầng is a layer.
+
+```
+$ gao tang -source "hplt-v3 vie_Latn" -quoted 176000000000 layers.jsonl
+layer      rank  on disk  read     tokens a stored byte  estimate
+bucket 1   1     50.0 GB  .        .                     .
+bucket 2   2     42.0 GB  .        .                     .
+bucket 3   3     35.0 GB  .        .                     .
+bucket 4   4     28.0 GB  .        .                     .
+bucket 5   5     24.0 GB  40.0 MB  0.755                 18.1B
+bucket 6   6     20.0 GB  .        .                     .
+bucket 7   7     17.0 GB  40.0 MB  0.744                 12.6B
+bucket 8   8     14.0 GB  40.0 MB  0.738                 10.3B
+bucket 9   9     9.0 GB   40.0 MB  0.732                 6.6B
+bucket 10  10    6.0 GB   40.0 MB  0.726                 4.4B
+
+5 of 10 layers were read, holding 70.0 GB of the 245.0 GB the source takes on disk.
+The 175.0 GB nobody read is scaled at 0.739 tokens a stored byte, which is the pooled rate of the layers that were, and at the thinnest and the richest of them it would be 179.0B to 184.2B instead.
+Of that, 155.0 GB sits below every layer that was read, so the range is drawn from rates measured on the cleaner end of the corpus and covers the rest only if the rest reads like it.
+
+This estimate carries more than sampling error:
+  5 layers holding 71.4% of the source were never read, starting with bucket 1, so the estimate over all of them is the rate of the layers that were
+  63.3% of the source sits in 4 layers ranked below every layer that was read, so what is being scaled over the gap is the rate of the cleaner end of the corpus
+  the number this project publishes is 176.0B and this reading covers 179.0B to 184.2B, so the published number is not what this sample says
+
+hplt-v3 vie_Latn estimates 181.4B tokens over 245.0 GB on disk, 179.0B to 184.2B once the layers nobody read are allowed to run as thin as the thinnest layer that was read and as rich as the richest. 5 of 10 layers holding 71.4% of it were never opened, and that range does not close by reading more of the 5 that were. 3 readings say the estimate carries more than sampling error: 5 layers holding 71.4% of the source were never read, starting with bucket 1, so the estimate over all of them is the rate of the layers that were; and 63.3% of the source sits in 4 layers ranked below every layer that was read, so what is being scaled over the gap is the rate of the cleaner end of the corpus; and the number this project publishes is 176.0B and this reading covers 179.0B to 184.2B, so the published number is not what this sample says.
+```
+
+Nothing has been ingested, so the bucket sizes and the rates in that block are invented. The five that are read are the five the real reading used, the ordering is HPLT's own, and every line under the table follows from the shape rather than from the numbers.
+
+The narrow part is the trap. A range of 179.0B to 184.2B is under three percent wide, which reads like a settled number, and it is that narrow only because the five buckets that were opened agree with each other. They are all from the same end of the ordering, so their agreement is evidence about the clean end of the corpus and it is not evidence about the 155 GB sitting underneath them. That is why the report prints the share below the sample as its own line instead of leaving a reader to work it out from the ranks.
+
+This has already happened once on this corpus. An earlier reading sampled the top quality bucket alone and came back with 194B, against 176B from the broader sample, which is 10% in the flattering direction. Nobody picked the top bucket to inflate the number. It is the bucket you reach for when you want a rate to settle quickly, clean prose spends fewer of its bytes on markup and boilerplate so it reads at a higher rate per byte, and scaling the rate of the cleanest text over all of the text buys tokens that are not there. The bias arrives on its own and it arrives in the same direction every time.
+
+The weights carry an assumption of their own. What the manifest knows is what each bucket costs on disk, and what the estimate needs is how much text is in it, so weighting by stored size assumes a byte on disk holds the same amount of text everywhere. Repetitive text compresses better than prose, which means the assumption fails in the same direction as everything else here. Every bucket that was read measures its own packing, and when the measured packings disagree by more than a quarter the report says the weight on every unread bucket carries that much of its own error.
+
+The two ranges are different quantities and they add. `gao uoc` answers how much the number would move under a different draw, `gao tang` answers how much of the corpus the draw could not see, and a published estimate needs both next to it. The exit codes say the same thing: 1 when the file is not a stratified reading at all, 2 when it is one that carries more than sampling error. Closing the second one is not an argument, it is opening the other five buckets, and at 40 MB each that is 200 MB of reading on `server1`.
 
 ## Normalizing before anything reads a character
 
@@ -2665,6 +2709,7 @@ boc/         to husk: the posts out of a forum thread, and the page they were wr
 don/         clearing away: whether the crawl gets its bytes off the box faster than it writes them
 dem/         counting: the tokenizer that defines a gao token, and the counts
 uoc/         to estimate: what a sampled count is worth, as an interval and as a stopping rule
+tang/        the layers: what an estimate taken bucket by bucket is worth over the buckets nobody opened
 phoi/        normalization: Unicode, orthography, encoding repair
 sang/        filtering: language ID, heuristics, quality classification
 xep/         to place: the gao-refset draw and rubric the quality classifier is trained against
