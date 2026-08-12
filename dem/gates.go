@@ -587,15 +587,31 @@ func (g *Gates) spacing(word string) string {
 // timing, so the threshold costs nothing in the direction the gate is for.
 const MinEncodeTime = 10 * time.Millisecond
 
+// MinEncodeBytes is how much text a run has to have put through Encode before
+// the rate it computed is about the tokenizer at all.
+//
+// The time floor alone is not enough, and which way it fails depends on the
+// machine. A clock that ticks every 15.6 milliseconds, which is the ordinary
+// Windows case, reports one tick for four kilobytes of encoding and one tick is
+// over the floor, so the gate would run and print a rate computed from the
+// granularity of the clock rather than from anything the tokenizer did. The
+// size floor is the same judgement stated in the units the sample is actually
+// too small in, and it says the same thing on every machine.
+const MinEncodeBytes = 1_000_000
+
 // throughput settles T9.
 //
-// A run too short to time and a run with nothing in it are different findings
-// and are reported as different findings. A clock that did not tick is the first
-// of the two, not the second, and on Windows it is the ordinary case for a
-// sample this size rather than a curiosity.
+// A sample too small to time and a run with nothing in it are different
+// findings and are reported as different findings. A clock that did not tick is
+// the first of the two, not the second, and on Windows it is the ordinary case
+// for a sample this size rather than a curiosity.
 func (g *Gates) throughput(gate Gate) Gate {
 	if g.bytes == 0 {
 		gate.Why = "nothing was encoded"
+		return gate
+	}
+	if g.bytes < MinEncodeBytes {
+		gate.Why = fmt.Sprintf("%d bytes went through Encode, and a rate over less than %d is a reading of the clock rather than a measurement of the tokenizer", g.bytes, MinEncodeBytes)
 		return gate
 	}
 	if g.encoded < MinEncodeTime {

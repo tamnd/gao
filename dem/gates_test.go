@@ -441,7 +441,15 @@ func TestASlowTokenizerFailsTheThroughputGate(t *testing.T) {
 		return byRune(text)
 	})
 
-	r := feed(slow, dem.GateOptions{}, gatePages...)
+	// A megabyte across ten documents, because the gate declines on anything
+	// smaller and a tokenizer that fails it has to be shown failing it rather
+	// than declined on.
+	texts := make([]string, 0, 10)
+	for i := 0; i < 10; i++ {
+		texts = append(texts, strings.Repeat(gatePages[i%len(gatePages)], 800))
+	}
+
+	r := feed(slow, dem.GateOptions{}, texts...)
 
 	g := failed(t, r, "T9")
 	if !strings.Contains(g.Note, "MB/s on one core") {

@@ -144,6 +144,11 @@ func TestTheCoverageSetLeavesNoGateUnrun(t *testing.T) {
 // rate it computed, because that rate is a reading of the clock. A suite that
 // called four kilobytes 17 MB/s would be handing somebody a number they could
 // not defend, and one that called it a pass would be worse.
+//
+// What it declines on is the size of the sample and not the time the sample
+// took, so this test says the same thing on a box whose clock is fine and on a
+// box whose clock ticks every 15.6 milliseconds and reports one whole tick for
+// the whole set.
 func TestTheSetIsTooSmallToTimeAndSaysSo(t *testing.T) {
 	report := feedCoverage(t)
 

@@ -128,7 +128,7 @@ func coverageRun(t *testing.T, report dem.GateReport) (string, string, int) {
 func TestDemGatesOnTheCoverageSetDoesNotJudgeTheThroughput(t *testing.T) {
 	out, errOut, code := coverageRun(t, gateReport(
 		dem.Gate{Name: "T1", What: "decode(encode(x)) is x", Unit: "documents", Checked: 8, Ran: true},
-		dem.Gate{Name: "T9", What: "at least 20 MB/s on one core", Why: "encoding 4227 bytes took 248µs, and a rate computed from that is a reading of the clock"},
+		dem.Gate{Name: "T9", What: "at least 20 MB/s on one core", Why: "4227 bytes went through Encode, and a rate over less than 1000000 is a reading of the clock rather than a measurement of the tokenizer"},
 		dem.Gate{Name: "T10", What: "no piece is reachable only from text gao would reject", Unit: "pieces", Checked: 261888, Failed: 12, Audit: true},
 	))
 
