@@ -184,6 +184,8 @@ gao nau curriculum                          # the three phases and what each one
 gao nau reconcile                           # what the budget buys against what the curriculum spends
 gao nau arms                                # the continued pretraining comparison and the recipe it shares
 gao nau check                               # everything in the plan that cannot be true at once
+gao can arms.jsonl                          # to weigh: whether the three arms differ in their data and in nothing else
+gao can -json arms.jsonl                    # the same reading, for whatever writes the model card
 
 gao chon criteria                           # choosing a base: the six criteria, in the order they bind
 gao chon bases                              # the candidates, before anybody has measured one
@@ -1476,6 +1478,50 @@ The checks are about the rows rather than about the vocabulary, because the rows
 
 The column that never appears on the tokenizer side is the last one. An expansion that buys a fifth of the fertility and spends a third of the run getting back to where it started has made the run worse, so the recovery is measured against the run's own budget and the verdict is written against the difference. A method whose loss never came back prints never rather than a zero, because a recovery of nothing and a recovery that did not happen are not the same reading.
 
+## Whether the three arms differ in their data and in nothing else
+
+E6 is the row the rest of the plan hangs off. gao has to beat CulturaX by four points of VMLU on a continued pretraining run, or the from scratch run does not start. `gao nau arms` locks the three arms that answer it, and `gao can` reads what came back and says whether what came back is a comparison.
+
+That is a separate question from what the arms scored, and it is the harder one. The promise is easy to keep on paper and hard to keep on a cluster. One arm gets resumed at a different batch size after a node fails. Another finishes ten billion tokens short because the reservation ran out. A third is scored under a harness that gained a benchmark between arms. None of those is dishonest and every one of them turns a four point gap into a number nobody can attribute to the data.
+
+```
+$ gao can arms.jsonl
+arm                           data                                        tokens  final loss  spikes  restarts  vmlu  over base  trained on   scored on
+com-8B-cpt-gao                gao                                         200.0B  2.150       0       0         52.4  +8.3       8xH100-80GB  gamingpc
+com-8B-cpt-culturax           CulturaX Vietnamese                         200.0B  2.150       0       0         46.9  +2.8       8xH100-80GB  gamingpc
+com-8B-cpt-culturax-filtered  CulturaX Vietnamese through gao's cleaning  200.0B  2.150       0       0         48.2  +4.1       8xH100-80GB  gamingpc
+
+E6, gao over CulturaX        +5.5   against 4.0    yes
+E7, gao over its own base    +8.3   against 6.0    yes
+P08-3, the cleaning's share  23.6%  against 50.0%  under
+
+P10-2, vi-adherence on the gao arm before anything is done about it, reads 86.0% against the 90.0% it was predicted under.
+
+com-8B-cpt ran three arms that differ in their data and in nothing else, over 200.0B tokens each, from one checkpoint under one harness. gao beat CulturaX by 5.5 points and its own base by 8.3, so E6 and E7 both pass and the from scratch run has a corpus that cleared its own gate. The filters only arm took 23.6% of the gap, under the half P08-3 predicts, so the advantage is not explained by the cleaning alone.
+```
+
+The arms are held to the locked recipe wherever it fixes a value, and to each other everywhere else. The second half is the one that finds things, because the settings that drift are the settings nobody wrote down: sequence length, precision, warmup, the checkpoint each arm continued from, the base model figure each arm is read against, and the seed. The seed is the one worth defending. With one run per arm a four point gate rests on a single draw, and three arms on three seeds cannot separate a data effect from a seed effect at all. Sharing it does not turn this into a study with error bars. It removes the one difference that was free to remove.
+
+When something did drift, the gate is not printed.
+
+```
+$ gao can arms.jsonl
+arm                           data                                        tokens  final loss  spikes  restarts  vmlu  over base  trained on   scored on
+com-8B-cpt-gao                gao                                         200.0B  2.150       0       0         52.4  +8.3       8xH100-80GB  gamingpc
+com-8B-cpt-culturax           CulturaX Vietnamese                         200.0B  2.150       0       0         46.9  +2.8       8xH100-80GB  gamingpc
+com-8B-cpt-culturax-filtered  CulturaX Vietnamese through gao's cleaning  200.0B  2.150       0       0         48.2  +4.1       8xH100-80GB  gamingpc
+
+This is not a controlled comparison, so the gate is not reported against it:
+  com-8B-cpt-culturax ran at seed 23 and com-8B-cpt-gao ran at 17, so the arms differ in something other than their data
+  com-8B-cpt-culturax-filtered ran a batch of 2097152 tokens and the recipe locks 4194304
+```
+
+Both blocks are invented. No arm of S7 has run, and the figures in them are what the command prints rather than what a training run measured.
+
+The per arm table still prints, because what each run did is a fact about that run. What is withheld is the comparison, and the reason it is withheld rather than footnoted is that a footnote does not survive a copy and paste. A gap of 5.5 points off arms that differed in their seed is the number that ends up in the message announcing the work, and the sentence saying the comparison was not controlled is the one that gets left behind. The same thinking is why the JSON carries no gap field at all in that case, rather than a gap next to a false flag, and why the exit code separates a comparison that failed its gate from a thing that was never a comparison.
+
+The two rows under E6 decide what the result is a finding about. E7 asks that gao beat the checkpoint it continued from by six points, and it is there to catch the pass that is not one, since beating CulturaX while barely moving off the base says the comparison found a weak baseline rather than a strong corpus. P08-3 is a prediction rather than a gate, and it asks whether the filters only arm took at least half of gao's advantage. If it did, the honest headline is that the cleaning mattered and the scale did not, which is a more useful finding than the one this was hoping for and a much worse one to arrive at after publishing the other.
+
 ## What fraction of the hardware becomes gradient
 
 The gate on the from scratch run is 40% model FLOPs utilization in FP8 and the kill criterion is 25% after a week of tuning, which makes utilization the number that decides whether the most expensive thing in this project continues. A number with that job should not be an estimate somebody did once in a spreadsheet, so `gao hieu` computes it and reads it back off the run.
@@ -2379,6 +2425,7 @@ xoa/         the takedown register: who asked, when, and when it was done
 doc/         schema and contracts shared across stages
 luat/        the legal position: license determinations, publication posture
 nau/         the training plan: the token budget, the curriculum, the arms
+can/         to weigh: whether the three continued pretraining arms differ in their data and in nothing else
 cho/         to wait: what a crawl left between requests to one host, read off a run under load
 chon/        to choose: the base model criteria, in the order they bind
 ghep/        to graft: what expanding a base vocabulary bought, and what the run paid for it

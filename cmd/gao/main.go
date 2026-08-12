@@ -30,6 +30,7 @@ func commands() []command {
 		{"bien", "the frontier: canonicalize URLs, shape them, and say what the budget would ask for", runBien},
 		{"boc", "to husk: peel the posts out of a forum thread and leave the page behind", runBoc},
 		{"box", "print the fleet inventory and the disk budget it implies", runBox},
+		{"can", "to weigh: whether the three continued pretraining arms differ in their data and in nothing else", runCan},
 		{"cham", "mark: grade sampled answers against a verifier, since a published reward is the only arguable one", runCham},
 		{"che", "cover: find the personal data in a document and tag over it", runChe},
 		{"chia", "divide: route a PDF to direct extraction, to a legacy transcode, or to OCR", runChia},
