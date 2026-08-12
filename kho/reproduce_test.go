@@ -113,6 +113,7 @@ func TestAShardWrittenWithOtherSettingsDoesNotRebuild(t *testing.T) {
 	}
 	if report == nil {
 		t.Fatal("no report came back, so nobody can tell which shard it was")
+		return
 	}
 	if report.Different != 2 {
 		t.Fatalf("%d of 2 shards were reported as differing", report.Different)
@@ -180,6 +181,7 @@ func TestARebuildStopsEarlyWhenAsked(t *testing.T) {
 	report, _ := Reproduce(dir, ReproduceStopEarly())
 	if report == nil {
 		t.Fatal("no report")
+		return
 	}
 	if len(report.Shards) != 1 {
 		t.Errorf("stopping early read %d shards, want 1", len(report.Shards))
