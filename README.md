@@ -64,6 +64,8 @@ gao uoc -source hplt-v3 -parts 1214 -bytes 703000000000 -seed hplt-v3-2026-08 sa
 gao uoc -exact 176000000000 -source hplt-v3 -parts 1214 -bytes 703000000000 -seed hplt-v3-2026-08 sample.jsonl  # and whether the exact count, once there is one, landed inside it
 gao tang -source hplt-v3 layers.jsonl       # the layers: what an estimate taken bucket by bucket is worth over the buckets nobody opened
 gao tang -source hplt-v3 -quoted 176000000000 layers.jsonl  # and whether the number this project publishes is one the reading covers
+gao mau -source hplt-v3 -seed s -layers layers.jsonl files.jsonl  # a sample: which shards of the buckets nobody opened get read
+gao mau -source hplt-v3 -seed s -layers layers.jsonl -takes files.jsonl  # the read list on its own, which is what does the fetching
 gao gat cc     --snapshots all              # recover Vietnamese from Common Crawl
 gao gat crawl  --policy crawl.toml          # crawl the Vietnamese web directly
 gao gat media  --from crawl                 # fetch PDFs, audio, video
@@ -576,6 +578,37 @@ This has already happened once on this corpus. An earlier reading sampled the to
 The weights carry an assumption of their own. What the manifest knows is what each bucket costs on disk, and what the estimate needs is how much text is in it, so weighting by stored size assumes a byte on disk holds the same amount of text everywhere. Repetitive text compresses better than prose, which means the assumption fails in the same direction as everything else here. Every bucket that was read measures its own packing, and when the measured packings disagree by more than a quarter the report says the weight on every unread bucket carries that much of its own error.
 
 The two ranges are different quantities and they add. `gao uoc` answers how much the number would move under a different draw, `gao tang` answers how much of the corpus the draw could not see, and a published estimate needs both next to it. The exit codes say the same thing: 1 when the file is not a stratified reading at all, 2 when it is one that carries more than sampling error. Closing the second one is not an argument, it is opening the other five buckets, and at 40 MB each that is 200 MB of reading on `server1`.
+
+## Which two hundred megabytes
+
+That is the cheapest open item in the project and it has sat there for months, which is worth being honest about: 200 MB of reading closes a bound that no amount of arguing closes. The reason it is not quite trivial is that "40 MB a bucket" does not say which 40 MB, and the obvious answer is wrong in a way that leaves no mark on the result. Forty megabytes off the front of the first shard is forty megabytes of whichever domains the crawl happened to put there, the rate measured on it is a rate for those domains, and it fills the same line in `gao tang` that a real reading of the bucket would fill.
+
+There is no getting around it with offsets. A shard is a compressed stream and a compressed stream cannot be entered in the middle, because there is no way to know where a record starts without the decoder state that comes from every byte before it. Every read this project can perform starts at the front of a file and stops when it has had enough, so the only dial that spreads a sample across a bucket is how many files it touches. `gao mau` turns that dial and writes the answer down. Mẫu is a sample.
+
+```
+$ gao mau -source "hplt-v3 vie_Latn" -seed hplt-v3-2026-08 -layers layers.jsonl files.jsonl
+hplt-v3 vie_Latn, 5 of 10 layers already read, 5 layers to open at 40.0 MB each.
+layer     rank  on disk  shards  drawn  to read  of the layer
+bucket 1  1     50.0 GB  56      16     40.0 MB  0.0800%
+bucket 2  2     42.0 GB  47      16     40.0 MB  0.0952%
+bucket 3  3     35.0 GB  39      16     40.0 MB  0.1143%
+bucket 4  4     28.0 GB  32      16     40.0 MB  0.1429%
+bucket 6  6     20.0 GB  23      16     40.0 MB  0.2000%
+
+seed hplt-v3-2026-08, digest 73a2c1c832fad774.
+
+This plan reads 200.0 MB off 80 shards across 5 layers of 10 layers, at seed hplt-v3-2026-08, which takes hplt-v3 vie_Latn from 5 of 10 layers read to 10 of 10. Every layer will have been read, each of them off enough shards that no single stretch of the crawl carries its rate.
+```
+
+The bucket sizes there are the same invented ones the block above uses, since nothing has been ingested. What the plan is made of is real: a layer file and a listing of shards, neither of which needs a byte to be fetched first, which is the entire point of deciding this before the reading rather than after it.
+
+Sixteen shards at two and a half megabytes each is the same 40 MB the estimate already quotes, spread over sixteen stretches of the crawl instead of one. It is eight hundredths of one percent of bucket 1 either way. The cost is identical, the line in the report is identical, and only one of the two answers the question, which is the sort of difference that survives a review precisely because nothing about the output looks different. A plan also reads slightly over its target rather than truncating its last file to hit the number exactly, because a 300 kB prefix of a compressed shard is decoder warmup and one long document.
+
+The seed is on the report so that the reading is checkable by somebody who does not trust us. The draw is blake3 of the seed with the path, which is the draw `gao dem verify` already uses, so the two protocols in this project that sample by file sample the same way and a third party with the seed and the listing fetches exactly these eighty shards. The digest is over the takes themselves rather than over the inputs, so a plan quietly regenerated against a different listing comes back as a different plan instead of the same one with different files inside it. `-takes` prints the read list on its own, one shard and its byte count per line, which is what the thing doing the fetching actually consumes.
+
+Four things make a plan that runs but is not the sample it looks like, and each of them gets a sentence. A layer whose shards are too big to spread a reading across, which is the one that costs nothing to fix and everything to miss. A listing that stopped early, so the plan draws from whichever corner of the bucket made it into the file, checked by adding the listed shards up against what the layer says it holds. A layer left shut because the listing has no files for it at all. And whether what stays shut sits below everything the plan opens, which is the direction that flatters the number and the reason `tang` exists in the first place. Exit 1 is a plan nobody can run, including one with no seed on it, since a draw nobody can repeat is a reading only we can take.
+
+Running it is a `server1` item, and it is the first one on that box that produces a number rather than a pipeline. The layer file goes next to the estimate when it does, so `gao tang` runs against a reading of all ten buckets instead of against five and a bound.
 
 ## Normalizing before anything reads a character
 
@@ -2794,6 +2827,7 @@ don/         clearing away: whether the crawl gets its bytes off the box faster 
 dem/         counting: the tokenizer that defines a gao token, and the counts
 uoc/         to estimate: what a sampled count is worth, as an interval and as a stopping rule
 tang/        the layers: what an estimate taken bucket by bucket is worth over the buckets nobody opened
+mau/         a sample: which shards of a layer nobody has read get read, decided before the reading
 phoi/        normalization: Unicode, orthography, encoding repair
 sang/        filtering: language ID, heuristics, quality classification
 xep/         to place: the gao-refset draw and rubric the quality classifier is trained against

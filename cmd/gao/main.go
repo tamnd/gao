@@ -62,6 +62,7 @@ func commands() []command {
 		{"lat", "a slice: check a release slice is a view over its snapshot rather than a second copy of it", runLat},
 		{"luat", "print the legal position: counsel questions, license determinations, what ships", runLuat},
 		{"mam", "the seed: find hosts nobody handed us a list of", runMam},
+		{"mau", "a sample: which shards of a layer nobody has read get read, decided before the reading", runMau},
 		{"nau", "cook: the training plan, its token budget, its curriculum, and the arithmetic between them", runNau},
 		{"ngai", "to hesitate: vi-overrefusal, whether a model will talk about Vietnam, in pairs", runNgai},
 		{"nghe", "to listen: whether a transcript belongs to the audio it came off, without a reference to score it against", runNghe},
