@@ -167,6 +167,8 @@ gao tin read -missed pairs.jsonl            # and every comparison the proxy cal
 gao gieo recipe                             # to sow: the gao-synth recipe, fixed and hashed before a token exists
 gao gieo recipe -prompts                    # the prompts verbatim, which is what reproducing it needs
 gao gieo card synth/gao-synth-1.0           # check a generator card against the recipe it names
+gao lap -generator gao-synth-1.0 run.jsonl  # to repeat: whether a generated set is a corpus or one prompt run a million times
+gao lap -generator gao-synth-1.0 -json run.jsonl  # the same, for whatever writes the generator card
 
 gao cong counts.jsonl                       # add up: what a release holds and what the headline is a count of
 gao cong -json counts.jsonl                 # the same, for whatever writes the dataset card
@@ -1648,6 +1650,46 @@ Synthetic text goes to `vietnamese-synthetic-text` and nowhere else, and it is n
 
 None of this has run yet. `gao-synth` generation needs `gamingpc`, which is the only box in the fleet with a GPU the generator fits on, and the card records the box and the batch settings so that the throughput on it is a number somebody else can reproduce rather than one they have to take our word for. The recipe is closed and hashed now, before any of that, which is the point.
 
+## The failure that is in no document
+
+Every other judge in this project reads one document at a time. `gao sang` asks whether a document is Vietnamese prose and whether it repeats itself, `gao xay` asks whether two documents are the same document, and both of them are aimed at web text, where the thing worth catching is a page of boilerplate or a mirror of a site already in the store. Neither of them can see the failure that matters for generated text, because it is not in any document. Ask a model for a hundred thousand articles about administrative procedure and it returns a hundred thousand fluent, varied, well formed articles. Every one is Vietnamese, none repeats itself, no two are near duplicates, and the set is four hundred sentence shapes with the nouns swapped. Read one and it is fine. Read the set in order and the hundred thousandth document teaches a model nothing the ten thousandth did not, and the difference between those two facts is 14,000 GPU hours.
+
+`gao lap` reads the set rather than the documents. Lặp is to repeat.
+
+```
+$ gao lap -generator gao-synth-1.0 run.jsonl
+gao-synth-1.0 wrote 12000 documents and its own filter kept 11700 of them, which is 2.5% rejected.
+The last tenth of what it kept is 0.0% material the first nine tenths did not already hold, read over 167,779 grams of five syllables against the 4,886 distinct grams the whole set holds.
+
+The openings the most documents share, at 8 syllables each:
+  theo quy định của pháp luật hiện hành  1500  12.8%
+  công dân có thể tra cứu tình trạng     847   7.2%
+  cán bộ tiếp nhận hồ sơ đăng ký         437   3.7%
+  thủ tục cấp giấy phép xây dựng tại     284   2.4%
+  thủ tục cấp căn cước công dân tại      276   2.4%
+
+The prompts the most of what shipped came from:
+  p-qa-encyclopedic  6300  53.8%
+  p-instruct-howto   1800  15.4%
+  p-rephrase-formal  1800  15.4%
+  p-rephrase-plain   1800  15.4%
+
+This set is shorter than its token count:
+  the last tenth of the set is 0.0% material the rest of it did not already hold, against a 25.0% line, so past that point the run is producing length rather than content
+  12.8% of the documents open with the same 8 syllables, "theo quy định của pháp luật hiện hành", so that much of the set is one shape with the nouns changed
+  53.8% of what shipped came from the prompt p-qa-encyclopedic, so the set is exactly as varied as that one prompt is
+```
+
+Those numbers come off a run built to fail, not off `gao-synth`, which has not been generated. The two counts on the second line are the ones to read together. The last tenth of the set is 167,779 grams of five syllables long and the whole set holds 4,886 distinct ones, so by the time the generator reached document 10,530 it had said everything it was going to say and the remaining 1,170 documents are that material rearranged. Not one of them would be caught by anything else in the pipeline. They are well formed Vietnamese, they are not near duplicates of each other, and a filter reading them one at a time sees a document it has never seen before every time, because it has.
+
+Five syllables is the window because ordinary Vietnamese collocations do not fill it on their own and a set that has genuinely run out cannot hide behind rewording. The floor is a quarter, which is low on purpose. It is not the line a good generator clears, it is the line under which the tokens are length rather than content, and a run that trips it should be stopped rather than argued about.
+
+The measure is taken in the order the run was generated and nothing sorts the file, because the whole question is what came later. A set that is perfectly varied for nine tenths and repeats itself at the end is a run that ran out at the end, which is exactly what happens, and the same documents shuffled would read as healthy. The order is the measurement. That is also why rejected documents stay in the file rather than being deleted once the generator's filter has ruled on them: the share a generator threw away is a fact about the generator, and it is reported at both ends. Nothing rejected is a filter that did not run, whatever the code says it did, because no generator writes a hundred thousand documents worth keeping. Over half rejected means what ships is not the generator's output, it is the tail of the generator's output that passed gao's own filter, and that is a different artifact which the card has to describe as one. The 2.5% above sits between the two and passes without comment.
+
+One prompt carrying the set is the same failure arriving through another door, and it is the one a targeting plan causes on its own, because whichever prompt turns out cheapest to run gets run the most. In the run above the encyclopedic prompt produced 53.8% of what shipped, so the four registers the recipe promises are one register with three garnishes, and the set is exactly as varied as that one prompt is. A document that cannot be traced back to a prompt makes that uncheckable, so a set holding one is refused rather than measured, the same way a set with no generator named on it is refused before anything is counted. Exit 1 is a set nobody can measure and exit 2 is a set that measures and says the run should stop.
+
+None of this has been run against real output either. `gao lap` needs a generated set, generation needs `gamingpc`, and the first real reading is due the moment the first `gao-synth` shard exists rather than after the run finishes, because the number it reports is the argument for stopping a run early and there is no point taking it once the GPU hours are already spent.
+
 ## Choosing a base without letting the small criteria outvote the large one
 
 The continued pretraining arms start from somebody else's weights, and six criteria decide whose. They are ranked, and the ranking is the whole content of them. The license permits derivative weights and commercial use or the candidate is out. Base quality on multilingual reasoning is measured directly rather than read off a model card. Fertility comes third, and the sentence that governs it is that a base at 1.50 tokens per syllable gives 33% more Vietnamese per FLOP than one at 1.99, which is enough to break a tie and not enough to override the criterion above it. Then Vietnamese exposure probed before any training, long context already present, and a 2026 architecture so that what is learned continuing it transfers to the run that starts from nothing.
@@ -2735,6 +2777,7 @@ kim/         the needle: vi-needle, whether a long context in Vietnamese is read
 hoi/         to ask: vi-longdoc-qa, whether a question about a long document actually needs the document
 gian/        to stretch: the context extension ladder, and whether the corpus holds enough naturally long Vietnamese to climb it
 gieo/        to sow: the generator card for gao-synth, and the recipe it is written against
+lap/         to repeat: whether a generated set is a corpus or one prompt run a million times
 lat/         a slice: release slices as views over a snapshot rather than copies of it
 cong/        to add up: the release counts, with what may be added to what enforced rather than assumed
 chot/        closing the ledger: the evaluation harness, fixed and hashed before any result exists
