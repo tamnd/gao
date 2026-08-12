@@ -176,7 +176,9 @@ func TestSietReadsAMissingOrMalformedLogAsTheFileItIs(t *testing.T) {
 	if code != 1 {
 		t.Fatalf("a missing log exits %d", code)
 	}
-	if !strings.Contains(errOut, "no such file") {
+	// What the operating system calls a missing file differs between them, so the
+	// check is that the path is in the message rather than what came after it.
+	if !strings.Contains(errOut, "nothing.jsonl") {
 		t.Errorf("the missing file is not named: %s", errOut)
 	}
 
