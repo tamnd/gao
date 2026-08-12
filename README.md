@@ -142,6 +142,8 @@ gao kim check items.jsonl                   # check a built set against that gri
 gao kim grade -items items.jsonl -curve replies.jsonl  # read a run, with recall at every depth rather than one average
 gao hoi questions.jsonl                     # to ask: whether a long document question needs the document, or only its first page
 gao hoi -rejects questions.jsonl            # and what every question that did not survive failed on
+gao gian ladder                             # to stretch: the three windows the context is extended through, and what each one is trained on
+gao gian pool parts/*.parquet               # and whether the corpus holds enough naturally long Vietnamese to climb them
 gao chot harness                            # close the ledger: the evaluation harness, fixed before any result exists
 gao chot digest                             # the digest every published result has to carry
 gao chot audit results.json                 # and whether a set of results is the one the harness asked for
@@ -1445,6 +1447,54 @@ vi-longdoc-qa-1.0 admits 602 of the 648 questions read, over 120 documents, each
 That is the same set with every document above 131k shortened, which is what happens when the questions get written against whatever was convenient to read. It exits 2. The set is fine as a benchmark and useless for the thing it was commissioned for, and those two facts have to be reported separately or the second one disappears.
 
 
+## Whether there is enough long Vietnamese to train a long context on
+
+`giãn` is to stretch, and it is the training side of the two benchmarks above. The window does not go to 131,072 in one move. It goes 4,096, then 32,768, then 131,072, because attention is quadratic and the first two thirds of the run has no use for the last window. Those three stages are in the curriculum already, and `gao gian ladder` reads them back out of it with the method and the data rule against each one.
+
+```
+$ gao gian ladder
+stage     window  from documents over  spends  on long slices  method
+1 bulk    4096    any length           616.8B  37.0B (6.0%)    native
+2 ramp    32768   4096 tokens          308.4B  37.0B (12.0%)   RoPE base increase, then continued training
+3 anneal  131072  32768 tokens         102.8B  18.5B (18.0%)   YaRN, then a short finetune at the window
+
+bulk: the full mixture, packed to the window. Read against nothing, since there is no extension yet to have failed.
+ramp: long documents upweighted 6x, not short ones concatenated. Read against vi-needle at 32768.
+anneal: naturally long Vietnamese only, and concatenated shorts for nothing. Read against vi-needle and vi-longdoc-qa at 131072.
+```
+
+The last data rule is the whole reason this package exists. Long context extension is almost always done on concatenated short documents, because there is always enough of those, and a model trained that way learns to address positions rather than to carry a dependency across them. It then passes a needle test at the top window and cannot answer a question about a statute, which is exactly the pair of results `kim` and `hoi` were built to separate. Ruling concatenation out means the pool of naturally long Vietnamese has to be large enough on its own, and nobody had counted it.
+
+Counting it is a question about two columns. A document teaches the window above it only if it is naturally longer than the window below it, so the measurement is a length distribution with the source kept next to each length, and Parquet is columnar precisely so that a question about two columns costs two columns rather than the corpus.
+
+```
+$ gao gian pool -name "the gao-v1 fixture" data/snapshot=gao-v1/file=00000/*.parquet
+window  documents over the floor  tokens  mean    reach  passes  leans on
+32768   520                       9.6M    18,516  56.5%  3843.5  gao-media 66.2%
+131072  87                        5.9M    67,986  51.9%  3128.4  gao-media 59.4%
+
+5 parts over 126 MB of Parquet, read on unmeasured.
+That box is not on the fleet, so this is a check rather than the corpus reading.
+Taking the lengths read 4 MB, which is 2.9% of the parts, so the box doing the reading does not have to be the box holding them.
+The longest document is 148,422 tokens and 9 of them are longer than the 131072 window, which the last rung reads in pieces.
+
+3 readings the ladder cannot be climbed with:
+  the pool for the 32768 window holds 9.6M tokens against a stage that asks its long slices for 37.0B, so supplying it takes 3843.5 passes over the same 520 documents against a ceiling of 4
+  the pool for the 131072 window holds 5.9M tokens against a stage that asks its long slices for 18.5B, so supplying it takes 3128.4 passes over the same 87 documents against a ceiling of 4
+  66% of the 32768 pool is gao-media, so what stage 2 teaches at length is the shape of one source
+
+the gao-v1 fixture holds 4,720 documents and 13.7M tokens, read out of 125.9 MB of Parquet. 3 readings say the ladder cannot be climbed as written, the first of which is that the pool for the 32768 window holds 9.6M tokens against a stage that asks its long slices for 37.0B, so supplying it takes 3843.5 passes over the same 520 documents against a ceiling of 4.
+```
+
+That is a real run on this laptop over five parts of Vietnamese prose written by `kho`, with every token count taken from the pinned Gemma-3 tokenizer rather than estimated off the characters. The box line says `unmeasured` and the three faults are facts about a fixture that is a thousandth of the size of a release. What carries is the read: 4 MB of column data for 126 MB of parts, 2.9%, because the text is the other 97% and the lengths are not in it. At that ratio a 420 GB release is twelve gigabytes of length columns, which is the difference between a distribution any box on the fleet can measure and one that can only be measured on whichever box happens to be holding the release.
+
+The three readings are three different failures and they are named separately for that reason. Passes is the one everybody quotes: the anneal stage asks its long slices for 18.5B tokens, so a pool of 5.9B would be read three times and a pool of 5.9M three thousand, and past four passes the stage is memorizing a few thousand documents rather than training on long ones. Reach is the failure that hides inside a pool that looks full, because documents averaging a third of the window leave every position past that trained by packing after all, which is the thing the data rule was written to forbid. Concentration is the one that reads as a success right up until somebody asks a question outside the register: a pool that is nine tenths consolidated legal codes teaches the shape of a legal code at 131,072 tokens.
+
+A document with no token count on it is refused rather than estimated, and the exit code says which kind of answer came back. A length in characters cannot say which side of a 32,768 token window a document falls on, and the whole measurement is about which side documents fall on, so a part that has not been through `dem` exits 1 with nothing read off it. A part that has exits 2 when the pool cannot carry the ladder, and 0 when it can.
+
+What is not answered yet is the only question that matters, which is what the real distribution looks like. That is a pass over the release on `server1`, `server2`, `server3` or `gamingpc`, and it is an open item on the milestone rather than a number to quote. The useful property of this reading is that it can be taken on any of them, including the ones that could never hold the release, so the answer arrives before the extension is booked rather than after the anneal stage has already run on packed shorts.
+
+
 ## Making text once there is no more of it to find
 
 Everything up to here harvests. The crawl, the Hugging Face union, the PDFs and the transcripts are all Vietnamese somebody already wrote, and the whole project is arranged around finding it, reading it correctly, and throwing away the parts that are not worth keeping. That runs out. Deduplication collapses the web harder than anybody expects the first time they measure it, and past the edge of what is left the only move available is to make text rather than to find it. The mixture spends 150 billion tokens doing that, which is more than the legal and spoken registers put together.
@@ -2524,6 +2574,7 @@ ngai/        to hesitate: vi-overrefusal, the paired set both refusal numbers co
 theo/        to follow: vi-adherence, whether the answer stays in the language it was asked in
 kim/         the needle: vi-needle, whether a long context in Vietnamese is read or skimmed
 hoi/         to ask: vi-longdoc-qa, whether a question about a long document actually needs the document
+gian/        to stretch: the context extension ladder, and whether the corpus holds enough naturally long Vietnamese to climb it
 gieo/        to sow: the generator card for gao-synth, and the recipe it is written against
 lat/         a slice: release slices as views over a snapshot rather than copies of it
 cong/        to add up: the release counts, with what may be added to what enforced rather than assumed
