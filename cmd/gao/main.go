@@ -66,6 +66,7 @@ func commands() []command {
 		{"phoi", "normalize Vietnamese text, or report what normalizing it would do", runPhoi},
 		{"plan", "print the build plan: slices, gates, and kill criteria", runPlan},
 		{"sang", "sift: measure documents and say which of them are Vietnamese prose", runSang},
+		{"siet", "to tighten: the GRPO step the specialists are trained with, and a run read back against it", runSiet},
 		{"soi", "hold a reading up to the light: measure what a machine read against what the page says", runSoi},
 		{"suat", "a rate: the crawl's net yield, per target class, read while it is still running", runSuat},
 		{"tach", "separate: read a forum page as the thread it is, since generic extraction keeps the menu and drops the posts", runTach},

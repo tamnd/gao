@@ -128,6 +128,8 @@ gao tron -json sft.jsonl                    # the same, for whatever writes the 
 gao cham roster                             # mark: the seven specialists, and which of their verifiers are written
 gao cham dau -rollouts rollouts.jsonl parts/*.parquet  # grade restoration rollouts against the pages they came from
 gao cham trich -register instruments.jsonl rollouts.jsonl  # grade legal citations against the instruments that exist
+gao siet recipe -why                        # to tighten: the GRPO step the specialists are trained with, and what each setting fixes
+gao siet read -specialist dau steps.jsonl   # a training log read back against the configuration it was taken under
 gao giu retention.jsonl                     # to keep: what the distillation kept of each specialist, against merging the same checkpoints
 gao ngai items                              # to hesitate: vi-overrefusal, a line per topic and the line each one draws
 gao ngai items -pairs                       # every pair verbatim, which is the only way to check where that line falls
@@ -1231,6 +1233,64 @@ Retention is a ratio of two differences, distilled minus base over specialist mi
 Two more things get refused, both because they are the interesting failures rather than the obvious ones. A distilled model scoring above its own teacher is not a triumph, and the two explanations for it are a specialist nobody trained to convergence and a benchmark that leaked into the distillation data, so it stops rather than being written down as 108%. A panel of five specialists is not a panel, because the two nobody got round to evaluating are not a random two, and a retention averaged over the arms that worked is a retention over the arms that worked.
 
 All of it runs on `gamingpc`, and it has to, since a retention is a difference between two scores and two scores measured on different cards differ by the cards. The panel refuses to combine them.
+
+## The step the specialists are trained with
+
+The verifier decides what a specialist is trained toward. The step decides whether it learns anything from it, and it is the part of the stack that looks least worth writing about, because the algorithm is forty lines and every repository has them. What is not in those forty lines is the four settings that decide what the run becomes, and all four are left to whoever calls it. `siet` is siết, to tighten, and it holds the settings the plan fixed along with the reason each one is what it is.
+
+```
+$ gao siet recipe -why
+element          setting
+critic           none, the group is the baseline
+group size       16 rollouts a prompt
+clipping         0.20 low, 0.28 high
+aggregation      token
+flat groups      dropped, 3.0x sampled to fill
+overlong         filtered
+lengths          32768 prompt, 8192 response
+kl to reference  none
+reward           the verifier, and nothing learned
+
+critic: a value network is a second model whose errors become the objective.
+group size: the group is its own baseline, so this is the sample size of every advantage.
+clipping: a wider upper bound is what keeps the run from closing on what it already says.
+aggregation: over sequences a long correct answer is divided by its own length.
+flat groups: by mid run they are most of the batch and none of them moves anything.
+overlong: a length penalty trains stopping early rather than answering briefly.
+lengths: both sit under the base model's context and the sum is what has to fit.
+kl to reference: the evidence is mixed and domain dependent, so it is ablated rather than copied.
+reward: an unpublished reward model is an unfalsifiable reward.
+
+A prompt of 32768 and an answer of 8192 sit inside the 131072 the base model has, and the settings above are the ones the plan fixed.
+```
+
+Every one of those is the fix for a failure with a name. Clipping the same distance in both directions is what makes a policy collapse onto what it already says, because a token the update wants to raise is held to the same bound as a token it wants to cut, and the tokens it wants to cut are the ones with room to move. So the upper bound is the looser of the two, and the two are set independently rather than as one epsilon. Aggregating the loss over sequences divides a long correct answer by its own length, which prices a hundred token proof and a two thousand token one the same and teaches the model to stop reasoning. Groups whose sixteen rollouts all score identically contribute nothing, and by mid run they are most of the batch, so they are dropped and the sampler draws three times the batch to refill it. An answer the sampler cut at the length limit has not been shown to be wrong, so it is filtered rather than scored zero, which is the same rule `cham` applies on the verifier side and the reason a verdict there carries whether it was checked apart from what it scored.
+
+A configuration that cannot be what it says it is gets refused rather than run: bounds that are equal, which is symmetric clipping with clip-higher written next to it, a group of four, a loss aggregated over sequences, an overlong penalty, a prompt and an answer that do not fit the context together, and a KL coefficient nobody ablated.
+
+That is the check before anything runs. It is not the same question as whether the run worked, and the second question is the one that gets skipped, because a run with a rising reward on it looks finished.
+
+```
+$ gao siet read -specialist dau steps.jsonl
+reading             first 10 steps  last 10 steps
+reward              0.414           0.735
+entropy             0.914           0.407
+groups that taught  69.1%           18.0%
+
+dau, 400 steps on 8xH200 booked.
+14.0% of rollouts hit the length limit, the upper clip bound clipped tokens rather than sitting unused, and the batch wants 5.6x sampling to fill at the yield the run is at now.
+
+3 things to read before the reward is:
+  the entropy went from 0.914 to 0.407, which is under 50% of where it started, and the reward went from 0.414 to 0.735, so this is the policy closing rather than the policy learning
+  14.0% of rollouts hit the 8192 token limit against a line of 10%, and every one of them was dropped unchecked, so the length limit is grading answers the verifier never saw
+  the late yield is 18.0% and the sampler draws 3.0x the batch, so a step trains on fewer than the 512 prompts it is configured for and wants 5.6x to fill
+```
+
+The reward on that run went up by a third and every reading under it says the run is finishing rather than learning. The entropy is the one that matters most and it is never reported alone, since entropy falling while the reward climbs is what training looks like, and the two together are what a collapse looks like. Truncation is a fault at the point where the length limit is doing enough of the grading to be a second reward function. The yield decides whether a configured batch size is the batch size that ran, and when it is not the report says which oversampling factor would fill it rather than leaving that as an exercise.
+
+There is a fourth reading that only fires on a run that otherwise looks clean. An upper bound that never clipped a token is symmetric clipping under another name, whatever the configuration says, and a run like that will be cited later as evidence that clip-higher prevented a collapse that was never going to happen. So it is a fault, and it says the run is not evidence about clip-higher either way.
+
+`read` exits 1 when the log is not one run, which is a different failure from a run that went wrong: two boxes in one file, a step number that appears twice, more kept groups than sampled ones, rollouts that are not sixteen a group. It exits 2 when the run holds together and has something in it to read before the reward. The steps above are a generated log, since no specialist has been trained yet, and the real reading comes off the sampling runs on `gamingpc`, which is the box with the card.
 
 ## Whether the model will talk about Vietnam
 
@@ -2458,6 +2518,7 @@ thu/         to try: the forty run ablation slate, and the results read against 
 tin/         to believe: whether the cloze proxy at 1.4B orders recipes the way the real benchmark does at 8B
 tron/        to mix: the finetuning set composed with native origin kept a column rather than a note
 cham/        marking: the verifiers the reinforcement learning arms are trained against
+siet/        to tighten: the GRPO step the specialists are trained with, and a run read back against it
 giu/         to keep: what the distillation kept of each specialist, against merging the same checkpoints
 ngai/        to hesitate: vi-overrefusal, the paired set both refusal numbers come off
 theo/        to follow: vi-adherence, whether the answer stays in the language it was asked in
