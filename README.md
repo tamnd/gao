@@ -48,6 +48,8 @@ gao gat hf     -dir ingest/ -decode         # and put every record to the ingest
 gao gat hf     -dir ingest/ -out parts/ -push  # and write parquet, push it, and free the disk as it goes
 gao gat ledger -dir ingest/                 # what the harvest has finished so far
 gao gat ledger -dir ingest/ -files          # every finished file, and how each one was read
+gao giao plan  readings.jsonl               # to hand over: what the whole ingest costs once it is split across the fleet
+gao giao files readings.jsonl               # and which box fetches which file
 
 gao dem model  -o tokenizer.model           # fetch the tokenizer that defines a gao token
 gao dem gates  -tokenizer tokenizer.model parts/*.parquet  # and put it through the ten gates before trusting a count
@@ -324,6 +326,64 @@ Every file is checked at the end against the byte count in the manifest, and aga
 The counts are written the same way the ledger is, which took a fleet run to notice. A decoding run tallies documents, bytes, characters, syllables and tokens as it goes and writes them to `counts.json` beside the ledger, and the first version wrote that file once, when the run ended. A run over one of these sources takes days. So for days the directory held the previous run's counts, naming a source the box was no longer fetching, and nothing about the file said so: it parses, it has a box on it, and `gao dem counts` would print it without complaint. The counts are now written before the first byte is fetched and rewritten after every finished file, and a report written mid run says it is one. `gao dem counts` names the boxes that had not finished, because a prefix of a source and a source total are the same shape.
 
 `-dir` has no default. A command that starts a 513.6 GB download into whichever directory it was run from is a command that does it once by accident.
+
+## Handing the ingest out across the fleet
+
+There are four boxes and one of them, `server2`, has eight gigabytes of free disk and cannot hold corpus bytes at all. The other three differ by a factor of eight in threads and by a factor of twelve in scratch. So somebody has to decide which box fetches which of the 122 pinned files, and the obvious answer, forty files each, is wrong twice over.
+
+It is wrong first because the files are not the same size. The largest is 26.6 GB and the median is a fiftieth of that, so three equal piles of files are not three equal piles of work, and a file cannot be cut in half because it is streamed and hashed as one unit. It is wrong second because the sources cannot all be fetched at once. HPLT v3 is pinned at order zero and ingests alone, since every later source dedups against a store that already holds it. The schedule is a sequence of groups with a barrier at the end of each, not one pile, and the idle time that produces is the cost of the ingest order rather than a mistake in the arithmetic.
+
+`gao giao` prices both. It takes a file of readings, one per box, and hands out the heaviest remaining file to whichever box would finish it soonest.
+
+```
+$ gao giao plan readings.jsonl
+order  sources   files  bytes     takes       waiting at the end
+0      hplt3     12     234.5 GB  23.5 hours  10.0 hours
+1      finepdfs  3      13.0 GB   1.5 hours   1.7 hours
+2      fineweb2  30     130.1 GB  12.0 hours  6 minutes
+3      culturax  50     80.1 GB   7.4 hours   35 minutes
+5      glotcc    27     55.9 GB   5.3 hours   48 minutes
+
+box       gets through        fetches   of the ingest  room for a file  busy for
+gamingpc  1.9 MB/s (15 Mbit)  330.2 GB  64.3%          276.9 GB         2.1 days
+server3   0.8 MB/s (6 Mbit)   124.6 GB  24.3%          16.1 GB          44.5 hours
+server1   0.4 MB/s (3 Mbit)   58.9 GB   11.5%          94.4 GB          42.1 hours
+
+The whole ingest takes 2.1 days, against 47.2 hours if a file could be cut in half and every source fetched at once.
+On the fastest box alone it takes 3.2 days, so the fleet buys 1.5x.
+Order 1 divides 3 files across 3 boxes and still ends 20 minutes after its own floor, because server3 finishes last on data/vie_Latn/train/000_00002.parquet and a file cannot be handed to a second box once it has started.
+
+513.6 GB over 122 files across 3 boxes takes 2.1 days, against 3.2 days on the fastest box alone. That is 5% over a split no arrangement can beat, and the gap is the ingest order and the file sizes rather than the fleet.
+```
+
+One of those three readings is real. `gamingpc` counted 4.2 GB of Vietnamese in 37m46s and that is where its 1.9 MB/s comes from, so the block above is a plan and not a measurement of an ingest, because the other two boxes have not run one. Replacing the estimates with readings off a real run is a fleet item on the milestone rather than something this repo can do on a laptop.
+
+What the number says even so is worth having before anybody starts. Three boxes buy 1.5x over the fastest one alone and not 3x, and 1.5x is not a shortfall to go looking for. The floor at the bottom is what the same bytes would take if files were divisible and the ingest order did not bind, which nothing can reach. The schedule sits 5% above it. The rest of the gap to 3x is that one box on this fleet is four times faster than another, so the fleet is worth less than three of its best machine by construction.
+
+The rate a schedule is built on is the whole thing, and it is not the link. An ingest that decodes fetches a record, puts it to the ingest contract, tokenizes it and writes Parquet, and on this fleet that work is slower than the download by an order of magnitude. A readings file therefore carries what a box got through end to end, with the date and a sentence saying how it was taken, and a reading measured across less than a gigabyte is refused: a rate off the first hundred megabytes of a run is a measurement of a congestion window growing and a page cache filling.
+
+`gao giao files` prints the assignment itself, which is what somebody actually reads before starting a box.
+
+```
+$ gao giao files readings.jsonl
+order  box       bytes     takes       file
+0      gamingpc  26.6 GB   4.0 hours   hplt3/vie_Latn/7_1.jsonl.zst
+0      gamingpc  26.4 GB   4.0 hours   hplt3/vie_Latn/8_3.jsonl.zst
+0      gamingpc  26.3 GB   3.9 hours   hplt3/vie_Latn/7_2.jsonl.zst
+0      gamingpc  26.3 GB   3.9 hours   hplt3/vie_Latn/9_1.jsonl.zst
+0      gamingpc  26.2 GB   3.9 hours   hplt3/vie_Latn/8_1.jsonl.zst
+0      gamingpc  25.2 GB   3.8 hours   hplt3/vie_Latn/6_1.jsonl.zst
+0      server3   16.0 GB   5.7 hours   hplt3/vie_Latn/8_4.jsonl.zst
+0      server3   15.0 GB   5.4 hours   hplt3/vie_Latn/5_1.jsonl.zst
+0      server3   10.0 GB   3.6 hours   hplt3/vie_Latn/9_2.jsonl.zst
+0      server3   9.8 GB    3.5 hours   hplt3/vie_Latn/7_3.jsonl.zst
+0      server3   294.6 MB  6 minutes   hplt3/vie_Latn/10_1.jsonl.zst
+0      server1   26.3 GB   18.8 hours  hplt3/vie_Latn/8_2.jsonl.zst
+```
+
+`server3` is the second fastest box and it draws no file above 16.0 GB. That is the room column doing its work: `server3` has 24.3 GB of scratch and holds 8.2 GB of stage working set while it fetches, which leaves 16.1 GB for the file itself, and a pinned file has to land whole. So the 26.3 GB shard goes to `server1`, which is four times slower and spends 18.8 hours on it, because a box that would finish a file sooner and cannot store it is not a box that would finish it. A split that ignores the disk is a split that stops on a full filesystem eighteen hours in.
+
+The command exits 1 when the readings are not a schedule at all, which covers a box nobody has, two rates for one box, a sample too small to mean anything, and a reading that does not say how it was taken. It exits 2 when they describe a schedule that should not be run as written, which is a box that draws no files or a file no box has room to land. Groups that end late are neither. A group of three files across three boxes of different speeds ends when its slowest file ends however it is dealt out, and the sentence saying so is there to stop somebody hunting for a better split that does not exist.
 
 ## What a record becomes
 
@@ -2544,6 +2604,7 @@ There is a fourth, and it is the reason spaces mislead everyone: Vietnamese writ
 ```
 cmd/gao/     the single binary
 gat/         acquisition: Hugging Face, Common Crawl, crawl, media
+giao/        to hand over: which box fetches which file of the ingest, and what the whole thing costs in wall clock
 bien/        the frontier: canonical URLs, shapes, what a host has earned, and whether it fits in memory
 mam/         the seed: hosts and repositories nobody handed us a list of
 suat/        a rate: net yield per target class, read while the crawl is still running
