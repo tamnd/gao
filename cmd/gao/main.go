@@ -79,6 +79,7 @@ func commands() []command {
 		{"tang", "the layers: what an estimate taken bucket by bucket is worth over the buckets nobody opened", runTang},
 		{"theo", "to follow: vi-adherence, whether the answer comes back in the language the question was asked in", runTheo},
 		{"thu", "to try: the forty run ablation slate, fixed before any of it runs, and what came back", runThu},
+		{"tieng", "a syllable: what a syllable-atomic tokenizer would govern, and what it gives up, counted before the slate runs", runTieng},
 		{"tin", "to believe: whether the cheap benchmark orders recipes the way the expensive one does", runTin},
 		{"tron", "to mix: the finetuning set composed with native origin kept a column rather than a note", runTron},
 		{"uoc", "to estimate: what a sampled count is worth, as an interval and as a stopping rule", runUoc},
