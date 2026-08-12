@@ -56,6 +56,8 @@ gao dem gates  -tokenizer tokenizer.model parts/*.parquet  # and put it through 
 gao gat hf     -dir ingest/ -tokenizer tokenizer.model  # and count tokens while harvesting
 gao dem fertility                           # the candidate tokenizers, and which of them anybody has pinned
 gao dem fertility fertility.jsonl           # and what each one costs for the same Vietnamese, measured
+gao tieng -source gao parts/*.txt           # a syllable: what a syllable-atomic tokenizer would govern, and what it gives up
+gao tieng -source gao -top 40 parts/*.txt   # and the runs it forbids, longest table first
 gao dem counts ingest/                      # what the harvest counted, per source
 gao dem keys   glotcc-abc1234               # read a snapshot's document identities back out of the store
 gao dem overlap keys/*.keys                 # what the sources have in common, counted rather than sampled
@@ -499,6 +501,46 @@ Given a log of readings the same command folds them onto the roster, ranks what 
 Two readings of one tokenizer over the same text on two different boxes have to come back identical, and that is the cheapest reproducibility check anywhere in this project. The arithmetic is a division, the input is a fixed file, and the whole thing takes seconds. When the two disagree it is a locale, a normalization difference, or a tokenizer file that is not the one that was pinned, and all three of those are wrong everywhere else in the pipeline too. Finding one here costs an afternoon. Finding it after the counts are published costs the counts.
 
 Which is why the report counts boxes rather than readings. The same tokenizer measured twice on `server1` is a repeat and not a reproduction, and it is the failure most likely to go through unnoticed, because in any summary that counts readings the two look identical. That one is named as a fault in its own sentence, and the command exits non zero on it, on a candidate nobody measured, and on any disagreement, so a pipeline gets the answer without reading the prose.
+
+## The syllable question, and the half of it that is arithmetic
+
+Vietnamese writes a space between syllables, so every few months somebody proposes the obvious thing: forbid the tokenizer from merging across that space. A token is then a syllable or part of one and never a piece of two. It is a tidy rule, it makes the vocabulary legible, and it is one of the forty runs on the ablation slate because nobody in the literature has settled it for a language that writes this way.
+
+What makes it worth a command of its own is that the two sides of the argument are not the same kind of claim. The case against the rule is arithmetic and can be finished today. The case for it is a claim about what a model learns from a boundary it did not have to find, and no amount of counting settles that. Running them together is how the question gets decided by whichever side quoted a number first, so `gao tieng` does the countable half and prints the other half as empty rather than as zero.
+
+The arithmetic is short. Under the rule a syllable costs at least one token and no vocabulary size moves that, so the corpus costs 1.00 tokens per syllable and that is a floor rather than an estimate. It is a reachable floor: the inventory in `sang` forms 4,022 spellings before the tone marks go on, and six tones over that is comfortably inside every vocabulary on the roster, so a vocabulary that wants a token per syllable can have one. Without the rule the same vocabulary has exactly one extra freedom, which is to spend a slot on a run of syllables that keeps turning up and pay one token for it instead of two. Việt Nam, chúng tôi, thành phố, có thể. Every other difference between the two arms can be held equal, which means the cost of the rule is the tokens those merges would have saved, and that is countable off text with nothing fetched and nothing trained.
+
+So the command counts it. It classifies every whitespace unit as something the rule governs or something it does not, finds the runs that repeat often enough for a slot to pay for itself, spends the slots on the ones that buy most, and walks the text again with the table in hand. The walk matters. Adding the table up sells the same appearance to two slots, because theo số liệu của and theo số liệu are the same three thousand occurrences counted twice, and a tokenizer that matches longest first only gets to charge for one of them. A run that takes a slot therefore pays for it out of every shorter run inside it, which is why the top of the table is ten different phrases rather than one phrase written four ways.
+
+Here it is on the only Vietnamese text this repository holds, which is the labeled set the language identifier is tested against, and what it says is that four kilobytes cannot answer the question.
+
+```
+$ gao tieng -source "the Vietnamese half of the language identification set" sang/testdata/langid/vietnamese/*.txt
+the Vietnamese half of the language identification set, 748 syllables over 8 documents.
+unit                count  share  governed
+marked syllable     727    92.3%  yes
+bare syllable       21     2.7%   yes
+other letters       26     3.3%   no
+number              14     1.8%   no
+letters and digits  0      0%     no
+punctuation         0      0%     no
+
+syllable atomic 1.00 tokens per syllable, merges allowed 1.00, the rule costs 0%.
+
+This is not the sample it looks like:
+  the sample holds 748 syllables, under the 100,000 syllables a run has to be counted against before 50 appearances stops being a property of the draw
+  the reading is taken over 8 documents, under the 200 it takes before a table of phrases is a table about a corpus rather than about the pages that happened to be in it
+  khong-dau.txt supplies 19.7% of the syllables, over the 10.0% any one document may, so the runs that pay best are the ones that page repeats
+  no run of syllables turns up 50 times in this text, so what the rule gives up could not be measured here, which is not the same reading as it giving up nothing
+
+Over 748 syllables of the Vietnamese half of the language identification set, a syllable-atomic rule governs 94.9% of what the text is made of. The runs worth a slot cover 0.0% of the syllables, and the 0 slots that went to them take the same vocabulary from 1.00 tokens per syllable to 1.00, so the rule gives up 0.0% of the tokens before a step is trained. What the rule buys is not in this reading and is not in any reading taken off text, since it is a claim about what a model learns from the boundary, which is P07-3 and needs the slate. 4 readings say this is not the sample it looks like: the sample holds 748 syllables, under the 100,000 syllables a run has to be counted against before 50 appearances stops being a property of the draw; and the reading is taken over 8 documents, under the 200 it takes before a table of phrases is a table about a corpus rather than about the pages that happened to be in it; and khong-dau.txt supplies 19.7% of the syllables, over the 10.0% any one document may, so the runs that pay best are the ones that page repeats; and no run of syllables turns up 50 times in this text, so what the rule gives up could not be measured here, which is not the same reading as it giving up nothing.
+```
+
+The last fault is the one to read twice. The line above it prints a cost of zero, and zero is exactly what a page of slides would quote. It is not a finding. Nothing in 748 syllables turns up fifty times, so the table is empty, and an empty table prices the rule at nothing for the same reason an empty scale weighs nothing. Saying that out loud in the report is cheaper than having somebody quote the number off a screenshot, which is the failure this whole file is written against.
+
+The governed column is the other half of the honesty. The rule is stated about Vietnamese syllables and real text is not made only of those. On this set it governs 94.9% of the units and the rest is numbers, English terms, and the residue a technical page always carries, all of it falling through to whatever the tokenizer would have done anyway. A proposal that reads as a rule about the corpus and turns out to be a rule about nine tenths of it, with the remainder handed to an escape hatch nobody wrote down, is a different proposal and deserves to be argued about as one. The syllable test admits a little English, since the and man and con are spellings a Vietnamese syllable also has once the marks come off, which `sang` says about the same test. That error runs in the safe direction: it makes the rule look broader than it is rather than narrower.
+
+What the reading is worth, when it runs on the real thing, is a number the slate can be checked against. P07-3 predicts syllable-atomic pre-tokenization loses two VMLU points or more, and a fertility cost measured beforehand is what turns that from a hunch into a claim with a mechanism. If the rule gives up a tenth of the tokens and the slate comes back with no difference in VMLU, the interesting result is not the tie, it is that a tenth of the training budget bought nothing. The reading itself is fleet work: it wants the S2 output, it wants two hundred documents at minimum and a hundred thousand syllables, and it wants no single page carrying the table, which is why every one of those is a fault rather than a footnote.
 
 ## Counting a corpus nobody has finished reading
 
@@ -2825,6 +2867,7 @@ suat/        a rate: net yield per target class, read while the crawl is still r
 boc/         to husk: the posts out of a forum thread, and the page they were wrapped in left behind
 don/         clearing away: whether the crawl gets its bytes off the box faster than it writes them
 dem/         counting: the tokenizer that defines a gao token, and the counts
+tieng/       a syllable: what a syllable-atomic tokenizer would govern, and what it gives up
 uoc/         to estimate: what a sampled count is worth, as an interval and as a stopping rule
 tang/        the layers: what an estimate taken bucket by bucket is worth over the buckets nobody opened
 mau/         a sample: which shards of a layer nobody has read get read, decided before the reading
