@@ -153,6 +153,8 @@ gao chot digest                             # the digest every published result 
 gao chot audit results.json                 # and whether a set of results is the one the harness asked for
 gao bang board scores.jsonl                 # the board: the release scores, with the Vietnamese arm kept apart from the translated one
 gao bang rows  scores.jsonl                 # and a line per benchmark, marking the ones gao built itself
+gao so pairs.jsonl                          # to compare: a human evaluation read back, with the confounds read before the win rate
+gao so -json pairs.jsonl                    # the same, for whatever writes the release note
 gao doan                                    # to guess: the predictions register, written before any of it was measured
 gao doan -slice S1 -results results.jsonl   # one slice of it, with whatever has come back put next to what was claimed
 
@@ -2144,6 +2146,46 @@ The last column is the one people skip. Every score carries how many times it wa
 
 The command exits 1 when the scores are not a scoreboard at all, which covers a benchmark nobody rostered, one benchmark scored twice, a score off the zero to a hundred scale, a run that says it ran zero times, a margin over an unnamed baseline, and a suite reported over the benchmarks that happened to finish. It exits 2 when they are a scoreboard nobody may publish yet. Today every full board hits the second, because nine roster entries have no pinned revision and a number taken on one of those is a number nobody can take again. Those nine are the work list standing between this and a release note, and running the suite at all is a `gamingpc` item.
 
+## The win rate, and the four numbers that decide what it is a win at
+
+Every benchmark above is a number a machine took. The last number in a release note is not: it is two answers put side by side, a person picking one, and a percentage underneath. It is the number readers trust most, because a person read it, and it is the easiest number in the whole project to produce by accident. Four things will hand you a clean, significant, reproducible win over an identical pair of systems, and a rater who is paying attention cannot see any of them from inside the task. `gao so` reads a finished evaluation back. So is to compare.
+
+The order the report is printed in is the argument. The win rate goes last, under everything that could have produced it, because each of those produces a number that looks exactly like a result.
+
+```
+$ gao so pairs.jsonl
+360 judgements over 300 items, read by 8 people.
+the answer shown first won            45.0%  of 360  (line 55.0%)
+com-8b-sft-native was shown first in  50.0%  of 360  (line 55.0%)
+the longer answer won                 79.8%  of 336  (line 65.0%)
+read by more than one person          20.0%  of 300  (line 20.0%)
+raters agreed                         83.3%  of 60   (0.61 once chance is out, line 0.40)
+
+com-8b-sft-native won 61.6% of the 336 pairs somebody decided, from 56.4% to 66.8%, with 6.7% called a tie.
+
+The people who read the most of it:
+  r03  46  12.8%  0% called a tie
+  r00  45  12.5%  11.1% called a tie
+  r01  45  12.5%  2.2% called a tie
+  r02  45  12.5%  13.3% called a tie
+  r04  45  12.5%  2.2% called a tie
+
+This is not a result about the answers:
+  the longer answer won 79.8% of the 336 pairs whose answers differed in length, against a 65.0% line, so this reads as an evaluation of length
+```
+
+Nobody has judged anything, so those judgements are a fixture. What is real is the shape of the run and what the reading does with it. Read the bottom line on its own and it is a release note: 61.6% for the native arm over 336 decided pairs, an interval from 56.4% to 66.8% that stays clear of a half, eight raters, three hundred items, a fifth of them read twice, agreement at 0.61 once chance is taken out. Every one of those figures is sound. The evaluation still does not say what the release note would say it says, because on the 336 pairs whose answers differed in length the longer answer won 79.8% of the time, and the native arm was the longer one on four items in five. The win rate and the length rate are the same event counted twice.
+
+Length is the confound that fires on real evaluations rather than on contrived ones, which is why it is on the report at all. Instruction tuning teaches a model to answer at length, that is most of what it teaches, and a rater comparing two answers under time pressure takes the fuller one. The line is 65%, which is deliberately loose. Better answers genuinely do run longer and a strict line would call every honest win a length effect. Past 65% the two explanations are no longer separable by anything in the file, and the report says so in place of endorsing the win.
+
+Position is measured before anything else because it is the failure with no floor. A rater who takes the left hand answer takes it whatever is in it, and if the harness put one system on the left more often than the other, the resulting win rate is a measurement of the harness. Two numbers rather than one, because those are two different faults with two different fixes. The first is whether the side won, which is about the raters. The second is whether the sides were dealt evenly, which is about the code that wrote the file, and a harness that never alternated produces a perfectly unbiased set of raters and a worthless result.
+
+The interval is a normal approximation over the decided pairs, ties dropped, and it is on the report to stop a 54% win over 200 judgements being written down as a win. What it does not cover is the part people assume it covers. It is an interval over this sample of items read by these raters, and it says nothing about a different item set, a different prompt distribution, or Vietnamese speakers in general. Widening the item set moves the number in ways no interval taken on the old one predicts. The report gives the bound it can compute and does not dress it up as the bound anybody wants.
+
+Agreement comes last on purpose, because a high figure is the easiest thing in the report to misread. It is Scott's pi over three outcomes with pooled marginals, taken over the items two people read, and it answers one question: whether the raters are reading the same thing as each other. It does not say they read the answers. Eight people who all take the longer answer agree with each other beautifully. The one case that needs care is the degenerate one, where nearly every doubled item came back the same way, since chance agreement then approaches certainty and pi stops meaning anything. That is reported as what it is, the raw agreement with the prevalence beside it saying how much it is worth, rather than as a suspiciously low pi or a silent zero. Under a fifth of items read twice is a fault rather than a refusal, because an evaluation nobody double read is still an evaluation, it just has no evidence that the task was legible.
+
+Exit 1 is a file nobody can read as an evaluation: a third system in a two system protocol, a choice the protocol does not define, both answers from the same system, fewer than 200 judgements. Exit 2 is an evaluation that reads and says the number should not be published. None of this has run on real judgements. It needs a trained model, evaluation serving on `gamingpc`, and the people, and the protocol is written down now so the confounds are decided before anyone sees which arm is winning.
+
 ## What this project said would happen, before it happened
 
 A specification made of decisions cannot be wrong about anything. Every line in it is a plan, and a plan that meets the world gets quietly edited into the plan that would have worked, which is the same document with the risk taken out of it after the fact. So fifty eight predictions were written across the spec before a byte was ingested, each one a number or a comparison that some later measurement either lands inside or does not, and `gao doan` is where they live in code. Đoán is to guess.
@@ -2782,6 +2824,7 @@ lat/         a slice: release slices as views over a snapshot rather than copies
 cong/        to add up: the release counts, with what may be added to what enforced rather than assumed
 chot/        closing the ledger: the evaluation harness, fixed and hashed before any result exists
 bang/        the board: the release scores, with the benchmarks written in Vietnamese kept apart from the translated ones
+so/          to compare: a human evaluation read back, and whether the raters read the answers or the layout
 doan/        to guess: the predictions register, written before the measurements and scored against them
 kho/         the store: records, manifests, snapshots, signing
 goi/         to wrap: what a release costs on disk, column by column, read out of the footers
