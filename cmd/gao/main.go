@@ -27,6 +27,7 @@ type command struct {
 
 func commands() []command {
 	return []command{
+		{"bang", "the board: the release scores, with the benchmarks written in Vietnamese kept apart from the translated ones", runBang},
 		{"bien", "the frontier: canonicalize URLs, shape them, and say what the budget would ask for", runBien},
 		{"boc", "to husk: peel the posts out of a forum thread and leave the page behind", runBoc},
 		{"box", "print the fleet inventory and the disk budget it implies", runBox},

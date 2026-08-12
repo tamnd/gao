@@ -149,6 +149,8 @@ gao gian pool parts/*.parquet               # and whether the corpus holds enoug
 gao chot harness                            # close the ledger: the evaluation harness, fixed before any result exists
 gao chot digest                             # the digest every published result has to carry
 gao chot audit results.json                 # and whether a set of results is the one the harness asked for
+gao bang board scores.jsonl                 # the board: the release scores, with the Vietnamese arm kept apart from the translated one
+gao bang rows  scores.jsonl                 # and a line per benchmark, marking the ones gao built itself
 gao doan                                    # to guess: the predictions register, written before any of it was measured
 gao doan -slice S1 -results results.jsonl   # one slice of it, with whatever has come back put next to what was claimed
 
@@ -2005,6 +2007,57 @@ Three of the seventeen are on the harness to catch a win that is not one. `mmlu-
 
 Nothing has been trained yet, which is the point. The harness is closed, the digest is in the tests so that a change to it fails the build, and the four unpinned revisions are the work list standing between this and a comparison somebody outside can run. Training the three arms is a `gamingpc` item.
 
+## Adding up a scoreboard that should not be added up
+
+The harness above fixes what the three continued pretraining arms are compared on. The release is a different question, asked later and over the whole roster: twenty four benchmarks, sixteen of them written in Vietnamese by Vietnamese speakers, six of them English benchmarks translated into it, and two of them code. `bảng` is the board, and the thing that decides whether the numbers on it mean what a release note says they mean is not any one of them. It is whether they were added together.
+
+They are not, and the reason is the six in the middle. A model that reads translated English scores well on a translated benchmark, and translated English is the exact register this project spends a milestone trying not to teach a model to write. An average across all twenty four pays for that failure in the same units it pays for the thing it wants, and a single number is the form in which nobody can see it happening.
+
+```
+$ gao bang board scores.jsonl
+arm                         benchmarks  scores  against the baseline  decided
+written in Vietnamese       16          73.9    3.3 ahead             15 of 16
+translated into Vietnamese  6           64.2    7.4 ahead             6 of 6
+code, no language           2           50.3    1.5 ahead             1 of 2
+
+The gap between the arm written in Vietnamese and the arm translated into it is 4.1 points, and the two are not added together.
+On the benchmarks gao built the model is 5.3 ahead, on everybody else's it is 3.8 ahead.
+
+Scored on a benchmark with no pinned revision, so nobody can take the number again: uit-viquad, vinli, vlsp, gsm8k-vi, math-vi, winogrande-vi, vi-cloze, vi-diacritic and vi-longdoc-qa.
+
+Inside their own run to run noise:
+  vihsd is 0.9 ahead and two runs of it differ by 1.1 points
+  mbpp is 0.5 ahead and two runs of it differ by 0.8 points
+
+This board cannot be published as it stands:
+  the translated arm is 7.4 ahead of the baseline and the native arm is 3.3 ahead, a gap of 4.1 points, which is a model that reads translated English rather than one that writes Vietnamese
+  9 rows were scored on benchmarks with no pinned revision, starting with uit-viquad, so those numbers cannot be taken again against what they were taken on
+  2 rows are inside their own noise, the first of which is that vihsd is 0.9 ahead and two runs of it differ by 1.1 points
+
+On 16 benchmarks written in Vietnamese the model scores 73.9, 3.3 ahead of sailor2-8b. On 6 benchmarks translated into it, 64.2 and 7.4 ahead. 3 readings say the board cannot be published as it stands, the first of which is that the translated arm is 7.4 ahead of the baseline and the native arm is 3.3 ahead, a gap of 4.1 points, which is a model that reads translated English rather than one that writes Vietnamese.
+```
+
+No model has been trained, so the scores in that block are invented. What is real about it is the roster it is read against, the shape of the failure it catches, and every refusal in it. The average across all twenty four rows would have been 4.2 ahead. The arm the claim is actually about is 3.3, and the six translated rows are what the difference is made of.
+
+The second separation is the awkward one. Six of the twenty four benchmarks are gao's own, because nothing measured those capabilities in Vietnamese before, and they are also the six whose design this project chose. So the margin over them and the margin over everybody else's are two numbers rather than one, and the board says so out loud rather than in a footnote at the bottom of a table.
+
+```
+$ gao bang rows scores.jsonl
+benchmark       arm                         built by   score  baseline  margin     runs  spread  decided
+vi-cloze        written in Vietnamese       gao        63.7   60.2      3.5 ahead  3     0.8     yes
+vi-diacritic    written in Vietnamese       gao        96.4   94.8      1.6 ahead  3     0.2     yes
+vi-needle       written in Vietnamese       gao        88.0   79.5      8.5 ahead  3     1.4     yes
+vi-longdoc-qa   written in Vietnamese       gao        57.9   54.6      3.3 ahead  3     1.1     yes
+vi-overrefusal  written in Vietnamese       gao        81.6   72.4      9.2 ahead  3     1.2     yes
+vi-adherence    written in Vietnamese       gao        74.8   69.1      5.7 ahead  3     0.9     yes
+```
+
+Those are six lines of a table of twenty four, and they are the six worth staring at. The model is 5.3 ahead on the instruments its own authors designed and 3.8 ahead on everybody else's, which is a gap the board reports and lets stand. Past three points it stops being a gap and becomes the claim, and the board says that instead.
+
+The last column is the one people skip. Every score carries how many times it was run and what those runs spread across, because two runs of the same model on the same benchmark differ, and a margin narrower than that difference is a coin flip somebody called. Those rows are named and counted rather than dropped, since dropping them would mean choosing which rows count after seeing them.
+
+The command exits 1 when the scores are not a scoreboard at all, which covers a benchmark nobody rostered, one benchmark scored twice, a score off the zero to a hundred scale, a run that says it ran zero times, a margin over an unnamed baseline, and a suite reported over the benchmarks that happened to finish. It exits 2 when they are a scoreboard nobody may publish yet. Today every full board hits the second, because nine roster entries have no pinned revision and a number taken on one of those is a number nobody can take again. Those nine are the work list standing between this and a release note, and running the suite at all is a `gamingpc` item.
+
 ## What this project said would happen, before it happened
 
 A specification made of decisions cannot be wrong about anything. Every line in it is a plan, and a plan that meets the world gets quietly edited into the plan that would have worked, which is the same document with the risk taken out of it after the fact. So fifty eight predictions were written across the spec before a byte was ingested, each one a number or a comparison that some later measurement either lands inside or does not, and `gao doan` is where they live in code. Đoán is to guess.
@@ -2640,6 +2693,7 @@ gieo/        to sow: the generator card for gao-synth, and the recipe it is writ
 lat/         a slice: release slices as views over a snapshot rather than copies of it
 cong/        to add up: the release counts, with what may be added to what enforced rather than assumed
 chot/        closing the ledger: the evaluation harness, fixed and hashed before any result exists
+bang/        the board: the release scores, with the benchmarks written in Vietnamese kept apart from the translated ones
 doan/        to guess: the predictions register, written before the measurements and scored against them
 kho/         the store: records, manifests, snapshots, signing
 goi/         to wrap: what a release costs on disk, column by column, read out of the footers
