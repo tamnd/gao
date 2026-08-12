@@ -174,6 +174,8 @@ gao kho card  -dataset vietnamese-web-text  # generate a repo's dataset card fro
 gao kho order readings.jsonl                # what sorting a shard by host buys, and what it costs to sort one
 gao kho schema                              # every column of the record, its type, and what it holds
 gao kho schema -parquet                     # the same schema as a parquet tool prints it
+gao goi shards/*.parquet                    # to wrap: what a release costs on disk, column by column, off the footers
+gao goi -columns shards/*.parquet           # every column of it, rather than the ten that weigh the most
 
 gao xoa status                              # the takedown register: what is open, and how long each request took
 gao xoa check                               # and whether the file itself holds anything that cannot be true
@@ -1734,6 +1736,53 @@ The numbers above are invented. No source has been ingested and the crawl has no
 
 The last two lines are the point of the whole package. The claim in this README is 300B natural tokens, which is 1.7x HPLT v3, 2.9x PhoGPT and 5.4x CulturaX, and the kill criterion for the release slice says that under 250B the project publishes the real number and restates those ratios. So the ratios are computed from the number that came back rather than written down beside it, because a ratio restated by hand is a ratio that gets restated once, in the release note, while the three other places it appears keep quoting the claim. Missing the target and tripping the kill criterion are different events with different consequences and the exit code tells them apart: 1 when the counts are not a release count at all, 2 when the corpus came in under the floor, 0 when it is short but alive, with the shortfall stated in the verdict rather than rounded away.
 
+## What a release costs on disk, column by column
+
+`gói` is to wrap, and this is the package that prices the wrapping. Two predictions were written down about it long before there was anything to weigh: P06-1 says the natural corpus publishes in under 420 GB of Parquet, and P06-4 says the columns that are not the text cost under 12% of that. The second is the one worth watching, because every design rule in this project that somebody will eventually want dropped is a column. The URL, the fetch time, the WARC record it came out of, the extractor and its version, the license class and the evidence behind it. Each is obviously affordable on a thousand documents and none of them has been priced at half a billion, so the first argument for dropping them will arrive as a storage bill rather than as an opinion, and the only useful answer to that is a measurement taken before the argument starts.
+
+The measurement comes out of the Parquet footers rather than off the data. A footer records the compressed and uncompressed size of every column chunk in every row group, which is exactly what both predictions are about, so weighing a release means reading a few kilobytes at the end of each shard instead of the shard. That is the difference between a check that runs on every release and a check nobody runs: `server1` has 110.4 GB free and a release it would be weighing is four times that, so a tool that has to read the corpus to measure the corpus can only run on the box that happens to be holding it. The report prints what it read next to what it weighed, so the claim is on the page rather than in the commit message.
+
+```
+$ gao goi data/snapshot=gao-v1.0/file=*/part-00000.parquet
+column                                  stored    uncompressed  of release
+text                                    10.6 MB   67.9 MB       96.6%
+doc_id                                  169.8 kB  169.8 kB      1.5%
+raw_id                                  169.8 kB  169.8 kB      1.5%
+source_locator                          17.3 kB   248.0 kB      0.2%
+url                                     6.9 kB    253.8 kB      0.1%
+license_evidence                        1.4 kB    1.3 kB        0.0%
+extractor                               1.1 kB    1008 B        0.0%
+robots_hash                             1.1 kB    169.8 kB      0.0%
+host                                    906 B     798 B         0.0%
+media_type                              786 B     678 B         0.0%
+37 more columns, which -columns prints  17.0 kB   373.8 kB      0.2%
+
+11.1 MB over 6 shards, holding 5400 documents, weighed on unmeasured.
+That box is not on the fleet, so this is a check rather than the release reading.
+Weighing it read 213.8 kB of footers, against the 110.4 GB server1 has free, so the smallest box on the fleet can take this reading.
+
+6 shards outside the band around the 512 MB shard target:
+  data/snapshot=gao-v1.0/file=00000/part-00000.parquet  1.8 MB  900 documents
+  data/snapshot=gao-v1.0/file=00004/part-00000.parquet  1.9 MB  900 documents
+  data/snapshot=gao-v1.0/file=00002/part-00000.parquet  1.9 MB  900 documents
+  data/snapshot=gao-v1.0/file=00001/part-00000.parquet  1.9 MB  900 documents
+  data/snapshot=gao-v1.0/file=00003/part-00000.parquet  1.9 MB  900 documents
+  and 1 more, which -loose prints
+
+P06-1, the release on disk   11.1 MB  against 420.0 GB  yes
+P06-4, the metadata columns  3.4%     against 12.0%     yes
+
+gao-v1.0 weighs 11.1 MB over 6 shards, read out of 213.8 kB of footers. It fits inside the 420.0 GB P06-1 claims, the columns that are not the text cost 3.4% of it against the 12.0% P06-4 allows, and the codec bought 6.3x. text is the heaviest column at 96.6% of the total.
+```
+
+That is a real run over six shards of Vietnamese prose written by `kho` on this laptop, so the 11.1 MB is a fact about a fixture and the two `yes` rows are not the release passing anything. What does carry is the shape. Text takes 96.6% of the stored bytes and the other forty six columns take 3.4% between them, which is the first evidence anywhere in this project that the provenance the design rules insist on is cheap rather than merely virtuous. So is the read: 213.8 kB of footers for 11.1 MB of Parquet, and the footer of a row group is the same handful of kilobytes whether the group behind it holds nine hundred rows or fifty thousand, so the cost of this reading scales with the number of shards and not with the size of the release. Seven hundred and fifty shards of a real release are a few megabytes of footers, which is why the box line and the free disk line are printed together.
+
+The gate rows say `unmeasured` on the box line here, and that is the honest state of every number in this section. A reading taken on a laptop is a check that the arithmetic works. The release reading is the one taken on `server1`, `server2`, `server3` or `gamingpc` with the release under it, and until one of those has happened the section above describes a command rather than a corpus.
+
+Shards that are not one release are refused rather than added up, because every one of those sums is one glob away from being published. Weighing `gao-v1.0` and `gao-v1.1` together with `snapshot=gao-v1.*` comes back with `gao-v1.0 and gao-v1.1 were weighed together, and two snapshots summed read as one release twice the size`, and no total is printed at all. The same happens to a repository that withholds text weighed alongside one that ships it, which would otherwise read as a release whose text got dramatically cheaper, and to a shard whose columns claim more bytes than the file holds, which is a footer that does not describe its own file.
+
+Shard size is reported instead. The store writes 512 MB shards and a release full of 40 MB ones is a stage that was restarted more often than it was run, but that is a fact about how the release was built rather than a reason to refuse to weigh it, so everything outside a quarter of the target is named smallest first and the total is printed anyway. The exit code separates the two failures a release can have: 1 when these shards are not one release, 2 when they are one release that misses P06-1 or P06-4, and 0 when both hold.
+
 ## Closing the ledger before the numbers exist
 
 The continued pretraining slice compares three arms on the same base model and the same token budget, changing only which corpus they read: gao, CulturaX, and CulturaX put through gao's own filters. The person running that comparison is the person who wants gao to win. Nobody involved is dishonest and it does not matter, because the ways this goes wrong are not lies. They are a benchmark added because it looked interesting after the numbers came in, a benchmark dropped because the run did not finish, a shot count changed to match a paper, a prompt reworded between arms. Each of those is defensible on its own and together they are a comparison that says whatever its author wanted.
@@ -2420,6 +2469,7 @@ cong/        to add up: the release counts, with what may be added to what enfor
 chot/        closing the ledger: the evaluation harness, fixed and hashed before any result exists
 doan/        to guess: the predictions register, written before the measurements and scored against them
 kho/         the store: records, manifests, snapshots, signing
+goi/         to wrap: what a release costs on disk, column by column, read out of the footers
 vo/          the reject store: dropped documents and why they were dropped
 xoa/         the takedown register: who asked, when, and when it was done
 doc/         schema and contracts shared across stages
