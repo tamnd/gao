@@ -48,6 +48,7 @@ func commands() []command {
 		{"gat", "work with acquisition: print the ingest manifest, check it for drift", runGat},
 		{"ghep", "to graft: what adding Vietnamese tokens to a base vocabulary bought and cost", runGhep},
 		{"gian", "to stretch: the context extension ladder, and whether the corpus holds enough naturally long Vietnamese to climb it", runGian},
+		{"giao", "to hand over: which box fetches which file of the ingest, and what the whole thing costs in wall clock", runGiao},
 		{"gieo", "to sow: the generator card for gao-synth, and the recipe it is written against", runGieo},
 		{"giu", "to keep: what the distilled model kept of each specialist's gain, against merging the same checkpoints", runGiu},
 		{"goi", "to wrap: what a release costs on disk, column by column, read out of the footers", runGoi},
