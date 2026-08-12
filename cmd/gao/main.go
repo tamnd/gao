@@ -58,6 +58,7 @@ func commands() []command {
 		{"keo", "to pull: what it costs to get back into a training run once the host is gone", runKeo},
 		{"kho", "work with the store: verify a snapshot, generate a signing key", runKho},
 		{"kim", "the needle: vi-needle, whether a long context in Vietnamese is read or skimmed", runKim},
+		{"lap", "to repeat: whether a generated set is a corpus or one prompt run a million times", runLap},
 		{"lat", "a slice: check a release slice is a view over its snapshot rather than a second copy of it", runLat},
 		{"luat", "print the legal position: counsel questions, license determinations, what ships", runLuat},
 		{"mam", "the seed: find hosts nobody handed us a list of", runMam},
