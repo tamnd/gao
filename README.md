@@ -2393,23 +2393,20 @@ gao-predictions holds 58 predictions across 9 of the 10 slices in the build plan
 
 That table is the whole point and it is entirely empty, which is what a register looks like when it is published at the right time. S0 carries no predictions because its gate is a set of questions for counsel rather than a set of measurements, and it prints as a dot rather than a zero so that nothing to be wrong about does not read as a slice nobody wrote predictions for. Each prediction is filed under the slice whose work produces the measurement, which is why the numbering does not run in slice order: P03-1 is the first prediction of the acquisition document and S1 measures it, while the rest of that block belongs to the crawl. Four slices have gates that stand on a named prediction, and a gate naming a prediction the register does not hold is refused, since a gate on a forecast nobody wrote down is a gate that can be argued away.
 
-Results arrive as a file rather than as an edit. The run below is invented, because the only prediction with a real reading against it today is P07-5, and one shard of one source is not a resolution.
+Results arrive as a file rather than as an edit, and the register in `doan/register.go` still says `mo` for every row. One result has been measured so far and it is checked in as `doan/testdata/results.jsonl`, which is the file below and the reason the run below is a real one.
 
 ```
-$ gao doan -results results.jsonl | tail -9
+$ gao doan -results doan/testdata/results.jsonl | tail -6
 1 prediction came back wrong:
   P07-5: measured Gemma-3 fertility on gao is 3.0 characters per token give or take 0.15
-    3.28 characters per token, outside the band on the high side, measured by gao dem fertility on server3
+    3.28 characters per token over 3228869043 characters and 983022920 tokens, outside the band on the high side, measured by gao gat hf -source glotcc -decode -tokenizer over 500000 documents of vie-Latn_0 on server3
 
-1 prediction was withdrawn:
-  P04-6: the whole extraction stage costs under 6,000 GPU hours
-    the extraction stage was cut to born digital PDFs after the OCR gate, so the GPU hours this predicts are never spent
-
-These measurements did not go on the register:
-  P05-1 was measured against a claim the register does not hold, so either the claim was edited after the number landed or the result belongs to an older register
+gao-predictions holds 58 predictions across 9 of the 10 slices in the build plan, and its digest is ee4b35363bf4. 1 prediction resolved so far, 0 right and 1 wrong, which is under the half the register needs before its rate says anything except which measurements were cheap to make.
 ```
 
-The misses print in full whatever else was asked for, with the reading, the command that produced it and the box it ran on, because a register that reports its hits and counts its misses is a scoreboard. The box is checked against the fleet rather than taken on trust, so a number that came off somewhere nobody can find is refused with the rest, and the run exits non-zero when anything was refused. P05-1 above is the case worth watching: it was scored against a shorter, softer version of its claim, and taking it would have recorded a hit against a prediction that no longer exists.
+That is the first prediction this project has been wrong about, and it is the one whose being wrong cost the most: 3.28 rather than 3.0 characters per token is 91 GB of extracted text the disk budget had not planned for. It is scored off the ingest count over half a million documents, and `gao dem gates` got 3.29 on a separate sample through a different path, so the reading is the text rather than the run.
+
+The misses print in full whatever else was asked for, with the reading, the command that produced it and the box it ran on, because a register that reports its hits and counts its misses is a scoreboard. The box is checked against the fleet rather than taken on trust, so a number that came off somewhere nobody can find is refused with the rest, and the run exits non-zero when anything was refused. The refusal worth knowing about is a result scored against a claim the register does not hold, which happens when somebody edits a prediction after the number lands: taking it would record a result against a claim that no longer exists, so it is dropped with the reason and the row stays open.
 
 ## Where the corpus lives
 
