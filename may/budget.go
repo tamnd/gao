@@ -13,7 +13,7 @@ const (
 	TargetTokens int64 = 300_000_000_000
 
 	// ShardBytes is the target compressed size of one shard, which puts the v1
-	// release at roughly 1100 shards.
+	// release at roughly 1200 shards.
 	ShardBytes int64 = 512_000_000
 
 	// Compression is the ratio between extracted text and the Parquet that
