@@ -18,6 +18,15 @@ package main
 // Ten seconds between samples, against the thirty second resolution a peak is
 // read at, because a part written and pushed inside a sampling gap is a part the
 // watcher never saw and the gap is what the reading is graded on.
+//
+// A sample is a walk of the directories the run writes to, and it used to happen
+// on the goroutine holding the ticker. A time.Ticker drops a tick nobody is
+// waiting on, so on a box busy enough for that walk to take longer than ten
+// seconds the walk was eating the next sample. server1's FineWeb2 trace came
+// back with 2168 gaps of exactly 10s and 26 longer ones, every one a multiple of
+// ten, up to 1m10s. That is a dropped tick and not a slow disk, and 'gao box
+// peak' refused six hours of real ingest over it, which is the correct answer to
+// the trace and the wrong answer about the run.
 
 import (
 	"encoding/json"
@@ -37,18 +46,40 @@ import (
 // watchEvery is the gap between samples.
 var watchEvery = may.Resolution / 3
 
+// watchHeld is how a sample measures what the run is holding. A test replaces
+// it before the watcher starts, to make a walk slow without a slow filesystem.
+var watchHeld = heldBytes
+
+// watchSlots is how many samples may be walking at once.
+//
+// There is a cap because a filesystem that has stopped answering would otherwise
+// get a new goroutine every ten seconds for the length of the run, and a watcher
+// that takes a box down is worse than a watcher that misses a reading. When
+// every slot is busy the tick is dropped and the hole it leaves in the trace is
+// what 'gao box peak' grades the trace on, which is where a filesystem that
+// slow belongs in the report.
+const watchSlots = 4
+
 // watcher samples the disk a run is holding and writes one JSON line per
 // sample.
 type watcher struct {
 	f     *os.File
 	enc   *json.Encoder
-	dirs  []string
 	box   string
 	stage func() string
 
+	// held is what the run is holding right now, which is a walk of its
+	// directories. It is a field rather than a call so a test can make a sample
+	// slow without making a filesystem slow, and it is set before the ticker
+	// starts because a watcher whose measurement can be swapped mid run is a
+	// data race that only shows up under load.
+	held func() (int64, error)
+
 	start time.Time
 	done  chan struct{}
-	wg    sync.WaitGroup
+	tick  sync.WaitGroup
+	takes sync.WaitGroup
+	slots chan struct{}
 
 	mu  sync.Mutex
 	err error
@@ -65,17 +96,18 @@ func watch(path string, dirs []string, box string, stage func() string) (*watche
 	w := &watcher{
 		f:     f,
 		enc:   json.NewEncoder(f),
-		dirs:  dirs,
 		box:   box,
 		stage: stage,
+		held:  func() (int64, error) { return watchHeld(dirs) },
 		start: time.Now(),
 		done:  make(chan struct{}),
+		slots: make(chan struct{}, watchSlots),
 	}
 	w.sample(w.start)
 
-	w.wg.Add(1)
+	w.tick.Add(1)
 	go func() {
-		defer w.wg.Done()
+		defer w.tick.Done()
 		t := time.NewTicker(watchEvery)
 		defer t.Stop()
 		for {
@@ -83,18 +115,39 @@ func watch(path string, dirs []string, box string, stage func() string) (*watche
 			case <-w.done:
 				return
 			case at := <-t.C:
-				w.sample(at)
+				w.take(at)
 			}
 		}
 	}()
 	return w, nil
 }
 
+// take samples on its own goroutine, so a walk that runs long costs its own
+// reading rather than the next one.
+//
+// The sample carries the tick it belongs to rather than the time it finished, so
+// the readings stay on the ten second grid even when one of them lands late, and
+// a late one can be written after an early one. gao box peak sorts the trace
+// before it reads it, for this reason.
+func (w *watcher) take(at time.Time) {
+	select {
+	case w.slots <- struct{}{}:
+	default:
+		return
+	}
+	w.takes.Add(1)
+	go func() {
+		defer w.takes.Done()
+		defer func() { <-w.slots }()
+		w.sample(at)
+	}()
+}
+
 // sample writes one reading. A failure is kept and reported at the close rather
 // than stopping the run, because the run is the thing worth having and a trace
 // with a hole in it still says where the peak was.
 func (w *watcher) sample(at time.Time) {
-	held, err := heldBytes(w.dirs)
+	held, err := w.held()
 	if err != nil {
 		w.fail(err)
 		return
@@ -124,9 +177,14 @@ func (w *watcher) fail(err error) {
 // Close takes a last sample, stops the ticker and closes the file. The last
 // sample is what says how long the trace covers, and a trace that stops a minute
 // before the run does reads as a run that was watched for less than it ran.
+//
+// The ticker goroutine is waited on first and the samples second, because the
+// ticker is the only thing that starts a sample and a WaitGroup cannot be added
+// to while it is being waited on.
 func (w *watcher) Close() error {
 	close(w.done)
-	w.wg.Wait()
+	w.tick.Wait()
+	w.takes.Wait()
 	w.sample(time.Now())
 
 	w.mu.Lock()
