@@ -343,61 +343,66 @@ The counts are written the same way the ledger is, which took a fleet run to not
 
 ## Handing the ingest out across the fleet
 
-There are four boxes and one of them, `server2`, has eight gigabytes of free disk and cannot hold corpus bytes at all. The other three differ by a factor of eight in threads and by a factor of twelve in scratch. So somebody has to decide which box fetches which of the 122 pinned files, and the obvious answer, forty files each, is wrong twice over.
+There are four boxes and two of them, `server2` and `server3`, sit under the 20 GB reserve and hold no corpus bytes at all. The two that are left differ by a factor of eight in threads, a factor of eleven in memory and a factor of two in the rate a reading off them says they get through. So somebody has to decide which box fetches which of the 122 pinned files, and the obvious answer, sixty one files each, is wrong twice over.
 
 It is wrong first because the files are not the same size. The largest is 26.6 GB and the median is 2.1 GB, a thirteenth of it, so equal piles of files are not equal piles of work, and a file cannot be cut in half because it is streamed and hashed as one unit. It is wrong second because the sources cannot all be fetched at once. HPLT v3 is pinned at order zero and ingests alone, since every later source dedups against a store that already holds it. The schedule is a sequence of groups with a barrier at the end of each, not one pile, and the idle time that produces is the cost of the ingest order rather than a mistake in the arithmetic.
 
 `gao giao` prices both. It takes a file of readings, one per box, and hands out the heaviest remaining file to whichever box would finish it soonest.
 
 ```
-$ gao giao plan readings.jsonl
+$ gao giao plan giao/testdata/readings.jsonl
 order  sources   files  bytes     takes       waiting at the end
-0      hplt3     12     234.5 GB  23.5 hours  10.0 hours
-1      finepdfs  3      13.0 GB   1.5 hours   1.7 hours
-2      fineweb2  30     130.1 GB  12.0 hours  6 minutes
-3      culturax  50     80.1 GB   7.4 hours   35 minutes
-5      glotcc    27     55.9 GB   5.3 hours   48 minutes
+0      hplt3     12     234.5 GB  34.7 hours  1.6 hours
+1      finepdfs  3      13.0 GB   2.1 hours   16 minutes
+2      fineweb2  30     130.1 GB  19.1 hours  20 minutes
+3      culturax  50     80.1 GB   11.7 hours  1 minute
+5      glotcc    27     55.9 GB   8.2 hours   5 minutes
 
-box       gets through        fetches   of the ingest  room for a file  busy for
-gamingpc  1.9 MB/s (15 Mbit)  330.2 GB  64.3%          276.9 GB         2.1 days
-server3   0.8 MB/s (6 Mbit)   124.6 GB  24.3%          16.1 GB          44.5 hours
-server1   0.4 MB/s (3 Mbit)   58.9 GB   11.5%          94.4 GB          42.1 hours
+box       gets through        fetches   of the ingest  scratch left  busy for
+gamingpc  1.3 MB/s (11 Mbit)  362.1 GB  70.5%          244.9 GB      3.1 days
+server1   0.6 MB/s (5 Mbit)   151.6 GB  29.5%          164.6 GB      3.1 days
 
-The whole ingest takes 2.1 days, against 47.2 hours if a file could be cut in half and every source fetched at once.
-On the fastest box alone it takes 3.2 days, so the fleet buys 1.5x.
-Order 1 divides 3 files across 3 boxes and still ends 20 minutes after its own floor, because server3 finishes last on data/vie_Latn/train/000_00002.parquet and a file cannot be handed to a second box once it has started.
+server3 has a reading and 17.7 GB free, which is 0 bytes of scratch once the 20.0 GB reserve is taken off, against the 2.0 GB a stage needs.
+So it draws nothing, though a fetch holds 1.0 GB while it runs and that is the smaller question.
 
-513.6 GB over 122 files across 3 boxes takes 2.1 days, against 3.2 days on the fastest box alone. That is 5% over a split no arrangement can beat, and the gap is the ingest order and the file sizes rather than the fleet.
+The whole ingest takes 3.2 days, against 3.1 days if a file could be cut in half and every source fetched at once.
+On the fastest box alone it takes 4.5 days, so the fleet buys 1.4x.
+
+513.6 GB over 122 files across 2 boxes takes 3.2 days, against 4.5 days on the fastest box alone. That is 1% over a split no arrangement can beat, and the gap is the ingest order and the file sizes rather than the fleet.
 ```
 
-One of those three readings is real. `gamingpc` counted 4.2 GB of Vietnamese in 37m46s and that is where its 1.9 MB/s comes from, so the block above is a plan and not a measurement of an ingest, because the other two boxes have not run one. Replacing the estimates with readings off a real run is a fleet item on the milestone rather than something this repo can do on a laptop.
+Every number in that block comes off the S1 runs. `gao giao read` turns an ingest ledger into a reading by timing between two finishes, and the three lines in `giao/testdata/readings.jsonl` are what it printed on each box on 2026-08-18: `server1` at 4.84 GB in 8480 seconds of fineweb2, `server3` at 4.18 GB in 2409 seconds of GlotCC, `gamingpc` at 4.39 GB in 3292 seconds of FinePDFs.
 
-What the number says even so is worth having before anybody starts. Three boxes buy 1.5x over the fastest one alone and not 3x, and 1.5x is not a shortfall to go looking for. The floor at the bottom is what the same bytes would take if files were divisible and the ingest order did not bind, which nothing can reach. The schedule sits 5% above it. The rest of the gap to 3x is that one box on this fleet is four times faster than another, so the fleet is worth less than three of its best machine by construction.
+Read those three next to each other and the first thing they say is that the ranking is not the one anybody would have guessed. `gamingpc` has 32 threads and a 4090 and it comes in slower than `server3`, which has eight cores and no GPU. The reason is that the three readings are on three different sources: GlotCC is zstd compressed JSON lines, FinePDFs is Parquet with 23 columns holding text that has already been through a PDF extractor, and fineweb2 is Parquet again at 4.8 GB a file. A reading is a box and a source together, and calling it a property of the box is the mistake this schedule would make if it had only one of them. What it needs is the rate a box gets through the work it is about to be given, and a reading taken on a different source is the closest thing available rather than the same thing. The file records what each reading was taken on, in the `how` field, so the confound is on the record rather than in somebody's memory.
 
-The rate a schedule is built on is the whole thing, and it is not the link. An ingest that decodes fetches a record, puts it to the ingest contract, tokenizes it and writes Parquet, and on this fleet that work is slower than the download by an order of magnitude. A readings file therefore carries what a box got through end to end, with the date and a sentence saying how it was taken, and a reading measured across less than a gigabyte is refused: a rate off the first hundred megabytes of a run is a measurement of a congestion window growing and a page cache filling.
+The second thing is that the fleet is worth less than it looks. Two boxes buy 1.4x over the fastest one alone, and 1.4x is not a shortfall to go looking for. The floor at the bottom of the block is what the same bytes would take if files were divisible and the ingest order did not bind, which nothing can reach. This schedule sits one percent above it, which is as close as the arithmetic gets. The rest of the gap to 2x is that one box is more than twice as fast as the other, so the fleet is worth less than two of its best machine by construction.
+
+The third is `server3`, and it is the line worth reading twice. It has a reading, it is the fastest box on that reading, and it draws nothing. It is also the box that fetched, decoded and published the entire GlotCC snapshot on the day the reading was taken. Both are true. `server3` has 17.7 GB free against a 20 GB reserve, so it has no scratch at all, and `may.HoldsCorpus` asks whether a box can hold a stage's working set of four shards rather than whether it can hold the one part a fetch has in flight. The plan prints the free disk, the scratch after the reserve, what a stage needs and what a fetch holds for every box it drops, because a box dropped without its numbers looks like a bug. The reserve is not adjusted to let it back in. A safety number that moves the first time it excludes a machine somebody wanted is not a safety number.
+
+The rate a schedule is built on is the whole thing, and it is not the link. An ingest that decodes fetches a record, puts it to the ingest contract, tokenizes it and writes Parquet, and on this fleet that work is slower than the download by an order of magnitude. `server1` moved 4.84 GB in 8480 seconds, which is 4.6 Mbit, on a box with a public route and nothing wrong with its connection. A readings file therefore carries what a box got through end to end, with the date and a sentence saying how it was taken, and a reading measured across less than a gigabyte is refused: a rate off the first hundred megabytes of a run is a measurement of a congestion window growing and a page cache filling.
 
 `gao giao files` prints the assignment itself, which is what somebody actually reads before starting a box.
 
 ```
-$ gao giao files readings.jsonl
+$ gao giao files giao/testdata/readings.jsonl | head -13
 order  box       bytes     takes       file
-0      gamingpc  26.6 GB   4.0 hours   hplt3/vie_Latn/7_1.jsonl.zst
-0      gamingpc  26.4 GB   4.0 hours   hplt3/vie_Latn/8_3.jsonl.zst
-0      gamingpc  26.3 GB   3.9 hours   hplt3/vie_Latn/7_2.jsonl.zst
-0      gamingpc  26.3 GB   3.9 hours   hplt3/vie_Latn/9_1.jsonl.zst
-0      gamingpc  26.2 GB   3.9 hours   hplt3/vie_Latn/8_1.jsonl.zst
-0      gamingpc  25.2 GB   3.8 hours   hplt3/vie_Latn/6_1.jsonl.zst
-0      server3   16.0 GB   5.7 hours   hplt3/vie_Latn/8_4.jsonl.zst
-0      server3   15.0 GB   5.4 hours   hplt3/vie_Latn/5_1.jsonl.zst
-0      server3   10.0 GB   3.6 hours   hplt3/vie_Latn/9_2.jsonl.zst
-0      server3   9.8 GB    3.5 hours   hplt3/vie_Latn/7_3.jsonl.zst
-0      server3   294.6 MB  6 minutes   hplt3/vie_Latn/10_1.jsonl.zst
-0      server1   26.3 GB   18.8 hours  hplt3/vie_Latn/8_2.jsonl.zst
+0      gamingpc  26.6 GB   5.5 hours   hplt3/vie_Latn/7_1.jsonl.zst
+0      gamingpc  26.4 GB   5.5 hours   hplt3/vie_Latn/8_3.jsonl.zst
+0      gamingpc  26.3 GB   5.5 hours   hplt3/vie_Latn/9_1.jsonl.zst
+0      gamingpc  26.3 GB   5.5 hours   hplt3/vie_Latn/8_2.jsonl.zst
+0      gamingpc  25.2 GB   5.2 hours   hplt3/vie_Latn/6_1.jsonl.zst
+0      gamingpc  16.0 GB   3.3 hours   hplt3/vie_Latn/8_4.jsonl.zst
+0      gamingpc  10.0 GB   2.1 hours   hplt3/vie_Latn/9_2.jsonl.zst
+0      gamingpc  9.8 GB    2.0 hours   hplt3/vie_Latn/7_3.jsonl.zst
+0      server1   26.3 GB   12.8 hours  hplt3/vie_Latn/7_2.jsonl.zst
+0      server1   26.2 GB   12.8 hours  hplt3/vie_Latn/8_1.jsonl.zst
+0      server1   15.0 GB   7.3 hours   hplt3/vie_Latn/5_1.jsonl.zst
+0      server1   294.6 MB  9 minutes   hplt3/vie_Latn/10_1.jsonl.zst
 ```
 
-`server3` is the second fastest box and it draws no file above 16.0 GB. That is the room column doing its work: `server3` has 24.3 GB of scratch and holds 8.2 GB of stage working set while it fetches, which leaves 16.1 GB for the file itself, and a pinned file has to land whole. So the 26.3 GB shard goes to `server1`, which is four times slower and spends 18.8 hours on it, because a box that would finish a file sooner and cannot store it is not a box that would finish it. A split that ignores the disk is a split that stops on a full filesystem eighteen hours in.
+That is order zero, the whole of HPLT v3, out of 125 lines. Eight files to `gamingpc` and four to `server1`, and the four include two of the largest in the manifest, because `server1` is slower per byte and still finishes sooner than `gamingpc` would if it took a ninth file on top of eight. The 26.3 GB file it opens with costs it 12.8 hours against the 5.5 the same file costs `gamingpc`, and handing that one over as well would leave `server1` idle for half a day. Both boxes have the disk to land any file in the manifest, so nothing in this group is decided by scratch, which is the case the disk check exists for rather than the case it is in. A box under the reserve draws nothing at all rather than drawing the small files, and that is the check doing its work one step earlier than the file list.
 
-The command exits 1 when the readings are not a schedule at all, which covers a box nobody has, two rates for one box, a sample too small to mean anything, and a reading that does not say how it was taken. It exits 2 when they describe a schedule that should not be run as written, which is a box that draws no files or a file no box has room to land. Groups that end late are neither. A group of three files across three boxes of different speeds ends when its slowest file ends however it is dealt out, and the sentence saying so is there to stop somebody hunting for a better split that does not exist.
+The command exits 1 when the readings are not a schedule at all, which covers a box nobody has, two rates for one box, a sample too small to mean anything, and a reading that does not say how it was taken. It exits 2 when they describe a schedule that should not be run as written, which is a box that draws no files or a file no box has room to land. Groups that end late are neither. A group of three files across two boxes of different speeds ends when its slowest file ends however it is dealt out, and the sentence saying so is there to stop somebody hunting for a better split that does not exist.
 
 ## What a record becomes
 
@@ -2635,7 +2640,7 @@ gao dem overlap keys/*.keys                 # the matrix, counted rather than sa
 
 ## Checking a count somebody else has to believe
 
-Every size in the release notes is produced by the run that wrote the corpus, which makes it a number the project says about itself. The obvious way to check one is to count the text again, and at this size that is a week of somebody's bandwidth, so nobody does it, and a number nobody checks is a number nobody has to be right about. The plan originally said this check should run in under an hour on one machine. That was never true: the fastest box in the fleet counts 4.2 GB of text in 37 minutes, HPLT v3 alone is around 700 GB, and no arrangement of four machines turns a hundred hours into one. What follows is the protocol that can actually be run, in two levels, and neither of them recounts the corpus.
+Every size in the release notes is produced by the run that wrote the corpus, which makes it a number the project says about itself. The obvious way to check one is to count the text again, and at this size that is a week of somebody's bandwidth, so nobody does it, and a number nobody checks is a number nobody has to be right about. The plan originally said this check should run in under an hour on one machine. That was never true: the fastest reading taken off the fleet is 4.2 GB of Vietnamese in 40 minutes, HPLT v3 alone is around 700 GB, and no arrangement of four machines turns a hundred hours into one. What follows is the protocol that can actually be run, in two levels, and neither of them recounts the corpus.
 
 Level one adds up the shape columns. Every document carries `n_chars`, `n_syllables` and `n_tokens` as fixed width columns, so summing them over every part gives the corpus in three of its four published units at twelve bytes per document before the encoding, against the few kilobytes the document is. That is 48 MB for four million documents, and it covers every part rather than a sample of them. What it proves is that the published total is the sum of what is stored, and what it catches is a report written from a run that did not finish, a source counted twice, a part that never reached the store, and arithmetic.
 

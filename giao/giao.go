@@ -3,11 +3,20 @@
 //
 // The manifest pins 122 files and 513.6 GB, and what decides how long that takes
 // is usually not the link. A decoding ingest fetches a record, puts it to the
-// ingest contract, tokenizes it and writes Parquet, and the fastest box on this
-// fleet counts 4.2 GB of text in 37m46s. So the number a schedule needs is what
-// a box got through end to end rather than what its link can do, and every
-// reading here is that number, taken off a run that happened. A schedule built
-// on a link speed is a schedule that finishes on paper.
+// ingest contract, tokenizes it and writes Parquet, and the fastest reading on
+// this fleet is 4.2 GB of Vietnamese in 40m09s. So the number a schedule needs
+// is what a box got through end to end rather than what its link can do, and
+// every reading here is that number, taken off a run that happened. A schedule
+// built on a link speed is a schedule that finishes on paper.
+//
+// A reading is a box and a source together and not a property of the box. The
+// three taken on 2026-08-18 were taken on three different sources, because that
+// is how the ingest was split, and FinePDFs compresses at 1.07 where GlotCC
+// compresses at 2.07, so part of the gap between two boxes here is the shape of
+// what each was fetching. The schedule uses them anyway, because a reading off
+// the wrong source is still a run that happened and the alternative is a guess,
+// but it is why 'gao giao plan' prints how each one was taken rather than only
+// the rate it works out to.
 //
 // Two things then make the split easy to get wrong. The first is that the files
 // are not the same size. The largest pinned file is 26.6 GB and the median is
@@ -29,11 +38,12 @@
 // which is the shape of the work rather than a shortage of machines.
 //
 // Boxes that may hold corpus bytes is [may.HoldsCorpus], and on this fleet it
-// excludes a box that has done the work. server3 has 17.4 GB free against a
-// 20.0 GB reserve, so it has no scratch at all and draws nothing here, and it
-// is also the box that fetched, decoded and published the whole of the GlotCC
-// ingest on 2026-08-18 with 'gao box peak' reading 0.5 GB off it. Both of those
-// are true. [may.HoldsCorpus] asks whether a box can hold a stage's working set,
+// excludes the box that carries the fastest reading. server3 has 17.7 GB free
+// against a 20.0 GB reserve, so it has no scratch at all and draws nothing
+// here, and it is also the box that fetched, decoded and published the whole of
+// the GlotCC ingest on 2026-08-18, 1,500,000 documents and 12.6 GB of text into
+// 6.1 GB of Parquet. Both of those are true. [may.HoldsCorpus] asks whether a
+// box can hold a stage's working set,
 // which is four shards, and a fetch holds [InFlight], which is two, so the
 // schedule is answering a larger question than the one it is asking about. What
 // keeps server3 out is the reserve rather than the disk, and 'gao giao plan'

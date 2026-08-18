@@ -20,17 +20,21 @@ func giaoReadings(t *testing.T, lines ...string) string {
 	return path
 }
 
-// giaoFleet is the three boxes a reading has been taken on. Two of them can be
-// handed work. server3 is in the file because it is what a reading off a real
-// run looks like when the box it was taken on has since crossed the reserve,
-// and the plan has to say so rather than drop the line.
+// giaoFleet is the readings taken off the S1 ingest runs on 2026-08-18, checked
+// in as the file 'gao giao read' produced on each box.
+//
+// Two of the three boxes can be handed work. server3 is in the file because it
+// is what a reading off a real run looks like when the box it was taken on has
+// since crossed the reserve, and the plan has to say so rather than drop the
+// line. It is also the box that ingested and published the whole GlotCC
+// snapshot, which is the reading it carries.
+//
+// It is a path into the repository rather than a temporary file, because the
+// README quotes what this produces and a fixture whose input nobody can read is
+// a fixture nobody can check.
 func giaoFleet(t *testing.T) string {
 	t.Helper()
-	return giaoReadings(t,
-		`{"box":"gamingpc","bytes":4200000000,"seconds":2266,"measured_on":"2026-08-03","how":"gao dem count over one shard"}`,
-		`{"box":"server3","bytes":2800000000,"seconds":3600,"measured_on":"2026-08-03","how":"gao dem count over one shard"}`,
-		`{"box":"server1","bytes":1400000000,"seconds":3600,"measured_on":"2026-08-03","how":"gao dem count over one shard"}`,
-	)
+	return filepath.Join("..", "..", "giao", "testdata", "readings.jsonl")
 }
 
 func TestGiaoPlanPricesTheWholeIngestAgainstOneBox(t *testing.T) {
