@@ -1,0 +1,6 @@
+{"name":"bucket 5","rank":5,"stored":15049231912,"read":0,"text":0,"tokens":0,"tokenizer":""}
+{"name":"bucket 6","rank":6,"stored":25221053724,"read":0,"text":0,"tokens":0,"tokenizer":""}
+{"name":"bucket 7","rank":7,"stored":62696175649,"read":0,"text":0,"tokens":0,"tokenizer":""}
+{"name":"bucket 8","rank":8,"stored":94948274389,"read":40000000,"text":113078882,"tokens":24461792,"tokenizer":"gemma-3@sha256:1299c11d7cf632ef3b4e11937501358ada021bbdf7c47638d13c0ee982f2e79c"}
+{"name":"bucket 9","rank":9,"stored":36281731808,"read":40000000,"text":122882107,"tokens":26207846,"tokenizer":"gemma-3@sha256:1299c11d7cf632ef3b4e11937501358ada021bbdf7c47638d13c0ee982f2e79c"}
+{"name":"bucket 10","rank":10,"stored":294598179,"read":40000000,"text":132695935,"tokens":28322999,"tokenizer":"gemma-3@sha256:1299c11d7cf632ef3b4e11937501358ada021bbdf7c47638d13c0ee982f2e79c"}

@@ -1,12 +1,16 @@
 // Package tang reads an estimate that was taken layer by layer and says what
 // the layers nobody opened are worth.
 //
-// Tầng is a layer. HPLT v3 ships its Vietnamese in ten quality buckets, and the
-// 176B this project quotes was taken by sampling five of them at 40 MB each and
-// weighting the readings by the size of every bucket on disk. That is a
+// Tầng is a layer. HPLT v3 ships its Vietnamese in quality buckets, and the
+// 176B this project used to quote was taken by sampling five of them at 40 MB
+// each and weighting the readings by the size of every bucket on disk. That is a
 // stratified estimate, and it is a reasonable way to read a corpus nobody has
 // time to read all of. What it is not is the thing uoc computes, and the
 // difference is the reason this package exists.
+//
+// The five were five of a supposed ten. vie_Latn ships six, numbered 5 through
+// 10, and all six have been read now, which is where the 143.7B that replaced
+// the 176B comes from.
 //
 // # Why an interval over the part that was read says nothing about the part that was not
 //
@@ -86,6 +90,19 @@ const MaxPackSpread = 1.25
 // enough that one long block of boilerplate cannot move the rate and few enough
 // that reading every layer stays affordable.
 const MinRead = 8_000_000
+
+// MinShare is the same question asked as a fraction of the layer rather than as
+// an amount, because the two catch different mistakes. MinRead catches a rate
+// that one long page can move. This catches a rate that is perfectly steady and
+// belongs to a fortieth of a percent of the layer it is about to be multiplied
+// across.
+//
+// One percent is little to ask of a small layer and a great deal to ask of a
+// large one, which is the point of asking it this way. The reading of HPLT v3
+// vie_Latn takes 40 MB off a 94.9 GB bucket, which is 0.04%, and the number that
+// comes out of it is worth quoting. It is not worth quoting without that beside
+// it.
+const MinShare = 0.01
 
 // A Layer is one stratum of a source: what it holds, where it sits in the
 // quality ordering, and what was read out of it, which for most layers of most
@@ -325,6 +342,19 @@ func (s Source) Under() []Layer {
 	return pick(s.Dark(), func(l Layer) bool { return l.Rank < floor })
 }
 
+// Partial is the layers whose rate was measured over less of themselves than
+// MinShare, thinnest share first.
+//
+// A layer here is not unread and its rate is not pooled from anywhere else. It
+// is the layer's own reading, scaled across the rest of the layer on the
+// assumption that the rest reads like the part that was opened, and that
+// assumption is the last one standing once every layer has been read.
+func (s Source) Partial() []Layer {
+	out := pick(s.Lit(), func(l Layer) bool { return l.Stored > 0 && l.Share() < MinShare })
+	sort.Slice(out, func(i, j int) bool { return out[i].Share() < out[j].Share() })
+	return out
+}
+
 // UnderBytes is what those layers hold.
 func (s Source) UnderBytes() int64 {
 	var n int64
@@ -416,17 +446,26 @@ func (s Source) Faults() []string {
 			share(float64(s.UnderBytes())/float64(s.Stored())), plural(len(under), "layer")))
 	}
 
-	if lo, hi := s.bounds(); lo > 0 && hi/lo > MaxYieldSpread {
-		thin, rich := s.ends()
-		out = append(out, fmt.Sprintf(
-			"the layers that were read do not read at one rate, since %s gives %.3f tokens a stored byte and %s gives %.3f, so a single pooled rate over the layers nobody read is a choice rather than a measurement",
-			thin.Name, lo, rich.Name, hi))
-	}
+	// Both of the spreads are statements about scaling one layer's reading over
+	// a layer nobody read, so both are silent when there is no such layer. The
+	// first reading that opened every bucket of a source printed them anyway,
+	// and what they said was that a pooled rate over the layers nobody read is a
+	// choice and that every unread layer is weighted by a number off by 38.8%,
+	// with nothing unread and the range 143.7B to 143.7B. A complete reading
+	// does not get to exit 2 over an error applied to zero bytes.
+	if len(s.Dark()) > 0 {
+		if lo, hi := s.bounds(); lo > 0 && hi/lo > MaxYieldSpread {
+			thin, rich := s.ends()
+			out = append(out, fmt.Sprintf(
+				"the layers that were read do not read at one rate, since %s gives %.3f tokens a stored byte and %s gives %.3f, so a single pooled rate over the layers nobody read is a choice rather than a measurement",
+				thin.Name, lo, rich.Name, hi))
+		}
 
-	if lo, hi := s.Packing(); lo > 0 && hi/lo > MaxPackSpread {
-		out = append(out, fmt.Sprintf(
-			"the weights are stored bytes and a stored byte holds between %.2f and %.2f bytes of text across the layers that were read, so every unread layer is weighted by a number that is off by as much as %s",
-			lo, hi, share(hi/lo-1)))
+		if lo, hi := s.Packing(); lo > 0 && hi/lo > MaxPackSpread {
+			out = append(out, fmt.Sprintf(
+				"the weights are stored bytes and a stored byte holds between %.2f and %.2f bytes of text across the layers that were read, so every unread layer is weighted by a number that is off by as much as %s",
+				lo, hi, share(hi/lo-1)))
+		}
 	}
 
 	var thin []Layer
@@ -444,6 +483,23 @@ func (s Source) Faults() []string {
 		out = append(out, fmt.Sprintf(
 			"%d layers were read over less than %s each, starting with %s, and a rate off that much text moves with the pages that happened to be in it",
 			n, size(MinRead), thin[0].Name))
+	}
+
+	// The one that survives a complete reading. Every layer having a rate of its
+	// own says nothing about how much of the layer that rate was measured over,
+	// and on a corpus this size it is measured over a fraction of a percent.
+	if part := s.Partial(); len(part) > 0 {
+		worst := part[0]
+		switch n := len(part); n {
+		case 1:
+			out = append(out, fmt.Sprintf(
+				"%s was read over %s of the %s it holds, %s of it, so the rate scaled across the layer is the rate of the part that was read",
+				worst.Name, size(worst.Read), size(worst.Stored), share(worst.Share())))
+		default:
+			out = append(out, fmt.Sprintf(
+				"%d layers were read over under %s of themselves each, thinnest %s at %s of %s, so the rate scaled across each of them is the rate of the part that was read",
+				n, share(MinShare), worst.Name, size(worst.Read), size(worst.Stored)))
+		}
 	}
 
 	if s.Quoted > 0 && (s.Quoted < s.Low() || s.Quoted > s.High()) {
@@ -474,18 +530,23 @@ func (s Source) Verdict() string {
 	}
 
 	var b strings.Builder
-	fmt.Fprintf(&b, "%s estimates %s tokens over %s on disk, %s to %s once the layers nobody read are allowed to run as thin as the thinnest layer that was read and as rich as the richest.",
-		s.Source, tokens(s.Estimate()), size(s.Stored()), tokens(s.Low()), tokens(s.High()))
-
 	if dark := len(s.Dark()); dark > 0 {
+		fmt.Fprintf(&b, "%s estimates %s tokens over %s on disk, %s to %s once the layers nobody read are allowed to run as thin as the thinnest layer that was read and as rich as the richest.",
+			s.Source, tokens(s.Estimate()), size(s.Stored()), tokens(s.Low()), tokens(s.High()))
 		fmt.Fprintf(&b, " %d of %d layers holding %s of it were never opened, and that range does not close by reading more of the %d that were.",
 			dark, len(s.Layers), share(s.DarkShare()), len(s.Lit()))
+	} else {
+		// The range is the bound on what nobody opened, so with nothing unopened
+		// there is no range to print and quoting one would be quoting the
+		// estimate twice.
+		fmt.Fprintf(&b, "%s estimates %s tokens over %s on disk, off a reading of every one of its %s, so there is no unread layer left for the range to be a range over.",
+			s.Source, tokens(s.Estimate()), size(s.Stored()), plural(len(s.Layers), "layer"))
 	}
 
 	faults := s.Faults()
 	switch n := len(faults); n {
 	case 0:
-		fmt.Fprint(&b, " Every layer was read, at one rate, so the number is the source's rather than a reading of the part of it somebody had time for.")
+		fmt.Fprint(&b, " Every layer has a rate of its own and nothing here is scaled by another layer's, so the number is the source's rather than a reading of the part of it somebody had time for.")
 	case 1:
 		fmt.Fprintf(&b, " One reading says the estimate carries more than sampling error: %s.", faults[0])
 	default:
