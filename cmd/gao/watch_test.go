@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -26,8 +27,11 @@ func TestWatchSeesThePeakAndThenTheDeletion(t *testing.T) {
 	}
 	trace := filepath.Join(t.TempDir(), "disk.jsonl")
 
-	stage := "write"
-	w, err := watch(trace, []string{dir, out}, "server1", func() string { return stage })
+	// Atomic because a sample reads this off its own goroutine, the way the run
+	// does: parts.stage is an atomic for the same reason.
+	var stage atomic.Value
+	stage.Store("write")
+	w, err := watch(trace, []string{dir, out}, "server1", func() string { return stage.Load().(string) })
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -42,7 +46,7 @@ func TestWatchSeesThePeakAndThenTheDeletion(t *testing.T) {
 
 	// What a push does. The watcher has to keep sampling through it, because a
 	// run that deleted its parts is the run this whole design is for.
-	stage = "push"
+	stage.Store("push")
 	if err := os.Remove(part); err != nil {
 		t.Fatal(err)
 	}
@@ -101,6 +105,57 @@ func TestWatchOverAnEmptyRun(t *testing.T) {
 		if s.Bytes != 0 || s.Stage != "fetch" {
 			t.Errorf("sample %+v, want nothing held during a fetch", s)
 		}
+	}
+}
+
+// A sample is a walk of the run's directories and on a busy box that walk can
+// take longer than the gap between two ticks. A time.Ticker drops a tick nobody
+// is waiting on, so the slow walk was costing the next reading rather than its
+// own: server1's six hour FineWeb2 trace came back with 26 gaps that were
+// multiples of the ten second period, up to 1m10s, and gao box peak refused the
+// whole run over it.
+func TestASlowSampleDoesNotCostTheNextOne(t *testing.T) {
+	old := watchEvery
+	watchEvery = 5 * time.Millisecond
+	defer func() { watchEvery = old }()
+
+	// Every walk after the first blocks until this test lets it go. Taken in
+	// turn they would give one reading for the whole run.
+	slow := make(chan struct{})
+	first := true
+	held := watchHeld
+	watchHeld = func([]string) (int64, error) {
+		if first {
+			first = false
+			return 0, nil
+		}
+		<-slow
+		return 1, nil
+	}
+	defer func() { watchHeld = held }()
+
+	trace := filepath.Join(t.TempDir(), "disk.jsonl")
+	w, err := watch(trace, []string{t.TempDir()}, "server1", func() string { return "write" })
+	if err != nil {
+		t.Fatal(err)
+	}
+	time.Sleep(40 * watchEvery)
+
+	// Forty ticks fired while every walk was stuck. Each one took a slot until
+	// the slots ran out, which is both halves of this: a tick during a slow walk
+	// is a reading rather than a dropped tick, and a filesystem that has stopped
+	// answering does not get a goroutine every ten seconds for six hours.
+	if busy := len(w.slots); busy != watchSlots {
+		t.Errorf("%d of %d slots are walking, and forty ticks fired while none of them could finish", busy, watchSlots)
+	}
+
+	close(slow)
+	if err := w.Close(); err != nil {
+		t.Fatal(err)
+	}
+	ss := readTrace(t, trace)
+	if len(ss) < watchSlots+1 {
+		t.Errorf("the trace holds %d samples, and %d walks were in flight besides the one at the start", len(ss), watchSlots)
 	}
 }
 
