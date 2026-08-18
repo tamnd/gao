@@ -56,7 +56,7 @@ const DefaultWindow = 4 << 20
 //
 // A shape column holds four bytes per document, so a chunk of it is a couple of
 // hundred kilobytes where the text chunk beside it is tens of megabytes, and a
-// four megabyte window fetches the whole neighbourhood to read a page of it.
+// four megabyte window fetches the whole neighborhood to read a page of it.
 // Measured on one real part of glotcc-9ad140b6be3a, 511.6 MB holding 126,853
 // documents, summing the three shape columns moved:
 //

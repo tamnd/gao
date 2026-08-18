@@ -2616,6 +2616,50 @@ Three things are worth saying about what this does not do. Neither level catches
 
 The check counts with the same two functions the ingest counted with. A verifier that counts its own way is measuring the distance between two implementations, and the question here is whether the column describes the text next to it.
 
+Level one has been run against a published snapshot. `glotcc-9ad140b6be3a` is the GlotCC ingest `server3` finished on 2026-08-18, twelve parts and 6.1 GB in the store, and this is the whole of it checked from a laptop against the `counts.json` the run wrote:
+
+```
+$ gao dem verify -level counts -counts gao-ingest/ glotcc-9ad140b6be3a
+glotcc-9ad140b6be3a in open-index/vietnamese-source-text
+  parts      12, 6.1 GB in the store
+  level one  every part, 18.0 MB of columns over 1500000 documents, under a minute at 100 Mbit
+  level two  12 parts read in full, 6.1 GB, 8 minutes at 100 Mbit
+  bound      no more than 5.0% of parts wrong, at 99.0% confidence
+  seed       glotcc-9ad140b6be3a
+  counting the text again instead would be 8 minutes at 100 Mbit
+
+adding up the shape columns of 12 parts
+     1/12  part-00000.parquet                                       126853 documents, 1.8 MB read so far
+     2/12  part-00001.parquet                                       252699 documents, 3.6 MB read so far
+     3/12  part-00002.parquet                                       379416 documents, 5.4 MB read so far
+     4/12  part-00003.parquet                                       500000 documents, 7.0 MB read so far
+     5/12  part-00000.parquet                                       627476 documents, 8.7 MB read so far
+     6/12  part-00001.parquet                                       753030 documents, 10.5 MB read so far
+     7/12  part-00002.parquet                                       878368 documents, 12.3 MB read so far
+     8/12  part-00003.parquet                                      1000000 documents, 14.0 MB read so far
+     9/12  part-00000.parquet                                      1124776 documents, 15.9 MB read so far
+    10/12  part-00001.parquet                                      1249730 documents, 17.7 MB read so far
+    11/12  part-00002.parquet                                      1376269 documents, 19.5 MB read so far
+    12/12  part-00003.parquet                                      1500000 documents, 21.1 MB read so far
+
+glotcc-9ad140b6be3a adds up out of its own columns to
+  documents  1500000
+  chars      9704920731
+  syllables  2043178296
+  tokens     -
+  bytes      nothing stores the byte length of the text, so level two is where that comes from
+
+source           documents  chars       syllables   tokens
+glotcc  claimed  1500000    9704920731  2043178296  -
+        stored   1500000    9704920731  2043178296  -
+
+the published counts are the counts in the store, in every unit a column holds
+```
+
+Twelve parts and 1.5 million documents checked over 21.1 MB, against 6.1 GB to download the snapshot, and the four columns come out equal on both sides. The token column is a dash because that ingest ran without a tokenizer, and the check says so rather than reporting a column that passed.
+
+The first time it ran it moved 670.1 MB rather than 21.1, thirty eight times the 18.0 MB the line above it had just predicted. The window is why, and it is the kind of thing only a real part shows. A remote read fetches four megabytes when it has to go to the host, which is the right size for the text column, where a chunk is tens of megabytes and a window is thrown away half read only at the end of one. A shape column is four bytes per document, so its chunk is a couple of hundred kilobytes and a four megabyte window was fetching the whole neighborhood to read a page of it. On one real part of 511.6 MB the cost of summing the three columns is 58.1 MB at a 4 MB window, 15.5 at 1 MB, 4.6 at 256 KB, 1.8 at 64 KB and 1.0 at 16 KB, against a floor of 1.5 MB, and the requests go from 14 to 23 across that whole range. So the column pass opens at 64 KB and the pass that reads whole rows keeps the default, since it is the only one the default was ever sized for. A protocol whose selling point is that it moves twelve bytes a document has to actually move twelve bytes a document, and the arithmetic in the plan line is not evidence that it does.
+
 ```
 gao dem verify                              # what a full check would cost, per snapshot, before running it
 gao dem verify -level counts -counts ingest/  # add the columns up and put them against the published counts
