@@ -2367,7 +2367,39 @@ The misses print in full whatever else was asked for, with the reading, the comm
 
 ## Where the corpus lives
 
-gao runs on four real machines with 500 GB of free disk between them, and the corpus is 1188 GB of extracted text, 396 GB compressed. It does not fit, and it does not fit by enough that no amount of tidying changes the answer. `gao box` prints the arithmetic.
+gao runs on four real machines with 524 GB of free disk between them, and the corpus is 1188 GB of extracted text, 574 GB compressed. It does not fit, and it does not fit by enough that no amount of tidying changes the answer. `gao box` prints the arithmetic.
+
+```
+$ gao box
+fleet as measured on 2026-08-18
+
+box       os       cores  memory    free disk  gpu
+gamingpc  windows  24/32  68.5 GB   297.7 GB   NVIDIA GeForce RTX 4090, 25.8 GB
+server3   linux    8/8    25.2 GB   17.7 GB    none
+server2   linux    6/6    12.5 GB   19.8 GB    none
+server1   linux    4/4    6.2 GB    188.7 GB   none
+total              42/50  112.4 GB  523.8 GB   1
+
+disk budget for 300B natural tokens
+  extracted text      1188.0 GB
+  compressed at 2.07x 573.9 GB in 1121 shards
+  fleet free disk     523.8 GB across 4 boxes
+  largest single box  297.7 GB on gamingpc
+  working set         542 shards at a time on gamingpc, after the reserve
+  the corpus does not fit on any one box, so the store of record is off-box and every stage streams
+
+what each box can run, after leaving 20.0 GB of reserve alone
+box       scratch   shards  workers
+gamingpc  277.7 GB  542     32
+server3   0.0 GB    none    no corpus bytes land here
+server2   0.0 GB    none    no corpus bytes land here
+server1   168.7 GB  329     4
+fleet                       36
+```
+
+The roles and the store line are cut from that block for length. Two things in it are measurements rather than choices, and both of them moved. The inventory carries the date it was taken because the first one, fifteen days earlier, had every free disk number wrong: `server1` was up 70 GB, `server3` down 26.6, `server2` up 11.8, `gamingpc` down 32. `gao box check` run on a box says whether the record still describes it. And the compression ratio was 3.0 and assumed, with a note on the constant saying the measured ratio would replace it and that anything under 2.5 moves the shard count. It came in at 2.07, off `server3` decoding 4.2 GB of GlotCC text into 2.0 GB of Parquet, so the corpus is 574 GB in the store rather than 396 and the release is about 1100 shards rather than 750. Both numbers followed the measurement rather than the other way around.
+
+`server3` crossing the reserve is the change with teeth. It cost the fleet eight of its forty four workers, it took the box that is meant to be the box of record for pipeline throughput out of the pipeline, and nobody decided it: the disk filled with something else between two inventories. The rule is arithmetic rather than a sentence somebody has to remember, so the box left the schedule the moment the number was taken.
 
 So the store of record is off-box and the fleet holds a working set. Off-box rather than more disk, because the corpus outlives the machines and disks bought for a rented box cannot be moved, cannot be shared, and are gone when the box is. Object storage rather than a network filesystem, because every access here is a whole shard read or written by name from several machines at once, with no rename, no partial update, and no locking, which is object storage exactly.
 
@@ -2379,11 +2411,11 @@ read_parquet('hf://datasets/open-index/vietnamese-legal-text/data/snapshot=gao-v
 
 The repos are named for the data rather than for the stage that wrote it, because a name like `gao-xay` tells a reader which of our programs ran, which is the one thing they do not care about. Every repo is public and there is no private tier, which is a rule about what may be pushed rather than a setting on a repo: a repo carrying text may only carry text the publication posture says ships, and that is checked in code rather than remembered by whoever creates the repo. The material that has nowhere to go under that rule is not stored somewhere quieter. It stays on the box that produced it and is deleted when the stage that needed it finishes, because a private repo holding text a page reserved is the same publication with a smaller audience and one setting between them.
 
-Offload is what makes the arithmetic work. A worker writes one shard, pushes it, deletes it, and takes the next, so peak disk is two shards per worker no matter how large the corpus gets. That is 4.1 GB on `server1` against a 90 GB budget, and it is why a fleet with 500 GB of disk can process a corpus several times that size. Nothing on the fleet is authoritative and nothing on it is backed up. Every disk here is cache: what is worth keeping is pushed before it is deleted, and what cannot be pushed was not worth keeping. One box, `server2`, holds no corpus bytes at all: it has 19.8 GB free, which is under the 20 GB reserve every box keeps, so the arithmetic says no without anybody having to remember to say it.
+Offload is what makes the arithmetic work. A worker writes one shard, pushes it, deletes it, and takes the next, so peak disk is two shards per worker no matter how large the corpus gets. That is 4.1 GB on `server1` against a 90 GB budget, and it is why a fleet with 524 GB of disk can process a corpus several times that size. Nothing on the fleet is authoritative and nothing on it is backed up. Every disk here is cache: what is worth keeping is pushed before it is deleted, and what cannot be pushed was not worth keeping. Two of the four boxes hold no corpus bytes at all: `server2` has 19.8 GB free and `server3` has 17.7, both under the 20 GB reserve every box keeps, so the arithmetic says no without anybody having to remember to say it.
 
 What a worker pushes is Parquet, which is the second of two storage formats and the only one anybody outside the project sees. Moving a shard through a stage uses segments, JSONL in zstd frames, because six programs append to a shard as it is built and a schema that is one version older still reads. A release is the opposite case: it is read far more often than it is written, and almost every question asked of a corpus is a question about one column. How many restricted documents are there, what is the quality distribution, which hosts dominate. Parquet answers those by reading one column of one row group instead of every byte of every document, and the same file that answers them on the Hub is the file the trainer streams.
 
-Ingestion writes those files as it goes. `gao gat hf -out DIR` decodes a source and writes the documents the contract admits under `DIR`, rolling over to a new part every 1.5 GB of text, which is the compressed shard target multiplied by the ratio the disk budget assumes. It rolls on text rather than on file size because a Parquet writer buffers a row group and compresses it at the boundary, so the size of the file is not known until it closes, and a writer waiting for a size would be waiting on a number that only appears after the decision was needed. One roll per input file, closed before the ledger records that file, so a run that dies mid file leaves no ledger entry and a directory the restart writes over rather than beside.
+Ingestion writes those files as it goes. `gao gat hf -out DIR` decodes a source and writes the documents the contract admits under `DIR`, rolling over to a new part every 1.06 GB of text, which is the compressed shard target multiplied by the ratio the disk budget runs on. That number was 1.5 GB while the ratio was assumed, and the first real run is what caught it: `server3` rolled at 1.5 GB and wrote 0.7 GB parts against a 0.5 GB target, which is what 0.5 GB costs at 3.0 and not at 2.07. It rolls on text rather than on file size because a Parquet writer buffers a row group and compresses it at the boundary, so the size of the file is not known until it closes, and a writer waiting for a size would be waiting on a number that only appears after the decision was needed. One roll per input file, closed before the ledger records that file, so a run that dies mid file leaves no ledger entry and a directory the restart writes over rather than beside.
 
 Adding `-push` sends each part to the store as it closes and deletes the local copy before the next one opens, which is the offload claim stopping being arithmetic and becoming a thing the program does. A part that cannot be pushed fails the file it came from, because a run that carried on would be filling the disk it was supposed to be emptying, and a part that failed to push is the one copy that has to stay. `gao kho push` does the same thing for one file, which is what gets a part off a disk somebody is about to reclaim after an interrupted run, and what puts the files that are not parts up there. Running the same command again after a box reboots is cheap rather than a second upload: the path inside the repo is a function of the source revision, the input file, and the part number, so a part that is already there is recognized by one request, and the Hub keys the bytes themselves by their digest, so even a part whose upload finished and whose commit did not is committed without sending the gigabyte a second time. Nothing about that resume is remembered locally, which is deliberate. A local record of what has been pushed is a second source of truth and it is wrong from the moment a push succeeds and the process dies before the write.
 
@@ -2398,19 +2430,30 @@ A column list is not the same as a schema somebody can use, so [SCHEMA.md](SCHEM
 The paragraph above is arithmetic, and the milestone does not gate on it. It gates on a measurement taken while the ingestion runs, because the arithmetic knows about shards in flight and knows nothing about a Parquet writer's row group buffer, a part sitting on disk waiting out an upload retry, a download resuming into a partial file, or whatever the operating system decided to keep in a temporary directory. That is the whole reason the ceiling is 90 GB and the prediction is 4.1: the gap is room for the things the model does not have terms for. `gao box peak` reads the watcher's trace back.
 
 ```
-$ gao box peak -run hplt-v3 -ran 6h disk.jsonl
-run        hplt-v3        on server1, 6h0m0s of wall clock
-peak       11.2 GB        at 5h9m40s, during push
-ceiling    90.0 GB        78.8 GB of it left
-predicted  4.1 GB         two shards for each of the workers the box runs
-drift      2.7x           the measurement over the arithmetic
-watched    1081 readings  across 6h0m0s, widest gap 20s
-free       118.5 GB       on server1
+$ gao box peak -run glotcc -ran 1h7m20s disk.jsonl
+run        glotcc        on server3, 1h7m20s of wall clock
+peak       0.7 GB        at 53m20s, during push
+ceiling    90.0 GB       89.3 GB of it left
+predicted  none          server3 runs no workers in the plan, so there is nothing to read this against
+watched    406 readings  across 1h7m20s, widest gap 10s
+free       17.7 GB       on server3
 
-server1 peaked at 11.2 GB of a 90.0 GB ceiling during push, 2.7 times the 4.1 GB the design predicts, watched every 20s across 6h0m0s
+2 faults:
+  server3 has 17.7 GB free, under the 20.0 GB reserve, so the plan runs no workers on it and this is a run on a box the arithmetic gives nothing to spend
+  the ceiling is 90.0 GB and server3 has 17.7 GB free, so a run that stayed under the ceiling still filled the box
+
+server3 has 17.7 GB free, under the 20.0 GB reserve, so the plan runs no workers on it and this is a run on a box the arithmetic gives nothing to spend
 ```
 
-That trace is invented, since the ingestion has not run. What is not invented is the second number the reading insists on. Passing the ceiling and matching the model are different questions, and the second one is the one that travels. A run that peaks at 60 GB under a 90 GB ceiling has passed the gate and has also said that the design's account of its own disk is off by a factor of fifteen, which is fine on `server1` and is not fine on the next box, or on the same box next year with a second stage running beside it. So the drift is reported next to the gate and a peak more than three times the prediction is a fault in its own right, in either direction: a third of the prediction means a smaller run than the one the ceiling was written about, wearing the gate's name.
+That is a real run: three GlotCC files, 6.3 GB fetched, 1.5 million documents, nine parts written and pushed and deleted, 12.6 GB of text, watched every ten seconds from the first byte to the last. It exits 2, and everything worth having in this section is in why.
+
+The peak is 0.7 GB, which is one part in flight rather than one file. So offload does what it was supposed to do, and it does it harder than the arithmetic claimed: `PeakBytes` allows a worker two shards and the run held closer to one. That is an upper bound behaving like an upper bound, which is worth writing down once rather than tuning.
+
+Then both faults. The first one is the reason there is no drift line: `server3` has 17.7 GB free, the reserve is 20, so the plan gives it no workers and there is no per worker prediction for 0.7 GB to be three times or a third of. The command used to print `predicted 0.0 GB` here and say nothing else, which reads as a prediction of nothing rather than as no prediction. The second is that the ceiling is 90 GB on a box with 17.7 GB free, so passing the gate proves nothing: this run could have held five times what it did, cleared the ceiling by 85 GB, and filled the machine. Both faults are the same 17.7 GB and they are not the same claim, and a run that reported one and not the other would leave somebody thinking the gate held.
+
+None of that stopped the work. The reserve is headroom for the machine and not a working set for the stage, so a box under it can still stream a corpus through and is still one bad day from a filesystem nobody can log into. The fix is disk on `server3`, not a smaller reserve.
+
+The other half of the reading is the drift, which this run had nothing to say about and which is the number that travels. Passing the ceiling and matching the model are different questions. A run that peaks at 60 GB under a 90 GB ceiling has passed the gate and has also said the design's account of its own disk is off by a factor of fifteen, which is fine on the box it ran on and is not fine on the next one, or on the same one next year with a second stage beside it. So the drift is reported next to the gate and a peak more than three times the prediction is a fault in its own right, in either direction: a third of the prediction means a smaller run than the one the ceiling was written about, wearing the gate's name.
 
 The refusals are about how the trace was taken rather than about what it says. A peak sampled every five minutes is not a peak, because a worker can take a shard, write it, push it and delete it inside a five minute gap and the watcher will report the quiet either side of it. Thirty seconds is the resolution, and it comes from what allocates rather than from what looked reasonable. A watcher that started late or stopped early missed the start and the flush, which is exactly where a run allocates hardest, so the trace has to cover the run and the run's length is stated separately rather than inferred from the trace, since a trace cannot notice that it stopped. A sample that does not say how many workers were running cannot be read against a prediction that is per worker. And a peak is a fact about one machine, so a trace holding samples from two of them is refused rather than maximized over.
 
@@ -2430,7 +2473,7 @@ classify   gamingpc  24       2520    105.0       10 MB/s  93%      2.3 GB    55
 One pass of the whole pipeline is 207 hours, which is the sum of the stages rather than the slowest of them, since each one is its own pass over parquet.
 The memory line is 2.5 GB per worker, because server3 has eight cores and 23.5 GB and wants all eight busy.
 
-dedup is the slowest stage at 632 documents a second on server3, so an estimated 200M documents costs 88 hours of the pipeline's 207, with the worst worker holding 2.3 GB of a 2.5 GB ceiling
+dedup is the slowest stage at 632 documents a second on server3, so an estimated 200M documents costs 88 hours of the pipeline's 207, with the worst worker holding 2.3 GB of a 2.5 GB ceiling.
 ```
 
 The box label is necessary and it is not sufficient. Two of those rows say the same thing about their stage and disagree about which number to quote: `classify` is by far the fastest stage in the `docs/s` column and the second slowest per worker, because it is the only one that ran on the machine with twenty four cores in it. The column that travels between boxes is the per worker one, so it sits next to the total rather than instead of it, and a reading that does not say how many workers produced it is refused rather than divided. A rate over an unknown number of cores cannot be planned against a box with a known number, and a run with more workers than the box has threads is oversubscription reported as throughput.
@@ -2448,25 +2491,43 @@ Those numbers are invented. Nothing has run at this scale yet, and the point of 
 Everything above says a stage writes a file, pushes it, and deletes it, and that peak disk is therefore small no matter how large the corpus is. That is true of ingestion, where the input is a file already sitting in the store and a worker that falls behind simply takes longer. It is not automatically true of the crawl, which produces bytes at a rate nobody chose and cannot be asked to wait. If the pushing does not keep up with the writing then every other decision in this project is downstream of a disk that filled at three in the morning with nobody watching. `gao don fit` is that question as arithmetic.
 
 ```
-box      server1, 118.5 GB free, 20.0 GB reserved
-scratch  98.5 GB, and the crawl stops fetching at 78.8 GB
+$ gao don fit
+box      server1, 188.7 GB free, 20.0 GB reserved
+scratch  168.7 GB, and the crawl stops fetching at 135.0 GB
 fill     5.2 MB per second, at 200 fetches of 26.0 kB
 uplink   12.5 MB per second
 volume   1.0 GB, closing every 3 minutes and pushing in 80 seconds
 confirm  5 minutes, during which nothing may be deleted
 held     3.0 GB, which is the open volume and 2 in flight
-outage   4.2 hours of store outage before fetching has to stop
+outage   7.2 hours of store outage before fetching has to stop
 
-server1 holds 3.0 GB in steady state against a 78.8 GB mark, and the store can be unreachable for 4.2 hours before fetching has to stop
+server1 holds 3.0 GB in steady state against a 135.0 GB mark, and the store can be unreachable for 7.2 hours before fetching has to stop
 ```
 
 Three numbers decide it, and the first is the only one people usually check. The crawl fetches 200 pages a second and each one adds about 26 kB to the archive, so the disk fills at 5.2 MB per second against an uplink that clears 12.5 MB per second. That comparison is necessary and it is not sufficient, which is where capacity plans go wrong. The second number is the open file. A WARC being written cannot be pushed, so at any moment there is a volume on the disk that is not a candidate for going anywhere, and the size of it is a choice: a smaller volume rotates sooner and costs more requests, a larger one holds more of the box hostage. The third is the confirmation window. An upload returning success is not the store telling you it holds those bytes, and between the two there is a gap during which the local copy is the only copy that is known to exist.
 
-Steady state is those three added up rather than the first one alone. It is the open volume, plus everything written while the previous volume was uploading, plus everything written while the store was being asked whether it has it. On `server1` that is 3.0 GB, which is the open gigabyte and two more in flight behind it. The number is small, and it is small because the uplink is fast, not because the design is careful. Slow the link to 1.5 MB per second and the same command answers differently: the backlog goes to 7.0 GB and the crawl does not start at all, because the disk reaches the mark in 5.9 hours and no cleanup pass recovers a rate that is losing.
+Steady state is those three added up rather than the first one alone. It is the open volume, plus everything written while the previous volume was uploading, plus everything written while the store was being asked whether it has it. On `server1` that is 3.0 GB, which is the open gigabyte and two more in flight behind it. The number is small, and it is small because the uplink is fast, not because the design is careful. Slow the link to 1.5 MB per second and the same command answers differently: the backlog goes to 7.0 GB and the crawl does not start at all, because the disk reaches the mark in 10.1 hours and no cleanup pass recovers a rate that is losing.
 
 The mark is 80% of scratch, and reaching it stops fetching rather than starting a delete. That is the rule the whole package exists to protect. A disk filling up is an incident, and the tempting response to an incident is to free space, and the only space there is to free is bytes nobody has confirmed are anywhere else. Pausing the crawl is recoverable in every case and losing an hour of fetching is a cost anybody would pay. Deleting an unconfirmed volume is recoverable in no case, and the worst part of it is that it works: the disk goes down, the crawl carries on, and the missing hour is discovered a month later when a shard count comes up short.
 
-The last line is the one worth carrying around. `server1` tolerates 4.2 hours of the store being unreachable before fetching has to stop, which is a real operational fact stated in hours rather than a vague sense that there is some slack. It is also the arithmetic behind the checklist item that said 111 GB of free disk is a few hours of fetching, which was written as an assertion and is now a thing the program computes from the inventory. Every input can be argued with on the command line, and `-box server2` gets the answer the fleet was always going to give: 8 GB free is less than the reserve, so there is no scratch at all and the plan fails before the first file is even closed.
+The last line is the one worth carrying around. `server1` tolerates 7.2 hours of the store being unreachable before fetching has to stop, which is a real operational fact stated in hours rather than a vague sense that there is some slack. It is also the arithmetic behind the checklist item that said a box with room to spare is a few hours of fetching, which was written as an assertion and is now a thing the program computes from the inventory. That it says 7.2 hours today and said 4.2 against the previous inventory is the point rather than an inconsistency: the number is read off the disk the box has, and the box gained 70 GB between the two readings.
+
+Every input can be argued with on the command line, and `-box server2` gets the answer the fleet was always going to give. So does `-box server3`, which is newer and worse, because that box was in the pipeline until the inventory was retaken.
+
+```
+$ gao don fit -box server3
+box      server3, 17.7 GB free, 20.0 GB reserved
+scratch  0 B, and the crawl stops fetching at 0 B
+fill     5.2 MB per second, at 200 fetches of 26.0 kB
+uplink   12.5 MB per second
+volume   1.0 GB, closing every 3 minutes and pushing in 80 seconds
+confirm  5 minutes, during which nothing may be deleted
+held     3.0 GB, which is the open volume and 2 in flight
+outage   0 seconds of store outage before fetching has to stop
+
+the crawl does not start: one volume is 1.0 GB and the mark on server3 is 0 B, so the box fills before the first file is even closed
+  and steady state holds 3.0 GB, which is over the 0 B mark on server3, because a push takes 80 seconds and a confirmation takes 5 minutes and nothing may be deleted in between
+```
 
 Arithmetic is a plan, and a plan is not evidence. A crawl that ran for six weeks either deleted only bytes the store had confirmed or it did not, and afterwards the two are indistinguishable from the disk, because in both cases the file is gone. The only place that difference survives is what was written down while it happened, so the rotation logs one line per file per step and `gao don read` folds it back up. Four states, in the order they happen: resident, pushed, verified, reclaimed. Reaching reclaimed without having been seen at verified is the fault the package was written to catch, and it is reported as the sentence a person needs rather than as a count, naming the file and how much crawl is now in a state nobody can resolve. Three others come with it: a verification with no upload behind it, which passed against whatever was already at that path, a file reported with two different hashes, which is the one case where the upload succeeded and the bytes are still wrong, and a file that went somewhere without recording where. The reader refuses nothing and returns everything, because a log with a fault in it is a log whose other lines are still the only record of what happened.
 

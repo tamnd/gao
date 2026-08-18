@@ -27,6 +27,7 @@ func trace(box string, ran, every time.Duration, hold, spike int64) []Sample {
 	return out
 }
 
+// peakFault is for what is wrong with the run, which exits 2.
 func peakFault(t *testing.T, p Peak, want string) {
 	t.Helper()
 	for _, f := range p.Faults {
@@ -35,6 +36,19 @@ func peakFault(t *testing.T, p Peak, want string) {
 		}
 	}
 	t.Errorf("no fault mentions %q, got:\n  %s", want, strings.Join(p.Faults, "\n  "))
+}
+
+// peakRefusal is for what is wrong with the trace, which exits 1. The two are
+// kept apart because a trace nobody can read and a run that filled its box call
+// for different work, and a caller that gets one code for both cannot tell.
+func peakRefusal(t *testing.T, p Peak, want string) {
+	t.Helper()
+	for _, r := range p.Refused {
+		if strings.Contains(r, want) {
+			return
+		}
+	}
+	t.Errorf("no refusal mentions %q, got:\n  %s", want, strings.Join(p.Refused, "\n  "))
 }
 
 // The whole point of the item: the gate is a measurement rather than the
@@ -90,7 +104,7 @@ func TestAPeakSampledTooRarelyIsNotAPeak(t *testing.T) {
 	if p.Settled() {
 		t.Fatal("a trace sampled every five minutes settled the peak")
 	}
-	peakFault(t, p, "this is the disk at some moments rather than its peak")
+	peakRefusal(t, p, "this is the disk at some moments rather than its peak")
 	if p.Widest != 5*time.Minute {
 		t.Errorf("the widest gap came back as %s", p.Widest)
 	}
@@ -105,22 +119,22 @@ func TestTheDiskNobodyWatchedIsWhereThePeakWas(t *testing.T) {
 	if short.Settled() {
 		t.Fatal("half a run settled the whole one")
 	}
-	peakFault(t, short, "exactly the disk nobody watched")
+	peakRefusal(t, short, "exactly the disk nobody watched")
 
 	late := Measure("hplt-v3", 6*time.Hour, Ceiling, full[20:])
-	peakFault(t, late, "exactly the disk nobody watched")
+	peakRefusal(t, late, "exactly the disk nobody watched")
 
 	unstated := Measure("hplt-v3", 0, Ceiling, full)
-	peakFault(t, unstated, "the trace is being taken as the run")
+	peakRefusal(t, unstated, "the trace is being taken as the run")
 }
 
 func TestAPeakIsAFactAboutOneMachine(t *testing.T) {
 	mixed := append(trace("server1", time.Hour, 20*time.Second, 3_000_000_000, 9_000_000_000),
 		trace("server3", time.Hour, 20*time.Second, 3_000_000_000, 9_000_000_000)...)
-	peakFault(t, Measure("hplt-v3", time.Hour, Ceiling, mixed), "rather than about a fleet")
+	peakRefusal(t, Measure("hplt-v3", time.Hour, Ceiling, mixed), "rather than about a fleet")
 
 	elsewhere := trace("laptop", time.Hour, 20*time.Second, 3_000_000_000, 9_000_000_000)
-	peakFault(t, Measure("hplt-v3", time.Hour, Ceiling, elsewhere), "is not a box on the fleet")
+	peakRefusal(t, Measure("hplt-v3", time.Hour, Ceiling, elsewhere), "is not a box on the fleet")
 
 	// server2 is the control plane and has less free disk than the ceiling, so a
 	// run that stayed under the ceiling there still filled the machine.
@@ -128,26 +142,54 @@ func TestAPeakIsAFactAboutOneMachine(t *testing.T) {
 	peakFault(t, Measure("hplt-v3", time.Hour, Ceiling, control), "still filled the box")
 }
 
+// The S1 ingest ran on server3, which is under the reserve and therefore runs no
+// workers, and this is what the first real trace off it exposed.
+//
+// A box with no workers has no per worker prediction, so the peak has nothing to
+// be read against and the drift line has nothing to say. That is not a bad trace
+// and it is not a run that failed its gate. It is a run on a box the plan does
+// not schedule, and the only place that fact can be reported is here, because
+// every other number in the output looks fine: 0.7 GB held against a 90 GB
+// ceiling reads as a comfortable pass.
+func TestARunOnABoxThePlanGivesNoWorkersIsAFault(t *testing.T) {
+	idle := trace("server3", time.Hour, 10*time.Second, 400_000_000, 700_000_000)
+	p := Measure("glotcc", time.Hour, Ceiling, idle)
+
+	if len(p.Blocking()) > 0 {
+		t.Fatalf("a readable trace was refused: %v", p.Blocking())
+	}
+	if !p.Passed() {
+		t.Error("0.7 GB against a 90 GB ceiling did not pass the gate")
+	}
+	if p.Settled() {
+		t.Error("a run on a box the plan gives no workers came back settled")
+	}
+	if p.Predicted != 0 || p.Ratio() != 0 {
+		t.Errorf("server3 predicts %d bytes at a drift of %.1f, so this test is about a box that no longer exists", p.Predicted, p.Ratio())
+	}
+	peakFault(t, p, "the arithmetic gives nothing to spend")
+}
+
 func TestASampleThatCannotHaveHappenedIsRefused(t *testing.T) {
 	base := trace("server1", time.Hour, 20*time.Second, 3_000_000_000, 9_000_000_000)
 
 	noWorkers := append([]Sample(nil), base...)
 	noWorkers[3].Workers = 0
-	peakFault(t, Measure("hplt-v3", time.Hour, Ceiling, noWorkers), "a number per worker rather than a number per box")
+	peakRefusal(t, Measure("hplt-v3", time.Hour, Ceiling, noWorkers), "a number per worker rather than a number per box")
 
 	tooBig := append([]Sample(nil), base...)
 	tooBig[3].Bytes = 400_000_000_000
-	peakFault(t, Measure("hplt-v3", time.Hour, Ceiling, tooBig), "this trace is not of server1")
+	peakRefusal(t, Measure("hplt-v3", time.Hour, Ceiling, tooBig), "this trace is not of server1")
 
 	negative := append([]Sample(nil), base...)
 	negative[3].Bytes = -1
-	peakFault(t, Measure("hplt-v3", time.Hour, Ceiling, negative), "holds -1 bytes")
+	peakRefusal(t, Measure("hplt-v3", time.Hour, Ceiling, negative), "holds -1 bytes")
 
 	empty := Measure("hplt-v3", time.Hour, Ceiling, nil)
 	if empty.Passed() || empty.Settled() {
 		t.Error("an unwatched run passed")
 	}
-	peakFault(t, empty, "the arithmetic is still the only thing anybody has")
+	peakRefusal(t, empty, "the arithmetic is still the only thing anybody has")
 }
 
 // The gate can fail, and when it does the verdict says what it costs rather than

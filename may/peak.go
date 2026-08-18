@@ -103,7 +103,14 @@ type Peak struct {
 	// this peak was actually measured at rather than the one somebody intended.
 	Widest time.Duration `json:"widest"`
 
-	Samples int      `json:"samples"`
+	Samples int `json:"samples"`
+
+	// Refused is why the trace cannot support a peak at all, and Faults is what
+	// is wrong with the run the trace does describe. They are separate because
+	// they call for different work and because they mean different things to
+	// whatever ran the command: a refusal is fixed by watching the next run
+	// properly, and a fault is fixed by the run or by the box it ran on.
+	Refused []string `json:"refused,omitempty"`
 	Faults  []string `json:"faults,omitempty"`
 }
 
@@ -111,7 +118,7 @@ type Peak struct {
 func Measure(run string, ran time.Duration, ceiling int64, samples []Sample) Peak {
 	p := Peak{Run: run, Ceiling: ceiling, Ran: ran, Samples: len(samples)}
 	if len(samples) == 0 {
-		p.Faults = []string{"nothing was watched, so there is no peak here and the arithmetic is still the only thing anybody has"}
+		p.Refused = []string{"nothing was watched, so there is no peak here and the arithmetic is still the only thing anybody has"}
 		return p
 	}
 
@@ -128,7 +135,7 @@ func Measure(run string, ran time.Duration, ceiling int64, samples []Sample) Pea
 			names = append(names, b)
 		}
 		slices.Sort(names)
-		p.Faults = append(p.Faults, fmt.Sprintf(
+		p.Refused = append(p.Refused, fmt.Sprintf(
 			"the trace holds samples from %s, and a peak is a fact about one machine's disk rather than about a fleet",
 			strings.Join(names, " and ")))
 	}
@@ -136,10 +143,23 @@ func Measure(run string, ran time.Duration, ceiling int64, samples []Sample) Pea
 
 	box, known := Lookup(p.Box)
 	if !known {
-		p.Faults = append(p.Faults, fmt.Sprintf(
+		p.Refused = append(p.Refused, fmt.Sprintf(
 			"%s is not a box on the fleet, so there is nothing to read this peak against", p.Box))
 	} else {
 		p.Predicted, p.Free = PeakBytes(box), box.FreeDisk
+		if p.Predicted == 0 {
+			// The first real trace this command read came off a box in exactly
+			// this state, and it printed a prediction of 0.0 GB with no drift
+			// line under it and said nothing about why. A box under the reserve
+			// runs no workers, so there is no per worker arithmetic to read the
+			// measurement against, and a run happened on it anyway. That is a
+			// fact about the run rather than about the trace, so it is a fault
+			// and not a refusal: the peak is real and the plan did not have a
+			// place to put it.
+			p.Faults = append(p.Faults, fmt.Sprintf(
+				"%s has %s free, under the %s reserve, so the plan runs no workers on it and this is a run on a box the arithmetic gives nothing to spend",
+				box.Name, GB(box.FreeDisk), GB(ReserveBytes)))
+		}
 		if box.FreeDisk < ceiling {
 			p.Faults = append(p.Faults, fmt.Sprintf(
 				"the ceiling is %s and %s has %s free, so a run that stayed under the ceiling still filled the box",
@@ -151,16 +171,16 @@ func Measure(run string, ran time.Duration, ceiling int64, samples []Sample) Pea
 	for i, s := range ordered {
 		switch {
 		case s.Second < 0:
-			p.Faults = append(p.Faults, fmt.Sprintf("a sample is taken at %d seconds, and a run does not start before it starts", s.Second))
+			p.Refused = append(p.Refused, fmt.Sprintf("a sample is taken at %d seconds, and a run does not start before it starts", s.Second))
 		case s.Bytes < 0:
-			p.Faults = append(p.Faults, fmt.Sprintf("the sample at %s holds %d bytes", clock(s.Second), s.Bytes))
+			p.Refused = append(p.Refused, fmt.Sprintf("the sample at %s holds %d bytes", clock(s.Second), s.Bytes))
 		case s.Workers <= 0:
-			p.Faults = append(p.Faults, fmt.Sprintf(
+			p.Refused = append(p.Refused, fmt.Sprintf(
 				"the sample at %s does not say how many workers were running, and peak disk is a number per worker rather than a number per box",
 				clock(s.Second)))
 		}
 		if known && s.Bytes > box.FreeDisk {
-			p.Faults = append(p.Faults, fmt.Sprintf(
+			p.Refused = append(p.Refused, fmt.Sprintf(
 				"the sample at %s holds %s on a box with %s free, so this trace is not of %s",
 				clock(s.Second), GB(s.Bytes), GB(box.FreeDisk), box.Name))
 		}
@@ -177,17 +197,17 @@ func Measure(run string, ran time.Duration, ceiling int64, samples []Sample) Pea
 	p.Watched = time.Duration(ordered[len(ordered)-1].Second) * time.Second
 
 	if p.Widest > Resolution {
-		p.Faults = append(p.Faults, fmt.Sprintf(
+		p.Refused = append(p.Refused, fmt.Sprintf(
 			"the widest gap between two readings is %s against a resolution of %s, and a worker can take a shard, write it, push it and delete it inside that, so this is the disk at some moments rather than its peak",
 			p.Widest, Resolution))
 	}
 	switch {
 	case ran <= 0:
-		p.Faults = append(p.Faults, fmt.Sprintf(
+		p.Refused = append(p.Refused, fmt.Sprintf(
 			"nobody said how long the run lasted, so the trace is being taken as the run, and a watcher that stopped at %s cannot report what happened after it",
 			p.Watched))
 	case p.Watched < ran-Resolution || time.Duration(ordered[0].Second)*time.Second > Resolution:
-		p.Faults = append(p.Faults, fmt.Sprintf(
+		p.Refused = append(p.Refused, fmt.Sprintf(
 			"the trace covers %s of a %s run, and a run allocates hardest when it starts and when it flushes, which is exactly the disk nobody watched",
 			p.Watched-time.Duration(ordered[0].Second)*time.Second, ran))
 	}
@@ -223,15 +243,20 @@ func (p Peak) Ratio() float64 {
 func (p Peak) Passed() bool { return p.Held > 0 && p.Held <= p.Ceiling }
 
 // Blocking is every reason this measurement is not one.
-func (p Peak) Blocking() []string { return p.Faults }
+func (p Peak) Blocking() []string { return p.Refused }
 
 // Settled reports whether the gate was met by a measurement worth having.
-func (p Peak) Settled() bool { return p.Passed() && len(p.Faults) == 0 }
+func (p Peak) Settled() bool { return len(p.Refused) == 0 && p.Passed() && len(p.Faults) == 0 }
 
 // Verdict is the run's disk in one sentence.
 func (p Peak) Verdict() string {
-	// The gate comes before the faults. A run that did not fit is the headline
-	// whatever else is wrong with how it was watched.
+	// A refusal comes first, because a trace that cannot support a peak cannot
+	// support a verdict about one either.
+	if len(p.Refused) > 0 {
+		return p.Refused[0]
+	}
+	// Then the gate. A run that did not fit is the headline whatever else is
+	// wrong with it.
 	if p.Held > 0 && !p.Passed() {
 		return fmt.Sprintf(
 			"%s peaked at %s of a %s ceiling during %s, %s over, so the ingestion does not fit on the box it was planned for",

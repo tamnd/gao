@@ -130,14 +130,30 @@ func TestPeakDiskIsMeasuredRatherThanTrustedFromTheArithmetic(t *testing.T) {
 	}
 }
 
-func TestARunOverTheCeilingExitsNonZero(t *testing.T) {
+// Two is a gate that failed, which is what the rest of gao exits on a
+// measurement that came in over its limit.
+func TestARunOverTheCeilingExitsTwo(t *testing.T) {
 	out, _, code := exec(t, "box", "peak", "-ran", "6h",
 		diskTrace(t, 21600, 20, 80_000_000_000, 104_000_000_000))
-	if code != 1 {
-		t.Fatalf("exit %d, want 1:\n%s", code, out)
+	if code != 2 {
+		t.Fatalf("exit %d, want 2:\n%s", code, out)
 	}
 	if !strings.Contains(out, "does not fit on the box it was planned for") {
 		t.Errorf("the reading does not say what going over costs:\n%s", out)
+	}
+}
+
+// One is a trace that cannot answer the question, which is a different problem
+// with a different fix, and the two shared a code until a real run made the
+// difference visible.
+func TestATraceThatCannotSupportAPeakExitsOne(t *testing.T) {
+	out, _, code := exec(t, "box", "peak", "-ran", "6h",
+		diskTrace(t, 21600, 300, 3_000_000_000, 11_200_000_000))
+	if code != 1 {
+		t.Fatalf("exit %d, want 1:\n%s", code, out)
+	}
+	if !strings.Contains(out, "the trace cannot answer this") {
+		t.Errorf("the reading does not separate a refusal from a fault:\n%s", out)
 	}
 }
 

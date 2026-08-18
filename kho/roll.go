@@ -19,6 +19,7 @@ package kho
 import (
 	"errors"
 	"fmt"
+	"math"
 
 	"github.com/tamnd/gao/doc"
 	"github.com/tamnd/gao/may"
@@ -27,12 +28,13 @@ import (
 // TextPerPart is how much text one part holds before the writer rolls over.
 //
 // It is derived and not chosen. [may.ShardBytes] is the compressed size a
-// published shard targets and [may.AssumedCompression] is the ratio the disk
-// budget runs on, so a part holding this much text lands near the size the rest
-// of the project was sized against. When the measured ratio replaces the assumed
-// one, this moves with it instead of sitting behind as a number nobody remembers
-// picking.
-var TextPerPart = int64(float64(may.ShardBytes) * may.AssumedCompression)
+// published shard targets and [may.Compression] is the ratio the disk budget
+// runs on, so a part holding this much text lands near the size the rest of the
+// project was sized against. It moved when the ratio did: server3's ingest on
+// 2026-08-18 rolled on 1.5 GB of text and wrote 741 MB parts against a 512 MB
+// target, because 1.5 GB is what 512 MB costs at the ratio that was assumed and
+// not at the one that was measured.
+var TextPerPart = int64(math.Round(float64(may.ShardBytes) * may.Compression))
 
 // ErrRollClosed reports an append to a roll that has already been closed.
 var ErrRollClosed = errors.New("kho: that roll is closed")

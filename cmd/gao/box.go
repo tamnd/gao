@@ -59,15 +59,25 @@ func runBox(stdout, stderr io.Writer, args []string) int {
 
 	p := may.Plan(*tokens)
 	fmt.Fprintf(stdout, "\ndisk budget for %.0fB natural tokens\n", float64(p.Tokens)/1e9)
-	fmt.Fprintf(stdout, "  extracted text     %s\n", may.GB(p.Text))
-	fmt.Fprintf(stdout, "  compressed at %.1fx %s in %d shards\n", may.AssumedCompression, may.GB(p.Compressed), p.Shards)
-	fmt.Fprintf(stdout, "  fleet free disk    %s across %d boxes\n", may.GB(p.FleetFree), t.Boxes)
-	fmt.Fprintf(stdout, "  largest single box %s on %s\n", may.GB(p.Largest.FreeDisk), p.Largest.Name)
+	// Tabbed rather than padded by hand. The labels were padded to line up with
+	// "compressed at 3.0x", and the ratio being measured rather than assumed made
+	// it "compressed at 2.07x", which pushed one number out of the column.
+	tw = tabwriter.NewWriter(stdout, 0, 0, 1, ' ', 0)
+	fmt.Fprintf(tw, "  extracted text\t%s\n", may.GB(p.Text))
+	fmt.Fprintf(tw, "  compressed at %.2fx\t%s in %d shards\n", may.Compression, may.GB(p.Compressed), p.Shards)
+	fmt.Fprintf(tw, "  fleet free disk\t%s across %d boxes\n", may.GB(p.FleetFree), t.Boxes)
+	fmt.Fprintf(tw, "  largest single box\t%s on %s\n", may.GB(p.Largest.FreeDisk), p.Largest.Name)
+	if !p.Resident {
+		fmt.Fprintf(tw, "  working set\t%d shards at a time on %s, after the reserve\n", p.ShardsResident, p.Largest.Name)
+	}
+	_ = tw.Flush()
+	// The conclusion goes under the numbers rather than between them, because a
+	// line with no second column ends the column block and takes the lines after
+	// it out of the table.
 	if p.Resident {
 		fmt.Fprintf(stdout, "  the corpus fits on %s\n", p.Largest.Name)
 	} else {
-		fmt.Fprintf(stdout, "  the corpus does not fit on any one box, so the store of record is off-box and every stage streams\n")
-		fmt.Fprintf(stdout, "  working set        %d shards at a time on %s\n", p.ShardsResident, p.Largest.Name)
+		fmt.Fprint(stdout, "  the corpus does not fit on any one box, so the store of record is off-box and every stage streams\n")
 	}
 
 	fmt.Fprint(stdout, "\nwhat each box can run, after leaving ")
@@ -84,7 +94,7 @@ func runBox(stdout, stderr io.Writer, args []string) int {
 	fmt.Fprintf(tw, "fleet\t\t\t%d\n", may.FleetWorkers())
 	_ = tw.Flush()
 
-	fmt.Fprintf(stdout, "\nstore of record: an S3-compatible object store, from %s\n", may.StoreEnv)
+	fmt.Fprintf(stdout, "\nstore of record: public dataset repos on the Hugging Face Hub, from %s\n", may.StoreEnv)
 	if store, ok := may.Store(); ok {
 		fmt.Fprintf(stdout, "  %s\n", store)
 	} else {
@@ -126,7 +136,8 @@ watcher that started late or stopped early missed the start and the flush, which
 is where a run allocates hardest. And a run allocates on one machine, so a trace
 from two of them is not a peak.
 
-Exits 1 if the run went over the ceiling or the trace cannot support the number.
+Exits 1 when the trace cannot support the number and 2 when it can and the run
+failed its gate.
 
 flags:
 `)
@@ -154,8 +165,15 @@ flags:
 	} else {
 		printPeak(stdout, p)
 	}
-	if !p.Settled() {
+	// One for a trace that cannot support a peak and two for a peak that failed
+	// its gate, which is what every other measurement in gao does. They were the
+	// same code until a real trace off server3 reported a true fault about the
+	// box and exited as though the file were unreadable.
+	if len(p.Blocking()) > 0 {
 		return 1
+	}
+	if !p.Settled() {
+		return 2
 	}
 	return 0
 }
@@ -165,17 +183,30 @@ func printPeak(w io.Writer, p may.Peak) {
 	fmt.Fprintf(tw, "run\t%s\ton %s, %s of wall clock\n", p.Run, p.Box, p.Ran)
 	fmt.Fprintf(tw, "peak\t%s\tat %s, during %s\n", may.GB(p.Held), (time.Duration(p.At) * time.Second).String(), p.During)
 	fmt.Fprintf(tw, "ceiling\t%s\t%s of it left\n", may.GB(p.Ceiling), may.GB(p.Headroom()))
-	fmt.Fprintf(tw, "predicted\t%s\ttwo shards for each of the workers the box runs\n", may.GB(p.Predicted))
-	if p.Ratio() > 0 {
-		fmt.Fprintf(tw, "drift\t%.1fx\tthe measurement over the arithmetic\n", p.Ratio())
+	if p.Predicted > 0 {
+		fmt.Fprintf(tw, "predicted\t%s\ttwo shards for each of the workers the box runs\n", may.GB(p.Predicted))
+		if p.Ratio() > 0 {
+			fmt.Fprintf(tw, "drift\t%.1fx\tthe measurement over the arithmetic\n", p.Ratio())
+		}
+	} else {
+		// Not "0.0 GB". A box the plan gives no workers has no prediction rather
+		// than a prediction of nothing, and the two read the same in a column of
+		// gigabytes with no drift line under it.
+		fmt.Fprintf(tw, "predicted\tnone\t%s runs no workers in the plan, so there is nothing to read this against\n", p.Box)
 	}
 	fmt.Fprintf(tw, "watched\t%s\tacross %s, widest gap %s\n", plural(p.Samples, "reading"), p.Watched, p.Widest)
 	fmt.Fprintf(tw, "free\t%s\ton %s\n", may.GB(p.Free), p.Box)
 	_ = tw.Flush()
 
-	if faults := p.Blocking(); len(faults) > 0 {
-		fmt.Fprintf(w, "\n%s:\n", plural(len(faults), "fault"))
-		for _, f := range faults {
+	if refused := p.Blocking(); len(refused) > 0 {
+		fmt.Fprintf(w, "\n%s the trace cannot answer this:\n", plural(len(refused), "reason"))
+		for _, r := range refused {
+			fmt.Fprintf(w, "  %s\n", r)
+		}
+	}
+	if len(p.Faults) > 0 {
+		fmt.Fprintf(w, "\n%s:\n", plural(len(p.Faults), "fault"))
+		for _, f := range p.Faults {
 			fmt.Fprintf(w, "  %s\n", f)
 		}
 	}
