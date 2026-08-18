@@ -10,8 +10,8 @@
 // on a link speed is a schedule that finishes on paper.
 //
 // Two things then make the split easy to get wrong. The first is that the files
-// are not the same size. The largest pinned file is 26.6 GB and the median is a
-// fiftieth of that, so dividing 122 files into three piles of forty leaves one
+// are not the same size. The largest pinned file is 26.6 GB and the median is
+// 2.1 GB, a thirteenth of it, so dividing 122 files into equal piles leaves one
 // box working for a day after the others have gone quiet, and a file cannot be
 // cut in half because it is streamed and hashed as one unit. The second is that
 // the sources cannot all be fetched at once. HPLT v3 is pinned at order zero and

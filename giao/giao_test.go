@@ -2,6 +2,7 @@ package giao
 
 import (
 	"slices"
+	"sort"
 	"strings"
 	"testing"
 
@@ -351,5 +352,40 @@ func TestARateIsTheTwoNumbersRatherThanTheirQuotient(t *testing.T) {
 	}
 	if got := (Reading{Bytes: 6e9, Seconds: 0}).Rate(); got != 0 {
 		t.Errorf("a reading over no time reads as %.0f rather than nothing", got)
+	}
+}
+
+// The package doc leads on the spread between the largest pinned file and the
+// median, because that spread is the reason the split is not forty files each.
+// It said a fiftieth for a while and the manifest said a thirteenth, which is
+// the sort of number that goes stale the first time a source is pinned or
+// dropped and that nobody rereads.
+func TestTheSpreadTheDocQuotesIsTheSpreadTheManifestHas(t *testing.T) {
+	jobs := Jobs()
+	if len(jobs) == 0 {
+		t.Fatal("the manifest pins nothing")
+	}
+	sizes := make([]int64, 0, len(jobs))
+	for _, j := range jobs {
+		sizes = append(sizes, j.Bytes)
+	}
+	sort.Slice(sizes, func(i, j int) bool { return sizes[i] < sizes[j] })
+
+	largest := sizes[len(sizes)-1]
+	median := sizes[len(sizes)/2]
+	if len(sizes)%2 == 0 {
+		median = (sizes[len(sizes)/2-1] + sizes[len(sizes)/2]) / 2
+	}
+	if median <= 0 {
+		t.Fatal("the median pinned file is zero bytes")
+	}
+	if n := largest / median; n < 11 || n > 15 {
+		t.Errorf("the largest pinned file is %d times the median, the package doc says a thirteenth", n)
+	}
+	if g := float64(largest) / 1e9; g < 26.0 || g > 27.2 {
+		t.Errorf("the largest pinned file is %.1f GB, the package doc says 26.6", g)
+	}
+	if g := float64(median) / 1e9; g < 1.9 || g > 2.3 {
+		t.Errorf("the median pinned file is %.1f GB, the package doc says 2.1", g)
 	}
 }
