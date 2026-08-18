@@ -912,6 +912,8 @@ the draw:
   glotcc    5%     10000      the smallest source, kept in at a share big enough to notice if the rubric behaves differently on it
 ```
 
+The scale and the digest are cut from the end of that block and the next two paragraphs are about what is in them.
+
 The shares are not the shares of the corpus, and that is the point. Drawn in proportion, the reference set is overwhelmingly web text, and a classifier trained on it has seen almost nothing of what the corpus is actually short of. FinePDFs gets three times its weight for that reason: PDFs are where the edited long form is, and a labeler who has seen fifty of them calls the fifty first boilerplate. Every share carries the sentence explaining it, because a share nobody can explain is a share somebody argues about after the classifier is trained.
 
 The scale is four bands and the order is what makes them a scale: rich, plain, thin, unusable. What does the work is not the description of each band. It is the sentence on each one naming the band it gets confused with and saying how to tell them apart, since every disagreement between two labelers is a boundary case and none of them are in the middle of a band.
@@ -1323,6 +1325,8 @@ killed below   0.50      rank correlation, and then the slate is exploratory
 recipes        12        scored both ways before the correlation means anything
 baselines      3         runs of one recipe, which is where the noise floor comes from
 ```
+
+What is cut off the end is the paragraph saying what happens below the kill criterion, which is that the slate is reported as exploratory, every threshold falls back to a published default, and each one goes into the release notes flagged as unvalidated.
 
 Two bars rather than one, because they answer different questions. The rank correlation is about the whole ordering, and it is the number the literature quotes. The pairwise rate is about the decision anybody actually makes with the proxy, which is never "rank these forty" and is always "is this recipe better than that one". A proxy can score 0.75 on the first while getting the close calls wrong every time, and the close calls are the ones a sweep over four values of a threshold consists of.
 
@@ -1762,6 +1766,8 @@ digest     dbff94782b24372314c769b245e209b882830e5233de5708d5b3898c27a994fb
   refusal        9b50b1850a05  the model talking about the task instead of doing it, which is training data for a habit nobody wants
   contamination  1f25ea1ccf71  a generated document that reproduces a benchmark item puts the answer in the training set, and the evaluation afterward is scoring memorization
 ```
+
+One line is cut off the end, saying that the source is the educational slice rather than the corpus, which is the paragraph above this block.
 
 The `read gao` line is there because a model trained on gao rephrasing gao is the corpus fed back into itself, and the tokens that come out carry no information the corpus did not already have. It is a field rather than an assumption, and a recipe that answers yes is refused before anything is generated.
 
