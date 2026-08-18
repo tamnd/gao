@@ -2702,6 +2702,16 @@ Which parts get read is decided by hashing the seed with each part's path, so th
 
 Both levels are resumable at the part, because a pass over a thousand parts will be interrupted. Level one keeps one line of JSON per part in a single file, which is the opposite of what the key pass does and for the opposite reason: a key file is megabytes and belongs on its own, while a thousand forty byte files cost more to list than the work they save.
 
+A resumed part says that it was resumed, and the run says how many it took off the log:
+
+```
+    12/12  part-00003.parquet                                      1500000 documents, read on an earlier run
+
+12 parts of the 12 came off /tmp/verify-fix/glotcc-9ad140b6be3a.shapes and were not read again
+```
+
+That is there because of a run this project nearly believed. A dependency bump touching Parquet was checked by verifying a published snapshot on the new version, and the check printed every column equal next to `0 B read so far`, which is what a pass that read nothing looks like when the only thing it can report is a byte count. The columns were right and the bump had not decoded a byte. A resume that cannot be told apart from a check is worse than no resume, because the whole point of the check is that somebody else can run it and see for themselves.
+
 Three things are worth saying about what this does not do. Neither level catches a corpus that is uniformly a little off, since level one reads the same columns the report was written from and level two would have to read every part, and a bound over how many parts are wrong says nothing about how wrong any one of them is. The byte length of the text has no column, so level one reports no byte count at all rather than deriving one from the character count, which would be wrong by exactly the diacritics and would look like a measurement, and the sample is therefore the only place a bytes per character ratio comes from. And a token count can only be checked against the pinned tokenizer, so a run without one checks two of the three columns and says so in its output rather than reporting a token column that passed.
 
 The check counts with the same two functions the ingest counted with. A verifier that counts its own way is measuring the distance between two implementations, and the question here is whether the column describes the text next to it.

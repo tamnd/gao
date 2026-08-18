@@ -89,8 +89,15 @@ func shapeOf(f *parquet.File) (Counts, error) {
 	return c, nil
 }
 
-// Counting is called after each part with what the recount has read so far.
-type Counting func(part kho.Stored, i, of int, c Counts, moved int64)
+// Counting is called after each part with what the recount has read so far, and
+// with whether that part was read or came off the resume log.
+//
+// The last argument is there because a caller that only has the byte count
+// cannot tell a pass that read nothing from a pass that had nothing left to
+// read. A fully resumed recount reports every column correct and zero bytes
+// moved, which reads as a check that ran and found nothing wrong, and is a check
+// that did not run.
+type Counting func(part kho.Stored, i, of int, c Counts, moved int64, resumed bool)
 
 // RecountOf sums the shape columns of every part of a snapshot.
 //
@@ -127,7 +134,7 @@ func RecountOf(ctx context.Context, s *Store, snapshot, work string, note Counti
 		}
 		total.Merge(c)
 		if note != nil {
-			note(part, i+1, len(parts), total, moved)
+			note(part, i+1, len(parts), total, moved, done)
 		}
 	}
 	return total, nil

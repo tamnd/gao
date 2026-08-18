@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/tamnd/gao/doc"
+	"github.com/tamnd/gao/kho"
 )
 
 // stored is what a run of texts comes to when it is counted honestly, which is
@@ -119,6 +120,41 @@ func TestARecountResumesAtThePart(t *testing.T) {
 	s.mu.Unlock()
 	if ranged != 0 {
 		t.Errorf("the second pass made %d requests, and every part it needed was already recorded", ranged)
+	}
+}
+
+// The counts a fully resumed pass reports are correct and it did not check them,
+// and those two facts have to reach the caller together. They did not, and a
+// parquet-go bump was very nearly landed on the strength of a verify run that
+// printed matching columns next to zero bytes read.
+func TestARecountSaysWhichPartsItTookOffTheLog(t *testing.T) {
+	s := newStore(t)
+	written := texts(0, 60)
+	s.put(snapshot, 0, 0, written[:30]...)
+	s.put(snapshot, 1, 0, written[30:]...)
+
+	work := t.TempDir()
+	var fresh, held int
+	note := func(_ kho.Stored, _, _ int, _ Counts, _ int64, resumed bool) {
+		if resumed {
+			held++
+			return
+		}
+		fresh++
+	}
+	if _, err := RecountOf(t.Context(), s.store(), snapshot, work, note); err != nil {
+		t.Fatalf("RecountOf: %v", err)
+	}
+	if fresh != 2 || held != 0 {
+		t.Errorf("the first pass read %d parts and resumed %d, and there was nothing to resume from", fresh, held)
+	}
+
+	fresh, held = 0, 0
+	if _, err := RecountOf(t.Context(), s.store(), snapshot, work, note); err != nil {
+		t.Fatalf("RecountOf again: %v", err)
+	}
+	if fresh != 0 || held != 2 {
+		t.Errorf("the second pass read %d parts and resumed %d, and every part was already in the log", fresh, held)
 	}
 }
 
