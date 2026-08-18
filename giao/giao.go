@@ -188,9 +188,9 @@ type Split struct {
 	// dropped.
 	Idle []string `json:"idle,omitempty"`
 
-	// Unplaced is every pinned file no box has the scratch to land whole. It is
-	// a list rather than a count because the answer to it is either a bigger
-	// disk or a smaller shard, and which one depends on the file.
+	// Unplaced is every pinned file no box has the scratch to fetch. It is a
+	// list rather than a count because the answer to it is either a bigger disk
+	// or a smaller shard, and which one depends on the file.
 	Unplaced []Job `json:"unplaced,omitempty"`
 
 	rates map[string]float64
@@ -204,10 +204,9 @@ type Split struct {
 // the thing that keeps the slow box from drawing a file it will still be
 // fetching after the fast one has finished the source.
 //
-// A box is only offered a file it has the disk to land whole, so the fastest
-// box on the fleet can still be passed over for the largest file in the
-// manifest. That is not a tie break, it is the difference between a plan and a
-// plan that runs.
+// A box is only offered a file it has the disk to fetch, which is [InFlight]
+// and not the size of the file. That is not a tie break, it is the difference
+// between a plan and a plan that runs.
 func Divide(readings []Reading) Split {
 	s := Split{Readings: readings, rates: map[string]float64{}}
 
@@ -262,7 +261,7 @@ func Divide(readings []Reading) Split {
 			pick, soonest := -1, 0.0
 			for i, h := range g.Hands {
 				rate := s.rates[h.Box]
-				if rate <= 0 || Room(h.Box) < j.Bytes {
+				if rate <= 0 || Room(h.Box) < InFlight {
 					continue
 				}
 				done := h.Seconds + float64(j.Bytes)/rate
@@ -429,12 +428,27 @@ func (s Split) Waiting() []string {
 	return out
 }
 
+// InFlight is the disk one fetch holds while it is running.
+//
+// It was the size of the file until an ingest was run and watched, on the
+// reasoning that a pinned file is streamed and hashed as one unit and therefore
+// has to land whole. The second half of that does not follow and never did. No
+// gao fetch has landed a file: without -out the bytes are counted and thrown
+// away, and with -out and -push what the box holds is the part being written
+// and then sent, which is one shard. server3 fetched a 4.1 GB file on
+// 2026-08-18 with a trace running and 'gao box peak' read 0.7 GB off it.
+//
+// So a box needs room for a part rather than for a file, and the number is the
+// same whichever file it draws, which is why it is a constant. Two shards and
+// not one, for the same reason [may.ShardsPerWorker] is two: the part being
+// closed and the next one opening are not required to be the same part forever.
+const InFlight = may.ShardsPerWorker * may.ShardBytes
+
 // Room is the disk a box has for a file it is fetching, which is its scratch
 // less the working set the stage behind the fetch is already holding.
 //
-// A pinned file is streamed and hashed as one unit, so it has to land whole,
-// and it lands next to the shards the tokenizer is working through rather than
-// instead of them.
+// The part being written lands next to the shards the tokenizer is working
+// through rather than instead of them, which is what the subtraction is for.
 func Room(box string) int64 {
 	b, ok := may.Lookup(box)
 	if !ok {
@@ -469,8 +483,8 @@ func (s Split) Faults() []string {
 		}
 	}
 	for _, j := range s.Unplaced {
-		out = append(out, fmt.Sprintf("%s is %s and no box has room to land it whole, the most any of them has free is %s",
-			j.Path, bytesOf(j.Bytes), bytesOf(most)))
+		out = append(out, fmt.Sprintf("%s draws nobody: a fetch holds %s while it runs and the most room any box has is %s",
+			j.Path, bytesOf(InFlight), bytesOf(most)))
 	}
 	return out
 }

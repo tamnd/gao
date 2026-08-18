@@ -41,7 +41,7 @@ func TestGiaoPlanPricesTheWholeIngestAgainstOneBox(t *testing.T) {
 
 	for _, want := range []string{
 		"hplt3",
-		"room for a file",
+		"scratch left",
 		"On the fastest box alone",
 		"513.6 GB over 122 files across 2 boxes",
 		"server3 has a reading and may not hold corpus bytes",

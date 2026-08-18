@@ -247,7 +247,7 @@ func printGiao(w io.Writer, r giaoReport) {
 
 	fmt.Fprintln(w)
 	tw = tabwriter.NewWriter(w, 0, 0, 2, ' ', 0)
-	fmt.Fprint(tw, "box\tgets through\tfetches\tof the ingest\troom for a file\tbusy for\n")
+	fmt.Fprint(tw, "box\tgets through\tfetches\tof the ingest\tscratch left\tbusy for\n")
 	for _, box := range r.split.Boxes() {
 		bytes := r.split.BytesFor(box)
 		fmt.Fprintf(tw, "%s\t%s\t%s\t%s\t%s\t%s\n",

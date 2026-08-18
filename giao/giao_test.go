@@ -120,32 +120,23 @@ func TestTheHeaviestFileGoesToWhicheverBoxWouldHaveItSoonest(t *testing.T) {
 	}
 }
 
-func TestABoxIsNotOfferedAFileItCannotLand(t *testing.T) {
-	// The rule is that a file lands whole, so a box with less room than the file
-	// does not draw it however fast it is. On the inventory of 2026-08-03 that
-	// rule bound: server3 had 24.3 GB of room against a largest pinned file of
-	// 26.6 GB. On the inventory of 2026-08-18 no box that may hold corpus bytes
-	// is that small, since the two that qualify have 164.6 GB and 244.9 GB, so
-	// what this test proves today is the invariant rather than the refusal.
-	// It is kept because the refusal comes back the moment a box fills, and it
-	// is the loop below that would catch a split handing out a file anyway.
+func TestABoxIsNotOfferedAFileItCannotFetch(t *testing.T) {
+	// The rule was that a file lands whole, so a box with less room than the
+	// file did not draw it however fast it was, and on the inventory of
+	// 2026-08-03 that bound: server3 had 24.3 GB of room against a largest
+	// pinned file of 26.6 GB. It was wrong. A fetch holds a part and not a file,
+	// which server3 settled by fetching 4.1 GB and peaking at 0.7 GB, so the
+	// largest file in the manifest costs a box no more room than the smallest.
+	//
+	// What is left to check is that the room test is still applied at all, since
+	// a constant that nothing is compared against is a constant that has been
+	// deleted by accident.
 	s := Divide([]Reading{reading("server1", 200), reading("gamingpc", 40)})
 
-	var smallest int64 = -1
-	for _, box := range s.Boxes() {
-		if r := Room(box); smallest < 0 || r < smallest {
-			smallest = r
-		}
-	}
-	if smallest < 26_600_000_000 {
-		t.Logf("the smallest box drawing work has %d bytes of room against a largest pinned file of 26.6 GB, so the refusal is live again", smallest)
-	}
 	for _, g := range s.Group {
 		for _, h := range g.Hands {
-			for _, j := range h.Jobs {
-				if j.Bytes > Room(h.Box) {
-					t.Errorf("%s draws %s at %d bytes into %d bytes of room", h.Box, j.Path, j.Bytes, Room(h.Box))
-				}
+			if len(h.Jobs) > 0 && Room(h.Box) < InFlight {
+				t.Errorf("%s draws %d files into %d bytes of room, under the %d a fetch holds", h.Box, len(h.Jobs), Room(h.Box), InFlight)
 			}
 		}
 	}
