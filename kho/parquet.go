@@ -283,16 +283,34 @@ type Stamp struct {
 	// Box is the machine label, so a number that only reproduces on one box can
 	// be traced to it.
 	Box string
+
+	// Tokenizer is name@sha256 of whatever filled the n_tokens column, and empty
+	// when nothing did.
+	//
+	// It is here because of what the first published parts looked like without
+	// it. An ingest run without -tokenizer writes n_tokens as zero for every
+	// document, which is what the column type allows and is not what a reader
+	// sees: a query over 500000 real documents came back with 500000 documents
+	// and 0 tokens, and nothing in the file said the difference between nobody
+	// counting and a count of none. 'gao dem counts' had the answer all along,
+	// because counts.json carries the tokenizer beside the numbers, but a part
+	// on the Hub travels without counts.json and has to say it itself.
+	Tokenizer string
 }
 
 // Metadata returns the key value pairs a part carries.
 func (s Stamp) Metadata() map[string]string {
-	return map[string]string{
+	m := map[string]string{
 		"gao.snapshot":       s.Snapshot,
 		"gao.stage":          s.Stage,
 		"gao.box":            s.Box,
 		"gao.schema_version": fmt.Sprintf("%d", doc.SchemaVersion),
 	}
+	// Written even when it is empty, because an absent key reads as an older
+	// writer that did not record one, and "no tokenizer ran" is a fact about
+	// this run rather than a gap in it.
+	m["gao.tokenizer"] = s.Tokenizer
+	return m
 }
 
 // ErrNotAdmitted is returned when a document's license class is not one the

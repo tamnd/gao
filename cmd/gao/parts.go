@@ -28,6 +28,7 @@ import (
 	"path/filepath"
 	"sync/atomic"
 
+	"github.com/tamnd/gao/dem"
 	"github.com/tamnd/gao/doc"
 	"github.com/tamnd/gao/gat"
 	"github.com/tamnd/gao/kho"
@@ -42,6 +43,12 @@ type parts struct {
 	dataset kho.Dataset
 	box     string
 	out     io.Writer
+
+	// tokenizer is what fills the n_tokens column, as name@sha256, and is empty
+	// when the run was given none. It goes into every part's own metadata so a
+	// reader who has the file and nothing else can tell a column nobody filled
+	// from a column of real zeros.
+	tokenizer string
 
 	// push, when set, is where a part goes as it closes. The local copy is
 	// deleted once the store has it.
@@ -105,9 +112,10 @@ func (p *parts) open(ctx context.Context, pin gat.Pinned, f gat.File) error {
 		Dir:     p.dir,
 		Dataset: p.dataset,
 		Stamp: kho.Stamp{
-			Snapshot: pin.Snapshot(),
-			Stage:    gat.Stage,
-			Box:      p.box,
+			Snapshot:  pin.Snapshot(),
+			Stage:     gat.Stage,
+			Box:       p.box,
+			Tokenizer: p.tokenizer,
 		},
 		File: i,
 		// The context comes from the file being read rather than from the sink,
@@ -185,6 +193,21 @@ func (p *parts) pushOne(ctx context.Context, f kho.PartFile) (kho.Pushed, error)
 	p.sent++
 	p.freed += f.Bytes
 	return sent, nil
+}
+
+// tokenizerLabel names the tokenizer a part was written under, as name@sha256,
+// and returns empty for a run that was given none.
+//
+// The digest is in it rather than the name alone because the name is a family
+// and the file is the thing that decides a token. Two runs that both say
+// gemma-3 and disagree about a count disagree about which file they opened, and
+// the label is where that argument gets settled.
+func tokenizerLabel(t *dem.Tokenizer) string {
+	if t == nil {
+		return ""
+	}
+	m := t.Model()
+	return m.Name + "@sha256:" + m.Digest
 }
 
 // stage is what the run was doing, for the disk trace.

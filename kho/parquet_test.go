@@ -414,6 +414,48 @@ func TestAPartCarriesItsStamp(t *testing.T) {
 	}
 }
 
+// A part written by a run with no tokenizer says so, because the alternative is
+// a column of zeros that reads as a count.
+//
+// This came off the first published parts. A query over 500000 real documents on
+// the Hub returned 500000 documents and 0 tokens, and there was nothing in the
+// file to say which of the two things that meant. counts.json says it, and a
+// part on the Hub does not travel with counts.json.
+func TestAPartSaysWhetherAnythingCountedItsTokens(t *testing.T) {
+	none := Stamp{Snapshot: "glotcc-9ad140b6be3a", Stage: "gat@0.1.0", Box: "server3"}
+	if got, ok := none.Metadata()["gao.tokenizer"]; !ok || got != "" {
+		t.Errorf("a run with no tokenizer stamps %q with present=%v, want an empty value that is present", got, ok)
+	}
+
+	counted := none
+	counted.Tokenizer = "gemma-3@sha256:1299c11d"
+	if got := counted.Metadata()["gao.tokenizer"]; got != counted.Tokenizer {
+		t.Errorf("the tokenizer is %q in the metadata, want %q", got, counted.Tokenizer)
+	}
+
+	// And it survives the round trip through the file, which is the whole point
+	// of putting it in the footer rather than in a manifest beside it.
+	dir := t.TempDir()
+	p, err := CreatePart(dir, "part-00000.parquet", textDataset(t), counted)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := p.Append(sample(1)); err != nil {
+		t.Fatal(err)
+	}
+	f, err := p.Close()
+	if err != nil {
+		t.Fatal(err)
+	}
+	meta, err := PartMetadata(filepath.Join(dir, f.Path))
+	if err != nil {
+		t.Fatalf("PartMetadata: %v", err)
+	}
+	if got := meta["gao.tokenizer"]; got != counted.Tokenizer {
+		t.Errorf("the file says %q wrote its tokens, want %q", got, counted.Tokenizer)
+	}
+}
+
 // Text is the text, not the file. A caller rolling a part over needs a number
 // it can see before the row group flushes.
 func TestTextCountsTheTextAndNotTheFile(t *testing.T) {

@@ -465,6 +465,37 @@ func TestKhoColumnsReadsAFile(t *testing.T) {
 	}
 }
 
+// A part written without a tokenizer carries a token column of zeros, and the
+// reader has to be told that rather than left to sum it.
+func TestKhoColumnsSaysWhenNothingCountedTheTokens(t *testing.T) {
+	d, _ := kho.Lookup("vietnamese-web-text")
+	dir := t.TempDir()
+	part, err := kho.CreatePart(dir, "part-00000", d, kho.Stamp{
+		Snapshot: "glotcc-9ad140b6be3a", Stage: "gat@0.1.0", Box: "server3",
+	})
+	if err != nil {
+		t.Fatalf("CreatePart: %v", err)
+	}
+	if err := part.Append(document(t, 0)); err != nil {
+		t.Fatalf("Append: %v", err)
+	}
+	file, err := part.Close()
+	if err != nil {
+		t.Fatalf("Close: %v", err)
+	}
+
+	out, errOut, code := exec(t, "kho", "columns", filepath.Join(dir, file.Path))
+	if code != 0 {
+		t.Fatalf("gao kho columns FILE: exit %d, want 0: %s", code, errOut)
+	}
+	if !strings.Contains(out, "no tokenizer ran") {
+		t.Errorf("a part nothing counted did not say so:\n%s", out)
+	}
+	if !strings.Contains(out, "gao.tokenizer      none") {
+		t.Errorf("the metadata does not carry an explicit empty tokenizer:\n%s", out)
+	}
+}
+
 func TestKhoColumnsRefusesAFileThatIsNotOne(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "not-a-part.parquet")
 	if err := os.WriteFile(path, []byte("this is not parquet"), 0o644); err != nil {

@@ -71,11 +71,12 @@ ledger records how it was read and how much of it moved instead. Without -decode
 those sources are streamed and verified like the others.
 
 With -out the admitted documents are written under that directory as Parquet, in
-the layout the store of record uses, one part per 1.5 GB of text so that a worker
-holds a part rather than a file. The paths are a function of the source revision,
-the input file, and the part number, so a run that is interrupted mid file writes
-over what it left rather than beside it. A file whose decode fails leaves no part
-at all.
+the layout the store of record uses, one part per 1.06 GB of text so that a worker
+holds a part rather than a file. That number is the shard target multiplied by the
+compression ratio the disk budget runs on, and it moved when the ratio stopped
+being assumed. The paths are a function of the source revision, the input file,
+and the part number, so a run that is interrupted mid file writes over what it
+left rather than beside it. A file whose decode fails leaves no part at all.
 
 With -push each part goes to the store as it closes and the local copy is
 deleted before the next one opens. That is what makes a source larger than the
@@ -233,6 +234,7 @@ flags:
 		// alternative reads 700 GB of text twice.
 		if *out != "" {
 			written = newParts(*out, docs, in.Box, stdout)
+			written.tokenizer = tokenizerLabel(tok)
 			docs.Emit = written.write
 			in.Sink = written
 		}
