@@ -8,17 +8,22 @@ package kho
 // writes a part, closes it, hands it off, and starts the next one, so the disk
 // under a worker is one part being written and at most one part waiting to go.
 //
-// A part closes on whichever comes first, the bytes it has put on the disk or
-// the text it has taken in. It was text alone, on the reasoning that a Parquet
-// writer compresses a row group at the boundary and does not know its own file
-// size until it closes. That is true of the row group being filled and it is
-// not true of the ones already written, which are on the disk and counted, and
-// the difference matters because the text limit is the shard target divided by
-// a compression ratio measured on one source. GlotCC compresses at 2.07 and
+// A part closes on whichever comes first, the size it has reached or the text
+// it has taken in. It was text alone, on the reasoning that a Parquet writer
+// compresses a row group at the boundary and does not know its own file size
+// until it closes. That is true of the row group being filled and it is not
+// true of the ones already written, which are on the disk and counted, and the
+// difference matters because the text limit is the shard target divided by a
+// compression ratio measured on one source. GlotCC compresses at 2.07 and
 // FinePDFs at 1.07, so the first published parts of the two came out at 512 MB
-// and at 988 MB against the same 512 MB target. Text is still the second half
-// of the rule, because a source that compresses better than the ratio would
-// otherwise write a part the size of its input file.
+// and at 988 MB against the same 512 MB target.
+//
+// Size rather than bytes on the disk, because the disk is a floor that moves
+// one row group at a time and rolling on it put FinePDFs parts at 0.7 GB. See
+// [Part.Size]: the open row group is estimated at the ratio the part has
+// already measured on itself. Text is still the second half of the rule,
+// because a source that compresses better than the ratio would otherwise write
+// a part the size of its input file.
 
 import (
 	"errors"
@@ -73,9 +78,9 @@ type Roll struct {
 	// and for a box whose disk says something different from the fleet average.
 	TextPerPart int64
 
-	// BytesPerPart overrides [may.ShardBytes] as the size a part closes at once
-	// that much of it has reached the disk. It is here for tests, which cannot
-	// afford to write half a gigabyte to find out that the rule works.
+	// BytesPerPart overrides [may.ShardBytes] as the size a part closes at. It
+	// is here for tests, which cannot afford to write half a gigabyte to find
+	// out that the rule works.
 	BytesPerPart int64
 
 	// Finished, if set, is called with each part as it closes, before the next
@@ -104,7 +109,7 @@ func (r *Roll) Append(d *doc.Document) error {
 	if err := r.cur.Append(d); err != nil {
 		return err
 	}
-	if r.cur.Bytes() >= r.size() || r.cur.Text() >= r.limit() {
+	if r.cur.Size() >= r.size() || r.cur.Text() >= r.limit() {
 		return r.rotate()
 	}
 	return nil

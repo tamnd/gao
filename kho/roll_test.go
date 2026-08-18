@@ -3,12 +3,14 @@ package kho
 import (
 	"bytes"
 	"errors"
+	"math"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 
 	"github.com/tamnd/gao/doc"
+	"github.com/tamnd/gao/may"
 )
 
 // roll returns a roll writing into a fresh directory, with a limit small enough
@@ -319,48 +321,137 @@ func TestARollCountsWhatItHasWritten(t *testing.T) {
 // first published GlotCC and FinePDFs parts held the same 1.06 GB of text and
 // came out at 512 MB and at 988 MB.
 //
-// So the roll also closes a part on what has reached the disk. The text limit
-// here is large enough that nothing would ever hit it, which is the point, and
-// the byte limit is one, so the part closes as soon as the first row group is
-// on the disk and the test does not have to write half a gigabyte to see it.
-func TestAPartClosesOnBytesWhenTheTextLimitIsNeverReached(t *testing.T) {
+// So the roll also closes a part on the size it has reached. The text limit
+// here is large enough that nothing could ever hit it, which is the point.
+func TestAPartClosesOnSizeWhenTheTextLimitIsNeverReached(t *testing.T) {
 	r, _ := roll(t, 1<<40)
-	r.BytesPerPart = 1
+	r.BytesPerPart = 20_000
 
-	// A row group is what reaches the disk, so the rule cannot bite before one
-	// closes. The cap is three row groups, which is well past the first.
-	wrote := 0
-	for i := 0; i < 3*DefaultRowGroup && len(r.Files()) == 0; i++ {
+	docs := 400
+	for i := 0; i < docs; i++ {
 		if err := r.Append(sample(i)); err != nil {
 			t.Fatalf("Append %d: %v", i, err)
 		}
-		wrote++
-	}
-	if len(r.Files()) == 0 {
-		t.Fatalf("%d documents and no part closed, so the roll is not looking at what it has written", wrote)
-	}
-	if err := r.Append(sample(wrote)); err != nil {
-		t.Fatalf("Append %d: %v", wrote, err)
 	}
 	files, err := r.Close()
 	if err != nil {
 		t.Fatalf("Close: %v", err)
 	}
 
-	if len(files) != 2 {
-		t.Fatalf("wrote %d parts, want 2", len(files))
+	if len(files) < 2 {
+		t.Fatalf("%d documents wrote %d part, and the size limit is %d bytes", docs, len(files), r.BytesPerPart)
 	}
-	if files[0].Bytes == 0 {
-		t.Error("the part that closed is empty, so the roll closed on a number it read wrong rather than on bytes")
+	total := 0
+	for _, f := range files {
+		total += f.Documents
 	}
-	if files[0].Documents+files[1].Documents != wrote+1 {
-		t.Errorf("the two parts hold %d and %d documents, and %d went in",
-			files[0].Documents, files[1].Documents, wrote+1)
+	if total != docs {
+		t.Errorf("the parts hold %d documents between them and %d went in", total, docs)
 	}
-	// The whole run is a few megabytes of text against a terabyte limit, so
-	// nothing here could have closed on text.
-	if got := int64(wrote+1) * 1024; got >= r.TextPerPart {
-		t.Errorf("the documents could have reached the text limit, so this test proves nothing")
+	// Nothing here is within four orders of magnitude of the text limit, so a
+	// part that closed did so on its size.
+	if r.Documents() == 0 || int64(docs)*1024 >= r.TextPerPart {
+		t.Error("the documents could have reached the text limit, so this proves nothing")
+	}
+}
+
+// The estimate is the ratio the part has measured on itself, and before a row
+// group closes there is nothing to measure. A part that has never flushed has
+// to fall back to the assumed ratio rather than to zero, because a part
+// reporting no size at all would never close on size and the rule would only
+// bite on files large enough to have flushed already.
+func TestAPartWithNoClosedRowGroupEstimatesAtTheAssumedRatio(t *testing.T) {
+	p, err := CreatePart(t.TempDir(), "part-00000.parquet", textDataset(t), stamp)
+	if err != nil {
+		t.Fatalf("CreatePart: %v", err)
+	}
+	d := sample(0)
+	if err := p.Append(d); err != nil {
+		t.Fatalf("Append: %v", err)
+	}
+	if p.Bytes() != 0 {
+		t.Fatalf("one document put %d bytes on the disk, so a row group closed and this tests the wrong path", p.Bytes())
+	}
+	if want := int64(float64(len(d.Text)) / may.Compression); p.Size() != want {
+		t.Errorf("the part estimates %d bytes from %d of text, want %d at the assumed %.2fx",
+			p.Size(), len(d.Text), want, may.Compression)
+	}
+	if _, err := p.Close(); err != nil {
+		t.Fatalf("Close: %v", err)
+	}
+}
+
+// Once a row group has closed the ratio is measured, and on text that
+// compresses nothing like the assumption the two answers are far apart. This is
+// the whole point of the estimate: FinePDFs compresses at 1.07 and the roll was
+// dividing its text by 2.07.
+func TestAPartEstimatesAtTheRatioItHasMeasured(t *testing.T) {
+	p, err := CreatePart(t.TempDir(), "part-00000.parquet", textDataset(t), stamp)
+	if err != nil {
+		t.Fatalf("CreatePart: %v", err)
+	}
+	// Small groups, so this measures the estimate rather than the disk. The real
+	// one is 256 MB and a part is two of them, which is most of a gigabyte
+	// through a temp directory to watch some arithmetic.
+	defer func(n int64) { RowGroupText = n }(RowGroupText)
+	RowGroupText = 8_000_000
+
+	// Documents the size FinePDFs documents are, in text zstd can do nothing
+	// with, so the measured ratio comes out near 1.0 the way FinePDFs does and
+	// nowhere near the assumed 2.07.
+	seed := uint64(1)
+	noise := func() string {
+		b := make([]byte, 32*1024)
+		for i := range b {
+			seed = seed*6364136223846793005 + 1442695040888963407
+			b[i] = byte(' ' + seed>>59)
+		}
+		return string(b)
+	}
+	n := 0
+	for ; p.Bytes() == 0; n++ {
+		d := sample(n)
+		d.Text = noise()
+		if err := p.Append(d); err != nil {
+			t.Fatalf("Append %d: %v", n, err)
+		}
+		if n > 100_000 {
+			t.Fatal("no row group closed, so nothing here was measured")
+		}
+	}
+	// One short of as much again, so the open group the estimate has to guess at
+	// is nearly the size of the closed one it measured against and has not
+	// closed itself. Stopping at the flush would leave nothing to guess and the
+	// test would pass on any ratio at all.
+	for i := 0; i < n-1; i++ {
+		d := sample(n + i)
+		d.Text = noise()
+		if err := p.Append(d); err != nil {
+			t.Fatalf("Append %d: %v", n+i, err)
+		}
+	}
+
+	// The test is against what the file actually came to, which is the only
+	// thing the estimate is trying to be.
+	estimate, floor, open := p.Size(), p.Bytes(), p.w.OpenText()
+	f, err := p.Close()
+	if err != nil {
+		t.Fatalf("Close: %v", err)
+	}
+	if open == 0 {
+		t.Fatal("the open row group was empty, so the estimate had nothing to estimate")
+	}
+
+	if off := math.Abs(float64(estimate-f.Bytes)) / float64(f.Bytes); off > 0.05 {
+		t.Errorf("the part estimated %d bytes and closed at %d, off by %.1f%%", estimate, f.Bytes, off*100)
+	}
+	// What the assumed ratio would have said about the same open group, which is
+	// the number this replaced. It reads low, which is the direction that carries
+	// a part past the target rather than stopping short of it.
+	assumed := floor + int64(float64(open)/may.Compression)
+	if off := math.Abs(float64(assumed-f.Bytes)) / float64(f.Bytes); off < 0.20 {
+		t.Errorf("the assumed %.2fx would have said %d against %d, only %.1f%% out, so this text does not separate the two",
+			may.Compression, assumed, f.Bytes, off*100)
 	}
 }
 
