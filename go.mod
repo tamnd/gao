@@ -6,7 +6,7 @@ require (
 	github.com/BurntSushi/toml v1.6.0
 	github.com/eliben/go-sentencepiece v0.7.0
 	github.com/klauspost/compress v1.19.2
-	github.com/parquet-go/parquet-go v0.30.1
+	github.com/parquet-go/parquet-go v0.32.0
 	github.com/zeebo/blake3 v0.2.4
 	golang.org/x/net v0.58.0
 	golang.org/x/sys v0.47.0
