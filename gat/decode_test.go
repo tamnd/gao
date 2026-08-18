@@ -302,6 +302,54 @@ func TestARecordThatDoesNotParseStopsTheFile(t *testing.T) {
 	}
 }
 
+// A download that stops mid record is not a record that does not parse, and from
+// inside the decoder the two are the same bytes. A bufio.Scanner hands back
+// whatever it is holding when the read under it fails, so the half of a line that
+// did arrive comes through the split function as a token and fails to parse.
+//
+// HPLT v3 vie_Latn/6_1.jsonl.zst stopped at line 17685466 of around twenty
+// million and the run reported a record that does not parse, having read most of
+// 25.2 GB. Nothing in that sentence is a claim anybody can check, and the reader
+// knew the answer the whole time.
+func TestAStreamThatStopsMidRecordBlamesTheStreamAndNotTheRecord(t *testing.T) {
+	p, f := madladPin(t)
+	dec, _ := DecoderFor(p.Source)
+
+	// Read uncompressed, so this is about the scanner and the reader under it
+	// rather than about what a decompressor does with a stream that stops. Either
+	// way the error reaching the scanner is the one that has to come out.
+	f.Path = strings.TrimSuffix(f.Path, ".gz")
+
+	// One whole record, then the front of another and a connection that gives up,
+	// which is what the fetcher returns once it is out of reconnects.
+	dropped := errors.New("gave up at byte 25219923968 after 8 reconnects")
+	body := io.MultiReader(
+		strings.NewReader(madladLine+"\n"+madladLine[:len(madladLine)/2]),
+		errReader{dropped},
+	)
+
+	var seen int
+	err := dec.Decode(p, f, body, func(*doc.Document) error { seen++; return nil })
+	if !errors.Is(err, dropped) {
+		t.Fatalf("Decode returned %v, want the error the read failed with", err)
+	}
+	if errors.Is(err, ErrBadRow) {
+		t.Errorf("a stream that stopped was reported as a record that does not parse: %v", err)
+	}
+	if !strings.Contains(err.Error(), "line 2") {
+		t.Errorf("the error does not say where the stream stopped: %v", err)
+	}
+	if seen != 1 {
+		t.Errorf("%d documents were emitted before the stream stopped, want 1", seen)
+	}
+}
+
+// errReader is a read that fails, which is how a fetch out of reconnects looks
+// from above.
+type errReader struct{ err error }
+
+func (r errReader) Read([]byte) (int, error) { return 0, r.err }
+
 // The emit error comes back unchanged, because it is how a caller stops an
 // ingest from inside the sink and a wrapped context error stops matching.
 func TestAnEmitErrorComesBackAsItself(t *testing.T) {
