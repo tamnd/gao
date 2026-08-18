@@ -2479,12 +2479,12 @@ A column list is not the same as a schema somebody can use, so [SCHEMA.md](SCHEM
 The paragraph above is arithmetic, and the milestone does not gate on it. It gates on a measurement taken while the ingestion runs, because the arithmetic knows about shards in flight and knows nothing about a Parquet writer's row group buffer, a part sitting on disk waiting out an upload retry, a download resuming into a partial file, or whatever the operating system decided to keep in a temporary directory. That is the whole reason the ceiling is 90 GB and the prediction is 4.1: the gap is room for the things the model does not have terms for. `gao box peak` reads the watcher's trace back.
 
 ```
-$ gao box peak -run glotcc -ran 1h7m20s disk.jsonl
-run        glotcc        on server3, 1h7m20s of wall clock
-peak       0.7 GB        at 53m20s, during push
-ceiling    90.0 GB       89.3 GB of it left
+$ gao box peak -run glotcc -ran 56m33s disk.jsonl
+run        glotcc        on server3, 56m33s of wall clock
+peak       0.5 GB        at 40m40s, during push
+ceiling    90.0 GB       89.5 GB of it left
 predicted  none          server3 runs no workers in the plan, so there is nothing to read this against
-watched    406 readings  across 1h7m20s, widest gap 10s
+watched    341 readings  across 56m37s, widest gap 10s
 free       17.7 GB       on server3
 
 2 faults:
@@ -2494,9 +2494,9 @@ free       17.7 GB       on server3
 server3 has 17.7 GB free, under the 20.0 GB reserve, so the plan runs no workers on it and this is a run on a box the arithmetic gives nothing to spend
 ```
 
-That is a real run: three GlotCC files, 6.3 GB fetched, 1.5 million documents, nine parts written and pushed and deleted, 12.6 GB of text, watched every ten seconds from the first byte to the last. It exits 2, and everything worth having in this section is in why.
+That is a real run: three GlotCC files, 6.3 GB fetched, 1.5 million documents admitted and none turned away, twelve parts written and pushed and deleted, 12.6 GB of text into 6.1 GB of Parquet, watched every ten seconds from the first byte to the last. It exits 2, and everything worth having in this section is in why.
 
-The peak is 0.7 GB, which is one part in flight rather than one file. So offload does what it was supposed to do, and it does it harder than the arithmetic claimed: `PeakBytes` allows a worker two shards and the run held closer to one. That is an upper bound behaving like an upper bound, which is worth writing down once rather than tuning.
+The peak is 0.5 GB, which is one part in flight rather than one file, on a run that moved 6.3 GB and wrote 6.1 GB. So offload does what it was supposed to do, and it does it harder than the arithmetic claimed: `PeakBytes` allows a worker two shards and the run held one. That is an upper bound behaving like an upper bound, which is worth writing down once rather than tuning.
 
 Then both faults. The first one is the reason there is no drift line: `server3` has 17.7 GB free, the reserve is 20, so the plan gives it no workers and there is no per worker prediction for 0.7 GB to be three times or a third of. The command used to print `predicted 0.0 GB` here and say nothing else, which reads as a prediction of nothing rather than as no prediction. The second is that the ceiling is 90 GB on a box with 17.7 GB free, so passing the gate proves nothing: this run could have held five times what it did, cleared the ceiling by 85 GB, and filled the machine. Both faults are the same 17.7 GB and they are not the same claim, and a run that reported one and not the other would leave somebody thinking the gate held.
 

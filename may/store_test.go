@@ -123,9 +123,9 @@ func TestIngestionFitsServer1sBudget(t *testing.T) {
 // about in both directions.
 //
 // server3 fetched three GlotCC files of about 2.1 GB each on 2026-08-18,
-// decoded each one to Parquet, pushed the parts and deleted them. The trace
-// 'gao gat hf -watch' wrote peaked at 0.7 GB, which is one part in flight and
-// not one file. So the arithmetic here overstates what a streaming stage holds:
+// decoded each one to Parquet, pushed the twelve parts and deleted them. The
+// trace 'gao gat hf -watch' wrote peaked at 0.5 GB, which is one part in flight
+// and not one file. So the arithmetic here overstates what a streaming stage holds:
 // PeakBytes says two 512 MB shards per worker and the run held closer to one.
 //
 // It also rules server3 out of the work entirely, because 17.7 GB free is under
@@ -137,8 +137,8 @@ func TestIngestionFitsServer1sBudget(t *testing.T) {
 // that the next person to read PeakBytes knows it is an upper bound that was
 // checked against a run rather than a number nobody has weighed.
 func TestTheMeasuredIngestHeldLessThanTheArithmeticAllows(t *testing.T) {
-	// Off the trace on server3, 104 samples thirty seconds apart.
-	const measuredPeak int64 = 700_000_000
+	// Off the trace on server3, 341 samples ten seconds apart across 56m37s.
+	const measuredPeak int64 = 500_000_000
 
 	b, _ := Lookup("server3")
 	if HoldsCorpus(b) {

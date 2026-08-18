@@ -449,8 +449,9 @@ func (s Split) Waiting() []string {
 // has to land whole. The second half of that does not follow and never did. No
 // gao fetch has landed a file: without -out the bytes are counted and thrown
 // away, and with -out and -push what the box holds is the part being written
-// and then sent, which is one shard. server3 fetched a 4.1 GB file on
-// 2026-08-18 with a trace running and 'gao box peak' read 0.7 GB off it.
+// and then sent, which is one shard. server3 fetched three GlotCC files on
+// 2026-08-18 with a trace running, 6.3 GB in and 6.1 GB of Parquet out across
+// 56m33s, and 'gao box peak' read 0.5 GB off it.
 //
 // So a box needs room for a part rather than for a file, and the number is the
 // same whichever file it draws, which is why it is a constant. Two shards and
