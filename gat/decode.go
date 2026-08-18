@@ -196,6 +196,17 @@ func (j jsonRows) Decode(p Pinned, f File, r io.Reader, emit func(*doc.Document)
 		}
 		d, err := j.row(row{Pin: p, File: f, Line: n, Raw: raw})
 		if err != nil {
+			// A scanner hands back whatever it is still holding when the read
+			// under it fails, so the tail of a stream that stopped arrives here
+			// looking like a record somebody wrote wrong. Ask the reader before
+			// blaming the file. HPLT v3 vie_Latn/6_1.jsonl.zst failed at line
+			// 17685466 with "unexpected end of JSON input" after most of 25.2 GB,
+			// and from in here a download that stopped and a genuinely half
+			// written line are the same bytes, so the run named the one of the two
+			// it had no way to check.
+			if rErr := lines.Err(); rErr != nil {
+				return fmt.Errorf("gat: reading %s: the stream stopped inside line %d: %w", f.Path, n, rErr)
+			}
 			return fmt.Errorf("%w: %s line %d: %w", ErrBadRow, f.Path, n, err)
 		}
 		if err := emit(d); err != nil {
