@@ -2592,6 +2592,35 @@ One walk answers everything. The key files are sorted, so stepping through all o
 
 A pass over a few hundred parts gets interrupted, so it is resumable at the part rather than at the source. Each part's keys are written under a working directory and a part that already has its file is skipped, so a run killed after a hundred parts reads the rest and merges. Nothing about that is remembered in a ledger, because the files on disk are the record and a second one would be wrong the first time a process died between the rename and the write.
 
+Run against the GlotCC snapshot in the store, over a home connection:
+
+```
+$ gao dem keys -dir keys/ glotcc-9ad140b6be3a
+reading glotcc-9ad140b6be3a out of open-index/vietnamese-source-text
+     1/12  part-00000.parquet                                       126853 documents, 5.8 MB read so far
+     2/12  part-00001.parquet                                       125846 documents, 11.7 MB read so far
+     3/12  part-00002.parquet                                       126717 documents, 17.6 MB read so far
+     4/12  part-00003.parquet                                       120584 documents, 23.3 MB read so far
+     5/12  part-00000.parquet                                       127476 documents, 29.1 MB read so far
+     6/12  part-00001.parquet                                       125554 documents, 34.7 MB read so far
+     7/12  part-00002.parquet                                       125338 documents, 40.5 MB read so far
+     8/12  part-00003.parquet                                       121632 documents, 46.1 MB read so far
+     9/12  part-00000.parquet                                       124776 documents, 51.9 MB read so far
+    10/12  part-00001.parquet                                       124954 documents, 57.8 MB read so far
+    11/12  part-00002.parquet                                       126539 documents, 63.6 MB read so far
+    12/12  part-00003.parquet                                       123731 documents, 69.1 MB read so far
+
+glotcc-9ad140b6be3a
+  parts      12
+  documents  1500000
+  distinct   1405791
+  repeats    6.3% of the source is a copy of something already in it
+
+written to keys/glotcc-9ad140b6be3a.keys
+```
+
+Two numbers to take from that. The pass moved 69.1 MB to read the identities of a 6.1 GB snapshot, which is 46 bytes per document rather than the 32 the identity itself is, the difference being window granularity and the footer each part is opened with. At four hundred million documents that is around 18 GB for the whole corpus rather than the 13 the arithmetic above predicts, and 18 GB against 900 is still the entire argument. And GlotCC's Vietnamese split is 6.3% duplicates of itself before any other source is put next to it, which is the first real number this project has on duplication and is a floor rather than an estimate: exact document identity catches a byte for byte copy and nothing weaker, and the near duplicate work that catches the rest is a later milestone.
+
 ```
 gao dem keys                                # what the store holds, ready to measure
 gao dem keys glotcc-abc1234                 # read one snapshot's identities out of the store
