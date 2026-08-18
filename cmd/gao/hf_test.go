@@ -548,8 +548,12 @@ func TestCountsAreCarriedOnlyWhenTheLedgerNamesTheFiles(t *testing.T) {
 
 	var tally dem.Tally
 	var out bytes.Buffer
-	if err := seedCounts(&out, dir, ledger, &tally); err != nil {
+	carried, err := seedCounts(&out, dir, ledger, &tally)
+	if err != nil {
 		t.Fatal(err)
+	}
+	if carried.Documents != 0 {
+		t.Errorf("an empty ledger reported %d documents carried", carried.Documents)
 	}
 	if got := tally.Natural(); got.Documents != 0 {
 		t.Errorf("a run with an empty ledger carried %d documents forward from the counts file", got.Documents)
@@ -560,13 +564,43 @@ func TestCountsAreCarriedOnlyWhenTheLedgerNamesTheFiles(t *testing.T) {
 		t.Fatal(err)
 	}
 	var resumed dem.Tally
-	if err := seedCounts(&out, dir, ledger, &resumed); err != nil {
+	carried, err = seedCounts(&out, dir, ledger, &resumed)
+	if err != nil {
 		t.Fatal(err)
+	}
+	if carried.Documents != 1 {
+		t.Errorf("seedCounts reported %d documents carried, want 1", carried.Documents)
 	}
 	if got := resumed.Natural(); got.Documents != 1 {
 		t.Errorf("a run resuming a ledger of one file carried %d documents forward, want 1", got.Documents)
 	}
 	if !strings.Contains(out.String(), "carrying 1 documents") {
 		t.Errorf("the run said %q, and a number it carried forward silently is a number nobody can check", out.String())
+	}
+}
+
+// The summary prints what this run admitted and then what the counts file holds,
+// and once a run can resume those are two different bodies of text. server3
+// finished a resumed GlotCC batch saying "1500000 documents admitted" and
+// "37.9 GB of text" one line apart, which is three files and nine files.
+func TestAResumedRunSaysHowMuchOfTheTextItRead(t *testing.T) {
+	var tally dem.Tally
+	count := tally.Counting(nil, nil)
+	for range 3 {
+		if err := count(&doc.Document{Provenance: doc.Provenance{Source: doc.SourceGlotCC}, Text: "Việt Nam"}); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	var out bytes.Buffer
+	printTally(&out, &tally, dem.Counts{})
+	if strings.Contains(out.String(), "came off earlier runs") {
+		t.Errorf("a run that started from nothing split its total anyway: %q", out.String())
+	}
+
+	out.Reset()
+	printTally(&out, &tally, dem.Counts{Documents: 2, Bytes: 20})
+	if !strings.Contains(out.String(), "of which 20 B came off earlier runs and 10 B was read by this one") {
+		t.Errorf("the run said %q, and the line above it counts only what this run admitted", out.String())
 	}
 }

@@ -215,6 +215,7 @@ flags:
 	}
 
 	var tally dem.Tally
+	var seeded dem.Counts
 	var docs *gat.Docs
 	var written *parts
 	if *decode {
@@ -257,7 +258,8 @@ flags:
 		// After Counting, which is what names the tokenizer, and only when the
 		// ledger already holds files, since a directory with counts and no ledger
 		// is a directory somebody has half cleared out rather than one to resume.
-		if err := seedCounts(stdout, *dir, ledger, &tally); err != nil {
+		var err error
+		if seeded, err = seedCounts(stdout, *dir, ledger, &tally); err != nil {
 			fmt.Fprintf(stderr, "gao gat hf: %v\n", err)
 			return 1
 		}
@@ -321,7 +323,7 @@ flags:
 	// the files that finished.
 	if *decode {
 		saveCounts(stderr, *dir, in.Box, &tally, true)
-		printTally(stdout, &tally)
+		printTally(stdout, &tally, seeded)
 	}
 	if err != nil {
 		return hfError(stderr, err)
@@ -329,14 +331,10 @@ flags:
 	return 0
 }
 
-// saveCounts saves the counts so far into the ingest directory.
-//
-// A failure to write is reported and does not stop the run. The counts are a
-// measurement of a download that is already paid for, and losing the download
-// because the directory went read only would be the wrong trade in both
-// directions.
 // seedCounts starts the tally from the counts the directory already holds, so
-// that a resumed run reports the corpus in it rather than the session.
+// that a resumed run reports the corpus in it rather than the session. It
+// returns what it carried, which is the run's own share of the totals it goes on
+// to print.
 //
 // A file in the ledger is not fetched again and so is never counted again. The
 // run that found this had three FineWeb2 files through, 6962000 documents and
@@ -348,29 +346,35 @@ flags:
 // only ever record a file that finished, so a run killed mid-file leaves neither
 // a ledger entry nor counts for it, and this adds the same files twice only if
 // somebody deletes the ledger and keeps the counts.
-func seedCounts(stdout io.Writer, dir string, ledger *gat.Ledger, tally *dem.Tally) error {
+func seedCounts(stdout io.Writer, dir string, ledger *gat.Ledger, tally *dem.Tally) (dem.Counts, error) {
 	if len(ledger.Entries()) == 0 {
-		return nil
+		return dem.Counts{}, nil
 	}
 	r, err := dem.ReadReport(dir)
 	if errors.Is(err, dem.ErrNoReport) {
-		return nil
+		return dem.Counts{}, nil
 	}
 	if err != nil {
-		return err
+		return dem.Counts{}, err
 	}
 	if err := tally.Seed(r); err != nil {
-		return err
+		return dem.Counts{}, err
 	}
 	c := r.Natural
 	if c.Documents == 0 {
-		return nil
+		return dem.Counts{}, nil
 	}
 	fmt.Fprintf(stdout, "carrying %d documents and %s of text forward from the files already in the ledger\n",
 		c.Documents, may.GB(c.Bytes))
-	return nil
+	return c, nil
 }
 
+// saveCounts saves the counts so far into the ingest directory.
+//
+// A failure to write is reported and does not stop the run. The counts are a
+// measurement of a download that is already paid for, and losing the download
+// because the directory went read only would be the wrong trade in both
+// directions.
 func saveCounts(stderr io.Writer, dir, box string, tally *dem.Tally, complete bool) {
 	r := tally.Report(box, time.Now())
 	r.Complete = complete
@@ -381,7 +385,13 @@ func saveCounts(stderr io.Writer, dir, box string, tally *dem.Tally, complete bo
 
 // printTally is the line that says what was in the bytes, as opposed to how many
 // of them there were.
-func printTally(w io.Writer, tally *dem.Tally) {
+//
+// A resumed run splits the line, because the summary prints this directly under
+// the count of documents this run admitted and the two cover different things.
+// server3 resumed a GlotCC directory and finished with "1500000 documents
+// admitted" above "37.9 GB of text", which are three files and nine files, and
+// nothing on either line said so.
+func printTally(w io.Writer, tally *dem.Tally, seeded dem.Counts) {
 	c := tally.Natural()
 	if c.Documents == 0 {
 		return
@@ -389,10 +399,17 @@ func printTally(w io.Writer, tally *dem.Tally) {
 	if c.Tokens == 0 {
 		fmt.Fprintf(w, "%s of text, %d characters, %d syllables, counted in %s\n",
 			may.GB(c.Bytes), c.Chars, c.Syllables, dem.File)
-		return
+	} else {
+		fmt.Fprintf(w, "%s of text, %d characters, %d syllables, %d %s tokens at %.2f characters each, counted in %s\n",
+			may.GB(c.Bytes), c.Chars, c.Syllables, c.Tokens, tally.Tokenizer, c.CharsPerToken(), dem.File)
 	}
-	fmt.Fprintf(w, "%s of text, %d characters, %d syllables, %d %s tokens at %.2f characters each, counted in %s\n",
-		may.GB(c.Bytes), c.Chars, c.Syllables, c.Tokens, tally.Tokenizer, c.CharsPerToken(), dem.File)
+	if seeded.Documents > 0 {
+		// Size rather than GB, because a run that resumed and then fetched one
+		// small file is exactly when somebody reads this line, and "0.0 GB was
+		// read by this one" is not an answer to what it read.
+		fmt.Fprintf(w, "of which %s came off earlier runs and %s was read by this one\n",
+			may.Size(seeded.Bytes), may.Size(c.Bytes-seeded.Bytes))
+	}
 }
 
 // openDocs builds the decoding sink and, when a path was given, the reject store
