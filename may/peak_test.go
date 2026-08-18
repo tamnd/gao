@@ -92,9 +92,41 @@ func TestPassingTheCeilingAndMissingTheModelAreDifferentAnswers(t *testing.T) {
 		t.Errorf("the drift came back as %.1f", p.Ratio())
 	}
 
-	// And the other direction, which is a smaller run wearing the gate's name.
+	// And the other direction, which is four workers that between them never
+	// filled a shard.
 	small := Measure("hplt-v3", 6*time.Hour, Ceiling, trace("server1", 6*time.Hour, 20*time.Second, 400_000_000, 900_000_000))
-	peakFault(t, small, "a smaller run than the one the ceiling is about")
+	peakFault(t, small, "either the stage never filled a shard or the trace missed the moments it did")
+}
+
+// The prediction is per the workers the run had, not per the workers the box
+// could have had, and the two are not close on a machine with thirty two
+// threads. This is the reading that found it: a complete FinePDFs ingest on
+// gamingpc, three files and 1.2 million documents, one worker throughout,
+// peaking at 0.6 GB. Against PeakBytes it is 0.02x and a fault saying the run
+// was too small to mean anything. Against the one worker it ran it is 0.6x of
+// 1.0 GB and a clean reading of a stage that behaved.
+func TestThePredictionIsPerTheWorkersTheRunHad(t *testing.T) {
+	one := trace("gamingpc", 2*time.Hour+46*time.Minute, 10*time.Second, 300_000_000, 600_000_000)
+	for i := range one {
+		one[i].Workers = 1
+	}
+	p := Measure("ingest", 2*time.Hour+46*time.Minute, Ceiling, one)
+
+	if len(p.Blocking()) > 0 {
+		t.Fatalf("a readable trace was refused: %v", p.Blocking())
+	}
+	if p.Workers != 1 {
+		t.Errorf("the trace says one worker and the peak read %d", p.Workers)
+	}
+	if want := int64(ShardsPerWorker) * ShardBytes; p.Predicted != want {
+		t.Errorf("one worker predicts %s, want %s", GB(p.Predicted), GB(want))
+	}
+	if p.Planned <= p.Predicted {
+		t.Errorf("the plan allows gamingpc %s against the %s one worker holds, and the whole point is that they differ", GB(p.Planned), GB(p.Predicted))
+	}
+	if !p.Settled() {
+		t.Errorf("a single worker stage holding 0.6 of what one worker may hold came back unsettled: %v", p.Faults)
+	}
 }
 
 // A peak sampled too rarely is not a peak. A worker can take a shard, write it,
@@ -164,8 +196,14 @@ func TestARunOnABoxThePlanGivesNoWorkersIsAFault(t *testing.T) {
 	if p.Settled() {
 		t.Error("a run on a box the plan gives no workers came back settled")
 	}
-	if p.Predicted != 0 || p.Ratio() != 0 {
-		t.Errorf("server3 predicts %d bytes at a drift of %.1f, so this test is about a box that no longer exists", p.Predicted, p.Ratio())
+	if p.Planned != 0 {
+		t.Errorf("the plan allows server3 %d bytes, so this test is about a box that no longer exists", p.Planned)
+	}
+	// The run still has a prediction, because it still ran workers and they still
+	// hold two shards each. What it has no plan number for is the box, and those
+	// are different sentences. The fault below is the one about the box.
+	if p.Predicted == 0 {
+		t.Error("a run with workers in its trace came back with nothing to read its peak against")
 	}
 	peakFault(t, p, "the arithmetic gives nothing to spend")
 }

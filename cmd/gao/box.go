@@ -130,6 +130,12 @@ that stays under the ceiling and peaks at fifteen times the prediction also says
 the model is wrong, which is what somebody needs before running the same stage
 on a box with less room.
 
+The prediction is per the workers the trace says were running, and what the plan
+would allow the box is printed beside it. They are not the same number. An
+ingest runs one worker on a box with thirty two threads, and dividing what one
+held by what thirty two may hold reports a full run as a run too small to mean
+anything.
+
 The refusals are about how the trace was taken. A peak sampled every five
 minutes cannot see a shard that was written, pushed and deleted inside a gap. A
 watcher that started late or stopped early missed the start and the flush, which
@@ -184,15 +190,22 @@ func printPeak(w io.Writer, p may.Peak) {
 	fmt.Fprintf(tw, "peak\t%s\tat %s, during %s\n", may.GB(p.Held), (time.Duration(p.At) * time.Second).String(), p.During)
 	fmt.Fprintf(tw, "ceiling\t%s\t%s of it left\n", may.GB(p.Ceiling), may.GB(p.Headroom()))
 	if p.Predicted > 0 {
-		fmt.Fprintf(tw, "predicted\t%s\ttwo shards for each of the workers the box runs\n", may.GB(p.Predicted))
+		fmt.Fprintf(tw, "predicted\t%s\ttwo shards each for the %s this run had going\n", may.GB(p.Predicted), plural(p.Workers, "worker"))
 		if p.Ratio() > 0 {
 			fmt.Fprintf(tw, "drift\t%.1fx\tthe measurement over the arithmetic\n", p.Ratio())
 		}
 	} else {
-		// Not "0.0 GB". A box the plan gives no workers has no prediction rather
-		// than a prediction of nothing, and the two read the same in a column of
-		// gigabytes with no drift line under it.
-		fmt.Fprintf(tw, "predicted\tnone\t%s runs no workers in the plan, so there is nothing to read this against\n", p.Box)
+		// Not "0.0 GB". A trace that does not say how many workers were running
+		// has no prediction rather than a prediction of nothing, and the two read
+		// the same in a column of gigabytes with no drift line under it.
+		fmt.Fprintf(tw, "predicted\tnone\tthe trace does not say how many workers were running, and this is a number per worker\n")
+	}
+	// What the plan would let the box hold is a different number from what the
+	// run's own workers were priced at, and printing only one of them is how a
+	// single worker ingest on a 32 thread box got reported as a run too small to
+	// mean anything.
+	if p.Planned > 0 {
+		fmt.Fprintf(tw, "plan allows\t%s\tif a stage used every worker %s has threads for\n", may.GB(p.Planned), p.Box)
 	}
 	fmt.Fprintf(tw, "watched\t%s\tacross %s, widest gap %s\n", plural(p.Samples, "reading"), p.Watched, p.Widest)
 	fmt.Fprintf(tw, "free\t%s\ton %s\n", may.GB(p.Free), p.Box)

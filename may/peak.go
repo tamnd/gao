@@ -22,6 +22,16 @@ package may
 // pipeline that will surprise somebody on a box with less room. So this reports
 // both: the gate, which is what the milestone asks for, and the drift from the
 // prediction, which is what the milestone will need next time the fleet changes.
+//
+// The drift is read against the workers the run had rather than against
+// [PeakBytes]. Those are two numbers and they are far apart on a large box:
+// PeakBytes prices every hardware thread, and an ingest runs one worker, so a
+// complete FinePDFs run on a thirty two thread machine came back at 0.02x of the
+// plan with a fault saying it had measured a run too small to mean anything.
+// Every sample carries its worker count and this refuses a trace without one,
+// which made using the box's instead a defect nothing but a real trace was going
+// to find. Both are reported now, since what the plan would allow the box is a
+// real question and it is not the question the drift answers.
 
 import (
 	"encoding/json"
@@ -84,10 +94,28 @@ type Peak struct {
 	At     int64  `json:"at"`
 	During string `json:"during"`
 
-	// Predicted is what [PeakBytes] says the box should have held, and Ceiling
-	// is what the milestone allows.
+	// Predicted is [ShardsPerWorker] shards for each worker the trace says was
+	// running, and Ceiling is what the milestone allows.
+	//
+	// It is read off the trace and not off [PeakBytes], because those are two
+	// different numbers and this command spent its first three real traces
+	// printing one under the name of the other. [PeakBytes] prices a box running
+	// every worker it has threads for, which is what the fleet plan hands out.
+	// A run holds what its own workers hold. gao gat hf ingests with one worker,
+	// so a complete FinePDFs run on a 32 thread box measured 0.6 GB against a
+	// PeakBytes of 32.8 and was reported as a smaller run than the ceiling is
+	// about, when what it was is a full run of a single worker stage.
 	Predicted int64 `json:"predicted"`
 	Ceiling   int64 `json:"ceiling"`
+
+	// Workers is the most workers any sample says were running, which is what
+	// Predicted is per.
+	Workers int `json:"workers"`
+
+	// Planned is [PeakBytes] for this box, which is what the fleet plan would
+	// let the box hold if a stage used all of it. It is carried so that a run
+	// using a fraction of the box can be seen to be doing that.
+	Planned int64 `json:"planned"`
 
 	// Free is the box's free disk, which is the number that decides whether the
 	// ceiling was ever the binding constraint.
@@ -146,8 +174,8 @@ func Measure(run string, ran time.Duration, ceiling int64, samples []Sample) Pea
 		p.Refused = append(p.Refused, fmt.Sprintf(
 			"%s is not a box on the fleet, so there is nothing to read this peak against", p.Box))
 	} else {
-		p.Predicted, p.Free = PeakBytes(box), box.FreeDisk
-		if p.Predicted == 0 {
+		p.Planned, p.Free = PeakBytes(box), box.FreeDisk
+		if p.Planned == 0 {
 			// The first real trace this command read came off a box in exactly
 			// this state, and it printed a prediction of 0.0 GB with no drift
 			// line under it and said nothing about why. A box under the reserve
@@ -187,6 +215,9 @@ func Measure(run string, ran time.Duration, ceiling int64, samples []Sample) Pea
 		if s.Bytes > p.Held {
 			p.Held, p.At, p.During = s.Bytes, s.Second, s.Stage
 		}
+		if s.Workers > p.Workers {
+			p.Workers = s.Workers
+		}
 		if i > 0 {
 			if gap := time.Duration(s.Second-prev) * time.Second; gap > p.Widest {
 				p.Widest = gap
@@ -195,6 +226,7 @@ func Measure(run string, ran time.Duration, ceiling int64, samples []Sample) Pea
 		prev = s.Second
 	}
 	p.Watched = time.Duration(ordered[len(ordered)-1].Second) * time.Second
+	p.Predicted = int64(p.Workers) * ShardsPerWorker * ShardBytes
 
 	if p.Widest > Resolution {
 		p.Refused = append(p.Refused, fmt.Sprintf(
@@ -219,8 +251,8 @@ func Measure(run string, ran time.Duration, ceiling int64, samples []Sample) Pea
 				GB(p.Held), GB(p.Predicted), ratio))
 		case ratio < 1/Drift:
 			p.Faults = append(p.Faults, fmt.Sprintf(
-				"the run peaked at %s against a prediction of %s, which is less disk than one worker holds, so this measured a smaller run than the one the ceiling is about",
-				GB(p.Held), GB(p.Predicted)))
+				"the run peaked at %s against the %s the %d workers it ran would hold, which is under a third of it, so either the stage never filled a shard or the trace missed the moments it did",
+				GB(p.Held), GB(p.Predicted), p.Workers))
 		}
 	}
 	return p

@@ -2494,7 +2494,8 @@ $ gao box peak -run glotcc -ran 56m33s disk.jsonl
 run        glotcc        on server3, 56m33s of wall clock
 peak       0.5 GB        at 40m40s, during push
 ceiling    90.0 GB       89.5 GB of it left
-predicted  none          server3 runs no workers in the plan, so there is nothing to read this against
+predicted  1.0 GB        two shards each for the 1 worker this run had going
+drift      0.5x          the measurement over the arithmetic
 watched    341 readings  across 56m37s, widest gap 10s
 free       17.7 GB       on server3
 
@@ -2509,11 +2510,35 @@ That is a real run: three GlotCC files, 6.3 GB fetched, 1.5 million documents ad
 
 The peak is 0.5 GB, which is one part in flight rather than one file, on a run that moved 6.3 GB and wrote 6.1 GB. So offload does what it was supposed to do, and it does it harder than the arithmetic claimed: `PeakBytes` allows a worker two shards and the run held one. That is an upper bound behaving like an upper bound, which is worth writing down once rather than tuning.
 
-Then both faults. The first one is the reason there is no drift line: `server3` has 17.7 GB free, the reserve is 20, so the plan gives it no workers and there is no per worker prediction for 0.7 GB to be three times or a third of. The command used to print `predicted 0.0 GB` here and say nothing else, which reads as a prediction of nothing rather than as no prediction. The second is that the ceiling is 90 GB on a box with 17.7 GB free, so passing the gate proves nothing: this run could have held five times what it did, cleared the ceiling by 85 GB, and filled the machine. Both faults are the same 17.7 GB and they are not the same claim, and a run that reported one and not the other would leave somebody thinking the gate held.
+Then both faults, which are the same 17.7 GB said twice and are not the same claim. `server3` has 17.7 GB free against a 20 GB reserve, so the plan gives it no workers at all and this is a run on a box the arithmetic has nothing to spend on. And the ceiling is 90 GB on a box with 17.7 GB free, so passing the gate proves nothing: this run could have held five times what it did, cleared the ceiling by 85 GB, and filled the machine. A run that reported one of those and not the other would leave somebody thinking the gate held.
 
 None of that stopped the work. The reserve is headroom for the machine and not a working set for the stage, so a box under it can still stream a corpus through and is still one bad day from a filesystem nobody can log into. The fix is disk on `server3`, not a smaller reserve.
 
-The other half of the reading is the drift, which this run had nothing to say about and which is the number that travels. Passing the ceiling and matching the model are different questions. A run that peaks at 60 GB under a 90 GB ceiling has passed the gate and has also said the design's account of its own disk is off by a factor of fifteen, which is fine on the box it ran on and is not fine on the next one, or on the same one next year with a second stage beside it. So the drift is reported next to the gate and a peak more than three times the prediction is a fault in its own right, in either direction: a third of the prediction means a smaller run than the one the ceiling was written about, wearing the gate's name.
+The other half of the reading is the drift, and it is the number that travels. Passing the ceiling and matching the model are different questions. A run that peaks at 60 GB under a 90 GB ceiling has passed the gate and has also said the design's account of its own disk is off by a factor of fifteen, which is fine on the box it ran on and is not fine on the next one, or on the same one next year with a second stage beside it. So the drift is reported next to the gate and a peak more than three times the prediction is a fault in its own right, in either direction.
+
+Here is the run that made the drift line worth having, and it is the same command on the box at the other end of the fleet, after a complete FinePDFs ingest:
+
+```
+$ gao box peak -ran 2h46m25s disk.jsonl
+run          ingest         on gamingpc, 2h46m25s of wall clock
+peak         0.6 GB         at 2h30m50s, during push
+ceiling      90.0 GB        89.4 GB of it left
+predicted    1.0 GB         two shards each for the 1 worker this run had going
+drift        0.6x           the measurement over the arithmetic
+plan allows  32.8 GB        if a stage used every worker gamingpc has threads for
+watched      1000 readings  across 2h46m23s, widest gap 10s
+free         297.7 GB       on gamingpc
+
+gamingpc peaked at 0.6 GB of a 90.0 GB ceiling during push, 0.6 times the 1.0 GB the design predicts, watched every 10s across 2h46m25s
+```
+
+That is three files, 13.0 GB fetched, 1,218,257 documents, 31.1 GB of text into 26.9 GB of Parquet, 54 parts written and pushed and deleted, and a thousand readings with no gap wider than the ten seconds between them. It passes.
+
+It did not pass the first time it was run. The prediction line said 32.8 GB and the drift line said 0.0x, and underneath it was a fault claiming this had measured a smaller run than the one the ceiling is about, which is a strange thing to say about a run that ingested a whole source. The prediction was `PeakBytes`, which prices a box running one worker per hardware thread, and `gamingpc` has thirty two of them. `gao gat hf` ingests with one. So the command was dividing a measurement of one worker by a prediction for thirty two and reporting the answer as a fact about the pipeline.
+
+The worker count was in the trace the whole time. Every sample carries it, and the command refuses a trace whose samples leave it out, on the stated grounds that peak disk is a number per worker rather than a number per box. It then threw the number away and used the box. That is the kind of defect that survives any amount of reading, because the code is self consistent and the sentence in the refusal is correct, and it dies the first time somebody runs the thing on a machine whose thread count is not the number of workers. Both numbers are printed now, the prediction against the workers the run had and the plan's allowance beside it, and a single worker stage on a thirty two thread box reads as what it is rather than as a failure.
+
+The two boxes agree, which is the part worth keeping. A GlotCC run on four threads and a FinePDFs run on thirty two both peaked at about half of what one worker may hold, on sources that compress differently and on machines eleven times apart in memory. Offload is doing what the design said it would.
 
 The refusals are about how the trace was taken rather than about what it says. A peak sampled every five minutes is not a peak, because a worker can take a shard, write it, push it and delete it inside a five minute gap and the watcher will report the quiet either side of it. Thirty seconds is the resolution, and it comes from what allocates rather than from what looked reasonable. A watcher that started late or stopped early missed the start and the flush, which is exactly where a run allocates hardest, so the trace has to cover the run and the run's length is stated separately rather than inferred from the trace, since a trace cannot notice that it stopped. A sample that does not say how many workers were running cannot be read against a prediction that is per worker. And a peak is a fact about one machine, so a trace holding samples from two of them is refused rather than maximized over.
 
