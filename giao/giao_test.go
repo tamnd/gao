@@ -1,6 +1,8 @@
 package giao
 
 import (
+	"slices"
+	"sort"
 	"strings"
 	"testing"
 
@@ -20,8 +22,12 @@ func reading(box string, mbPerSec float64) Reading {
 	}
 }
 
+// fleet is every box that may hold corpus bytes, which is two of the four as
+// the inventory was measured on 2026-08-18. It was three until server3 lost
+// 26.6 GB and crossed the reserve, and that is why the numbers in these tests
+// changed rather than because the split changed.
 func fleet() []Reading {
-	return []Reading{reading("server1", 60), reading("server3", 40), reading("gamingpc", 25)}
+	return []Reading{reading("server1", 60), reading("gamingpc", 25)}
 }
 
 func TestTheSplitHandsOutEveryFileTheManifestPins(t *testing.T) {
@@ -115,52 +121,57 @@ func TestTheHeaviestFileGoesToWhicheverBoxWouldHaveItSoonest(t *testing.T) {
 	}
 }
 
-func TestABoxIsNotOfferedAFileItCannotLand(t *testing.T) {
-	// server3 has 24.3 GB of scratch and holds 8.2 GB of stage working set while
-	// it fetches, and the largest file the manifest pins is 26.6 GB. Make it the
-	// fastest box on the fleet and it still does not draw that file.
-	s := Divide([]Reading{reading("server3", 200), reading("server1", 50), reading("gamingpc", 40)})
+func TestABoxIsNotOfferedAFileItCannotFetch(t *testing.T) {
+	// The rule was that a file lands whole, so a box with less room than the
+	// file did not draw it however fast it was, and on the inventory of
+	// 2026-08-03 that bound: server3 had 24.3 GB of room against a largest
+	// pinned file of 26.6 GB. It was wrong. A fetch holds a part and not a file,
+	// which server3 settled by fetching 4.1 GB and peaking at 0.7 GB, so the
+	// largest file in the manifest costs a box no more room than the smallest.
+	//
+	// What is left to check is that the room test is still applied at all, since
+	// a constant that nothing is compared against is a constant that has been
+	// deleted by accident.
+	s := Divide([]Reading{reading("server1", 200), reading("gamingpc", 40)})
 
-	room := Room("server3")
-	if room <= 0 || room >= 26_000_000_000 {
-		t.Fatalf("server3 has %d bytes of room, which is not the fleet this test is about", room)
-	}
 	for _, g := range s.Group {
 		for _, h := range g.Hands {
-			for _, j := range h.Jobs {
-				if j.Bytes > Room(h.Box) {
-					t.Errorf("%s draws %s at %d bytes into %d bytes of room", h.Box, j.Path, j.Bytes, Room(h.Box))
-				}
+			if len(h.Jobs) > 0 && Room(h.Box) < InFlight {
+				t.Errorf("%s draws %d files into %d bytes of room, under the %d a fetch holds", h.Box, len(h.Jobs), Room(h.Box), InFlight)
 			}
 		}
 	}
 	if len(s.Unplaced) > 0 {
-		t.Errorf("gamingpc has 276 GB of room and %d files were left on the floor anyway", len(s.Unplaced))
+		t.Errorf("gamingpc has 244.9 GB of room and %d files were left on the floor anyway", len(s.Unplaced))
 	}
-	// It is still the fastest box, so it still draws the most bytes.
-	if s.BytesFor("server3") <= s.BytesFor("server1") {
-		t.Errorf("server3 draws %d bytes at 200 MB/s and server1 draws %d at 50 MB/s", s.BytesFor("server3"), s.BytesFor("server1"))
+	// The fastest box draws the most bytes, room permitting.
+	if s.BytesFor("server1") <= s.BytesFor("gamingpc") {
+		t.Errorf("server1 draws %d bytes at 200 MB/s and gamingpc draws %d at 40 MB/s", s.BytesFor("server1"), s.BytesFor("gamingpc"))
 	}
 }
 
+// Two boxes are under the reserve on the inventory of 2026-08-18, and a reading
+// was taken on both. server2 has never had the disk. server3 does the work by
+// hand and the arithmetic still refuses to schedule onto it, which is the case
+// worth having a test for, because that reading came off a real ingest.
 func TestABoxThatMayNotHoldCorpusBytesDrawsNothing(t *testing.T) {
-	s := Divide(append(fleet(), reading("server2", 50)))
+	s := Divide(append(fleet(), reading("server2", 50), reading("server3", 40)))
 
-	if len(s.Idle) != 1 || s.Idle[0] != "server2" {
-		t.Fatalf("the split reports %v idle, server2 has eight gigabytes of scratch and may not hold corpus bytes", s.Idle)
-	}
-	if n := s.BytesFor("server2"); n != 0 {
-		t.Errorf("server2 draws %d bytes", n)
-	}
-	for _, box := range s.Boxes() {
-		if box == "server2" {
-			t.Error("server2 is listed among the boxes drawing work")
+	for _, box := range []string{"server2", "server3"} {
+		if !slices.Contains(s.Idle, box) {
+			t.Fatalf("the split reports %v idle, and %s may not hold corpus bytes", s.Idle, box)
 		}
-	}
-	// Reported, not silently dropped. Somebody measured that box and is owed an
-	// answer about why it is not in the schedule.
-	if !strings.Contains(strings.Join(s.Idle, " "), "server2") {
-		t.Error("the reading for server2 disappears without a word")
+		if n := s.BytesFor(box); n != 0 {
+			t.Errorf("%s draws %d bytes", box, n)
+		}
+		if slices.Contains(s.Boxes(), box) {
+			t.Errorf("%s is listed among the boxes drawing work", box)
+		}
+		// Reported, not silently dropped. Somebody measured that box and is owed
+		// an answer about why it is not in the schedule.
+		if !strings.Contains(strings.Join(s.Idle, " "), box) {
+			t.Errorf("the reading for %s disappears without a word", box)
+		}
 	}
 }
 
@@ -256,9 +267,9 @@ func TestAGroupWithTooFewFilesToDivideSaysSoWithoutCallingItAFault(t *testing.T)
 	if len(waiting) == 0 {
 		t.Fatal("finepdfs pins three files across three boxes of different speeds and nothing says the group ends late")
 	}
-	// finepdfs is three files, so on three boxes of different speeds it ends when
-	// the slowest of them ends however the three are dealt out.
-	if !strings.Contains(strings.Join(waiting, "\n"), "order 1 divides 3 files across 3 boxes") {
+	// finepdfs is three files, so on two boxes of different speeds one of them
+	// takes two and the group ends when that box ends however they are dealt out.
+	if !strings.Contains(strings.Join(waiting, "\n"), "order 1 divides 3 files across 2 boxes") {
 		t.Errorf("the groups reported as ending late are %q, and finepdfs is not among them", waiting)
 	}
 	for _, w := range waiting {
@@ -273,16 +284,23 @@ func TestAGroupWithTooFewFilesToDivideSaysSoWithoutCallingItAFault(t *testing.T)
 }
 
 func TestABoxThatDrawsNothingIsAFaultRatherThanASchedule(t *testing.T) {
-	// One box six hundred times slower than the others is never the box that
-	// would finish a file soonest, so it draws nothing at all and the reading
-	// somebody took on it bought nothing.
-	s := Divide([]Reading{reading("server1", 600), reading("gamingpc", 600), reading("server3", 1)})
+	// A box that is never the one to finish a file soonest draws nothing at all,
+	// and the reading somebody took on it bought nothing. This is a different
+	// thing from a box that may not hold corpus bytes, which is idle rather than
+	// at fault. The slow reading is written out rather than built by the helper
+	// because it has to cover a gigabyte to be a reading at all, and the only way
+	// to be both valid and hopeless is to have taken a very long time over it.
+	slow := Reading{
+		Box: "server1", Bytes: MinSample, Seconds: 360000, On: "2026-08-18",
+		How: "a hundred hours of the hplt3 ingest, off the run ledger",
+	}
+	s := Divide([]Reading{reading("gamingpc", 600), slow})
 
 	faults := s.Faults()
 	if len(faults) != 1 {
-		t.Fatalf("server3 draws %d bytes and the faults are %q", s.BytesFor("server3"), faults)
+		t.Fatalf("server1 draws %d bytes and the faults are %q", s.BytesFor("server1"), faults)
 	}
-	if !strings.HasPrefix(faults[0], "server3 draws no files") {
+	if !strings.HasPrefix(faults[0], "server1 draws no files") {
 		t.Errorf("the fault is %q", faults[0])
 	}
 	if s.Holds() {
@@ -296,7 +314,7 @@ func TestABoxThatDrawsNothingIsAFaultRatherThanASchedule(t *testing.T) {
 func TestTheVerdictQuotesTheScheduleAgainstTheOneBoxItReplaces(t *testing.T) {
 	v := Divide(fleet()).Verdict()
 
-	for _, want := range []string{"122 files", "3 boxes", "fastest box alone", "no arrangement can beat"} {
+	for _, want := range []string{"122 files", "2 boxes", "fastest box alone", "no arrangement can beat"} {
 		if !strings.Contains(v, want) {
 			t.Errorf("the verdict does not say %q: %q", want, v)
 		}
@@ -334,5 +352,40 @@ func TestARateIsTheTwoNumbersRatherThanTheirQuotient(t *testing.T) {
 	}
 	if got := (Reading{Bytes: 6e9, Seconds: 0}).Rate(); got != 0 {
 		t.Errorf("a reading over no time reads as %.0f rather than nothing", got)
+	}
+}
+
+// The package doc leads on the spread between the largest pinned file and the
+// median, because that spread is the reason the split is not forty files each.
+// It said a fiftieth for a while and the manifest said a thirteenth, which is
+// the sort of number that goes stale the first time a source is pinned or
+// dropped and that nobody rereads.
+func TestTheSpreadTheDocQuotesIsTheSpreadTheManifestHas(t *testing.T) {
+	jobs := Jobs()
+	if len(jobs) == 0 {
+		t.Fatal("the manifest pins nothing")
+	}
+	sizes := make([]int64, 0, len(jobs))
+	for _, j := range jobs {
+		sizes = append(sizes, j.Bytes)
+	}
+	sort.Slice(sizes, func(i, j int) bool { return sizes[i] < sizes[j] })
+
+	largest := sizes[len(sizes)-1]
+	median := sizes[len(sizes)/2]
+	if len(sizes)%2 == 0 {
+		median = (sizes[len(sizes)/2-1] + sizes[len(sizes)/2]) / 2
+	}
+	if median <= 0 {
+		t.Fatal("the median pinned file is zero bytes")
+	}
+	if n := largest / median; n < 11 || n > 15 {
+		t.Errorf("the largest pinned file is %d times the median, the package doc says a thirteenth", n)
+	}
+	if g := float64(largest) / 1e9; g < 26.0 || g > 27.2 {
+		t.Errorf("the largest pinned file is %.1f GB, the package doc says 26.6", g)
+	}
+	if g := float64(median) / 1e9; g < 1.9 || g > 2.3 {
+		t.Errorf("the median pinned file is %.1f GB, the package doc says 2.1", g)
 	}
 }

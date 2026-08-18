@@ -1,13 +1,16 @@
 package main
 
 import (
+	"encoding/json"
 	"flag"
 	"fmt"
 	"io"
 	"strings"
 	"text/tabwriter"
 
+	"github.com/tamnd/gao/gat"
 	"github.com/tamnd/gao/giao"
+	"github.com/tamnd/gao/may"
 )
 
 func runGiao(stdout, stderr io.Writer, args []string) int {
@@ -20,6 +23,8 @@ func runGiao(stdout, stderr io.Writer, args []string) int {
 		return runGiaoPlan(stdout, stderr, args[1:], false)
 	case "files":
 		return runGiaoPlan(stdout, stderr, args[1:], true)
+	case "read":
+		return runGiaoRead(stdout, stderr, args[1:])
 	case "help", "-h", "--help":
 		giaoUsage(stdout)
 		return 0
@@ -33,6 +38,7 @@ func runGiao(stdout, stderr io.Writer, args []string) int {
 func giaoUsage(w io.Writer) {
 	fmt.Fprint(w, `usage: gao giao plan  [-json] readings.jsonl
        gao giao files [-json] readings.jsonl
+       gao giao read  -dir DIR
 
 To hand over: which box fetches which file of the ingest, and what the whole
 thing costs once it is split.
@@ -48,11 +54,69 @@ be possible if a file could be cut in half and the order did not bind. files
 prints the assignment itself, which is what somebody reads before starting a
 box.
 
+read derives this box's reading from the ledger of an ingest that ran here and
+prints it as the one line to append to the readings file. That is where a
+reading is supposed to come from. Four numbers are easy to type from memory and
+a typed one looks exactly like a measured one on the page.
+
 Exits 1 when the readings are not a schedule, and 2 when they are one that
 should not be run as written.
 
 run 'gao giao <command> -h' for the flags of one of them.
 `)
+}
+
+// runGiaoRead prints the reading a finished ingest earned.
+func runGiaoRead(stdout, stderr io.Writer, args []string) int {
+	fs := flag.NewFlagSet("giao read", flag.ContinueOnError)
+	fs.SetOutput(stderr)
+	dir := fs.String("dir", "", "the ingest directory holding the ledger")
+	fs.Usage = func() {
+		fmt.Fprint(stderr, `usage: gao giao read -dir DIR
+
+Derives this box's reading from the ledger an ingest left in DIR and prints it
+as one JSON line, which is what 'gao giao plan' reads.
+
+The window is between the first finished file and the last, so the first file's
+bytes are not counted: the ledger records when a file finished and not when it
+started, and the only honest clock in it starts at a finish. A run of one file
+carries no reading at all, and neither does one that moved less than a gigabyte
+after its first file, since a rate off a hundred megabytes is a measurement of
+the minute a link spends deciding how much it likes you.
+
+Exits 1 when the ledger does not carry a reading, with the reason.
+
+flags:
+`)
+		fs.PrintDefaults()
+	}
+	if err := fs.Parse(args); err != nil {
+		return 2
+	}
+	if *dir == "" || fs.NArg() != 0 {
+		fs.Usage()
+		return 2
+	}
+
+	ledger, err := gat.OpenLedger(*dir)
+	if err != nil {
+		fmt.Fprintf(stderr, "gao giao read: %v\n", err)
+		return 1
+	}
+	defer func() { _ = ledger.Close() }()
+
+	reading, err := giao.Measure(ledger.Entries())
+	if err != nil {
+		fmt.Fprintf(stderr, "gao giao read: %v\n", err)
+		return 1
+	}
+	// One line and not indented, because the whole point is that it is appended
+	// to a readings file, and the readings file is JSON lines.
+	if err := json.NewEncoder(stdout).Encode(reading); err != nil {
+		fmt.Fprintf(stderr, "gao giao read: %v\n", err)
+		return 1
+	}
+	return 0
 }
 
 type giaoHandReport struct {
@@ -184,7 +248,7 @@ func printGiao(w io.Writer, r giaoReport) {
 
 	fmt.Fprintln(w)
 	tw = tabwriter.NewWriter(w, 0, 0, 2, ' ', 0)
-	fmt.Fprint(tw, "box\tgets through\tfetches\tof the ingest\troom for a file\tbusy for\n")
+	fmt.Fprint(tw, "box\tgets through\tfetches\tof the ingest\tscratch left\tbusy for\n")
 	for _, box := range r.split.Boxes() {
 		bytes := r.split.BytesFor(box)
 		fmt.Fprintf(tw, "%s\t%s\t%s\t%s\t%s\t%s\n",
@@ -194,7 +258,13 @@ func printGiao(w io.Writer, r giaoReport) {
 	_ = tw.Flush()
 
 	for _, box := range r.Unused {
-		fmt.Fprintf(w, "\n%s has a reading and may not hold corpus bytes, so it draws nothing.\n", box)
+		b, ok := may.Lookup(box)
+		if !ok {
+			continue
+		}
+		fmt.Fprintf(w, "\n%s has a reading and %s free, which is %s of scratch once the %s reserve is taken off, against the %s a stage needs.\n",
+			box, giaoBytes(b.FreeDisk), giaoBytes(may.Scratch(b)), giaoBytes(may.ReserveBytes), giaoBytes(may.MinScratchBytes))
+		fmt.Fprintf(w, "So it draws nothing, though a fetch holds %s while it runs and that is the smaller question.\n", giaoBytes(giao.InFlight))
 	}
 
 	fmt.Fprintf(w, "\nThe whole ingest takes %s, against %s if a file could be cut in half and every source fetched at once.\n",

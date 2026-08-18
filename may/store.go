@@ -8,9 +8,9 @@ import (
 // The store of record.
 //
 // The corpus does not fit on the fleet. That is measured, not feared: 300
-// billion natural tokens is about 1188 GB of extracted text, 396 GB compressed,
-// and the four boxes have 500 GB of free disk between them. Even the compressed
-// corpus on the largest single pool, 330 GB on gamingpc, leaves no room to
+// billion natural tokens is about 1279 GB of extracted text, 618 GB compressed,
+// and the four boxes have 524 GB of free disk between them. Even the compressed
+// corpus on the largest single pool, 298 GB on gamingpc, leaves no room to
 // process it, because a stage reads a shard and writes a shard.
 //
 // So the bytes live off-box and the fleet holds a working set. Three parts of
@@ -42,7 +42,7 @@ import (
 // What lives on the fleet is scratch: the shards a stage is working on right
 // now, plus the WARCs server1 has fetched and not yet uploaded. A worker writes
 // a shard, pushes it, and deletes it, so peak disk is two shards per worker no
-// matter how large the corpus gets, and that is what lets a box with 98 GB free
+// matter how large the corpus gets, and that is what lets a box with 189 GB free
 // take part in processing a terabyte. Nothing on the fleet is authoritative and
 // nothing on the fleet is backed up, because everything on it can be refetched
 // from the store or, in the crawl's case, is uploaded before it is deleted.
@@ -84,10 +84,12 @@ func Scratch(b Box) int64 {
 
 // HoldsCorpus reports whether a box has enough scratch to run a pipeline stage.
 //
-// It is false for server2 and that is the point of having the function. Eight
-// gigabytes of free disk is a rule rather than an accident, and a rule that
-// lives in a sentence somewhere gets broken the first time somebody needs a
-// machine in a hurry.
+// It is false for two of the four boxes as measured on 2026-08-18, and that is
+// the point of having the function. server2 has never had the disk. server3
+// lost 26.6 GB between the first inventory and the second and crossed the line
+// without anybody deciding to take it out of the pipeline. A rule that lives in
+// a sentence somewhere gets broken the first time somebody needs a machine in a
+// hurry, and a rule nobody remeasures gets broken without anybody noticing.
 func HoldsCorpus(b Box) bool {
 	return Scratch(b) >= MinScratchBytes
 }
@@ -101,9 +103,9 @@ func WorkingShards(b Box) int {
 //
 // It is the smaller of its hardware threads and half its working shards, since
 // a worker reads a shard and writes a shard and needs room for both. On this
-// fleet the thread count is the binding constraint everywhere except server2,
-// where the answer is zero, which is the correct answer rather than a
-// degenerate one.
+// fleet the thread count is the binding constraint on the two boxes that are
+// over the reserve, and on the two that are under it the answer is zero, which
+// is the correct answer rather than a degenerate one.
 func Workers(b Box) int {
 	if !HoldsCorpus(b) {
 		return 0

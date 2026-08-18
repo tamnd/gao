@@ -152,13 +152,23 @@ func TestAnUnsignedSnapshotIsNotDescribedAsARelease(t *testing.T) {
 func TestACardWithNoSnapshotSaysSoRatherThanPrintingZeros(t *testing.T) {
 	card := Card(published(t), nil)
 
-	if !strings.Contains(card, "Nothing has been released to it yet") {
+	if !strings.Contains(card, "No snapshot has been sealed here yet") {
 		t.Error("a repo with no snapshot does not say so")
 	}
 	// A count of 0 documents reads as a snapshot that found nothing, which is a
 	// different claim from a repo that has not had one yet.
 	if strings.Contains(card, "| documents |") {
 		t.Error("a repo with no snapshot prints a count anyway")
+	}
+	// And it is not an empty repo either. An ingest pushes parts as it writes
+	// them, so a reader who lands on this card is usually looking at a tree
+	// with data in it, and a card that says nothing has been released reads as
+	// a repo with nothing in it.
+	if !strings.Contains(card, "does not mean the repo is empty") {
+		t.Error("a card with no snapshot reads as a repo with no files")
+	}
+	if !strings.Contains(card, "Do not cite a count off them") {
+		t.Error("the card does not say what the staged parts may not be used for")
 	}
 }
 
@@ -175,14 +185,11 @@ func TestACardPointsAtTheSnapshotItDescribes(t *testing.T) {
 	}
 }
 
-func TestAPublicRepoOnlyClaimsToShipTextThatShips(t *testing.T) {
+func TestACardOnlyClaimsToShipTextThatShips(t *testing.T) {
 	// This is the check that matters legally, and it runs over the table rather
 	// than over one example, so a repo added later cannot quietly claim more
 	// than its classes allow.
 	for _, d := range Datasets() {
-		if !d.Public() {
-			continue
-		}
 		card := Card(d, released(t))
 		for _, c := range d.Classes {
 			row := "| " + c.String() + " |"
@@ -202,16 +209,17 @@ func TestAPublicRepoOnlyClaimsToShipTextThatShips(t *testing.T) {
 	}
 }
 
-func TestAWorkingRepoDoesNotAdvertiseWhatItShips(t *testing.T) {
-	// Nothing ships from a working repo, so a table headed "what ships" would be
-	// answering a question nobody should be asking of it.
+func TestAWorkingRepoSaysItIsNotARelease(t *testing.T) {
+	// It ships the same way a release does, so it carries the same table. What
+	// it has to say on top of that is that nothing here is covered by a signed
+	// manifest, which is the only thing a reader loses by reading it.
 	card := Card(Staging(), nil)
 
-	if strings.Contains(card, "## What ships") {
-		t.Error("a private working repo has a shipping table")
+	if !strings.Contains(card, "## What ships") {
+		t.Error("a working repo is published and does not say what it ships")
 	}
-	if !strings.Contains(card, "Nothing here is published") {
-		t.Error("a private working repo does not say that nothing in it is published")
+	if !strings.Contains(card, "covered by no signed manifest") && !strings.Contains(card, "not covered by a signed manifest") {
+		t.Error("a working repo does not say that it is not a release")
 	}
 }
 

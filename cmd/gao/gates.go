@@ -122,6 +122,14 @@ func printCoverage(stdout, stderr io.Writer, report dem.GateReport) int {
 
 // printGates is the report, split out from the run so that what a failing gate
 // looks like on a terminal is testable without a 4.7 MB protobuf on the box.
+//
+// A tokenizer is ineligible in two ways and they exit differently, the way they
+// do everywhere else in gao. A gate that ran and failed is a measurement of the
+// tokenizer and exits 2. A gate that found nothing in the sample to run on is a
+// fact about the sample, the tokenizer has not been judged, and that exits 1,
+// because the answer to it is more text rather than another tokenizer. Both
+// printed 1 until real documents were put through the suite and the failures
+// came back with an exit code that said go and find a bigger corpus.
 func printGates(stdout, stderr io.Writer, report dem.GateReport) int {
 	printReport(stdout, report)
 	if report.Eligible() {
@@ -131,6 +139,11 @@ func printGates(stdout, stderr io.Writer, report dem.GateReport) int {
 
 	fmt.Fprintf(stderr, "\ngao dem gates: %s is not eligible\n", report.Tokenizer)
 	printFailures(stderr, report, nil)
+	for _, g := range report.Gates {
+		if !g.Audit && g.Ran && g.Failed > 0 {
+			return 2
+		}
+	}
 	return 1
 }
 

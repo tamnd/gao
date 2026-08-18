@@ -345,8 +345,8 @@ func (r Register) Verdict() string {
 	case r.Resolved() == 0:
 		return fmt.Sprintf("%s None of them has a result, which is the only state a register can be in before the work runs, and it is published in that state so that a claim edited later changes a value somebody already has.", head)
 	case !r.Settled():
-		return fmt.Sprintf("%s %d have results, %d of them right and %d wrong, which is under the half the register needs before its rate says anything except which measurements were cheap to make.",
-			head, r.Resolved(), len(r.Hits()), len(r.Misses()))
+		return fmt.Sprintf("%s %s resolved so far, %d right and %d wrong, which is under the half the register needs before its rate says anything except which measurements were cheap to make.",
+			head, count(r.Resolved(), "prediction"), len(r.Hits()), len(r.Misses()))
 	case r.Rate() < MinRate:
 		return fmt.Sprintf("%s %d of the %d resolved held, which is %s, and a specification that comes back wrong more often than right was written from hope rather than from evidence.",
 			head, len(r.Hits()), r.Resolved(), percent(r.Rate()))

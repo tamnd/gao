@@ -13,6 +13,7 @@ import (
 
 	"github.com/parquet-go/parquet-go"
 	"github.com/tamnd/gao/doc"
+	"github.com/tamnd/gao/may"
 	"github.com/zeebo/blake3"
 )
 
@@ -283,16 +284,34 @@ type Stamp struct {
 	// Box is the machine label, so a number that only reproduces on one box can
 	// be traced to it.
 	Box string
+
+	// Tokenizer is name@sha256 of whatever filled the n_tokens column, and empty
+	// when nothing did.
+	//
+	// It is here because of what the first published parts looked like without
+	// it. An ingest run without -tokenizer writes n_tokens as zero for every
+	// document, which is what the column type allows and is not what a reader
+	// sees: a query over 500000 real documents came back with 500000 documents
+	// and 0 tokens, and nothing in the file said the difference between nobody
+	// counting and a count of none. 'gao dem counts' had the answer all along,
+	// because counts.json carries the tokenizer beside the numbers, but a part
+	// on the Hub travels without counts.json and has to say it itself.
+	Tokenizer string
 }
 
 // Metadata returns the key value pairs a part carries.
 func (s Stamp) Metadata() map[string]string {
-	return map[string]string{
+	m := map[string]string{
 		"gao.snapshot":       s.Snapshot,
 		"gao.stage":          s.Stage,
 		"gao.box":            s.Box,
 		"gao.schema_version": fmt.Sprintf("%d", doc.SchemaVersion),
 	}
+	// Written even when it is empty, because an absent key reads as an older
+	// writer that did not record one, and "no tokenizer ran" is a fact about
+	// this run rather than a gap in it.
+	m["gao.tokenizer"] = s.Tokenizer
+	return m
 }
 
 // ErrNotAdmitted is returned when a document's license class is not one the
@@ -308,14 +327,34 @@ var ErrNotAdmitted = errors.New("kho: that dataset does not admit that license c
 // than a scatter of small reads.
 const DefaultRowGroup = 50_000
 
+// RowGroupText is how much text a row group holds before it is flushed whatever
+// the row count says.
+//
+// A row count alone is a memory bound only if the documents are the size the
+// row count was picked for. FinePDFs documents average 29.5 KB against the few
+// kilobytes above, so the first published FinePDFs part held all 35986 of its
+// rows in one row group and buffered 1.06 GB to do it. It was written on
+// gamingpc, which has 68.5 GB and did not notice. server1 has 6.2 GB and would
+// have.
+//
+// Half a shard, so a part still gets at least two row groups and a column read
+// off the store is still sequential.
+//
+// A var rather than a const so a test can lower it. The alternative is a test
+// that writes most of a gigabyte to a temp directory to watch a row group
+// close, which is not a unit test.
+var RowGroupText int64 = 256_000_000
+
 // ParquetWriter writes documents to one Parquet file.
 type ParquetWriter struct {
-	dataset Dataset
-	w       *parquet.GenericWriter[Row]
-	buf     []Row
-	n       int
-	text    int64
-	closed  bool
+	dataset   Dataset
+	w         *parquet.GenericWriter[Row]
+	buf       []Row
+	n         int
+	text      int64
+	group     int64
+	groupRows int
+	closed    bool
 }
 
 // NewParquetWriter returns a writer that writes rows for dataset d to w.
@@ -351,10 +390,11 @@ func NewParquetWriter(w io.Writer, d Dataset, s Stamp) *ParquetWriter {
 // or from a site that has since changed its mind and been recrawled, and this is
 // the last point at which anybody can still act on what it said.
 //
-// A private working repo takes it anyway. Processing material is not publishing
-// it, which is the same distinction the restricted license class rests on, and
-// it is what lets a reserved document be counted and reported on rather than
-// vanishing without a number.
+// There is no repo that takes it anyway. A working repo used to, on the grounds
+// that processing material is not publishing it, and that stopped being true the
+// day every repo became public. What a reserved document gets instead is a row
+// in the reject store, which carries no text, so it is still counted and
+// reported on rather than vanishing without a number.
 func (p *ParquetWriter) Append(d *doc.Document) error {
 	if p.closed {
 		return errors.New("kho: append to a closed parquet file")
@@ -362,7 +402,7 @@ func (p *ParquetWriter) Append(d *doc.Document) error {
 	if !p.dataset.Admits(d.LicenseClass) {
 		return fmt.Errorf("%w: %s does not carry %s", ErrNotAdmitted, p.dataset.Name, d.LicenseClass)
 	}
-	if d.Consent.Reserved() && p.dataset.Public() && p.dataset.Text {
+	if d.Consent.Reserved() && p.dataset.Text {
 		return fmt.Errorf("%w: %s publishes text and this page said %s", ErrNotAdmitted, p.dataset.Name, d.Consent)
 	}
 	p.buf = append(p.buf[:0], RowOf(d))
@@ -371,6 +411,20 @@ func (p *ParquetWriter) Append(d *doc.Document) error {
 	}
 	p.n++
 	p.text += int64(len(d.Text))
+	p.group += int64(len(d.Text))
+	p.groupRows++
+	// Both bounds are closed here rather than the row count being left to
+	// parquet.MaxRowsPerRowGroup, which would do it perfectly well, because a
+	// group closed by the library is a group this writer does not know closed.
+	// [ParquetWriter.OpenText] would then keep counting text that is already on
+	// the disk, and the estimate built on it read six times the file's real
+	// size. The option is still set, as the backstop for a row this never sees.
+	if p.group >= RowGroupText || p.groupRows >= DefaultRowGroup {
+		if err := p.w.Flush(); err != nil {
+			return fmt.Errorf("kho: closing the row group at row %d: %w", p.n, err)
+		}
+		p.group, p.groupRows = 0, 0
+	}
 	return nil
 }
 
@@ -384,6 +438,10 @@ func (p *ParquetWriter) Documents() int { return p.n }
 // has become is not knowable until it closes, and a caller that has to decide
 // whether to roll over to the next one has to decide on something it can see.
 func (p *ParquetWriter) Text() int64 { return p.text }
+
+// OpenText returns the text in the row group being filled, which is the part of
+// [ParquetWriter.Text] that has not reached the writer underneath yet.
+func (p *ParquetWriter) OpenText() int64 { return p.group }
 
 // Close flushes the last row group and writes the footer. It does not close the
 // underlying writer.
@@ -478,6 +536,38 @@ func (p *Part) Documents() int { return p.w.Documents() }
 // Text returns the total length of the text appended so far, which is what a
 // caller rolls a part over on.
 func (p *Part) Text() int64 { return p.w.Text() }
+
+// Bytes returns how much of the file has reached the disk, which is every row
+// group closed so far and not the row group being filled.
+//
+// It is a floor on the finished size and it is the only measurement available
+// before the footer is written. What a caller rolling a part over wants is
+// [Part.Size].
+func (p *Part) Bytes() int64 { return p.size.n }
+
+// Size estimates how large the file will be if it is closed now.
+//
+// [Part.Bytes] is a floor and rolling on the floor alone is deciding up to two
+// row groups late. FinePDFs parts came out at 0.7 GB against a 512 MB target
+// that way, because a row group of that source is a quarter of a gigabyte on
+// the disk and the part crosses the target inside one and then carries another.
+//
+// So the open row group is estimated at the ratio this part has measured on the
+// groups it has already closed. That is the only compression figure available
+// that is about the source being written rather than about the one
+// [may.Compression] was measured on, and the two are far apart: 2.07 on GlotCC
+// against 1.07 on FinePDFs. Before the first group closes there is nothing to
+// measure and it falls back to [may.Compression], which is the same guess the
+// text limit is built from, so a part that never closes a row group behaves
+// exactly as it did before this existed.
+func (p *Part) Size() int64 {
+	on, open := p.size.n, p.w.OpenText()
+	ratio := may.Compression
+	if closed := p.w.Text() - open; on > 0 && closed > 0 {
+		ratio = float64(closed) / float64(on)
+	}
+	return on + int64(float64(open)/ratio)
+}
 
 // Close finishes the file and moves it into place.
 func (p *Part) Close() (PartFile, error) {

@@ -403,7 +403,7 @@ func runKhoDatasets(stdout, stderr io.Writer, args []string) int {
 
 	fmt.Fprint(stdout, "\npublished\n")
 	printDatasets(stdout, kho.Published, *snapshot)
-	fmt.Fprint(stdout, "\nworking, private, and deleted when the snapshot that consumed it seals\n")
+	fmt.Fprint(stdout, "\nworking, public like the rest, rewritten when a source is pinned again\n")
 	printDatasets(stdout, kho.Working, *snapshot)
 
 	fmt.Fprintf(stdout, "\none parquet file per shard, at %s\n", kho.DataPath(*snapshot, 1, 774))
@@ -700,7 +700,11 @@ func printFileColumns(stdout, stderr io.Writer, path string) int {
 
 	fmt.Fprintf(stdout, "%s\n", path)
 	for _, k := range slices.Sorted(maps.Keys(meta)) {
-		fmt.Fprintf(stdout, "  %-18s %s\n", k, meta[k])
+		v := meta[k]
+		if v == "" {
+			v = "none"
+		}
+		fmt.Fprintf(stdout, "  %-18s %s\n", k, v)
 	}
 	fmt.Fprintf(stdout, "\n%d columns\n\n", len(columns))
 	for _, c := range columns {
@@ -708,6 +712,12 @@ func printFileColumns(stdout, stderr io.Writer, path string) int {
 	}
 	if !slices.Contains(columns, kho.TextColumn) {
 		fmt.Fprintf(stdout, "\nthis file withholds %s, so the column is absent and not empty\n", kho.TextColumn)
+	}
+	// Nothing is nullable here, so a column nobody filled is a column of zeros
+	// and a reader summing it gets a number rather than a refusal. This is the
+	// only place the difference is recoverable from the file alone.
+	if slices.Contains(columns, kho.TokensColumn) && meta["gao.tokenizer"] == "" {
+		fmt.Fprintf(stdout, "\nno tokenizer ran, so %s is zero for every document here rather than counted\n", kho.TokensColumn)
 	}
 	return 0
 }
@@ -728,9 +738,7 @@ func printDatasets(w io.Writer, tier kho.Tier, snapshot string) {
 			fmt.Fprintf(w, " %s", c)
 		}
 		fmt.Fprintln(w)
-		if d.Public() {
-			fmt.Fprintf(w, "    %s\n", d.Query(snapshot))
-		}
+		fmt.Fprintf(w, "    %s\n", d.Query(snapshot))
 	}
 }
 

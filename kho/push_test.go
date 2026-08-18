@@ -49,7 +49,7 @@ type hub struct {
 	srv *httptest.Server
 }
 
-const testRepo = Org + "/vietnamese-text-staging"
+const testRepo = Org + "/vietnamese-source-text"
 
 func newHub(t *testing.T) *hub {
 	t.Helper()
@@ -537,7 +537,7 @@ func TestALargeFileTheRepoWillNotTrackWithLFSIsRefused(t *testing.T) {
 func TestASmallFileGoesUpInTheCommitItself(t *testing.T) {
 	h := newHub(t)
 	h.mode = "regular"
-	local, path, oid := partOnDisk(t, "# vietnamese-text-staging\n")
+	local, path, oid := partOnDisk(t, "# vietnamese-source-text\n")
 
 	got, err := h.pusher().Push(t.Context(), local, path)
 	if err != nil {
@@ -562,7 +562,7 @@ func TestASmallFileGoesUpInTheCommitItself(t *testing.T) {
 func TestASmallFileAlreadyThereIsNotCommittedAgain(t *testing.T) {
 	h := newHub(t)
 	h.mode = "regular"
-	local, path, _ := partOnDisk(t, "# vietnamese-text-staging\n")
+	local, path, _ := partOnDisk(t, "# vietnamese-source-text\n")
 	p := h.pusher()
 
 	if _, err := p.Push(t.Context(), local, path); err != nil {
@@ -611,9 +611,9 @@ func TestAFailedUploadSaysWhatStorageSaid(t *testing.T) {
 	}
 }
 
-// The working repos hold unfiltered text, so one created public would be a
-// publication rather than a mistake with a fix.
-func TestAWorkingRepoIsCreatedPrivate(t *testing.T) {
+// Every repo gao creates is public, including the working one, because what may
+// not be published is not pushed at all.
+func TestAWorkingRepoIsCreatedPublic(t *testing.T) {
 	h := newHub(t)
 	if err := h.pusher().EnsureRepo(t.Context(), Staging()); err != nil {
 		t.Fatalf("EnsureRepo: %v", err)
@@ -624,8 +624,8 @@ func TestAWorkingRepoIsCreatedPrivate(t *testing.T) {
 		t.Fatalf("%d repos created", len(h.created))
 	}
 	got := h.created[0]
-	if got["private"] != true {
-		t.Error("the staging repo was created public")
+	if got["private"] != false {
+		t.Error("the working repo was created private")
 	}
 	if got["name"] != StageRepo || got["organization"] != Org || got["type"] != "dataset" {
 		t.Errorf("it created %v", got)

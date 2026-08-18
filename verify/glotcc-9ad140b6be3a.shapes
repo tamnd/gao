@@ -1,0 +1,12 @@
+{"part":"data/snapshot=glotcc-9ad140b6be3a/file=00000/part-00000.parquet","documents":126853,"bytes":0,"chars":815296592,"syllables":171517215,"tokens":0}
+{"part":"data/snapshot=glotcc-9ad140b6be3a/file=00000/part-00001.parquet","documents":125846,"bytes":0,"chars":815477475,"syllables":171678489,"tokens":0}
+{"part":"data/snapshot=glotcc-9ad140b6be3a/file=00000/part-00002.parquet","documents":126717,"bytes":0,"chars":815279206,"syllables":171746004,"tokens":0}
+{"part":"data/snapshot=glotcc-9ad140b6be3a/file=00000/part-00003.parquet","documents":120584,"bytes":0,"chars":782815770,"syllables":164805512,"tokens":0}
+{"part":"data/snapshot=glotcc-9ad140b6be3a/file=00001/part-00000.parquet","documents":127476,"bytes":0,"chars":815355997,"syllables":171613007,"tokens":0}
+{"part":"data/snapshot=glotcc-9ad140b6be3a/file=00001/part-00001.parquet","documents":125554,"bytes":0,"chars":815604076,"syllables":171722330,"tokens":0}
+{"part":"data/snapshot=glotcc-9ad140b6be3a/file=00001/part-00002.parquet","documents":125338,"bytes":0,"chars":815408972,"syllables":171655256,"tokens":0}
+{"part":"data/snapshot=glotcc-9ad140b6be3a/file=00001/part-00003.parquet","documents":121632,"bytes":0,"chars":784812289,"syllables":165247473,"tokens":0}
+{"part":"data/snapshot=glotcc-9ad140b6be3a/file=00002/part-00000.parquet","documents":124776,"bytes":0,"chars":815243550,"syllables":171627058,"tokens":0}
+{"part":"data/snapshot=glotcc-9ad140b6be3a/file=00002/part-00001.parquet","documents":124954,"bytes":0,"chars":815372593,"syllables":171573262,"tokens":0}
+{"part":"data/snapshot=glotcc-9ad140b6be3a/file=00002/part-00002.parquet","documents":126539,"bytes":0,"chars":815246147,"syllables":171758462,"tokens":0}
+{"part":"data/snapshot=glotcc-9ad140b6be3a/file=00002/part-00003.parquet","documents":123731,"bytes":0,"chars":799008064,"syllables":168234228,"tokens":0}

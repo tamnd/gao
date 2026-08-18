@@ -340,3 +340,33 @@ func TestTwoResultsForOnePredictionAreRefusedRatherThanOrdered(t *testing.T) {
 		t.Errorf("a result in an invented state went through: %v", why)
 	}
 }
+
+// The one result this project has actually measured, checked in as the file it
+// arrived as. It is here rather than written inline because a result is a file
+// by design, and because the README quotes what this produces: a fixture whose
+// input is not in the repo is a fixture nobody can check.
+func TestTheMeasuredResultLandsOnTheRegister(t *testing.T) {
+	got, err := ReadResults(filepath.Join("testdata", "results.jsonl"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	out, why := Published().Apply(got)
+	if len(why) > 0 {
+		t.Fatalf("the measured result was refused: %v", why)
+	}
+	if len(out.Misses()) != 1 {
+		t.Fatalf("%d predictions came back wrong, the file holds one", len(out.Misses()))
+	}
+	m := out.Misses()[0]
+	if m.ID != "P07-5" {
+		t.Errorf("the result landed on %s rather than on P07-5", m.ID)
+	}
+	// 3.28 is what doc.CharsPerToken now says, and P07-5 predicted 3.0 give or
+	// take 0.15. The two have to keep disagreeing or one of them was edited.
+	if !strings.Contains(m.Reading, "3.28 characters per token") {
+		t.Errorf("the reading is %q, the measurement was 3.28 characters per token", m.Reading)
+	}
+	if m.Box != "server3" {
+		t.Errorf("the result came off %s, it was measured on server3", m.Box)
+	}
+}

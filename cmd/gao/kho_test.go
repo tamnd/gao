@@ -273,11 +273,10 @@ func TestKhoDatasetsPrintsEveryRepoAndHowToReadIt(t *testing.T) {
 		if !strings.Contains(out, d.Holds) {
 			t.Errorf("gao kho datasets did not say what is in %s", d.Name)
 		}
-		// A working repo is private, so printing a query that reads it would be
-		// printing a query that fails for everybody except us.
-		q := d.Query("gao-v1.0")
-		if d.Public() != strings.Contains(out, q) {
-			t.Errorf("gao kho datasets printed the wrong thing for %s, which is %s", d.Name, d.Tier)
+		// Every repo is public, so every repo gets the line somebody pastes to
+		// read it.
+		if q := d.Query("gao-v1.0"); !strings.Contains(out, q) {
+			t.Errorf("gao kho datasets printed no way to read %s, which is %s", d.Name, d.Tier)
 		}
 	}
 }
@@ -466,6 +465,37 @@ func TestKhoColumnsReadsAFile(t *testing.T) {
 	}
 }
 
+// A part written without a tokenizer carries a token column of zeros, and the
+// reader has to be told that rather than left to sum it.
+func TestKhoColumnsSaysWhenNothingCountedTheTokens(t *testing.T) {
+	d, _ := kho.Lookup("vietnamese-web-text")
+	dir := t.TempDir()
+	part, err := kho.CreatePart(dir, "part-00000", d, kho.Stamp{
+		Snapshot: "glotcc-9ad140b6be3a", Stage: "gat@0.1.0", Box: "server3",
+	})
+	if err != nil {
+		t.Fatalf("CreatePart: %v", err)
+	}
+	if err := part.Append(document(t, 0)); err != nil {
+		t.Fatalf("Append: %v", err)
+	}
+	file, err := part.Close()
+	if err != nil {
+		t.Fatalf("Close: %v", err)
+	}
+
+	out, errOut, code := exec(t, "kho", "columns", filepath.Join(dir, file.Path))
+	if code != 0 {
+		t.Fatalf("gao kho columns FILE: exit %d, want 0: %s", code, errOut)
+	}
+	if !strings.Contains(out, "no tokenizer ran") {
+		t.Errorf("a part nothing counted did not say so:\n%s", out)
+	}
+	if !strings.Contains(out, "gao.tokenizer      none") {
+		t.Errorf("the metadata does not carry an explicit empty tokenizer:\n%s", out)
+	}
+}
+
 func TestKhoColumnsRefusesAFileThatIsNotOne(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "not-a-part.parquet")
 	if err := os.WriteFile(path, []byte("this is not parquet"), 0o644); err != nil {
@@ -499,7 +529,7 @@ func TestKhoPushSendsAFileAndSaysWhatItDid(t *testing.T) {
 	t.Setenv(may.StoreEnv, srv.URL)
 
 	path := filepath.Join(t.TempDir(), "README.md")
-	if err := os.WriteFile(path, []byte("# vietnamese-text-staging\n"), 0o600); err != nil {
+	if err := os.WriteFile(path, []byte("# vietnamese-source-text\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	out, errOut, code := exec(t, "kho", "push", "-as", "README.md", path)

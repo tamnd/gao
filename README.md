@@ -284,7 +284,7 @@ gao kho remove -from snapshots/gao-v1.0 -to snapshots/gao-v1.0-r1 \
 
 A tombstone keeps the document identity and nothing else. Not the text, not the URL, not the host. A tombstone that quotes what it removed has not removed it, and one that names the URL has published the fact that a particular page was the subject of a request, which is often the thing the person wanted taken down. The identity is kept because a later crawl that meets the same page has to recognize it and not fetch it again, and because somebody asking whether their document was removed deserves an answer they can check for themselves.
 
-The shards that held none of the named documents are copied across byte for byte and keep the hashes the parent recorded for them, so a takedown that touches two shards out of 750 rewrites two files. That is the difference between answering in minutes and answering tomorrow.
+The shards that held none of the named documents are copied across byte for byte and keep the hashes the parent recorded for them, so a takedown that touches two shards out of twelve hundred rewrites two files. That is the difference between answering in minutes and answering tomorrow.
 
 Naming a document that is not in the snapshot fails the run and writes nothing, even when every other identity was found. A takedown answered with a signature and a report that quietly covers three documents out of four is the worst outcome available, because everybody involved reads it as done, and an identity that is not there is far more likely to be a mistyped hash than an empty request. Running the same removal twice is not an error: the second run finds the documents already tombstoned and says so, which is what makes this safe to put in a script that might get retried.
 
@@ -343,61 +343,66 @@ The counts are written the same way the ledger is, which took a fleet run to not
 
 ## Handing the ingest out across the fleet
 
-There are four boxes and one of them, `server2`, has eight gigabytes of free disk and cannot hold corpus bytes at all. The other three differ by a factor of eight in threads and by a factor of twelve in scratch. So somebody has to decide which box fetches which of the 122 pinned files, and the obvious answer, forty files each, is wrong twice over.
+There are four boxes and two of them, `server2` and `server3`, sit under the 20 GB reserve and hold no corpus bytes at all. The two that are left differ by a factor of eight in threads, a factor of eleven in memory and a factor of two in the rate a reading off them says they get through. So somebody has to decide which box fetches which of the 122 pinned files, and the obvious answer, sixty one files each, is wrong twice over.
 
-It is wrong first because the files are not the same size. The largest is 26.6 GB and the median is a fiftieth of that, so three equal piles of files are not three equal piles of work, and a file cannot be cut in half because it is streamed and hashed as one unit. It is wrong second because the sources cannot all be fetched at once. HPLT v3 is pinned at order zero and ingests alone, since every later source dedups against a store that already holds it. The schedule is a sequence of groups with a barrier at the end of each, not one pile, and the idle time that produces is the cost of the ingest order rather than a mistake in the arithmetic.
+It is wrong first because the files are not the same size. The largest is 26.6 GB and the median is 2.1 GB, a thirteenth of it, so equal piles of files are not equal piles of work, and a file cannot be cut in half because it is streamed and hashed as one unit. It is wrong second because the sources cannot all be fetched at once. HPLT v3 is pinned at order zero and ingests alone, since every later source dedups against a store that already holds it. The schedule is a sequence of groups with a barrier at the end of each, not one pile, and the idle time that produces is the cost of the ingest order rather than a mistake in the arithmetic.
 
 `gao giao` prices both. It takes a file of readings, one per box, and hands out the heaviest remaining file to whichever box would finish it soonest.
 
 ```
-$ gao giao plan readings.jsonl
+$ gao giao plan giao/testdata/readings.jsonl
 order  sources   files  bytes     takes       waiting at the end
-0      hplt3     12     234.5 GB  23.5 hours  10.0 hours
-1      finepdfs  3      13.0 GB   1.5 hours   1.7 hours
-2      fineweb2  30     130.1 GB  12.0 hours  6 minutes
-3      culturax  50     80.1 GB   7.4 hours   35 minutes
-5      glotcc    27     55.9 GB   5.3 hours   48 minutes
+0      hplt3     12     234.5 GB  34.7 hours  1.6 hours
+1      finepdfs  3      13.0 GB   2.1 hours   16 minutes
+2      fineweb2  30     130.1 GB  19.1 hours  20 minutes
+3      culturax  50     80.1 GB   11.7 hours  1 minute
+5      glotcc    27     55.9 GB   8.2 hours   5 minutes
 
-box       gets through        fetches   of the ingest  room for a file  busy for
-gamingpc  1.9 MB/s (15 Mbit)  330.2 GB  64.3%          276.9 GB         2.1 days
-server3   0.8 MB/s (6 Mbit)   124.6 GB  24.3%          16.1 GB          44.5 hours
-server1   0.4 MB/s (3 Mbit)   58.9 GB   11.5%          94.4 GB          42.1 hours
+box       gets through        fetches   of the ingest  scratch left  busy for
+gamingpc  1.3 MB/s (11 Mbit)  362.1 GB  70.5%          244.9 GB      3.1 days
+server1   0.6 MB/s (5 Mbit)   151.6 GB  29.5%          164.6 GB      3.1 days
 
-The whole ingest takes 2.1 days, against 47.2 hours if a file could be cut in half and every source fetched at once.
-On the fastest box alone it takes 3.2 days, so the fleet buys 1.5x.
-Order 1 divides 3 files across 3 boxes and still ends 20 minutes after its own floor, because server3 finishes last on data/vie_Latn/train/000_00002.parquet and a file cannot be handed to a second box once it has started.
+server3 has a reading and 17.7 GB free, which is 0 bytes of scratch once the 20.0 GB reserve is taken off, against the 2.0 GB a stage needs.
+So it draws nothing, though a fetch holds 1.0 GB while it runs and that is the smaller question.
 
-513.6 GB over 122 files across 3 boxes takes 2.1 days, against 3.2 days on the fastest box alone. That is 5% over a split no arrangement can beat, and the gap is the ingest order and the file sizes rather than the fleet.
+The whole ingest takes 3.2 days, against 3.1 days if a file could be cut in half and every source fetched at once.
+On the fastest box alone it takes 4.5 days, so the fleet buys 1.4x.
+
+513.6 GB over 122 files across 2 boxes takes 3.2 days, against 4.5 days on the fastest box alone. That is 1% over a split no arrangement can beat, and the gap is the ingest order and the file sizes rather than the fleet.
 ```
 
-One of those three readings is real. `gamingpc` counted 4.2 GB of Vietnamese in 37m46s and that is where its 1.9 MB/s comes from, so the block above is a plan and not a measurement of an ingest, because the other two boxes have not run one. Replacing the estimates with readings off a real run is a fleet item on the milestone rather than something this repo can do on a laptop.
+Every number in that block comes off the S1 runs. `gao giao read` turns an ingest ledger into a reading by timing between two finishes, and the three lines in `giao/testdata/readings.jsonl` are what it printed on each box on 2026-08-18: `server1` at 4.84 GB in 8480 seconds of fineweb2, `server3` at 4.18 GB in 2409 seconds of GlotCC, `gamingpc` at 4.39 GB in 3292 seconds of FinePDFs.
 
-What the number says even so is worth having before anybody starts. Three boxes buy 1.5x over the fastest one alone and not 3x, and 1.5x is not a shortfall to go looking for. The floor at the bottom is what the same bytes would take if files were divisible and the ingest order did not bind, which nothing can reach. The schedule sits 5% above it. The rest of the gap to 3x is that one box on this fleet is four times faster than another, so the fleet is worth less than three of its best machine by construction.
+Read those three next to each other and the first thing they say is that the ranking is not the one anybody would have guessed. `gamingpc` has 32 threads and a 4090 and it comes in slower than `server3`, which has eight cores and no GPU. The reason is that the three readings are on three different sources: GlotCC is zstd compressed JSON lines, FinePDFs is Parquet with 23 columns holding text that has already been through a PDF extractor, and fineweb2 is Parquet again at 4.8 GB a file. A reading is a box and a source together, and calling it a property of the box is the mistake this schedule would make if it had only one of them. What it needs is the rate a box gets through the work it is about to be given, and a reading taken on a different source is the closest thing available rather than the same thing. The file records what each reading was taken on, in the `how` field, so the confound is on the record rather than in somebody's memory.
 
-The rate a schedule is built on is the whole thing, and it is not the link. An ingest that decodes fetches a record, puts it to the ingest contract, tokenizes it and writes Parquet, and on this fleet that work is slower than the download by an order of magnitude. A readings file therefore carries what a box got through end to end, with the date and a sentence saying how it was taken, and a reading measured across less than a gigabyte is refused: a rate off the first hundred megabytes of a run is a measurement of a congestion window growing and a page cache filling.
+The second thing is that the fleet is worth less than it looks. Two boxes buy 1.4x over the fastest one alone, and 1.4x is not a shortfall to go looking for. The floor at the bottom of the block is what the same bytes would take if files were divisible and the ingest order did not bind, which nothing can reach. This schedule sits one percent above it, which is as close as the arithmetic gets. The rest of the gap to 2x is that one box is more than twice as fast as the other, so the fleet is worth less than two of its best machine by construction.
+
+The third is `server3`, and it is the line worth reading twice. It has a reading, it is the fastest box on that reading, and it draws nothing. It is also the box that fetched, decoded and published the entire GlotCC snapshot on the day the reading was taken. Both are true. `server3` has 17.7 GB free against a 20 GB reserve, so it has no scratch at all, and `may.HoldsCorpus` asks whether a box can hold a stage's working set of four shards rather than whether it can hold the one part a fetch has in flight. The plan prints the free disk, the scratch after the reserve, what a stage needs and what a fetch holds for every box it drops, because a box dropped without its numbers looks like a bug. The reserve is not adjusted to let it back in. A safety number that moves the first time it excludes a machine somebody wanted is not a safety number.
+
+The rate a schedule is built on is the whole thing, and it is not the link. An ingest that decodes fetches a record, puts it to the ingest contract, tokenizes it and writes Parquet, and on this fleet that work is slower than the download by an order of magnitude. `server1` moved 4.84 GB in 8480 seconds, which is 4.6 Mbit, on a box with a public route and nothing wrong with its connection. A readings file therefore carries what a box got through end to end, with the date and a sentence saying how it was taken, and a reading measured across less than a gigabyte is refused: a rate off the first hundred megabytes of a run is a measurement of a congestion window growing and a page cache filling.
 
 `gao giao files` prints the assignment itself, which is what somebody actually reads before starting a box.
 
 ```
-$ gao giao files readings.jsonl
+$ gao giao files giao/testdata/readings.jsonl | head -13
 order  box       bytes     takes       file
-0      gamingpc  26.6 GB   4.0 hours   hplt3/vie_Latn/7_1.jsonl.zst
-0      gamingpc  26.4 GB   4.0 hours   hplt3/vie_Latn/8_3.jsonl.zst
-0      gamingpc  26.3 GB   3.9 hours   hplt3/vie_Latn/7_2.jsonl.zst
-0      gamingpc  26.3 GB   3.9 hours   hplt3/vie_Latn/9_1.jsonl.zst
-0      gamingpc  26.2 GB   3.9 hours   hplt3/vie_Latn/8_1.jsonl.zst
-0      gamingpc  25.2 GB   3.8 hours   hplt3/vie_Latn/6_1.jsonl.zst
-0      server3   16.0 GB   5.7 hours   hplt3/vie_Latn/8_4.jsonl.zst
-0      server3   15.0 GB   5.4 hours   hplt3/vie_Latn/5_1.jsonl.zst
-0      server3   10.0 GB   3.6 hours   hplt3/vie_Latn/9_2.jsonl.zst
-0      server3   9.8 GB    3.5 hours   hplt3/vie_Latn/7_3.jsonl.zst
-0      server3   294.6 MB  6 minutes   hplt3/vie_Latn/10_1.jsonl.zst
-0      server1   26.3 GB   18.8 hours  hplt3/vie_Latn/8_2.jsonl.zst
+0      gamingpc  26.6 GB   5.5 hours   hplt3/vie_Latn/7_1.jsonl.zst
+0      gamingpc  26.4 GB   5.5 hours   hplt3/vie_Latn/8_3.jsonl.zst
+0      gamingpc  26.3 GB   5.5 hours   hplt3/vie_Latn/9_1.jsonl.zst
+0      gamingpc  26.3 GB   5.5 hours   hplt3/vie_Latn/8_2.jsonl.zst
+0      gamingpc  25.2 GB   5.2 hours   hplt3/vie_Latn/6_1.jsonl.zst
+0      gamingpc  16.0 GB   3.3 hours   hplt3/vie_Latn/8_4.jsonl.zst
+0      gamingpc  10.0 GB   2.1 hours   hplt3/vie_Latn/9_2.jsonl.zst
+0      gamingpc  9.8 GB    2.0 hours   hplt3/vie_Latn/7_3.jsonl.zst
+0      server1   26.3 GB   12.8 hours  hplt3/vie_Latn/7_2.jsonl.zst
+0      server1   26.2 GB   12.8 hours  hplt3/vie_Latn/8_1.jsonl.zst
+0      server1   15.0 GB   7.3 hours   hplt3/vie_Latn/5_1.jsonl.zst
+0      server1   294.6 MB  9 minutes   hplt3/vie_Latn/10_1.jsonl.zst
 ```
 
-`server3` is the second fastest box and it draws no file above 16.0 GB. That is the room column doing its work: `server3` has 24.3 GB of scratch and holds 8.2 GB of stage working set while it fetches, which leaves 16.1 GB for the file itself, and a pinned file has to land whole. So the 26.3 GB shard goes to `server1`, which is four times slower and spends 18.8 hours on it, because a box that would finish a file sooner and cannot store it is not a box that would finish it. A split that ignores the disk is a split that stops on a full filesystem eighteen hours in.
+That is order zero, the whole of HPLT v3, out of 125 lines. Eight files to `gamingpc` and four to `server1`, and the four include two of the largest in the manifest, because `server1` is slower per byte and still finishes sooner than `gamingpc` would if it took a ninth file on top of eight. The 26.3 GB file it opens with costs it 12.8 hours against the 5.5 the same file costs `gamingpc`, and handing that one over as well would leave `server1` idle for half a day. Both boxes have the disk to land any file in the manifest, so nothing in this group is decided by scratch, which is the case the disk check exists for rather than the case it is in. A box under the reserve draws nothing at all rather than drawing the small files, and that is the check doing its work one step earlier than the file list.
 
-The command exits 1 when the readings are not a schedule at all, which covers a box nobody has, two rates for one box, a sample too small to mean anything, and a reading that does not say how it was taken. It exits 2 when they describe a schedule that should not be run as written, which is a box that draws no files or a file no box has room to land. Groups that end late are neither. A group of three files across three boxes of different speeds ends when its slowest file ends however it is dealt out, and the sentence saying so is there to stop somebody hunting for a better split that does not exist.
+The command exits 1 when the readings are not a schedule at all, which covers a box nobody has, two rates for one box, a sample too small to mean anything, and a reading that does not say how it was taken. It exits 2 when they describe a schedule that should not be run as written, which is a box that draws no files or a file no box has room to land. Groups that end late are neither. A group of three files across two boxes of different speeds ends when its slowest file ends however it is dealt out, and the sentence saying so is there to stop somebody hunting for a better split that does not exist.
 
 ## What a record becomes
 
@@ -443,13 +448,26 @@ The pin is not ceremony. Ask a gated repository for a file without credentials a
 gao dem model -o tokenizer.model
 ```
 
-Counting happens during ingestion rather than after it. The largest source is around 700 GB of text, so a design where ingestion writes documents and a later stage reads them back to count is a design that moves 700 GB twice. Bytes, characters, and syllables are counted on every decoding run because they are free. Tokens are behind `-tokenizer`, because tokenizing runs at about 11 MB of text per second per core, which is faster than any source has arrived over the network so far and slow enough to matter the first time one does not.
+Counting happens during ingestion rather than after it. The largest source is around 700 GB of text, so a design where ingestion writes documents and a later stage reads them back to count is a design that moves 700 GB twice. Bytes, characters, and syllables are counted on every decoding run because they are free.
+
+Tokens are behind `-tokenizer` because they are not, and the price turned out to be an order of magnitude worse than the number written here for months. That number was about 11 MB of text per second per core, said to be faster than any source arrives over the network. Nobody had run the tokenizer over Vietnamese to check. Over 52.8 MB of real fineweb2 text it gets 1.1 MB/s on an M series core and 0.5 MB/s on `server3`, which is under the 20 MB/s gate T9 asks for by a factor of twenty, so the pinned tokenizer fails its own throughput gate and `gao dem gates` says it is not eligible.
+
+```
+$ gao dem gates -tokenizer tokenizer.model vi.txt
+  T9   failed   at least 20 MB/s on one core                                0.5 MB/s on one core over 52.8 MB
+```
+
+That is not an argument about a gate threshold, because the counting runs on the goroutine that is decoding the file. An ingest given `-tokenizer` moves at the tokenizer's rate whatever else the box has: `server3` fetched the same source on the same afternoon with the flag and without it and was nine times slower with it. So the sample published below was ingested without one, every part says so in its own metadata, and the token column in it is zero because nobody counted rather than because the documents have no tokens. Counting the corpus is a pass of its own until there is a tokenizer that can keep up with a download, which is a finding about the tokenizer and not about the design.
 
 The four units are not interchangeable, and the bytes column is the one most often quoted wrong. Bytes here means UTF-8 bytes of extracted text: not the size of the file the text arrived in, not the compressed size, and not the Parquet size. Those are three to ten times apart from each other, and a corpus that quotes whichever was to hand has a size nobody can check. The ingest ledger records transfer sizes and `counts.json` records text sizes, in different files, because they answer different questions.
 
 Two counts produced by different tokenizers are never added up. It is an error rather than a warning: two tokenizers disagree on Vietnamese by something like a third, so their sum is not slightly wrong, it corresponds to no tokenizer at all, and it would be quoted as a corpus size.
 
-The first counted run puts a number on the estimate this project has been quoting, and it is not the estimated number. One GlotCC shard, 500000 documents, 3228869043 characters, 983022920 tokens: **3.28 characters per token**, where `doc/units.go` predicts 3.0 and the plan that wrote it allowed plus or minus 0.15. Tokens per syllable came out at 1.45 against a predicted 1.51 and bytes per character at 1.30 against 1.32, both close enough to leave alone. The character figure is not close, and it runs the same way every time: it means Vietnamese costs fewer tokens than the estimate assumed, so every token headline derived from a character count is about 8 percent high. That is one source of six and one shard of it, so it does not settle the corpus figure and the constants stay where they are, but it is the direction to expect from the rest.
+The first counted run puts a number on the estimate this project has been quoting, and it is not the estimated number. One GlotCC file, 500000 documents, 3228869043 characters, 983022920 tokens: **3.28 characters per token**, where `doc/units.go` predicted 3.0 and the plan that wrote it allowed plus or minus 0.15. Tokens per syllable came out at 1.45 against a predicted 1.51 and bytes per character at 1.30 against 1.32. A second run over a different part, through `gao dem gates` rather than through the ingest, got 3.29 and 1.44 on a one in twenty sample, so the number is the text rather than the run.
+
+The constants are now those measurements rather than the four assumptions that were sitting there under a comment claiming they had been measured. The one that matters is characters per token, because it is what divides a token target into a disk budget: at 3.28 rather than 3.0, 300 billion tokens is 1279 GB of extracted text instead of 1188, which is 91 GB the plan had not accounted for and 86 shards more than the release format was first sized against. It runs that way rather than the other, so a token headline derived from a character count under the old constant was about 8 percent high.
+
+The sources disagree and the file says so. Bytes per character is 1.2489 on FinePDFs, 1.2999 on GlotCC and 1.3180 on fineweb2, a five percent spread that is the diacritic density of the text each one collected. Characters per syllable is 4.60 on fineweb2, 4.75 on GlotCC and 5.73 on FinePDFs, and that spread is not about Vietnamese: FinePDFs `vie_Latn` carries documents that are not Vietnamese, so its syllables are long because some of them are English and Japanese. GlotCC is the middle of both ranges and it is the only source counted end to end, so it is what the constants say and the spread is written down beside them.
 
 The conversion constants in `doc/units.go` are for estimates and nothing in `dem` multiplies. They answer what a hundred gigabytes is roughly worth before anything has been fetched. They live in a different package from the counting on purpose, because an estimate that reaches a release note becomes a measurement in the reader's mind and there is no way to take it back.
 
@@ -474,6 +492,39 @@ The first run of it against the pinned tokenizer found something. Of the 134 let
 The other thing it found is that the same tokenizer is not stable across the two spellings of a marked letter, which is what the decomposed chart is in the set to ask. That one is expected and is not a reason to reject anything: `phoi` normalizes at ingest and nothing reaches a tokenizer before it has, so the document it fails on is a document the corpus does not contain. It is pinned by a test on exactly that one document and no other, because the day it starts failing on a second one is the day normalization stopped running.
 
 The last gate is an audit rather than a threshold and it stays that way. It walks the vocabulary and prints the pieces made of characters this project strips: replacement characters, private use, invisible formatting, anything that is not NFC. A piece like that is a fact about the corpus the tokenizer was trained on rather than about the text it will see here, and one of them is a hint while a thousand is a different tokenizer. No threshold decides that, a person does.
+
+All of that was written against the coverage set, which is what the suite could be run on before there was a corpus. There is one now. The block below is one in twenty documents out of the first published GlotCC part, 6363 documents and 51.5 MB of real Vietnamese, and it is the first time these gates have been asked about text rather than about a letter chart. The per gate example lists between the table and the verdict are cut here, since T4 alone names five documents by digest and byte offset.
+
+```
+$ gao dem gates -tokenizer tokenizer.model -one-in 20 part-00000.parquet
+tokenizer  gemma-3, 262144 pieces
+documents  6363
+fertility  3.29 characters per token, 1.44 tokens per syllable
+
+  T1   passed   decode(encode(x)) is x                                      0 of 6363 documents
+  T2   passed   and on the same text with its marks taken off               0 of 6363 documents
+  T3   passed   and on documents mixing Vietnamese, English and code        0 of 4593 documents
+  T4   failed   no token boundary lands inside a character                  1076 of 12024513 boundaries
+  T5   failed   no token boundary separates a letter from its marks         150 of 12024513 boundaries
+  T6   passed   encode(NFC(x)) is encode(x)                                 0 of 6363 documents were not NFC as given, so this compared every document against itself
+  T7   failed   a run of digits tokenizes the same way wherever it appears  6 of 391002 digit runs
+  T8   failed   a leading space is handled the same way for every syllable  folded in 16236, its own token 148
+  T9   failed   at least 20 MB/s on one core                                2.1 MB/s on one core over 51.5 MB
+  T10  audited  no piece is reachable only from text gao would reject       262012 pieces read, 132 control or byte fallback, 1427 for a person to look at
+
+gao dem gates: gemma-3 is not eligible
+  T4 failed 1076 of 12024513 boundaries
+  T5 failed 150 of 12024513 boundaries
+  T7 failed 6 of 391002 digit runs
+  T8 failed 148 of 16384 syllables
+  T9 failed 1 of 51495799 bytes
+```
+
+Four of the five failures are the ones worth reading. The round trip holds everywhere, which is the thing that would have been fatal, and the three gates that had never had anything to run on all ran. T4 and T5 are the pair this project built the suite for: 1076 boundaries in twelve million land inside a character and 150 of those part a letter from its marks, which is tone loss arriving at generation time rather than at ingest. The rate is small and the rate is not the point, because these collect in exactly the text that is hardest to notice missing. T8 says the leading space is folded into 16236 syllables and is its own token for 148 of them, so the same syllable is two different token sequences depending on what precedes it. T7 is six digit runs in 391002 and is the mildest of them.
+
+None of that is a reason to go and find a different 256k multilingual vocabulary this afternoon, and it is a reason the tokenizer question is open rather than settled by inheritance. What it settles today is that `gao dem gates` was measuring something all along and that the pinned tokenizer had never been put in front of it.
+
+A failed gate exits 2 and a gate that found nothing in the sample exits 1, which is the same split every other command here makes. Both exited 1 until this run, and an exit code that says go and find a bigger corpus is the wrong thing to hand somebody whose tokenizer has just been judged.
 
 ```
 gao dem gates -tokenizer tokenizer.model parts/*.parquet
@@ -865,6 +916,8 @@ the draw:
   finepdfs  15%    30000      three times its share of the corpus, because PDFs are where the edited long form is and a classifier that has seen fifty of them will call the rest of them boilerplate
   glotcc    5%     10000      the smallest source, kept in at a share big enough to notice if the rubric behaves differently on it
 ```
+
+The scale and the digest are cut from the end of that block and the next two paragraphs are about what is in them.
 
 The shares are not the shares of the corpus, and that is the point. Drawn in proportion, the reference set is overwhelmingly web text, and a classifier trained on it has seen almost nothing of what the corpus is actually short of. FinePDFs gets three times its weight for that reason: PDFs are where the edited long form is, and a labeler who has seen fifty of them calls the fifty first boilerplate. Every share carries the sentence explaining it, because a share nobody can explain is a share somebody argues about after the classifier is trained.
 
@@ -1277,6 +1330,8 @@ killed below   0.50      rank correlation, and then the slate is exploratory
 recipes        12        scored both ways before the correlation means anything
 baselines      3         runs of one recipe, which is where the noise floor comes from
 ```
+
+What is cut off the end is the paragraph saying what happens below the kill criterion, which is that the slate is reported as exploratory, every threshold falls back to a published default, and each one goes into the release notes flagged as unvalidated.
 
 Two bars rather than one, because they answer different questions. The rank correlation is about the whole ordering, and it is the number the literature quotes. The pairwise rate is about the decision anybody actually makes with the proxy, which is never "rank these forty" and is always "is this recipe better than that one". A proxy can score 0.75 on the first while getting the close calls wrong every time, and the close calls are the ones a sweep over four values of a threshold consists of.
 
@@ -1717,6 +1772,8 @@ digest     dbff94782b24372314c769b245e209b882830e5233de5708d5b3898c27a994fb
   contamination  1f25ea1ccf71  a generated document that reproduces a benchmark item puts the answer in the training set, and the evaluation afterward is scoring memorization
 ```
 
+One line is cut off the end, saying that the source is the educational slice rather than the corpus, which is the paragraph above this block.
+
 The `read gao` line is there because a model trained on gao rephrasing gao is the corpus fed back into itself, and the tokens that come out carry no information the corpus did not already have. It is a field rather than an assumption, and a recipe that answers yes is refused before anything is generated.
 
 Four registers rather than one is the defense against the failure that has no symptom. A model asked to rephrase returns a narrower distribution than it was given, every time, and 150 billion tokens of narrowed Vietnamese inside a trillion token mixture is a real change to what the model learns with nothing in the output that looks wrong. Four registers only help if they differ, so two styles sharing a prompt is refused rather than counted twice, and greedy decoding is refused for the same reason: at temperature zero each register is the one continuation its prompt admits, and the four of them collapse toward a single voice. Registers rather than temperatures, because a register moves the syntax and the vocabulary while a temperature only moves the tail.
@@ -2024,7 +2081,7 @@ The exit codes carry the same distinction as everywhere else in this repository.
 
 ## What sorting a shard by host is worth
 
-Shards are assigned by hash, and that is right for every reason except one. A hash shard is a uniform sample of the corpus, so a stage that processes shard 7 sees what a stage processing all 750 sees, a bug that only shows up on one source shows up in every shard rather than in one file nobody opened, and two copies of a document land together by construction, which is what makes deduplication tractable at all.
+Shards are assigned by hash, and that is right for every reason except one. A hash shard is a uniform sample of the corpus, so a stage that processes shard 7 sees what a stage processing all twelve hundred sees, a bug that only shows up on one source shows up in every shard rather than in one file nobody opened, and two copies of a document land together by construction, which is what makes deduplication tractable at all.
 
 What it costs is compression. Pages from one host share their navigation, their footer, their cookie banner, their breadcrumb trail and their URL prefix, and a hash shard scatters those pages so thoroughly that no two of them are ever inside the same compression window. The compressor is shown the same boilerplate a few hundred times and told nothing about it each time. Sorting by host inside the shard puts them back together without changing which shard anything is in, because the sample property belongs to the assignment rather than to the order.
 
@@ -2048,7 +2105,7 @@ per shard, best first:
 
 Those readings are invented, since no shard has been written yet. What is not invented is what the command refuses. Two readings have to be of the same shard, because compressing shard 4 sorted against shard 9 unsorted compares the shards. They have to be at the same zstd level, because the level moves the ratio further than the ordering does and a saving measured across two levels is a measurement of the levels. The figure quoted is the middle shard rather than the mean, because one shard that is mostly a single site saves a great deal on that site's template and drags an average that reproduces on nothing else, and a shard where one host holds more than a quarter of the bytes is called out for exactly that reason. And a comparison that ran on one box is a run rather than a measurement, which is the fleet gate on this milestone written as arithmetic instead of as a sentence in a checklist.
 
-The last line is why any of it matters beyond a few percent of download size. The shard count is downstream of the compression ratio, the compression ratio has been an assumed 3.0 in the disk budget since the beginning, and the release is shaped like its shard count: 512 MB apiece and around 750 of them is what makes a partial download useful and a takedown cheap. Measuring the ratio replaces an assumption in the one place where being wrong changes the shape of the artifact rather than a number in a report.
+The last line is why any of it matters beyond a few percent of download size. The shard count is downstream of the compression ratio, and the release is shaped like its shard count, since 512 MB apiece is what makes a partial download useful and a takedown cheap. That ratio was an assumed 3.0 until S1 measured it at 2.07, which moved the release from around 750 shards to around 1200 and put 220 GB back on the disk budget, so the assumption this command exists to replace has already cost one redesign. What it measures is the other half of the same question, which is whether sorting a shard by host buys enough of that back to be worth holding 1.7 GB of text in memory on a box with 6.2 GB of it.
 
 ## Publishing a slice without a second copy of the corpus
 
@@ -2347,27 +2404,56 @@ gao-predictions holds 58 predictions across 9 of the 10 slices in the build plan
 
 That table is the whole point and it is entirely empty, which is what a register looks like when it is published at the right time. S0 carries no predictions because its gate is a set of questions for counsel rather than a set of measurements, and it prints as a dot rather than a zero so that nothing to be wrong about does not read as a slice nobody wrote predictions for. Each prediction is filed under the slice whose work produces the measurement, which is why the numbering does not run in slice order: P03-1 is the first prediction of the acquisition document and S1 measures it, while the rest of that block belongs to the crawl. Four slices have gates that stand on a named prediction, and a gate naming a prediction the register does not hold is refused, since a gate on a forecast nobody wrote down is a gate that can be argued away.
 
-Results arrive as a file rather than as an edit. The run below is invented, because the only prediction with a real reading against it today is P07-5, and one shard of one source is not a resolution.
+Results arrive as a file rather than as an edit, and the register in `doan/register.go` still says `mo` for every row. One result has been measured so far and it is checked in as `doan/testdata/results.jsonl`, which is the file below and the reason the run below is a real one.
 
 ```
-$ gao doan -results results.jsonl | tail -9
+$ gao doan -results doan/testdata/results.jsonl | tail -6
 1 prediction came back wrong:
   P07-5: measured Gemma-3 fertility on gao is 3.0 characters per token give or take 0.15
-    3.28 characters per token, outside the band on the high side, measured by gao dem fertility on server3
+    3.28 characters per token over 3228869043 characters and 983022920 tokens, outside the band on the high side, measured by gao gat hf -source glotcc -decode -tokenizer over 500000 documents of vie-Latn_0 on server3
 
-1 prediction was withdrawn:
-  P04-6: the whole extraction stage costs under 6,000 GPU hours
-    the extraction stage was cut to born digital PDFs after the OCR gate, so the GPU hours this predicts are never spent
-
-These measurements did not go on the register:
-  P05-1 was measured against a claim the register does not hold, so either the claim was edited after the number landed or the result belongs to an older register
+gao-predictions holds 58 predictions across 9 of the 10 slices in the build plan, and its digest is ee4b35363bf4. 1 prediction resolved so far, 0 right and 1 wrong, which is under the half the register needs before its rate says anything except which measurements were cheap to make.
 ```
 
-The misses print in full whatever else was asked for, with the reading, the command that produced it and the box it ran on, because a register that reports its hits and counts its misses is a scoreboard. The box is checked against the fleet rather than taken on trust, so a number that came off somewhere nobody can find is refused with the rest, and the run exits non-zero when anything was refused. P05-1 above is the case worth watching: it was scored against a shorter, softer version of its claim, and taking it would have recorded a hit against a prediction that no longer exists.
+That is the first prediction this project has been wrong about, and it is the one whose being wrong cost the most: 3.28 rather than 3.0 characters per token is 91 GB of extracted text the disk budget had not planned for. It is scored off the ingest count over half a million documents, and `gao dem gates` got 3.29 on a separate sample through a different path, so the reading is the text rather than the run.
+
+The misses print in full whatever else was asked for, with the reading, the command that produced it and the box it ran on, because a register that reports its hits and counts its misses is a scoreboard. The box is checked against the fleet rather than taken on trust, so a number that came off somewhere nobody can find is refused with the rest, and the run exits non-zero when anything was refused. The refusal worth knowing about is a result scored against a claim the register does not hold, which happens when somebody edits a prediction after the number lands: taking it would record a result against a claim that no longer exists, so it is dropped with the reason and the row stays open.
 
 ## Where the corpus lives
 
-gao runs on four real machines with 500 GB of free disk between them, and the corpus is 1188 GB of extracted text, 396 GB compressed. It does not fit, and it does not fit by enough that no amount of tidying changes the answer. `gao box` prints the arithmetic.
+gao runs on four real machines with 524 GB of free disk between them, and the corpus is 1279 GB of extracted text, 618 GB compressed. It does not fit, and it does not fit by enough that no amount of tidying changes the answer. `gao box` prints the arithmetic.
+
+```
+$ gao box
+fleet as measured on 2026-08-18
+
+box       os       cores  memory    free disk  gpu
+gamingpc  windows  24/32  68.5 GB   297.7 GB   NVIDIA GeForce RTX 4090, 25.8 GB
+server3   linux    8/8    25.2 GB   17.7 GB    none
+server2   linux    6/6    12.5 GB   19.8 GB    none
+server1   linux    4/4    6.2 GB    188.7 GB   none
+total              42/50  112.4 GB  523.8 GB   1
+
+disk budget for 300B natural tokens
+  extracted text      1279.2 GB
+  compressed at 2.07x 618.0 GB in 1207 shards
+  fleet free disk     523.8 GB across 4 boxes
+  largest single box  297.7 GB on gamingpc
+  working set         542 shards at a time on gamingpc, after the reserve
+  the corpus does not fit on any one box, so the store of record is off-box and every stage streams
+
+what each box can run, after leaving 20.0 GB of reserve alone
+box       scratch   shards  workers
+gamingpc  277.7 GB  542     32
+server3   0.0 GB    none    no corpus bytes land here
+server2   0.0 GB    none    no corpus bytes land here
+server1   168.7 GB  329     4
+fleet                       36
+```
+
+The roles and the store line are cut from that block for length. Two things in it are measurements rather than choices, and both of them moved. The inventory carries the date it was taken because the first one, fifteen days earlier, had every free disk number wrong: `server1` was up 70 GB, `server3` down 26.6, `server2` up 11.8, `gamingpc` down 32. `gao box check` run on a box says whether the record still describes it. And the compression ratio was 3.0 and assumed, with a note on the constant saying the measured ratio would replace it and that anything under 2.5 moves the shard count. It came in at 2.07, off `server3` decoding 4.2 GB of GlotCC text into 2.0 GB of Parquet, and characters per token came in at 3.28 against an assumed 3.0 on the same run, so the corpus is 618 GB in the store rather than 396 and the release is about 1200 shards rather than 750. Every one of those numbers followed a measurement rather than the other way around.
+
+`server3` crossing the reserve is the change with teeth. It cost the fleet eight of its forty four workers, it took the box that is meant to be the box of record for pipeline throughput out of the pipeline, and nobody decided it: the disk filled with something else between two inventories. The rule is arithmetic rather than a sentence somebody has to remember, so the box left the schedule the moment the number was taken.
 
 So the store of record is off-box and the fleet holds a working set. Off-box rather than more disk, because the corpus outlives the machines and disks bought for a rented box cannot be moved, cannot be shared, and are gone when the box is. Object storage rather than a network filesystem, because every access here is a whole shard read or written by name from several machines at once, with no rename, no partial update, and no locking, which is object storage exactly.
 
@@ -2377,13 +2463,19 @@ Off-box means dataset repos on the Hugging Face Hub, holding Parquet, under the 
 read_parquet('hf://datasets/open-index/vietnamese-legal-text/data/snapshot=gao-v1.0/*.parquet')
 ```
 
-The repos are named for the data rather than for the stage that wrote it, because a name like `gao-xay` tells a reader which of our programs ran, which is the one thing they do not care about. Which repo a document lands in is the license position rather than a preference: a public repo carrying text may only carry text the publication posture says ships, and that is checked in code rather than remembered by whoever creates the repo.
+The repos are named for the data rather than for the stage that wrote it, because a name like `gao-xay` tells a reader which of our programs ran, which is the one thing they do not care about. Every repo is public and there is no private tier, which is a rule about what may be pushed rather than a setting on a repo: a repo carrying text may only carry text the publication posture says ships, and that is checked in code rather than remembered by whoever creates the repo. The material that has nowhere to go under that rule is not stored somewhere quieter. It stays on the box that produced it and is deleted when the stage that needed it finishes, because a private repo holding text a page reserved is the same publication with a smaller audience and one setting between them.
 
-Offload is what makes the arithmetic work. A worker writes one shard, pushes it, deletes it, and takes the next, so peak disk is two shards per worker no matter how large the corpus gets. That is 4.1 GB on `server1` against a 90 GB budget, and it is why a fleet with 500 GB of disk can process a corpus several times that size. Nothing on the fleet is authoritative and nothing on it is backed up. Everything there can be refetched from the store, or in the crawl's case is uploaded before it is deleted. One box, `server2`, holds no corpus bytes at all: it has 8 GB free, which is less than the reserve every box keeps, so the arithmetic says no without anybody having to remember to say it.
+Offload is what makes the arithmetic work. A worker writes one shard, pushes it, deletes it, and takes the next, so peak disk is two shards per worker no matter how large the corpus gets. That is 4.1 GB on `server1` against a 90 GB budget, and it is why a fleet with 524 GB of disk can process a corpus several times that size. Nothing on the fleet is authoritative and nothing on it is backed up. Every disk here is cache: what is worth keeping is pushed before it is deleted, and what cannot be pushed was not worth keeping. Two of the four boxes hold no corpus bytes at all: `server2` has 19.8 GB free and `server3` has 17.7, both under the 20 GB reserve every box keeps, so the arithmetic says no without anybody having to remember to say it.
 
 What a worker pushes is Parquet, which is the second of two storage formats and the only one anybody outside the project sees. Moving a shard through a stage uses segments, JSONL in zstd frames, because six programs append to a shard as it is built and a schema that is one version older still reads. A release is the opposite case: it is read far more often than it is written, and almost every question asked of a corpus is a question about one column. How many restricted documents are there, what is the quality distribution, which hosts dominate. Parquet answers those by reading one column of one row group instead of every byte of every document, and the same file that answers them on the Hub is the file the trainer streams.
 
-Ingestion writes those files as it goes. `gao gat hf -out DIR` decodes a source and writes the documents the contract admits under `DIR`, rolling over to a new part every 1.5 GB of text, which is the compressed shard target multiplied by the ratio the disk budget assumes. It rolls on text rather than on file size because a Parquet writer buffers a row group and compresses it at the boundary, so the size of the file is not known until it closes, and a writer waiting for a size would be waiting on a number that only appears after the decision was needed. One roll per input file, closed before the ledger records that file, so a run that dies mid file leaves no ledger entry and a directory the restart writes over rather than beside.
+Ingestion writes those files as it goes. `gao gat hf -out DIR` decodes a source and writes the documents the contract admits under `DIR`, closing a part when it reaches the 512 MB shard target or when it has taken in 1.06 GB of text, whichever comes first. Getting that rule right took three runs against three real sources and it is worth the paragraph, because every version of it that was wrong was wrong in a way that only shows up in the store.
+
+It rolled on text alone to begin with, on the reasoning that a Parquet writer buffers a row group and compresses it at the boundary, so a file does not know its own size until it closes and a writer waiting for one would be waiting on a number that arrives after the decision was needed. The text limit was the shard target multiplied by the compression ratio, and the first run caught that the ratio was assumed: `server3` rolled at 1.5 GB and wrote 0.7 GB parts against a 0.5 GB target, which is what 0.5 GB costs at 3.0 and not at the measured 2.07. Setting the limit to 1.06 GB fixed GlotCC and did nothing for FinePDFs, whose first published part came out at 988 MB from the same 1.06 GB of text, because 2.07 is a GlotCC number and FinePDFs compresses at 1.07.
+
+The half of the original reasoning that was wrong is that a file does not know its size. The row group being filled does not, and every row group already written is on the disk and counted. So a part now also closes on what it has written, and the row group still open is estimated at the ratio the part has measured on the groups it has already closed, which is the only compression figure available that is about the source being written rather than about the one the fleet average came from. Rolling on the counted bytes alone was tried and left FinePDFs at 0.7 GB, because a quarter of a gigabyte of row group crosses the target and then carries most of another.
+
+FinePDFs on `gamingpc` with all of that in place published eleven parts between 494.3 and 524.9 MB against the 512 MB target, off the same input file whose first part came out at 988.5 MB under the text rule alone. The two sources that were already near the target stay there: fineweb2 on `server1` published parts of 485.3 to 501.0 MB and GlotCC on `server3` 487.2 to 518.7 MB, both of them under the text rule, which is what a source compressing at the assumed ratio is supposed to do. Text stays as the second half of the rule, because a source that compresses better than any ratio would otherwise write a part the size of its input file. One roll per input file, closed before the ledger records that file, so a run that dies mid file leaves no ledger entry and a directory the restart writes over rather than beside.
 
 Adding `-push` sends each part to the store as it closes and deletes the local copy before the next one opens, which is the offload claim stopping being arithmetic and becoming a thing the program does. A part that cannot be pushed fails the file it came from, because a run that carried on would be filling the disk it was supposed to be emptying, and a part that failed to push is the one copy that has to stay. `gao kho push` does the same thing for one file, which is what gets a part off a disk somebody is about to reclaim after an interrupted run, and what puts the files that are not parts up there. Running the same command again after a box reboots is cheap rather than a second upload: the path inside the repo is a function of the source revision, the input file, and the part number, so a part that is already there is recognized by one request, and the Hub keys the bytes themselves by their digest, so even a part whose upload finished and whose commit did not is committed without sending the gigabyte a second time. Nothing about that resume is remembered locally, which is deliberate. A local record of what has been pushed is a second source of truth and it is wrong from the moment a push succeeds and the process dies before the write.
 
@@ -2398,19 +2490,55 @@ A column list is not the same as a schema somebody can use, so [SCHEMA.md](SCHEM
 The paragraph above is arithmetic, and the milestone does not gate on it. It gates on a measurement taken while the ingestion runs, because the arithmetic knows about shards in flight and knows nothing about a Parquet writer's row group buffer, a part sitting on disk waiting out an upload retry, a download resuming into a partial file, or whatever the operating system decided to keep in a temporary directory. That is the whole reason the ceiling is 90 GB and the prediction is 4.1: the gap is room for the things the model does not have terms for. `gao box peak` reads the watcher's trace back.
 
 ```
-$ gao box peak -run hplt-v3 -ran 6h disk.jsonl
-run        hplt-v3        on server1, 6h0m0s of wall clock
-peak       11.2 GB        at 5h9m40s, during push
-ceiling    90.0 GB        78.8 GB of it left
-predicted  4.1 GB         two shards for each of the workers the box runs
-drift      2.7x           the measurement over the arithmetic
-watched    1081 readings  across 6h0m0s, widest gap 20s
-free       118.5 GB       on server1
+$ gao box peak -run glotcc -ran 56m33s disk.jsonl
+run        glotcc        on server3, 56m33s of wall clock
+peak       0.5 GB        at 40m40s, during push
+ceiling    90.0 GB       89.5 GB of it left
+predicted  1.0 GB        two shards each for the 1 worker this run had going
+drift      0.5x          the measurement over the arithmetic
+watched    341 readings  across 56m37s, widest gap 10s
+free       17.7 GB       on server3
 
-server1 peaked at 11.2 GB of a 90.0 GB ceiling during push, 2.7 times the 4.1 GB the design predicts, watched every 20s across 6h0m0s
+2 faults:
+  server3 has 17.7 GB free, under the 20.0 GB reserve, so the plan runs no workers on it and this is a run on a box the arithmetic gives nothing to spend
+  the ceiling is 90.0 GB and server3 has 17.7 GB free, so a run that stayed under the ceiling still filled the box
+
+server3 has 17.7 GB free, under the 20.0 GB reserve, so the plan runs no workers on it and this is a run on a box the arithmetic gives nothing to spend
 ```
 
-That trace is invented, since the ingestion has not run. What is not invented is the second number the reading insists on. Passing the ceiling and matching the model are different questions, and the second one is the one that travels. A run that peaks at 60 GB under a 90 GB ceiling has passed the gate and has also said that the design's account of its own disk is off by a factor of fifteen, which is fine on `server1` and is not fine on the next box, or on the same box next year with a second stage running beside it. So the drift is reported next to the gate and a peak more than three times the prediction is a fault in its own right, in either direction: a third of the prediction means a smaller run than the one the ceiling was written about, wearing the gate's name.
+That is a real run: three GlotCC files, 6.3 GB fetched, 1.5 million documents admitted and none turned away, twelve parts written and pushed and deleted, 12.6 GB of text into 6.1 GB of Parquet, watched every ten seconds from the first byte to the last. It exits 2, and everything worth having in this section is in why.
+
+The peak is 0.5 GB, which is one part in flight rather than one file, on a run that moved 6.3 GB and wrote 6.1 GB. So offload does what it was supposed to do, and it does it harder than the arithmetic claimed: `PeakBytes` allows a worker two shards and the run held one. That is an upper bound behaving like an upper bound, which is worth writing down once rather than tuning.
+
+Then both faults, which are the same 17.7 GB said twice and are not the same claim. `server3` has 17.7 GB free against a 20 GB reserve, so the plan gives it no workers at all and this is a run on a box the arithmetic has nothing to spend on. And the ceiling is 90 GB on a box with 17.7 GB free, so passing the gate proves nothing: this run could have held five times what it did, cleared the ceiling by 85 GB, and filled the machine. A run that reported one of those and not the other would leave somebody thinking the gate held.
+
+None of that stopped the work. The reserve is headroom for the machine and not a working set for the stage, so a box under it can still stream a corpus through and is still one bad day from a filesystem nobody can log into. The fix is disk on `server3`, not a smaller reserve.
+
+The other half of the reading is the drift, and it is the number that travels. Passing the ceiling and matching the model are different questions. A run that peaks at 60 GB under a 90 GB ceiling has passed the gate and has also said the design's account of its own disk is off by a factor of fifteen, which is fine on the box it ran on and is not fine on the next one, or on the same one next year with a second stage beside it. So the drift is reported next to the gate and a peak more than three times the prediction is a fault in its own right, in either direction.
+
+Here is the run that made the drift line worth having, and it is the same command on the box at the other end of the fleet, after a complete FinePDFs ingest:
+
+```
+$ gao box peak -ran 2h46m25s disk.jsonl
+run          ingest         on gamingpc, 2h46m25s of wall clock
+peak         0.6 GB         at 2h30m50s, during push
+ceiling      90.0 GB        89.4 GB of it left
+predicted    1.0 GB         two shards each for the 1 worker this run had going
+drift        0.6x           the measurement over the arithmetic
+plan allows  32.8 GB        if a stage used every worker gamingpc has threads for
+watched      1000 readings  across 2h46m23s, widest gap 10s
+free         297.7 GB       on gamingpc
+
+gamingpc peaked at 0.6 GB of a 90.0 GB ceiling during push, 0.6 times the 1.0 GB the design predicts, watched every 10s across 2h46m25s
+```
+
+That is three files, 13.0 GB fetched, 1,218,257 documents, 31.1 GB of text into 26.9 GB of Parquet, 54 parts written and pushed and deleted, and a thousand readings with no gap wider than the ten seconds between them. It passes.
+
+It did not pass the first time it was run. The prediction line said 32.8 GB and the drift line said 0.0x, and underneath it was a fault claiming this had measured a smaller run than the one the ceiling is about, which is a strange thing to say about a run that ingested a whole source. The prediction was `PeakBytes`, which prices a box running one worker per hardware thread, and `gamingpc` has thirty two of them. `gao gat hf` ingests with one. So the command was dividing a measurement of one worker by a prediction for thirty two and reporting the answer as a fact about the pipeline.
+
+The worker count was in the trace the whole time. Every sample carries it, and the command refuses a trace whose samples leave it out, on the stated grounds that peak disk is a number per worker rather than a number per box. It then threw the number away and used the box. That is the kind of defect that survives any amount of reading, because the code is self consistent and the sentence in the refusal is correct, and it dies the first time somebody runs the thing on a machine whose thread count is not the number of workers. Both numbers are printed now, the prediction against the workers the run had and the plan's allowance beside it, and a single worker stage on a thirty two thread box reads as what it is rather than as a failure.
+
+The two boxes agree, which is the part worth keeping. A GlotCC run on four threads and a FinePDFs run on thirty two both peaked at about half of what one worker may hold, on sources that compress differently and on machines eleven times apart in memory. Offload is doing what the design said it would.
 
 The refusals are about how the trace was taken rather than about what it says. A peak sampled every five minutes is not a peak, because a worker can take a shard, write it, push it and delete it inside a five minute gap and the watcher will report the quiet either side of it. Thirty seconds is the resolution, and it comes from what allocates rather than from what looked reasonable. A watcher that started late or stopped early missed the start and the flush, which is exactly where a run allocates hardest, so the trace has to cover the run and the run's length is stated separately rather than inferred from the trace, since a trace cannot notice that it stopped. A sample that does not say how many workers were running cannot be read against a prediction that is per worker. And a peak is a fact about one machine, so a trace holding samples from two of them is refused rather than maximized over.
 
@@ -2430,7 +2558,7 @@ classify   gamingpc  24       2520    105.0       10 MB/s  93%      2.3 GB    55
 One pass of the whole pipeline is 207 hours, which is the sum of the stages rather than the slowest of them, since each one is its own pass over parquet.
 The memory line is 2.5 GB per worker, because server3 has eight cores and 23.5 GB and wants all eight busy.
 
-dedup is the slowest stage at 632 documents a second on server3, so an estimated 200M documents costs 88 hours of the pipeline's 207, with the worst worker holding 2.3 GB of a 2.5 GB ceiling
+dedup is the slowest stage at 632 documents a second on server3, so an estimated 200M documents costs 88 hours of the pipeline's 207, with the worst worker holding 2.3 GB of a 2.5 GB ceiling.
 ```
 
 The box label is necessary and it is not sufficient. Two of those rows say the same thing about their stage and disagree about which number to quote: `classify` is by far the fastest stage in the `docs/s` column and the second slowest per worker, because it is the only one that ran on the machine with twenty four cores in it. The column that travels between boxes is the per worker one, so it sits next to the total rather than instead of it, and a reading that does not say how many workers produced it is refused rather than divided. A rate over an unknown number of cores cannot be planned against a box with a known number, and a run with more workers than the box has threads is oversubscription reported as throughput.
@@ -2448,31 +2576,49 @@ Those numbers are invented. Nothing has run at this scale yet, and the point of 
 Everything above says a stage writes a file, pushes it, and deletes it, and that peak disk is therefore small no matter how large the corpus is. That is true of ingestion, where the input is a file already sitting in the store and a worker that falls behind simply takes longer. It is not automatically true of the crawl, which produces bytes at a rate nobody chose and cannot be asked to wait. If the pushing does not keep up with the writing then every other decision in this project is downstream of a disk that filled at three in the morning with nobody watching. `gao don fit` is that question as arithmetic.
 
 ```
-box      server1, 118.5 GB free, 20.0 GB reserved
-scratch  98.5 GB, and the crawl stops fetching at 78.8 GB
+$ gao don fit
+box      server1, 188.7 GB free, 20.0 GB reserved
+scratch  168.7 GB, and the crawl stops fetching at 135.0 GB
 fill     5.2 MB per second, at 200 fetches of 26.0 kB
 uplink   12.5 MB per second
 volume   1.0 GB, closing every 3 minutes and pushing in 80 seconds
 confirm  5 minutes, during which nothing may be deleted
 held     3.0 GB, which is the open volume and 2 in flight
-outage   4.2 hours of store outage before fetching has to stop
+outage   7.2 hours of store outage before fetching has to stop
 
-server1 holds 3.0 GB in steady state against a 78.8 GB mark, and the store can be unreachable for 4.2 hours before fetching has to stop
+server1 holds 3.0 GB in steady state against a 135.0 GB mark, and the store can be unreachable for 7.2 hours before fetching has to stop
 ```
 
 Three numbers decide it, and the first is the only one people usually check. The crawl fetches 200 pages a second and each one adds about 26 kB to the archive, so the disk fills at 5.2 MB per second against an uplink that clears 12.5 MB per second. That comparison is necessary and it is not sufficient, which is where capacity plans go wrong. The second number is the open file. A WARC being written cannot be pushed, so at any moment there is a volume on the disk that is not a candidate for going anywhere, and the size of it is a choice: a smaller volume rotates sooner and costs more requests, a larger one holds more of the box hostage. The third is the confirmation window. An upload returning success is not the store telling you it holds those bytes, and between the two there is a gap during which the local copy is the only copy that is known to exist.
 
-Steady state is those three added up rather than the first one alone. It is the open volume, plus everything written while the previous volume was uploading, plus everything written while the store was being asked whether it has it. On `server1` that is 3.0 GB, which is the open gigabyte and two more in flight behind it. The number is small, and it is small because the uplink is fast, not because the design is careful. Slow the link to 1.5 MB per second and the same command answers differently: the backlog goes to 7.0 GB and the crawl does not start at all, because the disk reaches the mark in 5.9 hours and no cleanup pass recovers a rate that is losing.
+Steady state is those three added up rather than the first one alone. It is the open volume, plus everything written while the previous volume was uploading, plus everything written while the store was being asked whether it has it. On `server1` that is 3.0 GB, which is the open gigabyte and two more in flight behind it. The number is small, and it is small because the uplink is fast, not because the design is careful. Slow the link to 1.5 MB per second and the same command answers differently: the backlog goes to 7.0 GB and the crawl does not start at all, because the disk reaches the mark in 10.1 hours and no cleanup pass recovers a rate that is losing.
 
 The mark is 80% of scratch, and reaching it stops fetching rather than starting a delete. That is the rule the whole package exists to protect. A disk filling up is an incident, and the tempting response to an incident is to free space, and the only space there is to free is bytes nobody has confirmed are anywhere else. Pausing the crawl is recoverable in every case and losing an hour of fetching is a cost anybody would pay. Deleting an unconfirmed volume is recoverable in no case, and the worst part of it is that it works: the disk goes down, the crawl carries on, and the missing hour is discovered a month later when a shard count comes up short.
 
-The last line is the one worth carrying around. `server1` tolerates 4.2 hours of the store being unreachable before fetching has to stop, which is a real operational fact stated in hours rather than a vague sense that there is some slack. It is also the arithmetic behind the checklist item that said 111 GB of free disk is a few hours of fetching, which was written as an assertion and is now a thing the program computes from the inventory. Every input can be argued with on the command line, and `-box server2` gets the answer the fleet was always going to give: 8 GB free is less than the reserve, so there is no scratch at all and the plan fails before the first file is even closed.
+The last line is the one worth carrying around. `server1` tolerates 7.2 hours of the store being unreachable before fetching has to stop, which is a real operational fact stated in hours rather than a vague sense that there is some slack. It is also the arithmetic behind the checklist item that said a box with room to spare is a few hours of fetching, which was written as an assertion and is now a thing the program computes from the inventory. That it says 7.2 hours today and said 4.2 against the previous inventory is the point rather than an inconsistency: the number is read off the disk the box has, and the box gained 70 GB between the two readings.
+
+Every input can be argued with on the command line, and `-box server2` gets the answer the fleet was always going to give. So does `-box server3`, which is newer and worse, because that box was in the pipeline until the inventory was retaken.
+
+```
+$ gao don fit -box server3
+box      server3, 17.7 GB free, 20.0 GB reserved
+scratch  0 B, and the crawl stops fetching at 0 B
+fill     5.2 MB per second, at 200 fetches of 26.0 kB
+uplink   12.5 MB per second
+volume   1.0 GB, closing every 3 minutes and pushing in 80 seconds
+confirm  5 minutes, during which nothing may be deleted
+held     3.0 GB, which is the open volume and 2 in flight
+outage   0 seconds of store outage before fetching has to stop
+
+the crawl does not start: one volume is 1.0 GB and the mark on server3 is 0 B, so the box fills before the first file is even closed
+  and steady state holds 3.0 GB, which is over the 0 B mark on server3, because a push takes 80 seconds and a confirmation takes 5 minutes and nothing may be deleted in between
+```
 
 Arithmetic is a plan, and a plan is not evidence. A crawl that ran for six weeks either deleted only bytes the store had confirmed or it did not, and afterwards the two are indistinguishable from the disk, because in both cases the file is gone. The only place that difference survives is what was written down while it happened, so the rotation logs one line per file per step and `gao don read` folds it back up. Four states, in the order they happen: resident, pushed, verified, reclaimed. Reaching reclaimed without having been seen at verified is the fault the package was written to catch, and it is reported as the sentence a person needs rather than as a count, naming the file and how much crawl is now in a state nobody can resolve. Three others come with it: a verification with no upload behind it, which passed against whatever was already at that path, a file reported with two different hashes, which is the one case where the upload succeeded and the bytes are still wrong, and a file that went somewhere without recording where. The reader refuses nothing and returns everything, because a log with a fault in it is a log whose other lines are still the only record of what happened.
 
 ## Measuring a corpus that is not on the box
 
-Pushing each part and deleting it is what lets four machines process a corpus several times their disk, and the bill for it arrives the moment somebody asks a question about the whole thing. The question that matters most is how much of the five sources is the same document twice. FineWeb2 and GlotCC are both extracted from Common Crawl, so some of the overlap is not in doubt, and how much of it there is decides whether the corpus is the sum of its sources or a good deal less. Nobody publishing a number like that should be estimating it, and downloading 900 GB back to count it properly is not available on this fleet.
+Pushing each part and deleting it is what lets four machines process a corpus several times their disk, and the bill for it arrives the moment somebody asks a question about the whole thing. The question that matters most is how much of the five sources is the same document twice. FineWeb2 and GlotCC are both extracted from Common Crawl, so they have been over the same pages, and how much of the corpus that costs decides whether it is the sum of its sources or a good deal less. Nobody publishing a number like that should be estimating it, and downloading 900 GB back to count it properly is not available on this fleet.
 
 It does not have to come back. Document identity is one fixed width column, and a part is Parquet, so a pass can open each part over HTTP, read the `doc_id` chunk of every row group, and never ask for the pages the text is in. What crosses the wire is around thirty two bytes per document, which is roughly 13 GB for the whole corpus instead of 900. This is the argument the columnar format was chosen for, applied to a question about the corpus rather than to a query somebody runs against the release.
 
@@ -2482,6 +2628,60 @@ One walk answers everything. The key files are sorted, so stepping through all o
 
 A pass over a few hundred parts gets interrupted, so it is resumable at the part rather than at the source. Each part's keys are written under a working directory and a part that already has its file is skipped, so a run killed after a hundred parts reads the rest and merges. Nothing about that is remembered in a ledger, because the files on disk are the record and a second one would be wrong the first time a process died between the rename and the write.
 
+Run against the GlotCC snapshot in the store, over a home connection:
+
+```
+$ gao dem keys -dir keys/ glotcc-9ad140b6be3a
+reading glotcc-9ad140b6be3a out of open-index/vietnamese-source-text
+     1/12  part-00000.parquet                                       126853 documents, 5.8 MB read so far
+     2/12  part-00001.parquet                                       125846 documents, 11.7 MB read so far
+     3/12  part-00002.parquet                                       126717 documents, 17.6 MB read so far
+     4/12  part-00003.parquet                                       120584 documents, 23.3 MB read so far
+     5/12  part-00000.parquet                                       127476 documents, 29.1 MB read so far
+     6/12  part-00001.parquet                                       125554 documents, 34.7 MB read so far
+     7/12  part-00002.parquet                                       125338 documents, 40.5 MB read so far
+     8/12  part-00003.parquet                                       121632 documents, 46.1 MB read so far
+     9/12  part-00000.parquet                                       124776 documents, 51.9 MB read so far
+    10/12  part-00001.parquet                                       124954 documents, 57.8 MB read so far
+    11/12  part-00002.parquet                                       126539 documents, 63.6 MB read so far
+    12/12  part-00003.parquet                                       123731 documents, 69.1 MB read so far
+
+glotcc-9ad140b6be3a
+  parts      12
+  documents  1500000
+  distinct   1405791
+  repeats    6.3% of the source is a copy of something already in it
+
+written to keys/glotcc-9ad140b6be3a.keys
+```
+
+Two numbers to take from that. The pass moved 69.1 MB to read the identities of a 6.1 GB snapshot, which is 46 bytes per document rather than the 32 the identity itself is, the difference being window granularity and the footer each part is opened with. At four hundred million documents that is around 18 GB for the whole corpus rather than the 13 the arithmetic above predicts, and 18 GB against 900 is still the entire argument. And GlotCC's Vietnamese split is 6.3% duplicates of itself before any other source is put next to it, which is the first real number this project has on duplication and is a floor rather than an estimate: exact document identity catches a byte for byte copy and nothing weaker, and the near duplicate work that catches the rest is a later milestone.
+
+Then the matrix over what the three boxes had published by the middle of the day. FinePDFs is the whole source, all three of its pinned files. The other two are what had landed by then, 22 parts of FineWeb2 and the 12 that GlotCC's first three files came to, so the sizes are prefixes and the shares are about these documents rather than about the sources.
+
+```
+$ gao dem overlap keys/*.keys
+3 sources, 6776358 documents read, 6680520 of them different
+
+source                 documents  distinct  only here  repeats
+finepdfs-220bac3acbf0  1218257    1218256   1218256    0.0%
+fineweb2-af9c13333eb9  4058101    4058101   4056473    0%
+glotcc-9ad140b6be3a    1500000    1405791   1404163    6.3%
+
+union                  6776358    6680520              1.4%
+
+pair                                             in both  of the first  of the second
+finepdfs-220bac3acbf0 and fineweb2-af9c13333eb9  0        0%            0%
+finepdfs-220bac3acbf0 and glotcc-9ad140b6be3a    0        0%            0%
+fineweb2-af9c13333eb9 and glotcc-9ad140b6be3a    1628     0.0%          0.1%
+```
+
+That is not the answer the section was written expecting. FineWeb2 and GlotCC are both extracted from Common Crawl and they share 1628 documents out of four million and one and a half, which is a tenth of one percent of the smaller one. FinePDFs shares nothing with either, which at least makes sense, since it comes off PDFs and the other two come off HTML.
+
+The reason is in the identity rather than in the sources. A document's id is the blake3 of its extracted text, not of its URL, so two projects that pulled the same page out of the same crawl produce the same document only if their extractors agreed on every byte of it. They do not. Trafilatura and whatever FineWeb2's pipeline settles on disagree about a nav bar, a trailing newline, a boilerplate line at the foot of the page, and one byte is enough. So this matrix answers a narrower question than the one the paragraph above the code opened with. It says how much of the corpus is literally the same text twice, which is the thing a store can be deduplicated on, and it says nothing about how much of it is the same page twice.
+
+Both questions are worth having and only one of them is answered here. The 1628 that did match are pages where the two extractors happened to agree, which is roughly what you would expect of short documents with nothing around the text to disagree about. The rest of the shared crawl is still in the corpus, twice, in two slightly different renderings, and finding it is the near duplicate pass rather than this one. Which is to say the exact matrix is not the cheap version of the overlap measurement. It is a different measurement that happens to be cheap, and reading it as the overlap number would have this project publish a corpus described as barely redundant when nobody has measured the redundancy that matters.
+
 ```
 gao dem keys                                # what the store holds, ready to measure
 gao dem keys glotcc-abc1234                 # read one snapshot's identities out of the store
@@ -2490,7 +2690,7 @@ gao dem overlap keys/*.keys                 # the matrix, counted rather than sa
 
 ## Checking a count somebody else has to believe
 
-Every size in the release notes is produced by the run that wrote the corpus, which makes it a number the project says about itself. The obvious way to check one is to count the text again, and at this size that is a week of somebody's bandwidth, so nobody does it, and a number nobody checks is a number nobody has to be right about. The plan originally said this check should run in under an hour on one machine. That was never true: the fastest box in the fleet counts 4.2 GB of text in 37 minutes, HPLT v3 alone is around 700 GB, and no arrangement of four machines turns a hundred hours into one. What follows is the protocol that can actually be run, in two levels, and neither of them recounts the corpus.
+Every size in the release notes is produced by the run that wrote the corpus, which makes it a number the project says about itself. The obvious way to check one is to count the text again, and at this size that is a week of somebody's bandwidth, so nobody does it, and a number nobody checks is a number nobody has to be right about. The plan originally said this check should run in under an hour on one machine. That was never true: the fastest reading taken off the fleet is 4.2 GB of Vietnamese in 40 minutes, HPLT v3 alone is around 700 GB, and no arrangement of four machines turns a hundred hours into one. What follows is the protocol that can actually be run, in two levels, and neither of them recounts the corpus.
 
 Level one adds up the shape columns. Every document carries `n_chars`, `n_syllables` and `n_tokens` as fixed width columns, so summing them over every part gives the corpus in three of its four published units at twelve bytes per document before the encoding, against the few kilobytes the document is. That is 48 MB for four million documents, and it covers every part rather than a sample of them. What it proves is that the published total is the sum of what is stored, and what it catches is a report written from a run that did not finish, a source counted twice, a part that never reached the store, and arithmetic.
 
@@ -2505,6 +2705,52 @@ Both levels are resumable at the part, because a pass over a thousand parts will
 Three things are worth saying about what this does not do. Neither level catches a corpus that is uniformly a little off, since level one reads the same columns the report was written from and level two would have to read every part, and a bound over how many parts are wrong says nothing about how wrong any one of them is. The byte length of the text has no column, so level one reports no byte count at all rather than deriving one from the character count, which would be wrong by exactly the diacritics and would look like a measurement, and the sample is therefore the only place a bytes per character ratio comes from. And a token count can only be checked against the pinned tokenizer, so a run without one checks two of the three columns and says so in its output rather than reporting a token column that passed.
 
 The check counts with the same two functions the ingest counted with. A verifier that counts its own way is measuring the distance between two implementations, and the question here is whether the column describes the text next to it.
+
+Level one has been run against a published snapshot. `glotcc-9ad140b6be3a` is the GlotCC ingest `server3` finished on 2026-08-18, twelve parts and 6.1 GB in the store, and this is the whole of it checked from a laptop against the `counts.json` the run wrote:
+
+```
+$ gao dem verify -level counts -counts gao-ingest/ glotcc-9ad140b6be3a
+glotcc-9ad140b6be3a in open-index/vietnamese-source-text
+  parts      12, 6.1 GB in the store
+  level one  every part, 18.0 MB of columns over 1500000 documents, under a minute at 100 Mbit
+  level two  12 parts read in full, 6.1 GB, 8 minutes at 100 Mbit
+  bound      no more than 5.0% of parts wrong, at 99.0% confidence
+  seed       glotcc-9ad140b6be3a
+  counting the text again instead would be 8 minutes at 100 Mbit
+
+adding up the shape columns of 12 parts
+     1/12  part-00000.parquet                                       126853 documents, 1.8 MB read so far
+     2/12  part-00001.parquet                                       252699 documents, 3.6 MB read so far
+     3/12  part-00002.parquet                                       379416 documents, 5.4 MB read so far
+     4/12  part-00003.parquet                                       500000 documents, 7.0 MB read so far
+     5/12  part-00000.parquet                                       627476 documents, 8.7 MB read so far
+     6/12  part-00001.parquet                                       753030 documents, 10.5 MB read so far
+     7/12  part-00002.parquet                                       878368 documents, 12.3 MB read so far
+     8/12  part-00003.parquet                                      1000000 documents, 14.0 MB read so far
+     9/12  part-00000.parquet                                      1124776 documents, 15.9 MB read so far
+    10/12  part-00001.parquet                                      1249730 documents, 17.7 MB read so far
+    11/12  part-00002.parquet                                      1376269 documents, 19.5 MB read so far
+    12/12  part-00003.parquet                                      1500000 documents, 21.1 MB read so far
+
+glotcc-9ad140b6be3a adds up out of its own columns to
+  documents  1500000
+  chars      9704920731
+  syllables  2043178296
+  tokens     -
+  bytes      nothing stores the byte length of the text, so level two is where that comes from
+
+source           documents  chars       syllables   tokens
+glotcc  claimed  1500000    9704920731  2043178296  -
+        stored   1500000    9704920731  2043178296  -
+
+the published counts are the counts in the store, in every unit a column holds
+```
+
+Twelve parts and 1.5 million documents checked over 21.1 MB, against 6.1 GB to download the snapshot, and the four columns come out equal on both sides. The token column is a dash because that ingest ran without a tokenizer, and the check says so rather than reporting a column that passed.
+
+The same check over the whole of FinePDFs, which is the one source that finished, reads 54 parts and 1218257 documents for 64.3 MB and comes back equal in every unit a column holds. That is 53 bytes a document against GlotCC's 46, and the difference is the footer, since this snapshot is four and a half times the parts for a fifth of the documents each.
+
+The first time it ran it moved 670.1 MB rather than 21.1, thirty eight times the 18.0 MB the line above it had just predicted. The window is why, and it is the kind of thing only a real part shows. A remote read fetches four megabytes when it has to go to the host, which is the right size for the text column, where a chunk is tens of megabytes and a window is thrown away half read only at the end of one. A shape column is four bytes per document, so its chunk is a couple of hundred kilobytes and a four megabyte window was fetching the whole neighborhood to read a page of it. On one real part of 511.6 MB the cost of summing the three columns is 58.1 MB at a 4 MB window, 15.5 at 1 MB, 4.6 at 256 KB, 1.8 at 64 KB and 1.0 at 16 KB, against a floor of 1.5 MB, and the requests go from 14 to 23 across that whole range. So the column pass opens at 64 KB and the pass that reads whole rows keeps the default, since it is the only one the default was ever sized for. A protocol whose selling point is that it moves twelve bytes a document has to actually move twelve bytes a document, and the arithmetic in the plan line is not evidence that it does.
 
 ```
 gao dem verify                              # what a full check would cost, per snapshot, before running it

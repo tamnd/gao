@@ -3,15 +3,24 @@
 //
 // The manifest pins 122 files and 513.6 GB, and what decides how long that takes
 // is usually not the link. A decoding ingest fetches a record, puts it to the
-// ingest contract, tokenizes it and writes Parquet, and the fastest box on this
-// fleet counts 4.2 GB of text in 37m46s. So the number a schedule needs is what
-// a box got through end to end rather than what its link can do, and every
-// reading here is that number, taken off a run that happened. A schedule built
-// on a link speed is a schedule that finishes on paper.
+// ingest contract, tokenizes it and writes Parquet, and the fastest reading on
+// this fleet is 4.2 GB of Vietnamese in 40m09s. So the number a schedule needs
+// is what a box got through end to end rather than what its link can do, and
+// every reading here is that number, taken off a run that happened. A schedule
+// built on a link speed is a schedule that finishes on paper.
+//
+// A reading is a box and a source together and not a property of the box. The
+// three taken on 2026-08-18 were taken on three different sources, because that
+// is how the ingest was split, and FinePDFs compresses at 1.07 where GlotCC
+// compresses at 2.07, so part of the gap between two boxes here is the shape of
+// what each was fetching. The schedule uses them anyway, because a reading off
+// the wrong source is still a run that happened and the alternative is a guess,
+// but it is why 'gao giao plan' prints how each one was taken rather than only
+// the rate it works out to.
 //
 // Two things then make the split easy to get wrong. The first is that the files
-// are not the same size. The largest pinned file is 26.6 GB and the median is a
-// fiftieth of that, so dividing 122 files into three piles of forty leaves one
+// are not the same size. The largest pinned file is 26.6 GB and the median is
+// 2.1 GB, a thirteenth of it, so dividing 122 files into equal piles leaves one
 // box working for a day after the others have gone quiet, and a file cannot be
 // cut in half because it is streamed and hashed as one unit. The second is that
 // the sources cannot all be fetched at once. HPLT v3 is pinned at order zero and
@@ -27,6 +36,21 @@
 // were divisible and the order did not bind. Nothing can reach that floor. It is
 // there so that the gap between it and the schedule can be read as what it is,
 // which is the shape of the work rather than a shortage of machines.
+//
+// Boxes that may hold corpus bytes is [may.HoldsCorpus], and on this fleet it
+// excludes the box that carries the fastest reading. server3 has 17.7 GB free
+// against a 20.0 GB reserve, so it has no scratch at all and draws nothing
+// here, and it is also the box that fetched, decoded and published the whole of
+// the GlotCC ingest on 2026-08-18, 1,500,000 documents and 12.6 GB of text into
+// 6.1 GB of Parquet. Both of those are true. [may.HoldsCorpus] asks whether a
+// box can hold a stage's working set,
+// which is four shards, and a fetch holds [InFlight], which is two, so the
+// schedule is answering a larger question than the one it is asking about. What
+// keeps server3 out is the reserve rather than the disk, and 'gao giao plan'
+// prints those numbers for every box it drops rather than dropping it quietly.
+// The reserve is not adjusted here to let a box back in. A safety number that
+// moves the first time it excludes a machine somebody wanted is not a safety
+// number.
 package giao
 
 import (
@@ -188,9 +212,9 @@ type Split struct {
 	// dropped.
 	Idle []string `json:"idle,omitempty"`
 
-	// Unplaced is every pinned file no box has the scratch to land whole. It is
-	// a list rather than a count because the answer to it is either a bigger
-	// disk or a smaller shard, and which one depends on the file.
+	// Unplaced is every pinned file no box has the scratch to fetch. It is a
+	// list rather than a count because the answer to it is either a bigger disk
+	// or a smaller shard, and which one depends on the file.
 	Unplaced []Job `json:"unplaced,omitempty"`
 
 	rates map[string]float64
@@ -204,10 +228,9 @@ type Split struct {
 // the thing that keeps the slow box from drawing a file it will still be
 // fetching after the fast one has finished the source.
 //
-// A box is only offered a file it has the disk to land whole, so the fastest
-// box on the fleet can still be passed over for the largest file in the
-// manifest. That is not a tie break, it is the difference between a plan and a
-// plan that runs.
+// A box is only offered a file it has the disk to fetch, which is [InFlight]
+// and not the size of the file. That is not a tie break, it is the difference
+// between a plan and a plan that runs.
 func Divide(readings []Reading) Split {
 	s := Split{Readings: readings, rates: map[string]float64{}}
 
@@ -262,7 +285,7 @@ func Divide(readings []Reading) Split {
 			pick, soonest := -1, 0.0
 			for i, h := range g.Hands {
 				rate := s.rates[h.Box]
-				if rate <= 0 || Room(h.Box) < j.Bytes {
+				if rate <= 0 || Room(h.Box) < InFlight {
 					continue
 				}
 				done := h.Seconds + float64(j.Bytes)/rate
@@ -429,12 +452,28 @@ func (s Split) Waiting() []string {
 	return out
 }
 
+// InFlight is the disk one fetch holds while it is running.
+//
+// It was the size of the file until an ingest was run and watched, on the
+// reasoning that a pinned file is streamed and hashed as one unit and therefore
+// has to land whole. The second half of that does not follow and never did. No
+// gao fetch has landed a file: without -out the bytes are counted and thrown
+// away, and with -out and -push what the box holds is the part being written
+// and then sent, which is one shard. server3 fetched three GlotCC files on
+// 2026-08-18 with a trace running, 6.3 GB in and 6.1 GB of Parquet out across
+// 56m33s, and 'gao box peak' read 0.5 GB off it.
+//
+// So a box needs room for a part rather than for a file, and the number is the
+// same whichever file it draws, which is why it is a constant. Two shards and
+// not one, for the same reason [may.ShardsPerWorker] is two: the part being
+// closed and the next one opening are not required to be the same part forever.
+const InFlight = may.ShardsPerWorker * may.ShardBytes
+
 // Room is the disk a box has for a file it is fetching, which is its scratch
 // less the working set the stage behind the fetch is already holding.
 //
-// A pinned file is streamed and hashed as one unit, so it has to land whole,
-// and it lands next to the shards the tokenizer is working through rather than
-// instead of them.
+// The part being written lands next to the shards the tokenizer is working
+// through rather than instead of them, which is what the subtraction is for.
 func Room(box string) int64 {
 	b, ok := may.Lookup(box)
 	if !ok {
@@ -469,8 +508,8 @@ func (s Split) Faults() []string {
 		}
 	}
 	for _, j := range s.Unplaced {
-		out = append(out, fmt.Sprintf("%s is %s and no box has room to land it whole, the most any of them has free is %s",
-			j.Path, bytesOf(j.Bytes), bytesOf(most)))
+		out = append(out, fmt.Sprintf("%s draws nobody: a fetch holds %s while it runs and the most room any box has is %s",
+			j.Path, bytesOf(InFlight), bytesOf(most)))
 	}
 	return out
 }

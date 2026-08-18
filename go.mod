@@ -9,6 +9,7 @@ require (
 	github.com/parquet-go/parquet-go v0.30.1
 	github.com/zeebo/blake3 v0.2.4
 	golang.org/x/net v0.58.0
+	golang.org/x/sys v0.47.0
 	golang.org/x/text v0.41.0
 )
 
@@ -20,6 +21,5 @@ require (
 	github.com/parquet-go/jsonlite v1.0.0 // indirect
 	github.com/pierrec/lz4/v4 v4.1.21 // indirect
 	github.com/twpayne/go-geom v1.6.1 // indirect
-	golang.org/x/sys v0.47.0 // indirect
 	google.golang.org/protobuf v1.34.2 // indirect
 )

@@ -6,8 +6,10 @@ import (
 )
 
 // The rule that no corpus bytes land on server2 is the reason this file exists.
-// It has eight gigabytes of free disk, which is less than the reserve, so the
-// arithmetic says no without anybody having to remember to say it.
+// It has 19.8 GB of free disk, which is under the reserve, so the arithmetic
+// says no without anybody having to remember to say it. It gained 11.8 GB
+// between the two inventories and the answer did not change, which is what a
+// rule made of arithmetic buys over a rule made of a sentence.
 func TestServer2DoesNoCorpusWork(t *testing.T) {
 	b, ok := Lookup("server2")
 	if !ok {
@@ -24,9 +26,18 @@ func TestServer2DoesNoCorpusWork(t *testing.T) {
 	}
 }
 
-func TestEveryOtherBoxDoesCorpusWork(t *testing.T) {
+// The reserve decides, and nothing else does. Two boxes are under it as
+// measured on 2026-08-18, server2 because it has always been and server3
+// because it lost 26.6 GB since the first inventory. Naming them here would
+// make this test a copy of the inventory, so it asks the arithmetic instead:
+// a box over the line works and a box under it does not.
+func TestTheReserveDecidesWhichBoxesDoCorpusWork(t *testing.T) {
 	for _, p := range Placements() {
-		if p.Box.Name == "server2" {
+		if p.Box.FreeDisk-ReserveBytes < MinScratchBytes {
+			if p.Holds || p.Workers != 0 || p.Scratch >= MinScratchBytes {
+				t.Errorf("%s has %s free, under the reserve plus %s of scratch, and still reads as able to work",
+					p.Box.Name, GB(p.Box.FreeDisk), GB(MinScratchBytes))
+			}
 			continue
 		}
 		if !p.Holds {
@@ -108,6 +119,44 @@ func TestIngestionFitsServer1sBudget(t *testing.T) {
 	}
 }
 
+// What the S1 ingest actually held, which is the finding this file was wrong
+// about in both directions.
+//
+// server3 fetched three GlotCC files of about 2.1 GB each on 2026-08-18,
+// decoded each one to Parquet, pushed the twelve parts and deleted them. The
+// trace 'gao gat hf -watch' wrote peaked at 0.5 GB, which is one part in flight
+// and not one file. So the arithmetic here overstates what a streaming stage holds:
+// PeakBytes says two 512 MB shards per worker and the run held closer to one.
+//
+// It also rules server3 out of the work entirely, because 17.7 GB free is under
+// the 20 GB reserve, and the box did the work anyway. Both are correct and they
+// are answering different questions. The reserve is headroom for the machine,
+// not a working set for the stage: a box with 17.7 GB free can stream a corpus
+// through and still be one bad day away from a filesystem nobody can log into.
+// The fix is disk on server3, not a smaller reserve, and this test is here so
+// that the next person to read PeakBytes knows it is an upper bound that was
+// checked against a run rather than a number nobody has weighed.
+func TestTheMeasuredIngestHeldLessThanTheArithmeticAllows(t *testing.T) {
+	// Off the trace on server3, 341 samples ten seconds apart across 56m37s.
+	const measuredPeak int64 = 500_000_000
+
+	b, _ := Lookup("server3")
+	if HoldsCorpus(b) {
+		t.Fatalf("server3 has %s free and reads as able to hold corpus bytes, so the finding below is stale", GB(b.FreeDisk))
+	}
+
+	// One worker is what the ingest runs, since it is strictly sequential.
+	one := PeakBytes(Box{FreeDisk: ReserveBytes + 100*ShardBytes, Threads: 1})
+	if one <= measuredPeak {
+		t.Errorf("the arithmetic allows %s for one worker and the run held %s, so the budget is no longer an upper bound",
+			GB(one), GB(measuredPeak))
+	}
+	if measuredPeak >= ReserveBytes {
+		t.Errorf("the run held %s, which is more than the %s reserve, so streaming does not keep a box out of trouble on its own",
+			GB(measuredPeak), GB(ReserveBytes))
+	}
+}
+
 func TestScratchLeavesTheReserveAlone(t *testing.T) {
 	for _, p := range Placements() {
 		if p.Scratch > p.Box.FreeDisk-ReserveBytes && p.Scratch != 0 {
@@ -118,9 +167,10 @@ func TestScratchLeavesTheReserveAlone(t *testing.T) {
 }
 
 // The fleet-wide worker count is what sets how long a pass over the corpus
-// takes, so it is asserted rather than assumed. Forty-four is the fleet as
-// measured, and this test failing means the fleet changed and the pass time
-// estimates in the plan changed with it.
+// takes, so it is asserted rather than assumed. It was 44 on 2026-08-03 and it
+// is 36 on 2026-08-18, because server3 crossed the reserve and took its eight
+// workers with it. This test failing means the fleet changed again and the pass
+// time estimates in the plan changed with it.
 func TestFleetWorkersMatchesTheBoxes(t *testing.T) {
 	var want int
 	for _, b := range Boxes {
@@ -129,8 +179,18 @@ func TestFleetWorkersMatchesTheBoxes(t *testing.T) {
 	if got := FleetWorkers(); got != want {
 		t.Fatalf("FleetWorkers = %d, the boxes add up to %d", got, want)
 	}
-	if got := FleetWorkers(); got < 40 || got > 48 {
+	if got := FleetWorkers(); got < 32 || got > 48 {
 		t.Errorf("the fleet runs %d workers, which is outside the range the pass time estimates assume", got)
+	}
+
+	// Where they are matters as much as how many there are. Thirty two of the
+	// thirty six are on the one box with a GPU, which is also the box every
+	// classifier and every evaluation queues on, so a pass time computed off
+	// the fleet total is a pass time that assumes gamingpc is otherwise idle.
+	gpu, _ := Lookup("gamingpc")
+	if Workers(gpu) < FleetWorkers()/2 {
+		t.Errorf("gamingpc runs %d of the fleet's %d workers, and the plan is written around it running most of them",
+			Workers(gpu), FleetWorkers())
 	}
 }
 

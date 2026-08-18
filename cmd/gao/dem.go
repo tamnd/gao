@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"flag"
@@ -428,7 +429,24 @@ flags:
 
 // printOverlap is separate from the command so the tables can be tested without
 // key files on disk.
+//
+// It goes through a buffer to take the padding off the ends of the lines. The
+// blank row between the sources and the union is five empty cells, and a
+// tabwriter pads an empty cell out to its column like any other, so that row
+// arrives as a run of spaces. This table gets quoted verbatim, and a line of
+// invisible spaces in a quoted table is a difference somebody has to explain.
 func printOverlap(w io.Writer, m dem.Matrix) {
+	var b bytes.Buffer
+	overlapTables(&b, m)
+	for _, line := range strings.SplitAfter(b.String(), "\n") {
+		fmt.Fprint(w, strings.TrimRight(line, " \n"))
+		if strings.HasSuffix(line, "\n") {
+			fmt.Fprintln(w)
+		}
+	}
+}
+
+func overlapTables(w io.Writer, m dem.Matrix) {
 	fmt.Fprintf(w, "%d sources, %d documents read, %d of them different\n\n", len(m.Sources), m.Documents, m.Distinct)
 
 	tw := tabwriter.NewWriter(w, 0, 0, 2, ' ', 0)

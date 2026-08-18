@@ -9,17 +9,18 @@ import (
 	"github.com/tamnd/gao/luat"
 )
 
-// The test the whole split exists for. A public repo that carries text may only
-// carry text the publication posture says ships, and this is what makes that a
-// property of the code rather than of whoever creates the repo.
-func TestNoPublicRepoCarriesTextItMayNotPublish(t *testing.T) {
+// The test the whole table exists for. Every repo here is public, so a repo that
+// carries text may only carry text the publication posture says ships, and this
+// is what makes that a property of the code rather than of whoever creates the
+// repo.
+func TestNoRepoCarriesTextItMayNotPublish(t *testing.T) {
 	for _, d := range Datasets() {
-		if !d.Public() || !d.Text {
+		if !d.Text {
 			continue
 		}
 		for _, c := range d.Classes {
 			if !luat.Publishes(c).Text {
-				t.Errorf("%s is public, carries text, and admits %s, whose text does not ship", d.Repo(), c)
+				t.Errorf("%s carries text and admits %s, whose text does not ship", d.Repo(), c)
 			}
 			if !d.Admits(c) {
 				t.Errorf("%s names %s and then refuses it", d.Repo(), c)
@@ -28,27 +29,28 @@ func TestNoPublicRepoCarriesTextItMayNotPublish(t *testing.T) {
 	}
 }
 
-// Processing material is not publishing it, which is the distinction the whole
-// restricted class rests on. A private working repo has to be able to hold
-// everything or a stage cannot run over the corpus it is cleaning.
-func TestTheWorkingTierHoldsWhatThePublishedTierCannot(t *testing.T) {
+// The working tier used to be the escape hatch: private, and therefore allowed
+// to hold anything on the grounds that processing material is not publishing it.
+// It is public now, so it is held to the same rule as a release and the text it
+// may not redistribute never leaves the box that read it.
+func TestTheWorkingTierIsHeldToTheSameRuleAsARelease(t *testing.T) {
 	var working int
 	for _, d := range Datasets() {
-		if d.Public() {
+		if d.Tier != Working {
 			continue
 		}
 		working++
-		for _, c := range []doc.LicenseClass{
-			doc.LicenseOpen, doc.LicensePermissiveAttribution,
-			doc.LicenseRestricted, doc.LicenseUnredistributable,
-		} {
-			if !d.Admits(c) {
-				t.Errorf("%s refuses %s, so a stage cannot process it", d.Repo(), c)
+		if !d.Text {
+			continue
+		}
+		for _, c := range []doc.LicenseClass{doc.LicenseRestricted, doc.LicenseUnredistributable} {
+			if d.Admits(c) {
+				t.Errorf("%s is a working repo carrying text and it admits %s", d.Repo(), c)
 			}
 		}
 	}
 	if working == 0 {
-		t.Error("there is no working tier, so a box has nowhere to push a shard it wants to delete")
+		t.Error("there is no working tier, so a box has nowhere to push a part it wants to delete")
 	}
 }
 
@@ -73,7 +75,7 @@ func TestAPublicTextRepoRefusesWhatItDoesNotName(t *testing.T) {
 func TestRestrictedDocumentsHaveAPublicHomeWithoutTheirText(t *testing.T) {
 	var found bool
 	for _, d := range Datasets() {
-		if !d.Public() || !d.Admits(doc.LicenseRestricted) {
+		if !d.Admits(doc.LicenseRestricted) {
 			continue
 		}
 		if d.Text {

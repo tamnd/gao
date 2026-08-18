@@ -132,8 +132,8 @@ func (c Card) Publishable() []string {
 	if !ok {
 		return []string{fmt.Sprintf("%s is not a dataset in the hub, which is a bug in the hub rather than in the card", Repo)}
 	}
-	if !d.Public() {
-		faults = append(faults, fmt.Sprintf("%s is not published, so there is nowhere for this to go", Repo))
+	if d.Tier != kho.Published {
+		faults = append(faults, fmt.Sprintf("%s is not a release, so a generator card has nowhere to go", Repo))
 	}
 	if c.Contaminated > 0 {
 		faults = append(faults, fmt.Sprintf(

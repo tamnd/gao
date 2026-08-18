@@ -297,24 +297,26 @@ func TestAPageThatReservedItselfIsRefusedByAPublishedTextRepo(t *testing.T) {
 	}
 }
 
-// The working repos take it. Processing material is not publishing it, and a
-// reserved document that cannot be written anywhere is a document that gets
-// dropped on the floor instead of counted.
-func TestAWorkingRepoTakesAPageThatReservedItself(t *testing.T) {
-	staging, ok := Lookup("vietnamese-text-staging")
-	if !ok {
-		t.Fatal("vietnamese-text-staging is not in the dataset table")
-	}
-	if staging.Public() {
-		t.Fatal("vietnamese-text-staging is published, and this test needs the repo that is not")
+// The working repo used to take it, on the grounds that processing material is
+// not publishing it. It is public now, so it does not, and a page that reserved
+// itself reaches the reject store instead, where it is counted and carries no
+// text.
+func TestTheWorkingRepoRefusesAPageThatReservedItself(t *testing.T) {
+	staging := Staging()
+	if !staging.Text {
+		t.Fatal("the working repo carries no text, and this test is about the text it carries")
 	}
 	in := sample(1)
 	in.Consent = doc.ConsentNoTrain
 
 	var buf bytes.Buffer
 	w := NewParquetWriter(&buf, staging, stamp)
-	if err := w.Append(in); err != nil {
-		t.Fatalf("a working repo refused a reserved document: %v", err)
+	err := w.Append(in)
+	if !errors.Is(err, ErrNotAdmitted) {
+		t.Fatalf("a public repo took a reserved page: %v", err)
+	}
+	if !strings.Contains(err.Error(), staging.Name) {
+		t.Errorf("the refusal does not name the repo: %v", err)
 	}
 }
 
@@ -409,6 +411,48 @@ func TestAPartCarriesItsStamp(t *testing.T) {
 		if got := meta[key]; got != want {
 			t.Errorf("%s is %q in the file, want %q", key, got, want)
 		}
+	}
+}
+
+// A part written by a run with no tokenizer says so, because the alternative is
+// a column of zeros that reads as a count.
+//
+// This came off the first published parts. A query over 500000 real documents on
+// the Hub returned 500000 documents and 0 tokens, and there was nothing in the
+// file to say which of the two things that meant. counts.json says it, and a
+// part on the Hub does not travel with counts.json.
+func TestAPartSaysWhetherAnythingCountedItsTokens(t *testing.T) {
+	none := Stamp{Snapshot: "glotcc-9ad140b6be3a", Stage: "gat@0.1.0", Box: "server3"}
+	if got, ok := none.Metadata()["gao.tokenizer"]; !ok || got != "" {
+		t.Errorf("a run with no tokenizer stamps %q with present=%v, want an empty value that is present", got, ok)
+	}
+
+	counted := none
+	counted.Tokenizer = "gemma-3@sha256:1299c11d"
+	if got := counted.Metadata()["gao.tokenizer"]; got != counted.Tokenizer {
+		t.Errorf("the tokenizer is %q in the metadata, want %q", got, counted.Tokenizer)
+	}
+
+	// And it survives the round trip through the file, which is the whole point
+	// of putting it in the footer rather than in a manifest beside it.
+	dir := t.TempDir()
+	p, err := CreatePart(dir, "part-00000.parquet", textDataset(t), counted)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := p.Append(sample(1)); err != nil {
+		t.Fatal(err)
+	}
+	f, err := p.Close()
+	if err != nil {
+		t.Fatal(err)
+	}
+	meta, err := PartMetadata(filepath.Join(dir, f.Path))
+	if err != nil {
+		t.Fatalf("PartMetadata: %v", err)
+	}
+	if got := meta["gao.tokenizer"]; got != counted.Tokenizer {
+		t.Errorf("the file says %q wrote its tokens, want %q", got, counted.Tokenizer)
 	}
 }
 

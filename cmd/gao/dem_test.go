@@ -343,6 +343,28 @@ func TestPrintOverlapWithOneSourceSaysThereIsNothingToCompare(t *testing.T) {
 	}
 }
 
+// The matrix is quoted verbatim into the README, and the row that separates the
+// sources from the union is five empty cells, which a tabwriter pads out to its
+// columns like any other cell. It came out as a line of eighty spaces until this
+// was run against three real key files and the output was pasted somewhere that
+// showed them.
+func TestPrintOverlapLeavesNoTrailingSpaces(t *testing.T) {
+	m, err := dem.Measure(
+		keyFile(t, "one", "một", "hai", "ba"),
+		keyFile(t, "two", "hai", "bốn"),
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var b bytes.Buffer
+	printOverlap(&b, m)
+	for i, line := range strings.Split(b.String(), "\n") {
+		if strings.TrimRight(line, " ") != line {
+			t.Errorf("line %d of the matrix ends in padding: %q", i+1, line)
+		}
+	}
+}
+
 // A share of nothing prints as a zero rather than as a rounded nothing, because
 // 0.0% reads as small and 0% reads as none.
 func TestPercentPrintsZeroAsZero(t *testing.T) {

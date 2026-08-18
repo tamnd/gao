@@ -34,8 +34,9 @@ func runGatHF(stdout, stderr io.Writer, args []string) int {
 	tokenizer := fs.String("tokenizer", "", "count tokens with the tokenizer at this path, which implies -decode")
 	out := fs.String("out", "", "write the documents the contract admits under this directory as parquet, which implies -decode")
 	push := fs.Bool("push", false, "push each part to the store as it closes and delete the local copy, which needs -out")
+	disk := fs.String("watch", "", "sample the disk this run holds into this file, which is what 'gao box peak' reads")
 	fs.Usage = func() {
-		fmt.Fprint(stderr, `usage: gao gat hf -dir DIR [-source NAME] [-limit N] [-plan] [-decode] [-out DIR] [-push] [-tokenizer PATH]
+		fmt.Fprint(stderr, `usage: gao gat hf -dir DIR [-source NAME] [-limit N] [-plan] [-decode] [-out DIR] [-push] [-tokenizer PATH] [-watch FILE]
 
 Fetches the files in the ingest manifest at the revisions they are pinned to.
 
@@ -70,11 +71,12 @@ ledger records how it was read and how much of it moved instead. Without -decode
 those sources are streamed and verified like the others.
 
 With -out the admitted documents are written under that directory as Parquet, in
-the layout the store of record uses, one part per 1.5 GB of text so that a worker
-holds a part rather than a file. The paths are a function of the source revision,
-the input file, and the part number, so a run that is interrupted mid file writes
-over what it left rather than beside it. A file whose decode fails leaves no part
-at all.
+the layout the store of record uses, one part per 1.06 GB of text so that a worker
+holds a part rather than a file. That number is the shard target multiplied by the
+compression ratio the disk budget runs on, and it moved when the ratio stopped
+being assumed. The paths are a function of the source revision, the input file,
+and the part number, so a run that is interrupted mid file writes over what it
+left rather than beside it. A file whose decode fails leaves no part at all.
 
 With -push each part goes to the store as it closes and the local copy is
 deleted before the next one opens. That is what makes a source larger than the
@@ -85,11 +87,21 @@ twice is safe and nearly free: the path is a function of what is in it, and the
 store keys the bytes by their digest, so a run started again after a box reboots
 skips what is already up there without sending it a second time.
 
+With -watch the run samples the disk it is holding every ten seconds and writes
+the trace to that file, which is what turns the disk budget from arithmetic into
+a measurement. Run 'gao box peak' over it afterwards. The sample says which half
+of the work it was taken during, since writing a part and sending it hold the
+disk for different reasons.
+
 A decoding run also counts what it read and writes counts.json beside the ledger:
 documents, text bytes, characters, and syllables per source. With -tokenizer it
 counts tokens too, which is the only number in gao that costs anything to
-produce, at roughly 11 MB of text per second per core. Run 'gao dem model' to
-fetch the tokenizer and 'gao dem counts' to read the result.
+produce. It costs more than the ingest: the pinned tokenizer was measured at
+0.5 MB/s on server3 over 52.8 MB of real text, it runs on the goroutine reading
+the file, and the same source on the same box took nine times longer with the
+flag than without it. Run 'gao dem gates' on a box before deciding to use this
+on a run you want to finish. Run 'gao dem model' to fetch the tokenizer and
+'gao dem counts' to read the result.
 
 The counts are written before the first byte is fetched and rewritten after
 every file, so a run that takes days can be read while it runs and cannot leave
@@ -226,6 +238,7 @@ flags:
 		// alternative reads 700 GB of text twice.
 		if *out != "" {
 			written = newParts(*out, docs, in.Box, stdout)
+			written.tokenizer = tokenizerLabel(tok)
 			docs.Emit = written.write
 			in.Sink = written
 		}
@@ -240,6 +253,31 @@ flags:
 			}
 		}
 		docs.Emit = tally.Counting(tok, docs.Emit)
+	}
+
+	// Started after the sink is built, because what the trace is worth depends
+	// on it sampling the directory the parts are actually written to.
+	stopWatch := func() {}
+	if *disk != "" {
+		stage := func() string { return "fetch" }
+		if written != nil {
+			stage = written.stage
+		}
+		w, err := watch(*disk, []string{*dir, *out}, in.Box, stage)
+		if err != nil {
+			fmt.Fprintf(stderr, "gao gat hf: %v\n", err)
+			return 1
+		}
+		stopWatch = func() {
+			stopWatch = func() {}
+			if err := w.Close(); err != nil {
+				fmt.Fprintf(stderr, "gao gat hf: %v\n", err)
+			}
+		}
+		// The deferred call is for the paths that leave early. The run itself
+		// stops the trace by hand below, so that the file is closed and its
+		// error reported before the summary claims the run went well.
+		defer func() { stopWatch() }()
 	}
 
 	// The counts are rewritten after every file rather than at the end of the
@@ -261,6 +299,7 @@ flags:
 	fmt.Fprintln(stdout)
 
 	n, err := in.Run(ctx, todo)
+	stopWatch()
 	fmt.Fprintf(stdout, "\n%d of %d files fetched, %s in the ledger\n", n, len(todo), may.GB(ledger.Bytes()))
 	printAdmitted(stdout, docs)
 	if written != nil {

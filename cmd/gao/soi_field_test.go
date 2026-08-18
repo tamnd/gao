@@ -164,7 +164,7 @@ func TestTheFieldIsAlsoMachineReadable(t *testing.T) {
 	if got.Engines != 4 || got.Losers != 3 || got.Winner != "paddleocr" || !got.Holds {
 		t.Errorf("the field came back as %+v", got)
 	}
-	if got.CardBytes != 25_769_803_776 || !strings.Contains(got.Card, "4090") {
+	if got.CardBytes != 25_757_614_080 || !strings.Contains(got.Card, "4090") {
 		t.Errorf("the card came back as %s at %d bytes", got.Card, got.CardBytes)
 	}
 	first := got.Results[0]
