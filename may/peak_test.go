@@ -174,8 +174,8 @@ func TestAPeakIsAFactAboutOneMachine(t *testing.T) {
 	peakFault(t, Measure("hplt-v3", time.Hour, Ceiling, control), "still filled the box")
 }
 
-// The S1 ingest ran on server3, which is under the reserve and therefore runs no
-// workers, and this is what the first real trace off it exposed.
+// The S1 ingest ran on server3 while it was under the reserve and therefore ran
+// no workers, and this is what the first real trace off it exposed.
 //
 // A box with no workers has no per worker prediction, so the peak has nothing to
 // be read against and the drift line has nothing to say. That is not a bad trace
@@ -183,8 +183,14 @@ func TestAPeakIsAFactAboutOneMachine(t *testing.T) {
 // not schedule, and the only place that fact can be reported is here, because
 // every other number in the output looks fine: 0.7 GB held against a 90 GB
 // ceiling reads as a comfortable pass.
+//
+// The box in the trace is server2 rather than server3, because server3 read
+// 43.7 GB free at the third inventory and is scheduled again. server2 is the
+// box that has been under the reserve at all three, so it is the one that keeps
+// this fault reachable. The finding is about a run on an unscheduled box and
+// not about which box that is.
 func TestARunOnABoxThePlanGivesNoWorkersIsAFault(t *testing.T) {
-	idle := trace("server3", time.Hour, 10*time.Second, 400_000_000, 700_000_000)
+	idle := trace("server2", time.Hour, 10*time.Second, 400_000_000, 700_000_000)
 	p := Measure("glotcc", time.Hour, Ceiling, idle)
 
 	if len(p.Blocking()) > 0 {
@@ -197,7 +203,7 @@ func TestARunOnABoxThePlanGivesNoWorkersIsAFault(t *testing.T) {
 		t.Error("a run on a box the plan gives no workers came back settled")
 	}
 	if p.Planned != 0 {
-		t.Errorf("the plan allows server3 %d bytes, so this test is about a box that no longer exists", p.Planned)
+		t.Errorf("the plan allows server2 %d bytes, so this test is about a box that no longer exists", p.Planned)
 	}
 	// The run still has a prediction, because it still ran workers and they still
 	// hold two shards each. What it has no plan number for is the box, and those

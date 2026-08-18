@@ -6,10 +6,11 @@ import (
 )
 
 // The rule that no corpus bytes land on server2 is the reason this file exists.
-// It has 19.8 GB of free disk, which is under the reserve, so the arithmetic
+// It has 19.1 GB of free disk, which is under the reserve, so the arithmetic
 // says no without anybody having to remember to say it. It gained 11.8 GB
-// between the two inventories and the answer did not change, which is what a
-// rule made of arithmetic buys over a rule made of a sentence.
+// between the first two inventories and lost 0.7 between the second and the
+// third, and the answer did not change either time, which is what a rule made
+// of arithmetic buys over a rule made of a sentence.
 func TestServer2DoesNoCorpusWork(t *testing.T) {
 	b, ok := Lookup("server2")
 	if !ok {
@@ -26,11 +27,13 @@ func TestServer2DoesNoCorpusWork(t *testing.T) {
 	}
 }
 
-// The reserve decides, and nothing else does. Two boxes are under it as
-// measured on 2026-08-18, server2 because it has always been and server3
-// because it lost 26.6 GB since the first inventory. Naming them here would
-// make this test a copy of the inventory, so it asks the arithmetic instead:
-// a box over the line works and a box under it does not.
+// The reserve decides, and nothing else does. One box is under it as measured
+// on 2026-08-19, server2, which has been under it at all three inventories.
+// server3 was under it at the second and is over it at the third. Naming any of
+// them here would make this test a copy of the inventory, so it asks the
+// arithmetic instead: a box over the line works and a box under it does not.
+// That is why this test went on passing across a retake that moved a box from
+// one side of the line to the other.
 func TestTheReserveDecidesWhichBoxesDoCorpusWork(t *testing.T) {
 	for _, p := range Placements() {
 		if p.Box.FreeDisk-ReserveBytes < MinScratchBytes {
@@ -128,22 +131,23 @@ func TestIngestionFitsServer1sBudget(t *testing.T) {
 // and not one file. So the arithmetic here overstates what a streaming stage holds:
 // PeakBytes says two 512 MB shards per worker and the run held closer to one.
 //
-// It also rules server3 out of the work entirely, because 17.7 GB free is under
-// the 20 GB reserve, and the box did the work anyway. Both are correct and they
-// are answering different questions. The reserve is headroom for the machine,
-// not a working set for the stage: a box with 17.7 GB free can stream a corpus
-// through and still be one bad day away from a filesystem nobody can log into.
-// The fix is disk on server3, not a smaller reserve, and this test is here so
-// that the next person to read PeakBytes knows it is an upper bound that was
-// checked against a run rather than a number nobody has weighed.
+// It also ruled server3 out of the work entirely, because 17.7 GB free was
+// under the 20 GB reserve, and the box did the work anyway. Both were correct
+// and they were answering different questions. The reserve is headroom for the
+// machine, not a working set for the stage: a box with 17.7 GB free can stream
+// a corpus through and still be one bad day away from a filesystem nobody can
+// log into. What this test said about that was that the fix is disk on server3
+// and not a smaller reserve, and that is how it went. server3 read 43.7 GB free
+// on 2026-08-19 and came back over the line on the same arithmetic, with
+// nothing in the reserve touched to let it in.
+//
+// What survives the retake is the half about PeakBytes, which is why this test
+// no longer asks anything about which boxes are in. It is here so that the next
+// person to read PeakBytes knows it is an upper bound that was checked against
+// a run rather than a number nobody has weighed.
 func TestTheMeasuredIngestHeldLessThanTheArithmeticAllows(t *testing.T) {
 	// Off the trace on server3, 341 samples ten seconds apart across 56m37s.
 	const measuredPeak int64 = 500_000_000
-
-	b, _ := Lookup("server3")
-	if HoldsCorpus(b) {
-		t.Fatalf("server3 has %s free and reads as able to hold corpus bytes, so the finding below is stale", GB(b.FreeDisk))
-	}
 
 	// One worker is what the ingest runs, since it is strictly sequential.
 	one := PeakBytes(Box{FreeDisk: ReserveBytes + 100*ShardBytes, Threads: 1})
@@ -167,10 +171,11 @@ func TestScratchLeavesTheReserveAlone(t *testing.T) {
 }
 
 // The fleet-wide worker count is what sets how long a pass over the corpus
-// takes, so it is asserted rather than assumed. It was 44 on 2026-08-03 and it
-// is 36 on 2026-08-18, because server3 crossed the reserve and took its eight
-// workers with it. This test failing means the fleet changed again and the pass
-// time estimates in the plan changed with it.
+// takes, so it is asserted rather than assumed. It was 44 on 2026-08-03, 36 on
+// 2026-08-18 when server3 crossed the reserve and took its eight workers with
+// it, and 44 again on 2026-08-19 when it crossed back. This test failing means
+// the fleet changed again and the pass time estimates in the plan changed with
+// it, which is a thing to go and read rather than a thing to go and fix.
 func TestFleetWorkersMatchesTheBoxes(t *testing.T) {
 	var want int
 	for _, b := range Boxes {
