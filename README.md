@@ -736,47 +736,47 @@ That last clause is the whole reason the command exists. The 300B claim in this 
 
 The sample has to come off a real box. Reading 44 shards of HPLT is a download and a tokenizer pass on `server1`, `server2`, `server3` or `gamingpc`, and a rate measured on a laptop over three shards somebody had lying around is the failure this command was written to make visible rather than one it can catch.
 
-## The five buckets that got read and the five that did not
+## The buckets that got read and the ones that did not
 
-There is a second thing wrong with the 176B and `gao uoc` cannot see it. HPLT does not ship its Vietnamese as one pile. It ships it in quality buckets, ten of them was the assumption and six of them is the fact, and the reading behind that number opened five at 40 MB each and weighted what it found by what each bucket takes on disk. That is stratified sampling, it is a sensible way to read a corpus nobody has time to read all of, and the interval `uoc` prints is the wrong interval for it. A sampling interval narrows as the sample grows. Reading the same five buckets a hundred times harder narrows it to nothing while leaving the estimate exactly as wrong as it was, because nothing inside those five says anything at all about the other five.
+There is a second thing wrong with an estimate like the 176B and `gao uoc` cannot see it. HPLT does not ship its Vietnamese as one pile. It ships it in quality buckets, ten of them was the assumption and six of them is the fact for `vie_Latn`, and the reading behind that number opened five at 40 MB each and weighted what it found by what each bucket takes on disk. That is stratified sampling, it is a sensible way to read a corpus nobody has time to read all of, and the interval `uoc` prints is the wrong interval for it. A sampling interval narrows as the sample grows. Reading the same buckets a hundred times harder narrows it to nothing while leaving the estimate exactly as wrong as it was, because nothing inside the buckets that were opened says anything at all about the ones that were not.
 
-`gao tang` is the same reading with the layers kept apart. Tầng is a layer.
+`gao tang` is the same reading with the layers kept apart. Tầng is a layer. What is below is the real reading of this corpus with buckets 5, 6 and 7 held back, so every number in it was measured and what is missing is missing on purpose. That is 43.9 percent of the corpus and all of it sits below every bucket left in.
 
 ```
-$ gao tang -source "hplt-v3 vie_Latn" -quoted 176000000000 layers.jsonl
-layer      rank  on disk  read     tokens a stored byte  estimate
-bucket 1   1     50.0 GB  .        .                     .
-bucket 2   2     42.0 GB  .        .                     .
-bucket 3   3     35.0 GB  .        .                     .
-bucket 4   4     28.0 GB  .        .                     .
-bucket 5   5     24.0 GB  40.0 MB  0.755                 18.1B
-bucket 6   6     20.0 GB  .        .                     .
-bucket 7   7     17.0 GB  40.0 MB  0.744                 12.6B
-bucket 8   8     14.0 GB  40.0 MB  0.738                 10.3B
-bucket 9   9     9.0 GB   40.0 MB  0.732                 6.6B
-bucket 10  10    6.0 GB   40.0 MB  0.726                 4.4B
+$ gao tang -source hplt3 -quoted 176000000000 tang/testdata/hplt3-vie_Latn-s1-top3.jsonl
+layer      rank  on disk   read     tokens a stored byte  estimate
+bucket 5   5     15.0 GB   .        .                     .
+bucket 6   6     25.2 GB   .        .                     .
+bucket 7   7     62.7 GB   .        .                     .
+bucket 8   8     94.9 GB   40.0 MB  0.612                 58.1B
+bucket 9   9     36.3 GB   40.0 MB  0.655                 23.8B
+bucket 10  10    294.6 MB  40.0 MB  0.708                 0.2B
 
-5 of 10 layers were read, holding 70.0 GB of the 245.0 GB the source takes on disk.
-The 175.0 GB nobody read is scaled at 0.739 tokens a stored byte, which is the pooled rate of the layers that were, and at the thinnest and the richest of them it would be 179.0B to 184.2B instead.
-Of that, 155.0 GB sits below every layer that was read, so the range is drawn from rates measured on the cleaner end of the corpus and covers the rest only if the rest reads like it.
+3 of 6 layers were read, holding 131.5 GB of the 234.5 GB the source takes on disk.
+The 103.0 GB nobody read is scaled at 0.658 tokens a stored byte, which is the pooled rate of the layers that were, and at the thinnest and the richest of them it would be 145.0B to 155.0B instead.
+Of that, 103.0 GB sits below every layer that was read, so the range is drawn from rates measured on the cleaner end of the corpus and covers the rest only if the rest reads like it.
 
 This estimate carries more than sampling error:
-  5 layers holding 71.4% of the source were never read, starting with bucket 1, so the estimate over all of them is the rate of the layers that were
-  63.3% of the source sits in 4 layers ranked below every layer that was read, so what is being scaled over the gap is the rate of the cleaner end of the corpus
-  the number this project publishes is 176.0B and this reading covers 179.0B to 184.2B, so the published number is not what this sample says
+  3 layers holding 43.9% of the source were never read, starting with bucket 5, so the estimate over all of them is the rate of the layers that were
+  43.9% of the source sits in 3 layers ranked below every layer that was read, so what is being scaled over the gap is the rate of the cleaner end of the corpus
+  the layers that were read do not read at one rate, since bucket 8 gives 0.612 tokens a stored byte and bucket 10 gives 0.708, so a single pooled rate over the layers nobody read is a choice rather than a measurement
+  2 layers were read over under 1.0% of themselves each, thinnest bucket 8 at 40.0 MB of 94.9 GB, so the rate scaled across each of them is the rate of the part that was read
+  the number this project publishes is 176.0B and this reading covers 145.0B to 155.0B, so the published number is not what this sample says
 
-hplt-v3 vie_Latn estimates 181.4B tokens over 245.0 GB on disk, 179.0B to 184.2B once the layers nobody read are allowed to run as thin as the thinnest layer that was read and as rich as the richest. 5 of 10 layers holding 71.4% of it were never opened, and that range does not close by reading more of the 5 that were. 3 readings say the estimate carries more than sampling error: 5 layers holding 71.4% of the source were never read, starting with bucket 1, so the estimate over all of them is the rate of the layers that were; and 63.3% of the source sits in 4 layers ranked below every layer that was read, so what is being scaled over the gap is the rate of the cleaner end of the corpus; and the number this project publishes is 176.0B and this reading covers 179.0B to 184.2B, so the published number is not what this sample says.
+hplt3 estimates 149.8B tokens over 234.5 GB on disk, 145.0B to 155.0B once the layers nobody read are allowed to run as thin as the thinnest layer that was read and as rich as the richest. 3 of 6 layers holding 43.9% of it were never opened, and that range does not close by reading more of the 3 that were. 5 readings say the estimate carries more than sampling error: 3 layers holding 43.9% of the source were never read, starting with bucket 5, so the estimate over all of them is the rate of the layers that were; and 43.9% of the source sits in 3 layers ranked below every layer that was read, so what is being scaled over the gap is the rate of the cleaner end of the corpus; and the layers that were read do not read at one rate, since bucket 8 gives 0.612 tokens a stored byte and bucket 10 gives 0.708, so a single pooled rate over the layers nobody read is a choice rather than a measurement; and 2 layers were read over under 1.0% of themselves each, thinnest bucket 8 at 40.0 MB of 94.9 GB, so the rate scaled across each of them is the rate of the part that was read; and the number this project publishes is 176.0B and this reading covers 145.0B to 155.0B, so the published number is not what this sample says.
 ```
 
-Nothing has been ingested, so the bucket sizes and the rates in that block are invented. The five that are read are the five the real reading used, the ordering is HPLT's own, and every line under the table follows from the shape rather than from the numbers.
+That is the shape every estimate this project published before the buckets were opened, and it comes out at 149.8B.
 
-The narrow part is the trap. A range of 179.0B to 184.2B is under three percent wide, which reads like a settled number, and it is that narrow only because the five buckets that were opened agree with each other. They are all from the same end of the ordering, so their agreement is evidence about the clean end of the corpus and it is not evidence about the 155 GB sitting underneath them. That is why the report prints the share below the sample as its own line instead of leaving a reader to work it out from the ranks.
+The narrow part is the trap. A range of 145.0B to 155.0B is seven percent wide, which reads like a settled number, and it is that narrow only because the three buckets that were opened agree with each other. They are all from the same end of the ordering, so their agreement is evidence about the clean end of the corpus and it is not evidence about the 103 GB sitting underneath them. That is why the report prints the share below the sample as its own line instead of leaving a reader to work it out from the ranks.
+
+Whether that range covers the truth is not a question this section can answer, because a range over the part nobody read is exactly the thing that cannot be checked without reading it. It gets answered further down, once the other three buckets are opened, and the answer is not the reassuring one.
 
 This has already happened once on this corpus. An earlier reading sampled the top quality bucket alone and came back with 194B, against 176B from the broader sample, which is 10% in the flattering direction. Nobody picked the top bucket to inflate the number. It is the bucket you reach for when you want a rate to settle quickly, clean prose spends fewer of its bytes on markup and boilerplate so it reads at a higher rate per byte, and scaling the rate of the cleanest text over all of the text buys tokens that are not there. The bias arrives on its own and it arrives in the same direction every time.
 
-The weights carry an assumption of their own. What the manifest knows is what each bucket costs on disk, and what the estimate needs is how much text is in it, so weighting by stored size assumes a byte on disk holds the same amount of text everywhere. Repetitive text compresses better than prose, which means the assumption fails in the same direction as everything else here. Every bucket that was read measures its own packing, and when the measured packings disagree by more than a quarter the report says the weight on every unread bucket carries that much of its own error.
+The weights carry an assumption of their own. What the manifest knows is what each bucket costs on disk, and what the estimate needs is how much text is in it, so weighting by stored size assumes a byte on disk holds the same amount of text everywhere. Repetitive text compresses better than prose, which means the assumption fails in the same direction as everything else here. Every bucket that was read measures its own packing, and when the measured packings disagree by more than a quarter the report says the weight on every unread bucket carries that much of its own error. On the complete reading they disagree by 39 percent.
 
-The two ranges are different quantities and they add. `gao uoc` answers how much the number would move under a different draw, `gao tang` answers how much of the corpus the draw could not see, and a published estimate needs both next to it. The exit codes say the same thing: 1 when the file is not a stratified reading at all, 2 when it is one that carries more than sampling error. Closing the second one is not an argument, it is opening the buckets nobody opened, and at 40 MB each across the six the release actually ships that is 240 MB of reading on `server1`.
+The two ranges are different quantities and they add. `gao uoc` answers how much the number would move under a different draw, `gao tang` answers how much of the corpus the draw could not see, and a published estimate needs both next to it. The exit codes say the same thing: 1 when the file is not a stratified reading at all, 2 when it is one that carries more than sampling error. Closing the second one was never an argument, it was opening the buckets nobody opened, and at 40 MB each across the six the release ships that was 240 MB of reading. It has been read.
 
 ## Which two hundred and forty megabytes
 
@@ -803,11 +803,11 @@ This is not the sample it looks like:
 This plan reads 240.0 MB off 12 shards across 6 layers of 6 layers, at seed s1, which takes hplt3 from 0 of 6 layers read to 6 of 6. One reading says this is not the sample it looks like: 6 layers are read off fewer than 16 shards each, starting with bucket 5 at 1, so what comes back off them is a rate for the shards that were drawn.
 ```
 
-Both files there are real and checked into `mau/testdata`, taken off `vie_Latn.map` and the sizes in the release manifest. That is the first thing this exercise corrected. HPLT v3 vie_Latn is not ten buckets of a hundred shards, it is six buckets numbered 5 through 10, twelve shards between them and 234.5 GB, with four of the six shipping as one or two files and bucket 5 arriving as a single 15 GB shard. The invented ten bucket shape in the block above is what the estimate has been carrying, and the layer file the estimate runs against is due the same correction. Neither the layer file nor the listing needs a byte fetched first, which is the entire point of deciding this before the reading rather than after it.
+Both files there are real and checked into `mau/testdata`, taken off `vie_Latn.map` and the sizes in the release manifest. That is the first thing this exercise corrected. HPLT v3 vie_Latn is not ten buckets of a hundred shards, it is six buckets numbered 5 through 10, twelve shards between them and 234.5 GB, with four of the six shipping as one or two files and bucket 5 arriving as a single 15 GB shard. A ten bucket shape of a hundred shards each is what the estimate had been carrying, and correcting the layer file the estimate runs against is the same job as correcting this listing. Neither the layer file nor the listing needs a byte fetched first, which is the entire point of deciding this before the reading rather than after it.
 
 So the plan draws every shard of every layer and still reports that this is not the sample it looks like, which is the honest reading rather than a failure of the command. Sixteen shards was chosen against a corpus where a bucket is a hundred stretches of the crawl at a gigabyte each. There is nothing in bucket 5 to spread a reading across, so 40 MB of it is 40 MB off the front of its one file, and the rate that comes back is a rate for whichever domains the crawl put there. The command says so on its own line and exits 2. The value of the gate on a corpus like this one is that it names what the reading is worth instead of letting six single shard rates through as a reading of the source.
 
-Pointing it at the real listing is also what found the arithmetic. The take was worked out once for the whole plan as the target over sixteen, which is right only when every layer has at least sixteen shards, and no layer here has more than four. Every bucket drew a sixteenth of its target while the header went on promising the whole of it: 40 MB a layer in the first line and 2.5 MB a layer in the table, 30 MB read against 240 MB reported. It is worked out per layer now, against the shards that layer actually has, and the invented fixture could not have caught it because every layer in that one has fifty six shards.
+Pointing it at the real listing is also what found the arithmetic. The take was worked out once for the whole plan as the target over sixteen, which is right only when every layer has at least sixteen shards, and no layer here has more than four. Every bucket drew a sixteenth of its target while the header went on promising the whole of it: 40 MB a layer in the first line and 2.5 MB a layer in the table, 30 MB read against 240 MB reported. It is worked out per layer now, against the shards that layer actually has. The fixture this command was written against had fifty six shards in every layer, so the sixteenth was always the whole of it and the bug could not show.
 
 The seed is on the report so that the reading is checkable by somebody who does not trust us. The draw is blake3 of the seed with the path, which is the draw `gao dem verify` already uses, so the two protocols in this project that sample by file sample the same way and a third party with the seed and the listing fetches exactly these twelve shards. The digest is over the takes themselves rather than over the inputs, so a plan quietly regenerated against a different listing comes back as a different plan instead of the same one with different files inside it. `-takes` prints the read list on its own, one shard, how much of it to read and how big it is, which is what the thing doing the fetching actually consumes.
 
@@ -831,7 +831,7 @@ Bucket 7 is where the rounding shows. Three shards and a 40 MB target divides to
 
 Four things make a plan that runs but is not the sample it looks like, and each of them gets a sentence. A layer whose shards are too big to spread a reading across, which is the one that costs nothing to fix and everything to miss. A listing that stopped early, so the plan draws from whichever corner of the bucket made it into the file, checked by adding the listed shards up against what the layer says it holds. A layer left shut because the listing has no files for it at all. And whether what stays shut sits below everything the plan opens, which is the direction that flatters the number and the reason `tang` exists in the first place. Exit 1 is a plan nobody can run, including one with no seed on it, since a draw nobody can repeat is a reading only we can take.
 
-The plan has been run and the next section is what came back off it. The layer file it produced goes next to the estimate, so `gao tang` runs against a reading of all six buckets instead of against an invented ten and a bound. Three of them were most of the way there already: buckets 5, 6 and 10 are one shard each and have been read end to end on `gamingpc` rather than sampled, so what `mau` plans for them is a formality and what comes back is the layer itself.
+The plan has been run and the next section is what came back off it. The layer file it produced goes next to the estimate, so `gao tang` runs against a reading of all six buckets instead of against a shape nobody had checked and a bound over most of it. Three of them were most of the way there already: buckets 5, 6 and 10 are one shard each and have been read end to end on `gamingpc` rather than sampled, so what `mau` plans for them is a formality and what comes back is the layer itself.
 
 ## What came back off the twelve shards
 
@@ -885,7 +885,7 @@ The command exits 2, and it is right to. Six layers were read off twelve shards,
 With the layer file beside it the estimate runs against a reading instead of against a bound:
 
 ```
-$ gao tang -source hplt3 /tmp/hplt3-read.jsonl
+$ gao tang -source hplt3 tang/testdata/hplt3-vie_Latn-s1.jsonl
 layer      rank  on disk   read     tokens a stored byte  estimate
 bucket 5   5     15.0 GB   40.0 MB  0.658                 9.9B
 bucket 6   6     25.2 GB   40.0 MB  0.617                 15.6B
@@ -895,18 +895,25 @@ bucket 9   9     36.3 GB   40.0 MB  0.655                 23.8B
 bucket 10  10    294.6 MB  40.0 MB  0.708                 0.2B
 
 6 of 6 layers were read, holding 234.5 GB of the 234.5 GB the source takes on disk.
-The 0 B nobody read is scaled at 0.638 tokens a stored byte, which is the pooled rate of the layers that were, and at the thinnest and the richest of them it would be 143.7B to 143.7B instead.
+Every layer has a rate of its own, so nothing here is scaled at another layer's rate and the range over the part nobody read is a range over nothing.
 
 This estimate carries more than sampling error:
-  the layers that were read do not read at one rate, since bucket 7 gives 0.577 tokens a stored byte and bucket 10 gives 0.708, so a single pooled rate over the layers nobody read is a choice rather than a measurement
-  the weights are stored bytes and a stored byte holds between 2.39 and 3.32 bytes of text across the layers that were read, so every unread layer is weighted by a number that is off by as much as 38.8%
+  5 layers were read over under 1.0% of themselves each, thinnest bucket 8 at 40.0 MB of 94.9 GB, so the rate scaled across each of them is the rate of the part that was read
 
-hplt3 estimates 143.7B tokens over 234.5 GB on disk, 143.7B to 143.7B once the layers nobody read are allowed to run as thin as the thinnest layer that was read and as rich as the richest. 2 readings say the estimate carries more than sampling error: the layers that were read do not read at one rate, since bucket 7 gives 0.577 tokens a stored byte and bucket 10 gives 0.708, so a single pooled rate over the layers nobody read is a choice rather than a measurement; and the weights are stored bytes and a stored byte holds between 2.39 and 3.32 bytes of text across the layers that were read, so every unread layer is weighted by a number that is off by as much as 38.8%.
+hplt3 estimates 143.7B tokens over 234.5 GB on disk, off a reading of every one of its 6 layers, so there is no unread layer left for the range to be a range over. One reading says the estimate carries more than sampling error: 5 layers were read over under 1.0% of themselves each, thinnest bucket 8 at 40.0 MB of 94.9 GB, so the rate scaled across each of them is the rate of the part that was read.
 ```
 
-143.7B tokens over 234.5 GB, six of six layers read. The figure this project has been carrying for HPLT v3 vie_Latn is 176B, so the reading takes about 18 percent off the headline, and it takes it off for 240 MB of fetching and one afternoon. That is the argument for reading before publishing, in a line.
+143.7B tokens over 234.5 GB, six of six layers read. The figure this project carried for HPLT v3 vie_Latn was 176B, so the reading takes about 18 percent off the headline, and it takes it off for 240 MB of fetching and one afternoon. That is the argument for reading before publishing, in a line.
 
-The same run found a bug in `tang`, which gets its own change rather than being smuggled in with this one. Both faults printed under that estimate are about the layers nobody read, and there are none of those: the unread part is 0 B, the interval is 143.7B to 143.7B because there is nothing in it to run thin or rich, and a complete reading exits 2 over an error applied to zero bytes. The estimate is correct and the two sentences under it are not.
+The run also found a bug, and the block above is the fixed version. `tang` printed two faults under that estimate and both are sentences about scaling one layer's reading over a layer nobody read. Nothing was unread. It said a pooled rate over the layers nobody read is a choice rather than a measurement, and that every unread layer is weighted by a number off by as much as 38.8 percent, with 0 B unread and a range of 143.7B to 143.7B, and it exited 2 over an error applied to zero bytes. Both are silent now when nothing is dark, and the verdict stops offering a range over the unread part when there is no unread part to have one.
+
+What is left is the fault that survives a complete reading, and it is the honest one. Every layer has a rate of its own and every one of those rates came off a prefix. Bucket 8 is 94.9 GB and 40 MB of it was opened, which is four hundredths of a percent, and that rate is then multiplied across the other 99.96 percent. `MinRead` already caught a rate one long page could move; this catches a rate that is perfectly steady and belongs to a fortieth of a percent of what it is about to be scaled over. Five of the six buckets are under the line. The sixth is bucket 10, which is 294.6 MB, so 40 MB of it is 13.6 percent and a real share of the layer.
+
+### What the range over the unread part was worth
+
+The reading with three buckets held back, a few sections up, is what this project was publishing before anything was opened. It gives 149.8B against the 143.7B here, 4.2 percent in the flattering direction, arrived at without anybody choosing anything. The buckets that were dropped are the low quality end and the low quality end reads thinner. That much is the expected direction and the size of it is fair.
+
+The range is the part worth stopping on. It ran from 145.0B to 155.0B and the answer is 143.7B, which is under the bottom of it. The bound is drawn from the layers that were read, so it runs from the thinnest of those to the richest, and bucket 7 reads at 0.577 tokens a stored byte against 0.612 for the thinnest layer left in that sample. A layer that reads thinner than everything in the sample is a layer the bound cannot reach. So the range is not a guarantee and was never going to be one. What it is is a floor on how wrong the estimate can be, and the sentence printed under it, that what is being scaled over the gap is the rate of the cleaner end of the corpus, is the part that was carrying the weight all along. That sentence has been in the report since the package was written and this is the first reading that could check it.
 
 ## Normalizing before anything reads a character
 

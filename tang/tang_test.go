@@ -71,9 +71,17 @@ func hplt(read ...int) tang.Source {
 // sampled is the five buckets the estimate was actually taken off.
 func sampled() tang.Source { return hplt(5, 7, 8, 9, 10) }
 
-// all is the same corpus with every layer read, which is the only shape that
-// holds.
-func all() tang.Source { return hplt(1, 2, 3, 4, 5, 6, 7, 8, 9, 10) }
+// all is the same corpus with every layer read end to end, which is the only
+// shape that holds. Read is the whole of Stored rather than a 40 MB prefix of
+// it, because a layer whose rate came off a fortieth of a percent of itself is
+// a layer with a rate for its opening and the package says so now.
+func all() tang.Source {
+	s := hplt(1, 2, 3, 4, 5, 6, 7, 8, 9, 10)
+	for i, b := range buckets {
+		s.Layers[i] = layer(b, b.stored)
+	}
+	return s
+}
 
 func find(t *testing.T, s *tang.Source, name string) *tang.Layer {
 	t.Helper()
@@ -264,8 +272,11 @@ func TestACorpusReadRightThroughHolds(t *testing.T) {
 	if s.Low() != s.High() || s.Low() != s.Estimate() {
 		t.Errorf("a reading with nothing unread still carries a range, %d to %d around %d", s.Low(), s.High(), s.Estimate())
 	}
-	if !strings.Contains(s.Verdict(), "Every layer was read") {
+	if !strings.Contains(s.Verdict(), "Every layer has a rate of its own") {
 		t.Errorf("the verdict does not say the corpus was read right through:\n%s", s.Verdict())
+	}
+	if strings.Contains(s.Verdict(), " to ") && strings.Contains(s.Verdict(), "as rich as the richest") {
+		t.Errorf("a reading with nothing unread still prints a range over the unread part:\n%s", s.Verdict())
 	}
 }
 
@@ -359,4 +370,146 @@ func TestTheVerdictSaysWhatWentUnreadAndThatMoreReadingOfTheRestWillNotFixIt(t *
 			t.Errorf("the verdict does not say %q:\n%s", want, v)
 		}
 	}
+}
+
+// The real reading. tang/testdata holds the layer file gao nem wrote against
+// HPLT v3 vie_Latn at seed s1, which is six buckets read at 40 MB each off
+// twelve shards, and everything below is checked against that rather than
+// against the shape somebody assumed the corpus had.
+func real(t *testing.T) tang.Source {
+	t.Helper()
+	layers, err := tang.ReadLayers("testdata/hplt3-vie_Latn-s1.jsonl")
+	if err != nil {
+		t.Fatal(err)
+	}
+	return tang.Source{Source: "hplt3", Layers: layers}
+}
+
+func TestTheRealReadingCoversEveryLayerOfTheSource(t *testing.T) {
+	s := real(t)
+
+	if why := s.Blocking(); len(why) > 0 {
+		t.Fatalf("the real reading was refused:\n  %s", strings.Join(why, "\n  "))
+	}
+	if len(s.Layers) != 6 || len(s.Lit()) != 6 {
+		t.Fatalf("%d layers, %d of them read, and the reading opened all six", len(s.Layers), len(s.Lit()))
+	}
+	if n := s.DarkBytes(); n != 0 {
+		t.Errorf("%d bytes went unread and every bucket was opened", n)
+	}
+	if got := s.Estimate(); got < 143_000_000_000 || got > 144_500_000_000 {
+		t.Errorf("the reading estimates %d tokens, and it measured 143.7B", got)
+	}
+	if s.Low() != s.Estimate() || s.High() != s.Estimate() {
+		t.Errorf("nothing is unread and the range still runs %d to %d around %d", s.Low(), s.High(), s.Estimate())
+	}
+}
+
+// The bug this file is otherwise about. Both spread faults are statements about
+// scaling one layer's reading over a layer nobody read, this reading has no such
+// layer, and the first run of it printed both anyway: a pooled rate over the
+// layers nobody read is a choice, and every unread layer is weighted by a number
+// off by 38.8%, with 0 B unread and the range 143.7B to 143.7B.
+func TestTheFaultsAboutUnreadLayersAreSilentWhenNothingIsUnread(t *testing.T) {
+	s := real(t)
+
+	// Both spreads are over their limits, so both would fire if the guard were
+	// not there. That is what makes this a test rather than a coincidence.
+	if lo, hi := s.Packing(); hi/lo <= tang.MaxPackSpread {
+		t.Fatalf("the real reading packs at %.2f to %.2f, inside the %.2f limit, so this test proves nothing", lo, hi, tang.MaxPackSpread)
+	}
+	lo, hi := math.Inf(1), 0.0
+	for _, l := range s.Lit() {
+		lo, hi = math.Min(lo, l.Yield()), math.Max(hi, l.Yield())
+	}
+	if hi/lo <= tang.MaxYieldSpread {
+		t.Fatalf("the real reading reads at %.3f to %.3f, inside the %.2f limit, so this test proves nothing", lo, hi, tang.MaxYieldSpread)
+	}
+
+	silent(t, s.Faults(), "a single pooled rate over the layers nobody read")
+	silent(t, s.Faults(), "every unread layer is weighted by")
+	silent(t, s.Faults(), "were never read")
+	if strings.Contains(s.Verdict(), "as rich as the richest") {
+		t.Errorf("the verdict prints a range over the unread part and nothing is unread:\n%s", s.Verdict())
+	}
+}
+
+// What is left once every layer has been read, which is the whole reason a
+// complete reading of this corpus still does not hold. bucket 8 is 94.9 GB and
+// 40 MB of it was opened.
+func TestTheRealReadingIsAPrefixOfEveryLayerAndSaysSo(t *testing.T) {
+	s := real(t)
+
+	// Five of the six. bucket 10 is 294.6 MB and 40 MB of it was read, which is
+	// 13.6% and over the line, and it is the one bucket small enough for a 40 MB
+	// take to be a real share of it. The other five run from 0.27% down.
+	part := s.Partial()
+	if len(part) != 5 {
+		t.Fatalf("%d layers were read over under %.0f%% of themselves, want 5", len(part), tang.MinShare*100)
+	}
+	if part[0].Name != "bucket 8" {
+		t.Errorf("the thinnest share is %s, and bucket 8 is 40 MB of 94.9 GB", part[0].Name)
+	}
+	for _, l := range part {
+		if l.Name == "bucket 10" {
+			t.Error("bucket 10 was read over 13.6% of itself and came back as a prefix")
+		}
+	}
+	says(t, s.Faults(), "5 layers were read over under 1.0% of themselves each, thinnest bucket 8 at 40.0 MB of 94.9 GB")
+	if s.Holds() {
+		t.Error("a reading taken off a fortieth of a percent of each layer holds")
+	}
+}
+
+// A layer read end to end is not a prefix of anything, so the share fault has to
+// come off it rather than firing on every layer of every reading.
+func TestALayerReadRightThroughIsNotAPrefix(t *testing.T) {
+	s := real(t)
+	whole := find(t, &s, "bucket 8")
+	whole.Read = whole.Stored
+
+	for _, l := range s.Partial() {
+		if l.Name == "bucket 8" {
+			t.Error("a layer read end to end came back as a prefix of itself")
+		}
+	}
+	says(t, s.Faults(), "thinnest bucket 7")
+}
+
+// The same reading with the three lowest buckets held back, which is the shape
+// every estimate this project published before the buckets were opened. Every
+// number in it is measured. What is missing is missing on purpose.
+func heldBack(t *testing.T) tang.Source {
+	t.Helper()
+	layers, err := tang.ReadLayers("testdata/hplt3-vie_Latn-s1-top3.jsonl")
+	if err != nil {
+		t.Fatal(err)
+	}
+	return tang.Source{Source: "hplt3", Layers: layers, Quoted: 176_000_000_000}
+}
+
+// The bound is not a guarantee and the reading is what proves it. Holding back
+// buckets 5, 6 and 7 gives 149.8B where the complete reading gives 143.7B, and
+// the range around it is 145.0B to 155.0B, which does not reach down to the
+// answer. The reason is the thing the package has been saying in words: bucket 7
+// reads at 0.577 tokens a stored byte and no layer left in the sample reads
+// thinner than 0.612, so a bound drawn from the layers that were read cannot
+// reach a layer that reads thinner than all of them.
+func TestTheBoundDrawnFromTheReadLayersDoesNotReachTheAnswer(t *testing.T) {
+	part, whole := heldBack(t), real(t)
+
+	if got := len(part.Dark()); got != 3 {
+		t.Fatalf("%d layers were held back, want 3", got)
+	}
+	if part.Estimate() <= whole.Estimate() {
+		t.Errorf("holding back the three lowest buckets gave %d against %d for the whole reading, and the lower end is the thin end",
+			part.Estimate(), whole.Estimate())
+	}
+	if whole.Estimate() >= part.Low() {
+		t.Errorf("the answer %d sits inside the bound %d to %d, and the point of this fixture is that it does not",
+			whole.Estimate(), part.Low(), part.High())
+	}
+
+	says(t, part.Faults(), "43.9% of the source sits in 3 layers ranked below every layer that was read")
+	says(t, part.Faults(), "the number this project publishes is 176.0B")
 }

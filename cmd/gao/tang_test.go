@@ -92,19 +92,73 @@ func TestTangSaysTheRangeDoesNotCloseByReadingTheSameLayersAgain(t *testing.T) {
 	}
 }
 
-// A corpus read right through has no unread layers to bound, so it prints one
-// number and exits 0.
+// tangWhole writes a layer file with every layer read end to end rather than
+// sampled, which is the only shape that has nothing left to assume.
+func tangWhole(t *testing.T) string {
+	t.Helper()
+	lines := make([]string, 0, len(tangBuckets))
+	for _, b := range tangBuckets {
+		text := int64(float64(b.stored) * b.pack)
+		lines = append(lines, fmt.Sprintf(
+			`{"name":"bucket %d","rank":%d,"stored":%d,"read":%d,"text":%d,"tokens":%d,"tokenizer":"gao-64k"}`,
+			b.rank, b.rank, b.stored, b.stored, text, int64(float64(text)*b.rate)))
+	}
+	path := filepath.Join(t.TempDir(), "whole.jsonl")
+	if err := os.WriteFile(path, []byte(strings.Join(lines, "\n")+"\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	return path
+}
+
+// A corpus read right through has no unread layers to bound and no layer left
+// scaled off a prefix of itself, so it prints one number and exits 0.
 func TestTangHoldsWhenEveryLayerWasRead(t *testing.T) {
-	out, errOut, code := exec(t, "tang", "-source", "hplt-v3 vie_Latn", tangLayers(t, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10))
+	out, errOut, code := exec(t, "tang", "-source", "hplt-v3 vie_Latn", tangWhole(t))
 
 	if code != 0 {
 		t.Fatalf("a complete reading: exit %d, want 0\n%s\n%s", code, out, errOut)
 	}
-	if !strings.Contains(out, "Every layer was read") {
+	if !strings.Contains(out, "Every layer has a rate of its own") {
 		t.Errorf("the verdict does not say the corpus was read right through:\n%s", out)
 	}
 	if strings.Contains(out, "carries more than sampling error") {
 		t.Errorf("a complete reading reported faults:\n%s", out)
+	}
+	if strings.Contains(out, "as rich as the richest") {
+		t.Errorf("a complete reading printed a range over the part nobody read:\n%s", out)
+	}
+}
+
+// The real reading, run through the command the way somebody publishing the
+// number would run it. Six buckets of HPLT v3 vie_Latn at seed s1, which is the
+// file gao nem wrote and the file this project's estimate now rests on.
+func TestTangOverTheRealReadingOfEveryBucket(t *testing.T) {
+	out, errOut, code := exec(t, "tang", "-source", "hplt3", filepath.Join("..", "..", "tang", "testdata", "hplt3-vie_Latn-s1.jsonl"))
+
+	if code != 2 {
+		t.Fatalf("the real reading: exit %d, want 2\n%s\n%s", code, out, errOut)
+	}
+	for _, want := range []string{
+		"6 of 6 layers were read, holding 234.5 GB of the 234.5 GB",
+		"Every layer has a rate of its own",
+		"hplt3 estimates 143.7B tokens over 234.5 GB on disk",
+		"5 layers were read over under 1.0% of themselves each, thinnest bucket 8 at 40.0 MB of 94.9 GB",
+	} {
+		if !strings.Contains(out, want) {
+			t.Errorf("the report does not say %q:\n%s", want, out)
+		}
+	}
+	// The two faults this fixed. Both are about scaling a rate over a layer
+	// nobody read, and every layer here was read.
+	for _, gone := range []string{
+		"a single pooled rate over the layers nobody read",
+		"every unread layer is weighted by",
+		"nobody read is scaled at",
+		"as rich as the richest",
+	} {
+		if strings.Contains(out, gone) {
+			t.Errorf("a complete reading still says %q:\n%s", gone, out)
+		}
 	}
 }
 
@@ -156,7 +210,9 @@ func TestTangPrintsTheSameReadingAsJSON(t *testing.T) {
 	if got.Low >= got.Estimate || got.High <= got.Estimate {
 		t.Errorf("the estimate %d does not sit inside %d to %d", got.Estimate, got.Low, got.High)
 	}
-	if len(got.Faults) != 2 || got.Holds {
+	// Three: the unread layers, the gap below the sample, and the five read
+	// layers whose rate came off a prefix of themselves.
+	if len(got.Faults) != 3 || got.Holds {
 		t.Errorf("the reading came back with %d faults and holds=%v", len(got.Faults), got.Holds)
 	}
 }

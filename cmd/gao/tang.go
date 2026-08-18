@@ -155,8 +155,12 @@ func printTang(w io.Writer, r tangReport) {
 
 	fmt.Fprintf(w, "\n%d of %s were read, holding %s of the %s the source takes on disk.\n",
 		r.Read, plural(r.Layers, "layer"), corpusSize(r.Stored-r.Dark), corpusSize(r.Stored))
-	fmt.Fprintf(w, "The %s nobody read is scaled at %.3f tokens a stored byte, which is the pooled rate of the layers that were, and at the thinnest and the richest of them it would be %s to %s instead.\n",
-		corpusSize(r.Dark), r.Pooled, billions(r.Low), billions(r.High))
+	if r.Dark == 0 {
+		fmt.Fprint(w, "Every layer has a rate of its own, so nothing here is scaled at another layer's rate and the range over the part nobody read is a range over nothing.\n")
+	} else {
+		fmt.Fprintf(w, "The %s nobody read is scaled at %.3f tokens a stored byte, which is the pooled rate of the layers that were, and at the thinnest and the richest of them it would be %s to %s instead.\n",
+			corpusSize(r.Dark), r.Pooled, billions(r.Low), billions(r.High))
+	}
 	if r.Under > 0 {
 		fmt.Fprintf(w, "Of that, %s sits below every layer that was read, so the range is drawn from rates measured on the cleaner end of the corpus and covers the rest only if the rest reads like it.\n",
 			corpusSize(r.Under))
