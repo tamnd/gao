@@ -484,6 +484,39 @@ The other thing it found is that the same tokenizer is not stable across the two
 
 The last gate is an audit rather than a threshold and it stays that way. It walks the vocabulary and prints the pieces made of characters this project strips: replacement characters, private use, invisible formatting, anything that is not NFC. A piece like that is a fact about the corpus the tokenizer was trained on rather than about the text it will see here, and one of them is a hint while a thousand is a different tokenizer. No threshold decides that, a person does.
 
+All of that was written against the coverage set, which is what the suite could be run on before there was a corpus. There is one now. The block below is one in twenty documents out of the first published GlotCC part, 6363 documents and 51.5 MB of real Vietnamese, and it is the first time these gates have been asked about text rather than about a letter chart. The per gate example lists between the table and the verdict are cut here, since T4 alone names five documents by digest and byte offset.
+
+```
+$ gao dem gates -tokenizer tokenizer.model -one-in 20 part-00000.parquet
+tokenizer  gemma-3, 262144 pieces
+documents  6363
+fertility  3.29 characters per token, 1.44 tokens per syllable
+
+  T1   passed   decode(encode(x)) is x                                      0 of 6363 documents
+  T2   passed   and on the same text with its marks taken off               0 of 6363 documents
+  T3   passed   and on documents mixing Vietnamese, English and code        0 of 4593 documents
+  T4   failed   no token boundary lands inside a character                  1076 of 12024513 boundaries
+  T5   failed   no token boundary separates a letter from its marks         150 of 12024513 boundaries
+  T6   passed   encode(NFC(x)) is encode(x)                                 0 of 6363 documents were not NFC as given, so this compared every document against itself
+  T7   failed   a run of digits tokenizes the same way wherever it appears  6 of 391002 digit runs
+  T8   failed   a leading space is handled the same way for every syllable  folded in 16236, its own token 148
+  T9   failed   at least 20 MB/s on one core                                2.1 MB/s on one core over 51.5 MB
+  T10  audited  no piece is reachable only from text gao would reject       262012 pieces read, 132 control or byte fallback, 1427 for a person to look at
+
+gao dem gates: gemma-3 is not eligible
+  T4 failed 1076 of 12024513 boundaries
+  T5 failed 150 of 12024513 boundaries
+  T7 failed 6 of 391002 digit runs
+  T8 failed 148 of 16384 syllables
+  T9 failed 1 of 51495799 bytes
+```
+
+Four of the five failures are the ones worth reading. The round trip holds everywhere, which is the thing that would have been fatal, and the three gates that had never had anything to run on all ran. T4 and T5 are the pair this project built the suite for: 1076 boundaries in twelve million land inside a character and 150 of those part a letter from its marks, which is tone loss arriving at generation time rather than at ingest. The rate is small and the rate is not the point, because these collect in exactly the text that is hardest to notice missing. T8 says the leading space is folded into 16236 syllables and is its own token for 148 of them, so the same syllable is two different token sequences depending on what precedes it. T7 is six digit runs in 391002 and is the mildest of them.
+
+None of that is a reason to go and find a different 256k multilingual vocabulary this afternoon, and it is a reason the tokenizer question is open rather than settled by inheritance. What it settles today is that `gao dem gates` was measuring something all along and that the pinned tokenizer had never been put in front of it.
+
+A failed gate exits 2 and a gate that found nothing in the sample exits 1, which is the same split every other command here makes. Both exited 1 until this run, and an exit code that says go and find a bigger corpus is the wrong thing to hand somebody whose tokenizer has just been judged.
+
 ```
 gao dem gates -tokenizer tokenizer.model parts/*.parquet
 gao dem gates -tokenizer tokenizer.model -one-in 100 parts/*.parquet  # and the same run over one document in a hundred

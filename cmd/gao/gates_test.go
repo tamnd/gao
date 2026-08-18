@@ -67,8 +67,10 @@ func TestDemGatesSaysWhichGateFailedAndNamesTheDocuments(t *testing.T) {
 		},
 	))
 
-	if code != 1 {
-		t.Fatalf("a failed gate: exit %d, want 1\n%s", code, out)
+	// Two, and not one, because a gate that ran and failed has judged the
+	// tokenizer. One is the exit for a sample that could not judge it.
+	if code != 2 {
+		t.Fatalf("a failed gate: exit %d, want 2\n%s", code, out)
 	}
 	if !strings.Contains(out, "failed") || !strings.Contains(out, "4 of 92311 boundaries") {
 		t.Errorf("the table does not say what T5 found:\n%s", out)
@@ -100,6 +102,20 @@ func TestDemGatesTreatsAGateWithNothingToRunOnAsAFailure(t *testing.T) {
 	}
 	if !strings.Contains(errOut, "T3 did not run: no document in the sample mixed") {
 		t.Errorf("the failure does not say why T3 could not run:\n%s", errOut)
+	}
+}
+
+// A run that both failed a gate and could not run another is a run that judged
+// the tokenizer, so it exits the way a judgement does. The other order would
+// send somebody after a bigger sample to settle a question already settled.
+func TestDemGatesJudgesAFailureAheadOfAGateItCouldNotRun(t *testing.T) {
+	_, _, code := gatesRun(t, gateReport(
+		dem.Gate{Name: "T3", What: "and on documents mixing Vietnamese, English and code", Unit: "documents", Why: "no document in the sample mixed Vietnamese, English and code"},
+		dem.Gate{Name: "T5", What: "no token boundary separates a letter from its marks", Unit: "boundaries", Checked: 92311, Failed: 4, Ran: true},
+	))
+
+	if code != 2 {
+		t.Fatalf("a failed gate beside one that did not run: exit %d, want 2", code)
 	}
 }
 
