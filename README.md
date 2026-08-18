@@ -2593,7 +2593,7 @@ Arithmetic is a plan, and a plan is not evidence. A crawl that ran for six weeks
 
 ## Measuring a corpus that is not on the box
 
-Pushing each part and deleting it is what lets four machines process a corpus several times their disk, and the bill for it arrives the moment somebody asks a question about the whole thing. The question that matters most is how much of the five sources is the same document twice. FineWeb2 and GlotCC are both extracted from Common Crawl, so some of the overlap is not in doubt, and how much of it there is decides whether the corpus is the sum of its sources or a good deal less. Nobody publishing a number like that should be estimating it, and downloading 900 GB back to count it properly is not available on this fleet.
+Pushing each part and deleting it is what lets four machines process a corpus several times their disk, and the bill for it arrives the moment somebody asks a question about the whole thing. The question that matters most is how much of the five sources is the same document twice. FineWeb2 and GlotCC are both extracted from Common Crawl, so they have been over the same pages, and how much of the corpus that costs decides whether it is the sum of its sources or a good deal less. Nobody publishing a number like that should be estimating it, and downloading 900 GB back to count it properly is not available on this fleet.
 
 It does not have to come back. Document identity is one fixed width column, and a part is Parquet, so a pass can open each part over HTTP, read the `doc_id` chunk of every row group, and never ask for the pages the text is in. What crosses the wire is around thirty two bytes per document, which is roughly 13 GB for the whole corpus instead of 900. This is the argument the columnar format was chosen for, applied to a question about the corpus rather than to a query somebody runs against the release.
 
@@ -2631,6 +2631,31 @@ written to keys/glotcc-9ad140b6be3a.keys
 ```
 
 Two numbers to take from that. The pass moved 69.1 MB to read the identities of a 6.1 GB snapshot, which is 46 bytes per document rather than the 32 the identity itself is, the difference being window granularity and the footer each part is opened with. At four hundred million documents that is around 18 GB for the whole corpus rather than the 13 the arithmetic above predicts, and 18 GB against 900 is still the entire argument. And GlotCC's Vietnamese split is 6.3% duplicates of itself before any other source is put next to it, which is the first real number this project has on duplication and is a floor rather than an estimate: exact document identity catches a byte for byte copy and nothing weaker, and the near duplicate work that catches the rest is a later milestone.
+
+Then the matrix over what the three boxes had published by the middle of the day. FinePDFs is the whole source, all three of its pinned files. The other two are what had landed by then, 22 parts of FineWeb2 and the 12 that GlotCC's first three files came to, so the sizes are prefixes and the shares are about these documents rather than about the sources.
+
+```
+$ gao dem overlap keys/*.keys
+3 sources, 6776358 documents read, 6680520 of them different
+
+source                 documents  distinct  only here  repeats
+finepdfs-220bac3acbf0  1218257    1218256   1218256    0.0%
+fineweb2-af9c13333eb9  4058101    4058101   4056473    0%
+glotcc-9ad140b6be3a    1500000    1405791   1404163    6.3%
+
+union                  6776358    6680520              1.4%
+
+pair                                             in both  of the first  of the second
+finepdfs-220bac3acbf0 and fineweb2-af9c13333eb9  0        0%            0%
+finepdfs-220bac3acbf0 and glotcc-9ad140b6be3a    0        0%            0%
+fineweb2-af9c13333eb9 and glotcc-9ad140b6be3a    1628     0.0%          0.1%
+```
+
+That is not the answer the section was written expecting. FineWeb2 and GlotCC are both extracted from Common Crawl and they share 1628 documents out of four million and one and a half, which is a tenth of one percent of the smaller one. FinePDFs shares nothing with either, which at least makes sense, since it comes off PDFs and the other two come off HTML.
+
+The reason is in the identity rather than in the sources. A document's id is the blake3 of its extracted text, not of its URL, so two projects that pulled the same page out of the same crawl produce the same document only if their extractors agreed on every byte of it. They do not. Trafilatura and whatever FineWeb2's pipeline settles on disagree about a nav bar, a trailing newline, a boilerplate line at the foot of the page, and one byte is enough. So this matrix answers a narrower question than the one the paragraph above the code opened with. It says how much of the corpus is literally the same text twice, which is the thing a store can be deduplicated on, and it says nothing about how much of it is the same page twice.
+
+Both questions are worth having and only one of them is answered here. The 1628 that did match are pages where the two extractors happened to agree, which is roughly what you would expect of short documents with nothing around the text to disagree about. The rest of the shared crawl is still in the corpus, twice, in two slightly different renderings, and finding it is the near duplicate pass rather than this one. Which is to say the exact matrix is not the cheap version of the overlap measurement. It is a different measurement that happens to be cheap, and reading it as the overlap number would have this project publish a corpus described as barely redundant when nobody has measured the redundancy that matters.
 
 ```
 gao dem keys                                # what the store holds, ready to measure

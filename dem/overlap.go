@@ -17,6 +17,22 @@ package dem
 // The bit per source is why there is a ceiling of sixty four sources here. gao
 // has five and the reason to raise the ceiling would be a corpus of a different
 // shape, which would want a different pass anyway.
+//
+// What this counts is the same text and not the same page, and the difference is
+// larger than it sounds. Identity is a blake3 over the extracted text, so
+// two projects that pulled the same URL out of the same crawl are the same
+// document here only if their extractors agreed on every byte, and extractors
+// disagree about nav bars, boilerplate and trailing newlines as a matter of
+// course. Run on 2026-08-18 over what three boxes had published, FineWeb2 and
+// GlotCC shared 1628 documents out of 4,058,101 and 1,500,000, and FinePDFs
+// shared none with either. Both of the first two are Common Crawl derivatives.
+//
+// So this is not the cheap version of the overlap measurement. It is a different
+// measurement that happens to be cheap, and it is the right one for the question
+// a store gets deduplicated on. The question of how much of the same page the
+// corpus holds twice in two renderings is the near duplicate pass in xay, and
+// reading this matrix as that number would describe the corpus as barely
+// redundant on the strength of a measurement that cannot see the redundancy.
 
 import (
 	"errors"
