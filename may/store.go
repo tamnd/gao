@@ -8,7 +8,7 @@ import (
 // The store of record.
 //
 // The corpus does not fit on the fleet. That is measured, not feared: 300
-// billion natural tokens is about 1188 GB of extracted text, 396 GB compressed,
+// billion natural tokens is about 1279 GB of extracted text, 618 GB compressed,
 // and the four boxes have 524 GB of free disk between them. Even the compressed
 // corpus on the largest single pool, 298 GB on gamingpc, leaves no room to
 // process it, because a stage reads a shard and writes a shard.

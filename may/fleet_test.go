@@ -89,13 +89,14 @@ func TestTheCorpusDoesNotFitOnTheFleet(t *testing.T) {
 		t.Errorf("the fleet has %s free against a %s corpus, which is enough headroom to process it in place, so the off-box store is now a choice rather than a constraint",
 			GB(p.FleetFree), GB(p.Compressed))
 	}
-	// It was 774 shards while the compression ratio was assumed at 3.0 and it is
-	// 1121 now that the ratio is the measured 2.07. The band is around the
-	// measurement rather than around the number the release was first sized for,
+	// It was 774 shards while the compression ratio was assumed at 3.0, 1121 once
+	// the ratio was the measured 2.07, and 1207 once characters per token was the
+	// measured 3.28 rather than the assumed 3.0. The band is around the
+	// measurements rather than around the number the release was first sized for,
 	// since moving the band to keep the old shard count is how a measurement
 	// gets negotiated away.
-	if p.Shards < 1000 || p.Shards > 1250 {
-		t.Errorf("the budget comes to %d shards, the release format is written for around 1100", p.Shards)
+	if p.Shards < 1000 || p.Shards > 1350 {
+		t.Errorf("the budget comes to %d shards, the release format is written for around 1200", p.Shards)
 	}
 	if p.ShardsResident < 10 {
 		t.Errorf("only %d shards fit on %s at once, which is too small a working set to run a stage against", p.ShardsResident, p.Largest.Name)

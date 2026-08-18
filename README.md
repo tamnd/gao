@@ -458,7 +458,11 @@ The four units are not interchangeable, and the bytes column is the one most oft
 
 Two counts produced by different tokenizers are never added up. It is an error rather than a warning: two tokenizers disagree on Vietnamese by something like a third, so their sum is not slightly wrong, it corresponds to no tokenizer at all, and it would be quoted as a corpus size.
 
-The first counted run puts a number on the estimate this project has been quoting, and it is not the estimated number. One GlotCC shard, 500000 documents, 3228869043 characters, 983022920 tokens: **3.28 characters per token**, where `doc/units.go` predicts 3.0 and the plan that wrote it allowed plus or minus 0.15. Tokens per syllable came out at 1.45 against a predicted 1.51 and bytes per character at 1.30 against 1.32, both close enough to leave alone. The character figure is not close, and it runs the same way every time: it means Vietnamese costs fewer tokens than the estimate assumed, so every token headline derived from a character count is about 8 percent high. That is one source of six and one shard of it, so it does not settle the corpus figure and the constants stay where they are, but it is the direction to expect from the rest.
+The first counted run puts a number on the estimate this project has been quoting, and it is not the estimated number. One GlotCC file, 500000 documents, 3228869043 characters, 983022920 tokens: **3.28 characters per token**, where `doc/units.go` predicted 3.0 and the plan that wrote it allowed plus or minus 0.15. Tokens per syllable came out at 1.45 against a predicted 1.51 and bytes per character at 1.30 against 1.32. A second run over a different part, through `gao dem gates` rather than through the ingest, got 3.29 and 1.44 on a one in twenty sample, so the number is the text rather than the run.
+
+The constants are now those measurements rather than the four assumptions that were sitting there under a comment claiming they had been measured. The one that matters is characters per token, because it is what divides a token target into a disk budget: at 3.28 rather than 3.0, 300 billion tokens is 1279 GB of extracted text instead of 1188, which is 91 GB the plan had not accounted for and 86 shards more than the release format was first sized against. It runs that way rather than the other, so a token headline derived from a character count under the old constant was about 8 percent high.
+
+The sources disagree and the file says so. Bytes per character is 1.2489 on FinePDFs, 1.2999 on GlotCC and 1.3180 on fineweb2, a five percent spread that is the diacritic density of the text each one collected. Characters per syllable is 4.60 on fineweb2, 4.75 on GlotCC and 5.73 on FinePDFs, and that spread is not about Vietnamese: FinePDFs `vie_Latn` carries documents that are not Vietnamese, so its syllables are long because some of them are English and Japanese. GlotCC is the middle of both ranges and it is the only source counted end to end, so it is what the constants say and the spread is written down beside them.
 
 The conversion constants in `doc/units.go` are for estimates and nothing in `dem` multiplies. They answer what a hundred gigabytes is roughly worth before anything has been fetched. They live in a different package from the counting on purpose, because an estimate that reaches a release note becomes a measurement in the reader's mind and there is no way to take it back.
 
@@ -2409,7 +2413,7 @@ The misses print in full whatever else was asked for, with the reading, the comm
 
 ## Where the corpus lives
 
-gao runs on four real machines with 524 GB of free disk between them, and the corpus is 1188 GB of extracted text, 574 GB compressed. It does not fit, and it does not fit by enough that no amount of tidying changes the answer. `gao box` prints the arithmetic.
+gao runs on four real machines with 524 GB of free disk between them, and the corpus is 1279 GB of extracted text, 618 GB compressed. It does not fit, and it does not fit by enough that no amount of tidying changes the answer. `gao box` prints the arithmetic.
 
 ```
 $ gao box
@@ -2423,8 +2427,8 @@ server1   linux    4/4    6.2 GB    188.7 GB   none
 total              42/50  112.4 GB  523.8 GB   1
 
 disk budget for 300B natural tokens
-  extracted text      1188.0 GB
-  compressed at 2.07x 573.9 GB in 1121 shards
+  extracted text      1279.2 GB
+  compressed at 2.07x 618.0 GB in 1207 shards
   fleet free disk     523.8 GB across 4 boxes
   largest single box  297.7 GB on gamingpc
   working set         542 shards at a time on gamingpc, after the reserve
