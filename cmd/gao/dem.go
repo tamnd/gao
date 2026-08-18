@@ -634,13 +634,23 @@ flags:
 		}
 
 		fmt.Fprintf(stdout, "\nadding up the shape columns of %d parts\n", len(parts))
-		c, err := dem.RecountOf(ctx, s, snapshot, *dir, func(part kho.Stored, i, of int, c dem.Counts, moved int64) {
-			fmt.Fprintf(stdout, "  %4d/%d  %-52s %10d documents, %s read so far\n",
-				i, of, filepath.Base(part.Path), c.Documents, may.Size(moved))
+		resumed := 0
+		c, err := dem.RecountOf(ctx, s, snapshot, *dir, func(part kho.Stored, i, of int, c dem.Counts, moved int64, fromLog bool) {
+			was := may.Size(moved) + " read so far"
+			if fromLog {
+				resumed++
+				was = "read on an earlier run"
+			}
+			fmt.Fprintf(stdout, "  %4d/%d  %-52s %10d documents, %s\n",
+				i, of, filepath.Base(part.Path), c.Documents, was)
 		})
 		if err != nil {
 			fmt.Fprintf(stderr, "gao dem verify: %v\n", err)
 			return 1
+		}
+		if resumed > 0 {
+			fmt.Fprintf(stdout, "\n%s of the %d came off %s and were not read again\n",
+				plural(resumed, "part"), len(parts), filepath.Join(*dir, snapshot+dem.ShapesExt))
 		}
 		printShape(stdout, snapshot, c)
 
