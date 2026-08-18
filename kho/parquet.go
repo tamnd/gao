@@ -326,6 +326,20 @@ var ErrNotAdmitted = errors.New("kho: that dataset does not admit that license c
 // than a scatter of small reads.
 const DefaultRowGroup = 50_000
 
+// RowGroupText is how much text a row group holds before it is flushed whatever
+// the row count says.
+//
+// A row count alone is a memory bound only if the documents are the size the
+// row count was picked for. FinePDFs documents average 29.5 KB against the few
+// kilobytes above, so the first published FinePDFs part held all 35986 of its
+// rows in one row group and buffered 1.06 GB to do it. It was written on
+// gamingpc, which has 68.5 GB and did not notice. server1 has 6.2 GB and would
+// have.
+//
+// Half a shard, so a part still gets at least two row groups and a column read
+// off the store is still sequential.
+const RowGroupText int64 = 256_000_000
+
 // ParquetWriter writes documents to one Parquet file.
 type ParquetWriter struct {
 	dataset Dataset
@@ -333,6 +347,7 @@ type ParquetWriter struct {
 	buf     []Row
 	n       int
 	text    int64
+	group   int64
 	closed  bool
 }
 
@@ -390,6 +405,13 @@ func (p *ParquetWriter) Append(d *doc.Document) error {
 	}
 	p.n++
 	p.text += int64(len(d.Text))
+	p.group += int64(len(d.Text))
+	if p.group >= RowGroupText {
+		if err := p.w.Flush(); err != nil {
+			return fmt.Errorf("kho: closing the row group at row %d: %w", p.n, err)
+		}
+		p.group = 0
+	}
 	return nil
 }
 
@@ -497,6 +519,15 @@ func (p *Part) Documents() int { return p.w.Documents() }
 // Text returns the total length of the text appended so far, which is what a
 // caller rolls a part over on.
 func (p *Part) Text() int64 { return p.w.Text() }
+
+// Bytes returns how much of the file has reached the disk, which is every row
+// group closed so far and not the row group being filled.
+//
+// It is a floor on the finished size and it is the only honest number available
+// before the footer is written. A caller rolling on it is deciding one row
+// group late, which is the granularity the format allows and is near enough
+// when a row group is [RowGroupText] of text.
+func (p *Part) Bytes() int64 { return p.size.n }
 
 // Close finishes the file and moves it into place.
 func (p *Part) Close() (PartFile, error) {

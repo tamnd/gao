@@ -1,6 +1,7 @@
 package kho
 
 import (
+	"bytes"
 	"errors"
 	"os"
 	"path/filepath"
@@ -309,5 +310,81 @@ func TestARollCountsWhatItHasWritten(t *testing.T) {
 	}
 	if got := r.Documents(); got != len(docs) {
 		t.Errorf("a closed roll counts %d documents, want %d", got, len(docs))
+	}
+}
+
+// The text limit is the shard target divided by a compression ratio measured on
+// one source, and a source that compresses worse than that ratio blows through
+// the target without ever reaching the limit. That is not hypothetical: the
+// first published GlotCC and FinePDFs parts held the same 1.06 GB of text and
+// came out at 512 MB and at 988 MB.
+//
+// So the roll also closes a part on what has reached the disk. The text limit
+// here is large enough that nothing would ever hit it, which is the point, and
+// the byte limit is one, so the part closes as soon as the first row group is
+// on the disk and the test does not have to write half a gigabyte to see it.
+func TestAPartClosesOnBytesWhenTheTextLimitIsNeverReached(t *testing.T) {
+	r, _ := roll(t, 1<<40)
+	r.BytesPerPart = 1
+
+	// A row group is what reaches the disk, so the rule cannot bite before one
+	// closes. The cap is three row groups, which is well past the first.
+	wrote := 0
+	for i := 0; i < 3*DefaultRowGroup && len(r.Files()) == 0; i++ {
+		if err := r.Append(sample(i)); err != nil {
+			t.Fatalf("Append %d: %v", i, err)
+		}
+		wrote++
+	}
+	if len(r.Files()) == 0 {
+		t.Fatalf("%d documents and no part closed, so the roll is not looking at what it has written", wrote)
+	}
+	if err := r.Append(sample(wrote)); err != nil {
+		t.Fatalf("Append %d: %v", wrote, err)
+	}
+	files, err := r.Close()
+	if err != nil {
+		t.Fatalf("Close: %v", err)
+	}
+
+	if len(files) != 2 {
+		t.Fatalf("wrote %d parts, want 2", len(files))
+	}
+	if files[0].Bytes == 0 {
+		t.Error("the part that closed is empty, so the roll closed on a number it read wrong rather than on bytes")
+	}
+	if files[0].Documents+files[1].Documents != wrote+1 {
+		t.Errorf("the two parts hold %d and %d documents, and %d went in",
+			files[0].Documents, files[1].Documents, wrote+1)
+	}
+	// The whole run is a few megabytes of text against a terabyte limit, so
+	// nothing here could have closed on text.
+	if got := int64(wrote+1) * 1024; got >= r.TextPerPart {
+		t.Errorf("the documents could have reached the text limit, so this test proves nothing")
+	}
+}
+
+// A row group is buffered in memory, so the row count that bounds it is a
+// memory bound only for documents the size it was picked for. FinePDFs averages
+// 29.5 KB against the few kilobytes DefaultRowGroup assumes.
+func TestARowGroupClosesOnTextBeforeItsRowCount(t *testing.T) {
+	var buf bytes.Buffer
+	w := NewParquetWriter(&buf, textDataset(t), stamp)
+
+	big := strings.Repeat("Cộng hòa xã hội chủ nghĩa Việt Nam. ", 1024)
+	rows := int(RowGroupText/int64(len(big))) + 2
+	for i := 0; i < rows; i++ {
+		d := sample(i)
+		d.Text = big
+		if err := w.Append(d); err != nil {
+			t.Fatalf("Append %d: %v", i, err)
+		}
+	}
+	if rows >= DefaultRowGroup {
+		t.Fatalf("%d documents is more than a row group by count, so this proves nothing", rows)
+	}
+	if buf.Len() == 0 {
+		t.Fatalf("%d documents and %d bytes of text produced no row group, so the whole thing is still in memory",
+			rows, int64(rows)*int64(len(big)))
 	}
 }

@@ -8,13 +8,17 @@ package kho
 // writes a part, closes it, hands it off, and starts the next one, so the disk
 // under a worker is one part being written and at most one part waiting to go.
 //
-// Rolling over on text rather than on file size is a choice the format forces.
-// A Parquet writer buffers a row group and compresses it at the boundary, so
-// the size of the file is not known until it closes, and a writer that waited
-// for the file to reach a size would be waiting on a number that only appears
-// after the decision was needed. Text bytes are known on every append, they are
-// the unit the corpus is measured in everywhere else, and the ratio between the
-// two is the compression ratio the disk budget already assumes.
+// A part closes on whichever comes first, the bytes it has put on the disk or
+// the text it has taken in. It was text alone, on the reasoning that a Parquet
+// writer compresses a row group at the boundary and does not know its own file
+// size until it closes. That is true of the row group being filled and it is
+// not true of the ones already written, which are on the disk and counted, and
+// the difference matters because the text limit is the shard target divided by
+// a compression ratio measured on one source. GlotCC compresses at 2.07 and
+// FinePDFs at 1.07, so the first published parts of the two came out at 512 MB
+// and at 988 MB against the same 512 MB target. Text is still the second half
+// of the rule, because a source that compresses better than the ratio would
+// otherwise write a part the size of its input file.
 
 import (
 	"errors"
@@ -69,6 +73,11 @@ type Roll struct {
 	// and for a box whose disk says something different from the fleet average.
 	TextPerPart int64
 
+	// BytesPerPart overrides [may.ShardBytes] as the size a part closes at once
+	// that much of it has reached the disk. It is here for tests, which cannot
+	// afford to write half a gigabyte to find out that the rule works.
+	BytesPerPart int64
+
 	// Finished, if set, is called with each part as it closes, before the next
 	// one is opened. It is where an upload goes: returning an error from it
 	// stops the roll, so a part that could not be handed off fails the file it
@@ -95,7 +104,7 @@ func (r *Roll) Append(d *doc.Document) error {
 	if err := r.cur.Append(d); err != nil {
 		return err
 	}
-	if r.cur.Text() >= r.limit() {
+	if r.cur.Bytes() >= r.size() || r.cur.Text() >= r.limit() {
 		return r.rotate()
 	}
 	return nil
@@ -153,6 +162,13 @@ func (r *Roll) limit() int64 {
 		return r.TextPerPart
 	}
 	return TextPerPart
+}
+
+func (r *Roll) size() int64 {
+	if r.BytesPerPart > 0 {
+		return r.BytesPerPart
+	}
+	return may.ShardBytes
 }
 
 func (r *Roll) open() error {
