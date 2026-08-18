@@ -152,13 +152,23 @@ func TestAnUnsignedSnapshotIsNotDescribedAsARelease(t *testing.T) {
 func TestACardWithNoSnapshotSaysSoRatherThanPrintingZeros(t *testing.T) {
 	card := Card(published(t), nil)
 
-	if !strings.Contains(card, "Nothing has been released to it yet") {
+	if !strings.Contains(card, "No snapshot has been sealed here yet") {
 		t.Error("a repo with no snapshot does not say so")
 	}
 	// A count of 0 documents reads as a snapshot that found nothing, which is a
 	// different claim from a repo that has not had one yet.
 	if strings.Contains(card, "| documents |") {
 		t.Error("a repo with no snapshot prints a count anyway")
+	}
+	// And it is not an empty repo either. An ingest pushes parts as it writes
+	// them, so a reader who lands on this card is usually looking at a tree
+	// with data in it, and a card that says nothing has been released reads as
+	// a repo with nothing in it.
+	if !strings.Contains(card, "does not mean the repo is empty") {
+		t.Error("a card with no snapshot reads as a repo with no files")
+	}
+	if !strings.Contains(card, "Do not cite a count off them") {
+		t.Error("the card does not say what the staged parts may not be used for")
 	}
 }
 
