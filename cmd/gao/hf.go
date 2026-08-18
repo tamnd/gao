@@ -27,6 +27,7 @@ func runGatHF(stdout, stderr io.Writer, args []string) int {
 	dir := fs.String("dir", "", "the ingest directory, which is where the ledger lives")
 	source := fs.String("source", "", "fetch one source rather than all of them, by name")
 	limit := fs.Int("limit", 0, "stop after this many files, which is how a new box is tried out")
+	only := fs.String("only", "", "fetch only the files named in this list, which is what 'gao giao files -box NAME' writes")
 	plan := fs.Bool("plan", false, "print what would be fetched and fetch nothing")
 	decode := fs.Bool("decode", false, "decode each file into documents and put them to the ingest contract")
 	rejects := fs.String("rejects", "", "write the documents the contract turned away to this file, which implies -decode")
@@ -36,7 +37,7 @@ func runGatHF(stdout, stderr io.Writer, args []string) int {
 	push := fs.Bool("push", false, "push each part to the store as it closes and delete the local copy, which needs -out")
 	disk := fs.String("watch", "", "sample the disk this run holds into this file, which is what 'gao box peak' reads")
 	fs.Usage = func() {
-		fmt.Fprint(stderr, `usage: gao gat hf -dir DIR [-source NAME] [-limit N] [-plan] [-decode] [-out DIR] [-push] [-tokenizer PATH] [-watch FILE]
+		fmt.Fprint(stderr, `usage: gao gat hf -dir DIR [-source NAME] [-limit N] [-only FILE] [-plan] [-decode] [-out DIR] [-push] [-tokenizer PATH] [-watch FILE]
 
 Fetches the files in the ingest manifest at the revisions they are pinned to.
 
@@ -54,6 +55,15 @@ run that is interrupted is resumed by running the same command again: files
 already in the ledger at their pinned revision are skipped, and re-pinning a
 source invalidates its entries rather than letting a restart mix two revisions
 into one corpus.
+
+With -only the run fetches the files named in a list and leaves the rest, which
+is how one box performs its share of a fleet schedule rather than the whole
+ingest. The list is what 'gao giao files -box NAME' writes, one name per line,
+source and path joined by a slash. An empty list and a name that is not pinned
+are both refused, because a run that quietly fetches nothing looks exactly like a
+box that is already up to date. This is the flag to reach for on a fleet. -limit
+takes the first N files of whatever is left, which is a way to try a new box out
+and not a way to divide work.
 
 Without -decode the bytes are counted and thrown away, which is what checks that
 a source can be fetched at all. With it, every record is mapped onto a gao
@@ -148,6 +158,20 @@ flags:
 		return 2
 	}
 
+	// Read before the lock is taken, for the same reason the tokenizer is opened
+	// before the first byte moves. A list at a path that does not exist, or one
+	// written against another manifest, is a mistake somebody makes while typing
+	// the command, and it should cost them a second rather than a lock and a
+	// ledger.
+	var names map[string]bool
+	if *only != "" {
+		names, err = readOnly(*only, sources)
+		if err != nil {
+			fmt.Fprintf(stderr, "gao gat hf: %v\n", err)
+			return 2
+		}
+	}
+
 	// Loaded before anything is fetched. The tokenizer is 4.7 MB and the ingest
 	// that follows it is measured in days, so finding out that the path was
 	// wrong should not cost a download.
@@ -194,6 +218,9 @@ flags:
 
 	todo, doneFiles, doneBytes := ledger.Plan(sources)
 	printPlan(stdout, sources, todo, doneFiles, doneBytes)
+	if names != nil {
+		todo = keepOnly(stdout, todo, names, *only)
+	}
 	if len(todo) == 0 {
 		return 0
 	}
@@ -329,6 +356,98 @@ flags:
 		return hfError(stderr, err)
 	}
 	return 0
+}
+
+// readOnly reads the list of files a run is limited to and checks it against the
+// manifest, which is how the schedule 'gao giao plan' prices becomes the run one
+// box actually performs.
+//
+// The list is what 'gao giao files -box NAME' writes: one name per line, source
+// and path joined by a slash, in the order the schedule hands them out. Blank
+// lines are skipped so that a list that picked up a trailing newline on the way
+// between two machines still works.
+//
+// Two refusals, and they are the point of the function. A list with no names in
+// it and a name that matches no pinned file both end a run that would otherwise
+// fetch nothing and exit 0, which is the same thing on the terminal as a box
+// that is already up to date. A box that was handed 59 files and fetched none of
+// them because the list was written against last month's manifest should hear
+// about it in the first second rather than at the end of a night nobody was
+// watching.
+//
+// A name that is pinned and already in the ledger is not an error. That is a
+// resumed run, which is the ordinary case for a list this long.
+func readOnly(path string, sources []gat.Pinned) (map[string]bool, error) {
+	b, err := os.ReadFile(path)
+	if err != nil {
+		return nil, err
+	}
+	want := make(map[string]bool)
+	var order []string
+	for _, line := range strings.Split(string(b), "\n") {
+		name := strings.TrimSpace(line)
+		if name == "" {
+			continue
+		}
+		if !want[name] {
+			order = append(order, name)
+		}
+		want[name] = true
+	}
+	if len(want) == 0 {
+		return nil, fmt.Errorf("%s names no files, and a run that fetches nothing looks the same as a run with nothing left to do", path)
+	}
+
+	pinned := make(map[string]bool)
+	for _, p := range sources {
+		for _, f := range p.Files {
+			pinned[workName(string(p.Source), f.Path)] = true
+		}
+	}
+	var unknown []string
+	for _, name := range order {
+		if !pinned[name] {
+			unknown = append(unknown, name)
+		}
+	}
+	if len(unknown) > 0 {
+		// The first few rather than all of them, because a list written against
+		// the wrong manifest gets every line wrong, and the reader needs one
+		// example and the count rather than 59 copies of the same mistake.
+		show := unknown
+		if len(show) > 3 {
+			show = show[:3]
+		}
+		return nil, fmt.Errorf("%s names %s this manifest does not pin, starting with %s",
+			path, plural(len(unknown), "file"), strings.Join(show, ", "))
+	}
+	return want, nil
+}
+
+// keepOnly narrows the todo to the names in the list, and says by how much.
+//
+// The line it prints is the one that tells a box whether it has work. A list of
+// 19 files with none of them left is a finished hand, and it reads differently
+// from a list that matched nothing, which readOnly has already refused by the
+// time this runs.
+func keepOnly(stdout io.Writer, todo []gat.Work, want map[string]bool, path string) []gat.Work {
+	kept := make([]gat.Work, 0, len(todo))
+	for _, w := range todo {
+		if want[workName(string(w.Pin.Source), w.File.Path)] {
+			kept = append(kept, w)
+		}
+	}
+	fmt.Fprintf(stdout, "%s names %s, %d left to fetch, %s to move\n",
+		path, plural(len(want), "file"), len(kept), may.GB(gat.Remaining(kept)))
+	return kept
+}
+
+// workName is the name one file goes by outside the ledger, which is the source
+// and the path with a slash between them. It is written in one place because
+// 'gao giao files' prints it and 'gao gat hf -only' reads it, and a scheduler
+// and a fetcher that disagree about what a file is called agree on nothing.
+func workName(source, path string) string {
+	return source + "/" + path
 }
 
 // seedCounts starts the tally from the counts the directory already holds, so

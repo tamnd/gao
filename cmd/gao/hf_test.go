@@ -111,6 +111,162 @@ func TestTheHFLimitBoundsWhatARunWillTake(t *testing.T) {
 	}
 }
 
+// onlyList writes a file selection list and returns the path to it. The shape is
+// what 'gao giao files -box NAME' prints, one name per line and nothing else.
+func onlyList(t *testing.T, names ...string) string {
+	t.Helper()
+	path := filepath.Join(t.TempDir(), "mine.txt")
+	if err := os.WriteFile(path, []byte(strings.Join(names, "\n")+"\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	return path
+}
+
+// The difference between -only and -limit, which is the whole reason -only
+// exists. A limit takes the first files of whatever is left, so four boxes given
+// the same limit fetch the same files four times. A list takes the files that
+// were named, wherever they sit in the manifest, which is what lets a schedule
+// be handed out.
+func TestOnlyTakesTheFilesItWasNamedRatherThanTheFirstOnes(t *testing.T) {
+	sources := gat.Sources()
+	first, last := sources[0], sources[len(sources)-1]
+	a := first.Files[len(first.Files)-1]
+	b := last.Files[len(last.Files)-1]
+	path := onlyList(t,
+		string(first.Source)+"/"+a.Path,
+		string(last.Source)+"/"+b.Path)
+
+	out, errOut, code := exec(t, "gat", "hf", "-dir", t.TempDir(), "-only", path, "-plan")
+	if code != 0 {
+		t.Fatalf("gao gat hf -only: exit %d, %s", code, errOut)
+	}
+	want := fmt.Sprintf("names 2 files, 2 left to fetch, %s to move", may.GB(a.Bytes+b.Bytes))
+	if !strings.Contains(out, want) {
+		t.Errorf("the run does not say %q:\n%s", want, out)
+	}
+
+	// Neither of the two is near the front of the manifest, so a limit of two
+	// picks two other files and moves a different number of bytes.
+	limited, _, code := exec(t, "gat", "hf", "-dir", t.TempDir(), "-limit", "2", "-plan")
+	if code != 0 {
+		t.Fatalf("gao gat hf -limit 2: exit %d", code)
+	}
+	if strings.Contains(limited, may.GB(a.Bytes+b.Bytes)) {
+		t.Errorf("a limit of two takes the same bytes as the list, so this proves nothing:\n%s", limited)
+	}
+}
+
+// A list that names nothing and a list that names files the manifest does not
+// pin are both refused, because the alternative is a run that fetches nothing
+// and exits 0, which on a terminal is indistinguishable from a box that is
+// already finished.
+//
+// Both are refused before the ledger is opened, so a box handed the wrong path
+// leaves nothing behind. That is what the ledger check at the end of each case
+// is for.
+func TestOnlyRefusesAListThatWouldFetchNothing(t *testing.T) {
+	p, ok := gat.Pin(doc.SourceHPLT3)
+	if !ok {
+		t.Fatal("hplt3 is not pinned")
+	}
+
+	for _, tc := range []struct {
+		name  string
+		list  []string
+		wants []string
+	}{
+		{
+			name:  "empty",
+			list:  []string{},
+			wants: []string{"names no files", "nothing left to do"},
+		},
+		{
+			name:  "not pinned",
+			list:  []string{string(p.Source) + "/" + p.Files[0].Path, "hplt3/vie_Latn/999_9.jsonl.zst"},
+			wants: []string{"names 1 file this manifest does not pin", "999_9"},
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			dir := t.TempDir()
+			_, errOut, code := exec(t, "gat", "hf", "-dir", dir, "-only", onlyList(t, tc.list...), "-plan")
+			if code != 2 {
+				t.Fatalf("exit %d, want 2", code)
+			}
+			for _, want := range tc.wants {
+				if !strings.Contains(errOut, want) {
+					t.Errorf("the refusal does not say %q: %q", want, errOut)
+				}
+			}
+			if _, err := os.Stat(filepath.Join(dir, gat.LedgerName)); err == nil {
+				t.Error("a refused list still opened a ledger, so the check runs later than it should")
+			}
+		})
+	}
+}
+
+// A list every file of which is in the ledger is a finished hand rather than a
+// mistake, and it exits 0. This is the ordinary end of a run on a box that was
+// handed nineteen files and fetched all nineteen.
+func TestAListWhoseFilesAreAllDoneIsAFinishedHand(t *testing.T) {
+	dir := t.TempDir()
+	p, ok := gat.Pin(doc.SourceGlotCC)
+	if !ok {
+		t.Fatal("glotcc is not pinned")
+	}
+
+	l, err := gat.OpenLedger(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, f := range p.Files[:2] {
+		if err := l.Record(gat.Entry{
+			Source: p.Source, Revision: p.Revision, Path: f.Path, Bytes: f.Bytes,
+		}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := l.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	path := onlyList(t,
+		string(p.Source)+"/"+p.Files[0].Path,
+		string(p.Source)+"/"+p.Files[1].Path)
+	out, errOut, code := exec(t, "gat", "hf", "-dir", dir, "-only", path, "-plan")
+	if code != 0 {
+		t.Fatalf("exit %d, %s", code, errOut)
+	}
+	if !strings.Contains(out, "names 2 files, 0 left to fetch") {
+		t.Errorf("a finished hand does not read as finished:\n%s", out)
+	}
+}
+
+// The two commands agree about what a file is called. This is the join the
+// schedule was missing: 'gao giao files -box NAME' writes the list and 'gao gat
+// hf -only' takes it, with nothing in between to edit it by hand.
+func TestTheScheduleTheSplitPrintsIsTheOneTheFetcherTakes(t *testing.T) {
+	names, errOut, code := exec(t, "giao", "files", "-box", "server3", giaoFleet(t))
+	if code != 0 {
+		t.Fatalf("gao giao files -box: exit %d, %s", code, errOut)
+	}
+	path := filepath.Join(t.TempDir(), "server3.txt")
+	if err := os.WriteFile(path, []byte(names), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	want := len(strings.Fields(names))
+	out, errOut, code := exec(t, "gat", "hf", "-dir", t.TempDir(), "-only", path, "-plan")
+	if code != 0 {
+		t.Fatalf("gao gat hf -only: exit %d, %s", code, errOut)
+	}
+	if want == 0 || want >= gat.Files() {
+		t.Fatalf("the schedule hands server3 %d of the %d pinned files, which is not a share of it", want, gat.Files())
+	}
+	if !strings.Contains(out, fmt.Sprintf("names %d files, %d left to fetch", want, want)) {
+		t.Errorf("the fetcher does not take all %d files the split named:\n%s", want, out)
+	}
+}
+
 func TestHFRefusesASourceItHasNoPinFor(t *testing.T) {
 	_, errOut, code := exec(t, "gat", "hf", "-dir", t.TempDir(), "-source", "commoncrawl", "-plan")
 	if code == 0 {
@@ -401,7 +557,7 @@ func TestHFIsInTheGatHelpAndTheUsage(t *testing.T) {
 
 	// Which sources decode is in the usage rather than only in the error,
 	// because it decides whether a run is worth starting.
-	for _, want := range []string{"-decode", "-rejects", "CulturaX", "Parquet", "range request"} {
+	for _, want := range []string{"-decode", "-rejects", "-only", "gao giao files -box NAME", "CulturaX", "Parquet", "range request"} {
 		if !strings.Contains(errOut, want) {
 			t.Errorf("the usage does not mention %q:\n%s", want, errOut)
 		}
