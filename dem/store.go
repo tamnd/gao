@@ -105,27 +105,39 @@ func (s *Store) Parts(ctx context.Context, snapshot string) ([]kho.Stored, error
 // opened the file with, so two windows is what a column pass needs. The twenty
 // four a row reader wants are 92 MB held for nothing, which is most of what the
 // smallest box in the fleet has spare.
+//
+// The window is [gat.ColumnWindow] and not the default, because a fixed width
+// column is a couple of hundred kilobytes where the text beside it is tens of
+// megabytes. Reading the shape columns of a real part at the default moved 58.1
+// MB to sum 1.5 MB of them, and the first level of a published check that says
+// it reads twelve bytes a document has to actually read twelve bytes a document
+// or it is a check nobody can afford to run.
 func (s *Store) Open(ctx context.Context, part kho.Stored) (*gat.RangeAt, error) {
-	return s.open(ctx, part, 2)
+	return s.open(ctx, part, gat.ColumnWindow, 2)
 }
 
 // OpenRows returns a reader over one part for a pass that reads whole rows.
 //
 // A row reader has every column open at once, so two windows is a reader that
-// spends its life refilling. It is a second door rather than a wider default
-// because the whole point of the other one is that it holds almost nothing.
+// spends its life refilling, and the text it is there to read comes in chunks a
+// small window would fetch a page at a time. It is a second door rather than a
+// wider default because the whole point of the other one is that it holds and
+// moves almost nothing.
 func (s *Store) OpenRows(ctx context.Context, part kho.Stored) (*gat.RangeAt, error) {
-	return s.open(ctx, part, 24)
+	return s.open(ctx, part, gat.DefaultWindow, 24)
 }
 
-func (s *Store) open(ctx context.Context, part kho.Stored, windows int) (*gat.RangeAt, error) {
+func (s *Store) open(ctx context.Context, part kho.Stored, window, windows int) (*gat.RangeAt, error) {
+	if s.window > 0 {
+		window = s.window
+	}
 	return s.fetcher().OpenRemote(ctx, gat.Remote{
 		Name:    part.Path,
 		From:    s.Repo,
 		URL:     s.pusher().ResolveURL(part.Path),
 		Bytes:   part.Bytes,
 		Auth:    s.Token != "",
-		Window:  s.window,
+		Window:  window,
 		Windows: max(s.windows, windows),
 	})
 }

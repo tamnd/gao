@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/tamnd/gao/doc"
+	"github.com/tamnd/gao/gat"
 	"github.com/tamnd/gao/kho"
 )
 
@@ -44,6 +45,12 @@ func (s *store) store() *Store {
 	// A window small enough that a test part crosses several of them, since a
 	// fixture the size of a real part would be a fixture nobody waits for.
 	return &Store{Repo: s.repo, Token: "hf_test", API: s.srv.URL, window: 4 << 10}
+}
+
+// storeAtRealWindows is store() without the test's small window, so that a test
+// about which window a door opens with measures the real one.
+func (s *store) storeAtRealWindows() *Store {
+	return &Store{Repo: s.repo, Token: "hf_test", API: s.srv.URL}
 }
 
 func (s *store) ServeHTTP(w http.ResponseWriter, r *http.Request) {
@@ -406,5 +413,38 @@ func TestAPartsKeyFileIsNamedAfterThePart(t *testing.T) {
 	}
 	if got, want := partKeys("data/snapshot=x/part-00002-of-00774.parquet"), "part-00002-of-00774"+KeysExt; got != want {
 		t.Errorf("partKeys for a published shard = %q, want %q", got, want)
+	}
+}
+
+// The two doors open with different windows, and the difference is worth a test
+// because it is invisible from the call site and it was wrong for as long as
+// nobody ran the pass against a real part. Reading the shape columns of one
+// 511.6 MB part of glotcc-9ad140b6be3a at the default window moved 58.1 MB to
+// sum 1.5 MB of them. At the column window it moves 1.8 MB and costs ten more
+// requests.
+func TestTheColumnDoorAsksForLessThanTheRowDoor(t *testing.T) {
+	s := newStore(t)
+	s.put(snapshot, 0, 0, texts(0, 40)...)
+
+	st := s.storeAtRealWindows()
+	parts, err := st.Parts(t.Context(), snapshot)
+	if err != nil {
+		t.Fatalf("Parts: %v", err)
+	}
+
+	column, err := st.Open(t.Context(), parts[0])
+	if err != nil {
+		t.Fatalf("Open: %v", err)
+	}
+	if got := column.Window(); got != gat.ColumnWindow {
+		t.Errorf("the column pass opened with a %d byte window, want the %d byte column window", got, gat.ColumnWindow)
+	}
+
+	rows, err := st.OpenRows(t.Context(), parts[0])
+	if err != nil {
+		t.Fatalf("OpenRows: %v", err)
+	}
+	if got := rows.Window(); got != gat.DefaultWindow {
+		t.Errorf("the row pass opened with a %d byte window, want the %d byte default window", got, gat.DefaultWindow)
 	}
 }

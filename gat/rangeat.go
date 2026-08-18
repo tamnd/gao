@@ -44,11 +44,38 @@ import (
 
 // DefaultWindow is how much a [RangeAt] fetches when it has to go to the host.
 //
-// Four megabytes is a compromise between round trips and waste. A Parquet page is
-// tens of kilobytes and a column chunk is tens of megabytes, so a window this
-// size covers many pages of one column and is thrown away without being fully
-// read only at the end of a chunk.
+// Four megabytes is a compromise between round trips and waste, sized for the
+// text column, where a chunk is tens of megabytes and a window is thrown away
+// without being fully read only at the end of one.
+//
+// It is the wrong size for a fixed width column, and being wrong there is
+// expensive rather than untidy. See [ColumnWindow].
 const DefaultWindow = 4 << 20
+
+// ColumnWindow is the window for a pass that reads one fixed width column.
+//
+// A shape column holds four bytes per document, so a chunk of it is a couple of
+// hundred kilobytes where the text chunk beside it is tens of megabytes, and a
+// four megabyte window fetches the whole neighbourhood to read a page of it.
+// Measured on one real part of glotcc-9ad140b6be3a, 511.6 MB holding 126,853
+// documents, summing the three shape columns moved:
+//
+//	window     bytes moved   requests
+//	4 MB        58.1 MB        14
+//	1 MB        15.5 MB        15
+//	256 KB       4.6 MB        18
+//	64 KB        1.8 MB        24
+//	16 KB        1.0 MB        23
+//
+// The floor is 1.5 MB, which is twelve bytes a document, and the columns encode
+// to less than that. So the default was moving thirty eight times what the pass
+// was reading, and ten more round trips buys all of it back.
+//
+// Sixty four kilobytes rather than sixteen because sixteen is smaller than a
+// Parquet page, which costs two requests for one page on any schema whose pages
+// are larger, and the measured difference between the two here is 0.7 MB on a
+// part of half a gigabyte.
+const ColumnWindow = 64 << 10
 
 // DefaultWindows is how many windows a [RangeAt] keeps.
 //
@@ -174,6 +201,13 @@ type pane struct {
 
 // Size returns the pinned length of the file.
 func (r *RangeAt) Size() int64 { return r.size }
+
+// Window returns how much this reader fetches when it has to go to the host.
+//
+// It is the difference between a pass that moves what it reads and one that
+// moves thirty eight times it, and nothing at the call site shows which of the
+// two a reader is, so a caller that picked a window deliberately can assert it.
+func (r *RangeAt) Window() int { return r.window }
 
 // Requests returns how many HTTP requests the reads so far have cost, and Bytes
 // how many bytes they moved. Both are reported after a file, because the whole
