@@ -44,7 +44,11 @@ func TestGiaoPlanPricesTheWholeIngestAgainstOneBox(t *testing.T) {
 		"scratch left",
 		"On the fastest box alone",
 		"513.6 GB over 122 files across 2 boxes",
-		"server3 has a reading and may not hold corpus bytes",
+		// A dropped box is dropped with its numbers, so that a reader can see
+		// that the reserve and not the disk is what took it out.
+		"server3 has a reading and 17.7 GB free",
+		"0 bytes of scratch once the 20.0 GB reserve is taken off",
+		"a fetch holds 1.0 GB while it runs",
 	} {
 		if !strings.Contains(out, want) {
 			t.Errorf("the plan does not say %q:\n%s", want, out)

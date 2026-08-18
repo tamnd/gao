@@ -10,6 +10,7 @@ import (
 
 	"github.com/tamnd/gao/gat"
 	"github.com/tamnd/gao/giao"
+	"github.com/tamnd/gao/may"
 )
 
 func runGiao(stdout, stderr io.Writer, args []string) int {
@@ -257,7 +258,13 @@ func printGiao(w io.Writer, r giaoReport) {
 	_ = tw.Flush()
 
 	for _, box := range r.Unused {
-		fmt.Fprintf(w, "\n%s has a reading and may not hold corpus bytes, so it draws nothing.\n", box)
+		b, ok := may.Lookup(box)
+		if !ok {
+			continue
+		}
+		fmt.Fprintf(w, "\n%s has a reading and %s free, which is %s of scratch once the %s reserve is taken off, against the %s a stage needs.\n",
+			box, giaoBytes(b.FreeDisk), giaoBytes(may.Scratch(b)), giaoBytes(may.ReserveBytes), giaoBytes(may.MinScratchBytes))
+		fmt.Fprintf(w, "So it draws nothing, though a fetch holds %s while it runs and that is the smaller question.\n", giaoBytes(giao.InFlight))
 	}
 
 	fmt.Fprintf(w, "\nThe whole ingest takes %s, against %s if a file could be cut in half and every source fetched at once.\n",

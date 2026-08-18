@@ -27,6 +27,20 @@
 // were divisible and the order did not bind. Nothing can reach that floor. It is
 // there so that the gap between it and the schedule can be read as what it is,
 // which is the shape of the work rather than a shortage of machines.
+//
+// Boxes that may hold corpus bytes is [may.HoldsCorpus], and on this fleet it
+// excludes a box that has done the work. server3 has 17.4 GB free against a
+// 20.0 GB reserve, so it has no scratch at all and draws nothing here, and it
+// is also the box that fetched, decoded and published the whole of the GlotCC
+// ingest on 2026-08-18 with 'gao box peak' reading 0.5 GB off it. Both of those
+// are true. [may.HoldsCorpus] asks whether a box can hold a stage's working set,
+// which is four shards, and a fetch holds [InFlight], which is two, so the
+// schedule is answering a larger question than the one it is asking about. What
+// keeps server3 out is the reserve rather than the disk, and 'gao giao plan'
+// prints those numbers for every box it drops rather than dropping it quietly.
+// The reserve is not adjusted here to let a box back in. A safety number that
+// moves the first time it excludes a machine somebody wanted is not a safety
+// number.
 package giao
 
 import (
