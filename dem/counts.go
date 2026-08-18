@@ -1,6 +1,7 @@
 package dem
 
 import (
+	"fmt"
 	"slices"
 	"sync"
 
@@ -130,6 +131,50 @@ func (t *Tally) Counting(tok *Tokenizer, next func(*doc.Document) error) func(*d
 		}
 		return nil
 	}
+}
+
+// Seed starts a tally from counts that were taken before it, which is what a
+// resumed ingest does with the report the earlier run left in the directory.
+//
+// A file already in the ledger is not fetched again, so nothing re-counts it,
+// and a tally that starts empty writes a counts.json describing the session
+// rather than the corpus in the directory. server1 fetched three FineWeb2 files,
+// 6962000 documents and 29043690013 characters, and the resumed run zeroed all
+// of it: the parts were in the store and the ledger still named the files, and
+// the only record of what was in them was a terminal.
+//
+// Two different tokenizers are refused rather than added, for the reason in
+// [ErrMixedTokenizers]. An untokenized report seeding a tokenized run is the
+// same refusal, since the token column would then cover some of the corpus and
+// nothing would say which part.
+func (t *Tally) Seed(r Report) error {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	if r.Tokenizer != t.Tokenizer {
+		return fmt.Errorf("%w: the counts already here were taken with %s and this run is using %s",
+			ErrMixedTokenizers, named(r.Tokenizer), named(t.Tokenizer))
+	}
+	if t.by == nil {
+		t.by = make(map[doc.Source]*Counts)
+	}
+	for _, sc := range r.Sources {
+		c, ok := t.by[sc.Source]
+		if !ok {
+			c = &Counts{}
+			t.by[sc.Source] = c
+		}
+		c.Merge(sc.Counts)
+	}
+	return nil
+}
+
+// named is a tokenizer for an error message, where the empty one is a sentence
+// rather than a gap between two spaces.
+func named(tokenizer string) string {
+	if tokenizer == "" {
+		return "no tokenizer"
+	}
+	return tokenizer
 }
 
 // Source returns the counts for one source.
