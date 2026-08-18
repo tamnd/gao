@@ -84,6 +84,7 @@ func commands() []command {
 		{"tron", "to mix: the finetuning set composed with native origin kept a column rather than a note", runTron},
 		{"uoc", "to estimate: what a sampled count is worth, as an interval and as a stopping rule", runUoc},
 		{"version", "print the version", runVersion},
+		{"vot", "to shoot up: whether the loss spiked, what rewinding to the last checkpoint would have cost, and whether the log could have held the answer", runVot},
 		{"xay", "mill: find the documents a corpus holds more than one copy of", runXay},
 		{"xep", "to place: the gao-refset draw and rubric, fixed before a document is labeled", runXep},
 		{"xoa", "the takedown register: who asked us to remove something, and how long it took", runXoa},

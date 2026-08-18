@@ -18,6 +18,8 @@ cover.out
 /tmp/
 *.jsonl
 *.jsonl.zst
+# except the fixtures a test reads, which are small, real, and checked in on purpose
+!**/testdata/*.jsonl
 *.parquet
 *.warc.gz
 
