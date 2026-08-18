@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/klauspost/compress/gzip"
 
@@ -522,5 +523,50 @@ func TestCountsThatCannotBeWrittenDoNotStopTheRun(t *testing.T) {
 	saveCounts(&stderr, filepath.Join(t.TempDir(), "no-such-directory"), "server1", &tally, false)
 	if !strings.Contains(stderr.String(), "writing the counts") {
 		t.Errorf("a failed write said nothing: %q", stderr.String())
+	}
+}
+
+// A directory with counts in it and no ledger is one somebody has half cleared
+// out, not one to resume, and adding its counts to a fresh run would report a
+// corpus twice the size of what is in the store.
+func TestCountsAreCarriedOnlyWhenTheLedgerNamesTheFiles(t *testing.T) {
+	dir := t.TempDir()
+	var earlier dem.Tally
+	count := earlier.Counting(nil, nil)
+	if err := count(&doc.Document{Provenance: doc.Provenance{Source: doc.SourceFineWeb2}, Text: "Việt Nam"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := earlier.Report("server1", time.Now()).Write(dir); err != nil {
+		t.Fatal(err)
+	}
+
+	ledger, err := gat.OpenLedger(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = ledger.Close() }()
+
+	var tally dem.Tally
+	var out bytes.Buffer
+	if err := seedCounts(&out, dir, ledger, &tally); err != nil {
+		t.Fatal(err)
+	}
+	if got := tally.Natural(); got.Documents != 0 {
+		t.Errorf("a run with an empty ledger carried %d documents forward from the counts file", got.Documents)
+	}
+
+	// And with the ledger naming a file, the same counts are carried.
+	if err := ledger.Record(gat.Entry{Source: doc.SourceFineWeb2, Revision: "af9c13333eb9", Path: "data/vie_Latn/train/000_00000.parquet", Documents: 1}); err != nil {
+		t.Fatal(err)
+	}
+	var resumed dem.Tally
+	if err := seedCounts(&out, dir, ledger, &resumed); err != nil {
+		t.Fatal(err)
+	}
+	if got := resumed.Natural(); got.Documents != 1 {
+		t.Errorf("a run resuming a ledger of one file carried %d documents forward, want 1", got.Documents)
+	}
+	if !strings.Contains(out.String(), "carrying 1 documents") {
+		t.Errorf("the run said %q, and a number it carried forward silently is a number nobody can check", out.String())
 	}
 }

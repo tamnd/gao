@@ -253,6 +253,14 @@ flags:
 			}
 		}
 		docs.Emit = tally.Counting(tok, docs.Emit)
+
+		// After Counting, which is what names the tokenizer, and only when the
+		// ledger already holds files, since a directory with counts and no ledger
+		// is a directory somebody has half cleared out rather than one to resume.
+		if err := seedCounts(stdout, *dir, ledger, &tally); err != nil {
+			fmt.Fprintf(stderr, "gao gat hf: %v\n", err)
+			return 1
+		}
 	}
 
 	// Started after the sink is built, because what the trace is worth depends
@@ -327,6 +335,42 @@ flags:
 // measurement of a download that is already paid for, and losing the download
 // because the directory went read only would be the wrong trade in both
 // directions.
+// seedCounts starts the tally from the counts the directory already holds, so
+// that a resumed run reports the corpus in it rather than the session.
+//
+// A file in the ledger is not fetched again and so is never counted again. The
+// run that found this had three FineWeb2 files through, 6962000 documents and
+// 38.3 GB of text, and was restarted to take three more: the ledger still named
+// the first three and their parts were in the store, and counts.json came back
+// zeroed with the only record of what was in them a terminal that had scrolled.
+//
+// The counts and the ledger are written by the same run and stay in step. Both
+// only ever record a file that finished, so a run killed mid-file leaves neither
+// a ledger entry nor counts for it, and this adds the same files twice only if
+// somebody deletes the ledger and keeps the counts.
+func seedCounts(stdout io.Writer, dir string, ledger *gat.Ledger, tally *dem.Tally) error {
+	if len(ledger.Entries()) == 0 {
+		return nil
+	}
+	r, err := dem.ReadReport(dir)
+	if errors.Is(err, dem.ErrNoReport) {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	if err := tally.Seed(r); err != nil {
+		return err
+	}
+	c := r.Natural
+	if c.Documents == 0 {
+		return nil
+	}
+	fmt.Fprintf(stdout, "carrying %d documents and %s of text forward from the files already in the ledger\n",
+		c.Documents, may.GB(c.Bytes))
+	return nil
+}
+
 func saveCounts(stderr io.Writer, dir, box string, tally *dem.Tally, complete bool) {
 	r := tally.Report(box, time.Now())
 	r.Complete = complete

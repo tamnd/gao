@@ -339,6 +339,19 @@ Every file is checked at the end against the byte count in the manifest, and aga
 
 The counts are written the same way the ledger is, which took a fleet run to notice. A decoding run tallies documents, bytes, characters, syllables and tokens as it goes and writes them to `counts.json` beside the ledger, and the first version wrote that file once, when the run ended. A run over one of these sources takes days. So for days the directory held the previous run's counts, naming a source the box was no longer fetching, and nothing about the file said so: it parses, it has a box on it, and `gao dem counts` would print it without complaint. The counts are now written before the first byte is fetched and rewritten after every finished file, and a report written mid run says it is one. `gao dem counts` names the boxes that had not finished, because a prefix of a source and a source total are the same shape.
 
+A resumed run starts its tally from the counts already in the directory, and says so:
+
+```
+6 of 27 files done, 12.5 GB of 55.9 GB
+21 files to fetch, 43.3 GB to move
+stopping after 3 files, 6.3 GB
+carrying 3000000 documents and 25.2 GB of text forward from the files already in the ledger
+```
+
+Without that line the counts were the session and not the corpus. A file already in the ledger is never fetched again, so nothing re-counts it, and a tally that starts empty writes a `counts.json` for whatever the last run happened to fetch. `server3` took three GlotCC files, was restarted, took three more, and ended with six files in the ledger and 1500000 documents in `counts.json`. Half the corpus in that directory had no record left anywhere. The batches were close enough in size that the wrong file read like a right one, which is the part worth keeping in mind: the failure had no symptom other than a number that was too small to notice.
+
+The seed is refused rather than added when the report was taken with a different tokenizer, for the same reason two tokenizers are never summed. The counts and the ledger are written by the same run and both only ever record a file that finished, so a run killed mid file leaves neither, and the only way to double count is to delete the ledger and keep the counts.
+
 `-dir` has no default. A command that starts a 513.6 GB download into whichever directory it was run from is a command that does it once by accident.
 
 ## Handing the ingest out across the fleet

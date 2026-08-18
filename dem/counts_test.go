@@ -1,6 +1,8 @@
 package dem_test
 
 import (
+	"errors"
+	"strings"
 	"sync"
 	"testing"
 	"unicode/utf8"
@@ -217,5 +219,55 @@ func TestCountingWithoutATokenizerLeavesTokensAtZero(t *testing.T) {
 	}
 	if tally.Tokenizer != "" {
 		t.Errorf("the tally names %q as its tokenizer on a run that did not tokenize", tally.Tokenizer)
+	}
+}
+
+// A file already in the ledger is never fetched again and so is never counted
+// again, so a resumed ingest that starts from an empty tally writes a
+// counts.json describing its own session. server1 had three FineWeb2 files
+// through, 6962000 documents and 29043690013 characters, and the run that took
+// the next three zeroed all of it.
+func TestATallySeededFromAnEarlierRunCarriesIt(t *testing.T) {
+	var first dem.Tally
+	count := first.Counting(nil, nil)
+	for range 3 {
+		if err := count(document(doc.SourceFineWeb2, "Việt Nam", 2)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	before := first.Natural()
+
+	var second dem.Tally
+	if err := second.Seed(first.Report("server1", at("2026-08-18T12:29:27Z"))); err != nil {
+		t.Fatalf("seeding: %v", err)
+	}
+	next := second.Counting(nil, nil)
+	if err := next(document(doc.SourceFineWeb2, "Việt Nam", 2)); err != nil {
+		t.Fatal(err)
+	}
+
+	got := second.Natural()
+	if got.Documents != before.Documents+1 {
+		t.Errorf("the resumed run counts %d documents, want the %d it carried plus the one it read", got.Documents, before.Documents)
+	}
+	if got.Chars <= before.Chars {
+		t.Errorf("the resumed run counts %d characters against the %d it carried", got.Chars, before.Chars)
+	}
+}
+
+// Seeding a tokenized run from an untokenized one would leave a token column
+// covering part of the corpus with nothing saying which part, which is the same
+// problem as adding two tokenizers together and gets the same answer.
+func TestATallyWillNotBeSeededFromADifferentTokenizer(t *testing.T) {
+	var first dem.Tally
+	first.Tokenizer = "gemma-3"
+
+	var second dem.Tally
+	err := second.Seed(first.Report("server1", at("2026-08-18T12:29:27Z")))
+	if !errors.Is(err, dem.ErrMixedTokenizers) {
+		t.Fatalf("seeding an untokenized run from a tokenized one returned %v, want ErrMixedTokenizers", err)
+	}
+	if !strings.Contains(err.Error(), "no tokenizer") {
+		t.Errorf("the error is %q, and it has to name both sides for somebody to fix it", err)
 	}
 }
