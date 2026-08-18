@@ -539,7 +539,9 @@ func (p *Pusher) createRepo(ctx context.Context, d Dataset) (bool, error) {
 		"type":         "dataset",
 		"name":         name,
 		"organization": org,
-		"private":      !d.Public(),
+		// Never private. Everything gao pushes is publishable or it is not
+		// pushed, so there is no visibility to decide per repo.
+		"private": false,
 	}
 	url := p.api() + "/api/repos/create"
 	err := p.post(ctx, url, "application/json", in, nil)

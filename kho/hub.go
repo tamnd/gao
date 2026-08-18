@@ -37,10 +37,18 @@ import (
 // about. A repo called vietnamese-legal-text tells them whether to click. The
 // stage that produced it is in the manifest, where it belongs.
 //
-// The split between public and private is the legal position and not a
-// preference. A repo that carries text may only carry text that [luat] says
-// ships, and the test below enforces that rather than the person creating the
-// repo remembering it.
+// Every repo here is public. There is no private tier and nothing is pushed
+// that may not be published, which is a stronger rule than the one this started
+// with and a shorter one to hold in your head. What it costs is the escape
+// hatch: a stage can no longer park text it may not redistribute in a working
+// repo on the way to somewhere else. What it buys is that the check runs on
+// every write rather than on the writes somebody remembered to mark. A repo
+// that carries text may only carry text that [luat] says ships, and the test
+// below enforces it rather than the person creating the repo remembering it.
+//
+// The material that has nowhere to go under that rule stays on the box that
+// made it and is deleted when the stage that needed it finishes. Disk on this
+// fleet is cache, not storage.
 
 // Org is the Hugging Face organization every gao dataset lives under. It is
 // shared with the crawler and the Common Crawl surface, because a reader who
@@ -53,17 +61,18 @@ const Org = "open-index"
 // variable set.
 const HubStore = "hf://" + Org
 
-// Tier is whether a dataset survives the run that wrote it.
+// Tier is whether a dataset is a release or the material one is built from.
+// Both are public. The difference is what a reader may rely on.
 type Tier uint8
 
 const (
-	// Working is stage output between passes. Private, mutable, and deleted
-	// when the snapshot that consumed it seals. It exists so that a box can let
-	// go of a shard the moment the next stage has it.
+	// Working is what a stage wrote on its way to a release: mutable, rewritten
+	// when a source is pinned again, and not referenced by a signed manifest. It
+	// exists so that a box can let go of a shard the moment it is up.
 	Working Tier = iota
 
-	// Published is part of a release. Public, immutable, and referenced by a
-	// signed manifest.
+	// Published is part of a release. Immutable and referenced by a signed
+	// manifest.
 	Published
 )
 
@@ -94,15 +103,11 @@ type Dataset struct {
 	// consolation prize.
 	Text bool
 
-	// Classes is the license classes whose documents land here. A public repo
-	// that carries text may only name classes whose text ships, and there is a
-	// test for that rather than a convention.
+	// Classes is the license classes whose documents land here. A repo that
+	// carries text may only name classes whose text ships, and there is a test
+	// for that rather than a convention.
 	Classes []doc.LicenseClass
 }
-
-// Public reports whether the repo is world readable, which every published
-// dataset is and no working dataset is.
-func (d Dataset) Public() bool { return d.Tier == Published }
 
 // Repo returns the full repo id, which is what the Hub API and DuckDB both want.
 func (d Dataset) Repo() string { return Org + "/" + d.Name }
@@ -178,24 +183,11 @@ var datasets = []Dataset{
 		},
 	},
 	{
-		Name:  "vietnamese-text-staging",
-		Tier:  Working,
-		Holds: "stage output between passes, so that a worker can write a shard, push it, and delete it rather than holding what it has finished",
-		Text:  true,
-		Classes: []doc.LicenseClass{
-			doc.LicenseOpen, doc.LicensePermissiveAttribution,
-			doc.LicenseRestricted, doc.LicenseUnredistributable,
-		},
-	},
-	{
-		Name:  "vietnamese-web-archive",
-		Tier:  Working,
-		Holds: "the WARCs the crawl fetched, uploaded before they are deleted, because a refetch costs somebody else's bandwidth and a delete before upload costs the crawl",
-		Text:  true,
-		Classes: []doc.LicenseClass{
-			doc.LicenseOpen, doc.LicensePermissiveAttribution,
-			doc.LicenseRestricted, doc.LicenseUnredistributable,
-		},
+		Name:    "vietnamese-source-text",
+		Tier:    Working,
+		Holds:   "the pinned public Vietnamese corpora as gao read them, every source put to one contract and one schema, before any cleaning",
+		Text:    true,
+		Classes: []doc.LicenseClass{doc.LicenseOpen, doc.LicensePermissiveAttribution},
 	},
 }
 
@@ -210,7 +202,7 @@ func Datasets() []Dataset {
 // built. It is named here rather than passed around, because every stage writes
 // to the same place and a stage that took the repo as an argument is a stage
 // somebody can point at a published one by mistake.
-const StageRepo = "vietnamese-text-staging"
+const StageRepo = "vietnamese-source-text"
 
 // Staging returns that repo. It panics if the table does not have it, which is
 // a broken build rather than a runtime condition, since the table is a constant.
@@ -353,15 +345,15 @@ func (d Dataset) carries(c doc.LicenseClass) bool {
 // dataset, which is the check an upload makes before it uploads rather than the
 // check a reviewer makes after a release.
 //
-// A public repo that carries text admits only classes whose text ships, so the
-// legal position and the storage layout cannot drift apart. A private working
-// repo admits anything, because processing material is not publishing it, which
-// is the entire distinction the restricted class rests on.
+// A repo that carries text admits only classes whose text ships, so the legal
+// position and the storage layout cannot drift apart. There is no working repo
+// that admits anything on the grounds that processing is not publishing, since
+// everything here is published the moment it is pushed.
 func (d Dataset) Admits(c doc.LicenseClass) bool {
 	if !d.carries(c) {
 		return false
 	}
-	if d.Public() && d.Text && !luat.Publishes(c).Text {
+	if d.Text && !luat.Publishes(c).Text {
 		return false
 	}
 	return true

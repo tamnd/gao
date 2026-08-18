@@ -113,8 +113,8 @@ func (s *Slice) Publishable() []string {
 	if !ok {
 		return []string{fmt.Sprintf("%s is not a repo in the dataset table, and a slice cannot be published to a repo nobody declared", s.Dataset)}
 	}
-	if !d.Public() {
-		faults = append(faults, fmt.Sprintf("%s is a working repo, and a working repo is deleted when the snapshot that consumed it seals", d.Repo()))
+	if d.Tier != kho.Published {
+		faults = append(faults, fmt.Sprintf("%s is a working repo, rewritten when a source is pinned again and covered by no signed manifest, so a slice published against it is a view over something that may move", d.Repo()))
 	}
 	for _, c := range s.Classes {
 		if !d.Admits(c) {

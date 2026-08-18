@@ -197,3 +197,62 @@ func TestPeakRefusesWhatItCannotRead(t *testing.T) {
 		t.Errorf("a missing trace exited %d, want 1", code)
 	}
 }
+
+// The check has to work off a real filesystem, since drift is a fact about one.
+// What it says depends on where it runs, so the test asserts the shape of the
+// reading and the one thing that is true everywhere: the numbers are the box's
+// own rather than the record's.
+func TestBoxCheckMeasuresThisMachine(t *testing.T) {
+	out, errOut, code := exec(t, "box", "check", "-dir", t.TempDir(), "-json")
+	if code != 0 && code != 1 {
+		t.Fatalf("gao box check: exit %d, %s", code, errOut)
+	}
+
+	var c struct {
+		Box      string   `json:"box"`
+		Path     string   `json:"path"`
+		Free     int64    `json:"free"`
+		Recorded int64    `json:"recorded"`
+		Threads  int      `json:"threads"`
+		Taken    string   `json:"inventory_taken"`
+		Drift    []string `json:"drift"`
+		Holds    bool     `json:"holds"`
+		Verdict  string   `json:"verdict"`
+	}
+	if err := json.Unmarshal([]byte(out), &c); err != nil {
+		t.Fatalf("the reading is not JSON: %v\n%s", err, out)
+	}
+	if c.Free <= 0 || c.Threads <= 0 {
+		t.Errorf("measured %d bytes free and %d threads on a directory that exists", c.Free, c.Threads)
+	}
+	if c.Taken != may.MeasuredOn {
+		t.Errorf("the reading is against an inventory taken on %q, want %q", c.Taken, may.MeasuredOn)
+	}
+	if c.Holds != (len(c.Drift) == 0) {
+		t.Errorf("it holds %v with %d sentences of drift", c.Holds, len(c.Drift))
+	}
+	if c.Verdict == "" {
+		t.Error("no verdict")
+	}
+}
+
+// A run that has drifted exits 1, the way every other reading in gao that
+// cannot be trusted does. CI runs on machines that are not on the fleet, which
+// is itself a drift, so this asserts the pairing rather than the exit code
+// alone.
+func TestBoxCheckExitsOnDrift(t *testing.T) {
+	out, _, code := exec(t, "box", "check", "-dir", t.TempDir())
+	drifted := strings.Contains(out, "the record has moved")
+	if drifted && code != 1 {
+		t.Errorf("exit %d after reporting drift, want 1", code)
+	}
+	if !drifted && code != 0 {
+		t.Errorf("exit %d with nothing to report, want 0", code)
+	}
+}
+
+func TestBoxCheckTakesNoArguments(t *testing.T) {
+	if _, _, code := exec(t, "box", "check", "disk.jsonl"); code != 2 {
+		t.Errorf("exit %d, want 2 for an argument the command does not take", code)
+	}
+}

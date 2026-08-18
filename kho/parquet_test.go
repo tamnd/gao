@@ -297,24 +297,26 @@ func TestAPageThatReservedItselfIsRefusedByAPublishedTextRepo(t *testing.T) {
 	}
 }
 
-// The working repos take it. Processing material is not publishing it, and a
-// reserved document that cannot be written anywhere is a document that gets
-// dropped on the floor instead of counted.
-func TestAWorkingRepoTakesAPageThatReservedItself(t *testing.T) {
-	staging, ok := Lookup("vietnamese-text-staging")
-	if !ok {
-		t.Fatal("vietnamese-text-staging is not in the dataset table")
-	}
-	if staging.Public() {
-		t.Fatal("vietnamese-text-staging is published, and this test needs the repo that is not")
+// The working repo used to take it, on the grounds that processing material is
+// not publishing it. It is public now, so it does not, and a page that reserved
+// itself reaches the reject store instead, where it is counted and carries no
+// text.
+func TestTheWorkingRepoRefusesAPageThatReservedItself(t *testing.T) {
+	staging := Staging()
+	if !staging.Text {
+		t.Fatal("the working repo carries no text, and this test is about the text it carries")
 	}
 	in := sample(1)
 	in.Consent = doc.ConsentNoTrain
 
 	var buf bytes.Buffer
 	w := NewParquetWriter(&buf, staging, stamp)
-	if err := w.Append(in); err != nil {
-		t.Fatalf("a working repo refused a reserved document: %v", err)
+	err := w.Append(in)
+	if !errors.Is(err, ErrNotAdmitted) {
+		t.Fatalf("a public repo took a reserved page: %v", err)
+	}
+	if !strings.Contains(err.Error(), staging.Name) {
+		t.Errorf("the refusal does not name the repo: %v", err)
 	}
 }
 

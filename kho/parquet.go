@@ -351,10 +351,11 @@ func NewParquetWriter(w io.Writer, d Dataset, s Stamp) *ParquetWriter {
 // or from a site that has since changed its mind and been recrawled, and this is
 // the last point at which anybody can still act on what it said.
 //
-// A private working repo takes it anyway. Processing material is not publishing
-// it, which is the same distinction the restricted license class rests on, and
-// it is what lets a reserved document be counted and reported on rather than
-// vanishing without a number.
+// There is no repo that takes it anyway. A working repo used to, on the grounds
+// that processing material is not publishing it, and that stopped being true the
+// day every repo became public. What a reserved document gets instead is a row
+// in the reject store, which carries no text, so it is still counted and
+// reported on rather than vanishing without a number.
 func (p *ParquetWriter) Append(d *doc.Document) error {
 	if p.closed {
 		return errors.New("kho: append to a closed parquet file")
@@ -362,7 +363,7 @@ func (p *ParquetWriter) Append(d *doc.Document) error {
 	if !p.dataset.Admits(d.LicenseClass) {
 		return fmt.Errorf("%w: %s does not carry %s", ErrNotAdmitted, p.dataset.Name, d.LicenseClass)
 	}
-	if d.Consent.Reserved() && p.dataset.Public() && p.dataset.Text {
+	if d.Consent.Reserved() && p.dataset.Text {
 		return fmt.Errorf("%w: %s publishes text and this page said %s", ErrNotAdmitted, p.dataset.Name, d.Consent)
 	}
 	p.buf = append(p.buf[:0], RowOf(d))

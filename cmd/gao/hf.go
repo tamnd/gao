@@ -34,8 +34,9 @@ func runGatHF(stdout, stderr io.Writer, args []string) int {
 	tokenizer := fs.String("tokenizer", "", "count tokens with the tokenizer at this path, which implies -decode")
 	out := fs.String("out", "", "write the documents the contract admits under this directory as parquet, which implies -decode")
 	push := fs.Bool("push", false, "push each part to the store as it closes and delete the local copy, which needs -out")
+	disk := fs.String("watch", "", "sample the disk this run holds into this file, which is what 'gao box peak' reads")
 	fs.Usage = func() {
-		fmt.Fprint(stderr, `usage: gao gat hf -dir DIR [-source NAME] [-limit N] [-plan] [-decode] [-out DIR] [-push] [-tokenizer PATH]
+		fmt.Fprint(stderr, `usage: gao gat hf -dir DIR [-source NAME] [-limit N] [-plan] [-decode] [-out DIR] [-push] [-tokenizer PATH] [-watch FILE]
 
 Fetches the files in the ingest manifest at the revisions they are pinned to.
 
@@ -84,6 +85,12 @@ that carried on would be filling the disk it was emptying. Pushing the same part
 twice is safe and nearly free: the path is a function of what is in it, and the
 store keys the bytes by their digest, so a run started again after a box reboots
 skips what is already up there without sending it a second time.
+
+With -watch the run samples the disk it is holding every ten seconds and writes
+the trace to that file, which is what turns the disk budget from arithmetic into
+a measurement. Run 'gao box peak' over it afterwards. The sample says which half
+of the work it was taken during, since writing a part and sending it hold the
+disk for different reasons.
 
 A decoding run also counts what it read and writes counts.json beside the ledger:
 documents, text bytes, characters, and syllables per source. With -tokenizer it
@@ -242,6 +249,31 @@ flags:
 		docs.Emit = tally.Counting(tok, docs.Emit)
 	}
 
+	// Started after the sink is built, because what the trace is worth depends
+	// on it sampling the directory the parts are actually written to.
+	stopWatch := func() {}
+	if *disk != "" {
+		stage := func() string { return "fetch" }
+		if written != nil {
+			stage = written.stage
+		}
+		w, err := watch(*disk, []string{*dir, *out}, in.Box, stage)
+		if err != nil {
+			fmt.Fprintf(stderr, "gao gat hf: %v\n", err)
+			return 1
+		}
+		stopWatch = func() {
+			stopWatch = func() {}
+			if err := w.Close(); err != nil {
+				fmt.Fprintf(stderr, "gao gat hf: %v\n", err)
+			}
+		}
+		// The deferred call is for the paths that leave early. The run itself
+		// stops the trace by hand below, so that the file is closed and its
+		// error reported before the summary claims the run went well.
+		defer func() { stopWatch() }()
+	}
+
 	// The counts are rewritten after every file rather than at the end of the
 	// run. A source the size of the ones here takes days, and the version that
 	// wrote once at the end left the previous run's counts.json sitting in the
@@ -261,6 +293,7 @@ flags:
 	fmt.Fprintln(stdout)
 
 	n, err := in.Run(ctx, todo)
+	stopWatch()
 	fmt.Fprintf(stdout, "\n%d of %d files fetched, %s in the ledger\n", n, len(todo), may.GB(ledger.Bytes()))
 	printAdmitted(stdout, docs)
 	if written != nil {

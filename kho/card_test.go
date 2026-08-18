@@ -175,14 +175,11 @@ func TestACardPointsAtTheSnapshotItDescribes(t *testing.T) {
 	}
 }
 
-func TestAPublicRepoOnlyClaimsToShipTextThatShips(t *testing.T) {
+func TestACardOnlyClaimsToShipTextThatShips(t *testing.T) {
 	// This is the check that matters legally, and it runs over the table rather
 	// than over one example, so a repo added later cannot quietly claim more
 	// than its classes allow.
 	for _, d := range Datasets() {
-		if !d.Public() {
-			continue
-		}
 		card := Card(d, released(t))
 		for _, c := range d.Classes {
 			row := "| " + c.String() + " |"
@@ -202,16 +199,17 @@ func TestAPublicRepoOnlyClaimsToShipTextThatShips(t *testing.T) {
 	}
 }
 
-func TestAWorkingRepoDoesNotAdvertiseWhatItShips(t *testing.T) {
-	// Nothing ships from a working repo, so a table headed "what ships" would be
-	// answering a question nobody should be asking of it.
+func TestAWorkingRepoSaysItIsNotARelease(t *testing.T) {
+	// It ships the same way a release does, so it carries the same table. What
+	// it has to say on top of that is that nothing here is covered by a signed
+	// manifest, which is the only thing a reader loses by reading it.
 	card := Card(Staging(), nil)
 
-	if strings.Contains(card, "## What ships") {
-		t.Error("a private working repo has a shipping table")
+	if !strings.Contains(card, "## What ships") {
+		t.Error("a working repo is published and does not say what it ships")
 	}
-	if !strings.Contains(card, "Nothing here is published") {
-		t.Error("a private working repo does not say that nothing in it is published")
+	if !strings.Contains(card, "covered by no signed manifest") && !strings.Contains(card, "not covered by a signed manifest") {
+		t.Error("a working repo does not say that it is not a release")
 	}
 }
 

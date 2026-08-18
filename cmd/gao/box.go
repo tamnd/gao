@@ -14,12 +14,15 @@ func runBox(stdout, stderr io.Writer, args []string) int {
 	if len(args) > 0 && args[0] == "peak" {
 		return runBoxPeak(stdout, stderr, args[1:])
 	}
+	if len(args) > 0 && args[0] == "check" {
+		return runBoxCheck(stdout, stderr, args[1:])
+	}
 	fs := flag.NewFlagSet("box", flag.ContinueOnError)
 	fs.SetOutput(stderr)
 	label := fs.Bool("label", false, "print only the provenance label for this machine")
 	tokens := fs.Int64("tokens", may.TargetTokens, "token count to compute the disk budget for")
 	fs.Usage = func() {
-		fmt.Fprint(stderr, "usage: gao box [-label] [-tokens N]\n       gao box peak [-ran duration] disk.jsonl\n\nPrints the fleet inventory and the disk budget a corpus of the given size needs.\nThe inventory is measured, not specified, and it carries the date it was taken.\n\nThe peak subcommand reads a watcher's disk trace from a run and grades it\nagainst the ceiling, and against the arithmetic the ceiling was written over.\n\nflags:\n")
+		fmt.Fprint(stderr, "usage: gao box [-label] [-tokens N]\n       gao box peak [-ran duration] disk.jsonl\n       gao box check [-dir DIR] [-json]\n\nPrints the fleet inventory and the disk budget a corpus of the given size needs.\nThe inventory is measured, not specified, and it carries the date it was taken.\n\nThe peak subcommand reads a watcher's disk trace from a run and grades it\nagainst the ceiling, and against the arithmetic the ceiling was written over.\n\nThe check subcommand measures this box and says how far the record has drifted\nfrom it, which is the thing nobody notices until a plan is built on it.\n\nflags:\n")
 		fs.PrintDefaults()
 	}
 	if err := fs.Parse(args); err != nil {
@@ -177,4 +180,97 @@ func printPeak(w io.Writer, p may.Peak) {
 		}
 	}
 	fmt.Fprintf(w, "\n%s\n", p.Verdict())
+}
+
+// boxCheck is what this box has against what the inventory says it has.
+type boxCheck struct {
+	Box      string   `json:"box"`
+	Path     string   `json:"path"`
+	Free     int64    `json:"free"`
+	Recorded int64    `json:"recorded"`
+	Threads  int      `json:"threads"`
+	Taken    string   `json:"inventory_taken"`
+	Drift    []string `json:"drift,omitempty"`
+	Holds    bool     `json:"holds"`
+	Verdict  string   `json:"verdict"`
+}
+
+// runBoxCheck measures the box the process is on and grades the record against
+// it.
+//
+// It exists because the inventory is code with a date on it, and code with a
+// date on it goes stale silently. Every other measurement in gao is refused
+// when it cannot be trusted. This one was simply read.
+func runBoxCheck(stdout, stderr io.Writer, args []string) int {
+	fs := flag.NewFlagSet("box check", flag.ContinueOnError)
+	fs.SetOutput(stderr)
+	dir := fs.String("dir", ".", "the directory to measure free disk on, which is the one the work would run in")
+	asJSON := fs.Bool("json", false, "print JSON")
+	fs.Usage = func() {
+		fmt.Fprint(stderr, `usage: gao box check [-dir DIR] [-json]
+
+Measures this box and reports how far the recorded inventory has drifted from
+it. Free disk and hardware threads are measured, because those are the numbers
+that move. Memory and the card are not, because a portable guess at them is
+worse than an old number with a date attached.
+
+Free disk is measured on -dir, since a box has more than one filesystem and the
+answer is a property of the one a stage would write to.
+
+Exits 1 when the record has drifted far enough to change a decision, which is
+10.0 GB of free disk, a thread count that has moved, or a box crossing the line
+where it stops being able to hold corpus bytes at all.
+
+flags:
+`)
+		fs.PrintDefaults()
+	}
+	if err := fs.Parse(args); err != nil {
+		return 2
+	}
+	if fs.NArg() != 0 {
+		fs.Usage()
+		return 2
+	}
+
+	live, err := may.Now(*dir)
+	if err != nil {
+		fmt.Fprintf(stderr, "gao box check: %v\n", err)
+		return 1
+	}
+	recorded := int64(0)
+	if b, ok := may.Lookup(live.Box); ok {
+		recorded = b.FreeDisk
+	}
+	c := boxCheck{
+		Box: live.Box, Path: live.Path, Free: live.Free, Recorded: recorded,
+		Threads: live.Threads, Taken: may.MeasuredOn,
+		Drift: live.Drift(), Holds: live.Holds(), Verdict: live.Verdict(),
+	}
+
+	if *asJSON {
+		if code := printJSON(stdout, stderr, c); code != 0 {
+			return code
+		}
+	} else {
+		tw := tabwriter.NewWriter(stdout, 0, 0, 2, ' ', 0)
+		fmt.Fprintf(tw, "box\t%s\n", c.Box)
+		fmt.Fprintf(tw, "measured on\t%s\t%s\n", c.Path, may.GB(c.Free))
+		fmt.Fprintf(tw, "recorded\t%s\t%s\n", c.Taken, may.GB(c.Recorded))
+		fmt.Fprintf(tw, "threads\t%d\n", c.Threads)
+		_ = tw.Flush()
+
+		if len(c.Drift) > 0 {
+			fmt.Fprint(stdout, "\nthe record has moved:\n")
+			for _, why := range c.Drift {
+				fmt.Fprintf(stdout, "  %s\n", why)
+			}
+		}
+		fmt.Fprintf(stdout, "\n%s\n", c.Verdict)
+	}
+
+	if !c.Holds {
+		return 1
+	}
+	return 0
 }

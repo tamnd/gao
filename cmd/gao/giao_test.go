@@ -197,3 +197,84 @@ func TestGiaoHelpSaysWhatAReadingIs(t *testing.T) {
 		t.Errorf("the help does not say what a reading is:\n%s", out)
 	}
 }
+
+// ledgerWith writes an ingest ledger the way a run leaves one, and returns the
+// directory it is in.
+func ledgerWith(t *testing.T, lines ...string) string {
+	t.Helper()
+	dir := t.TempDir()
+	path := filepath.Join(dir, gat.LedgerName)
+	if err := os.WriteFile(path, []byte(strings.Join(lines, "\n")+"\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	return dir
+}
+
+func TestGiaoReadTurnsALedgerIntoAReading(t *testing.T) {
+	dir := ledgerWith(t,
+		`{"source":"glotcc","revision":"9ad140b6be3a","path":"v1.0/vie-Latn/vie-Latn_0.parquet","bytes":2100000000,"digest":"","documents":900000,"reconnects":0,"finished":"2026-08-18T06:19:00Z","box":"server3"}`,
+		`{"source":"glotcc","revision":"9ad140b6be3a","path":"v1.0/vie-Latn/vie-Latn_1.parquet","bytes":2100000000,"digest":"","documents":900000,"reconnects":0,"finished":"2026-08-18T06:39:00Z","box":"server3"}`,
+	)
+
+	out, errOut, code := exec(t, "giao", "read", "-dir", dir)
+	if code != 0 {
+		t.Fatalf("gao giao read: exit %d, %s", code, errOut)
+	}
+
+	var r struct {
+		Box     string  `json:"box"`
+		Bytes   int64   `json:"bytes"`
+		Seconds float64 `json:"seconds"`
+		On      string  `json:"measured_on"`
+		How     string  `json:"how"`
+	}
+	if err := json.Unmarshal([]byte(out), &r); err != nil {
+		t.Fatalf("the reading is not JSON: %v\n%s", err, out)
+	}
+	if r.Box != "server3" || r.Bytes != 2100000000 || r.Seconds != 1200 {
+		t.Errorf("read %+v, want server3 across the one file whose window the ledger knows", r)
+	}
+	if r.On != "2026-08-18" || !strings.Contains(r.How, "glotcc") {
+		t.Errorf("read %+v, want the date of the run and what it fetched", r)
+	}
+}
+
+// What the command is for is that the line it prints goes straight into the
+// readings a schedule is planned from.
+func TestGiaoReadPrintsALineThatPlanAccepts(t *testing.T) {
+	dir := ledgerWith(t,
+		`{"source":"fineweb2","revision":"af9c13333eb9","path":"data/vie_Latn/train/000_00000.parquet","bytes":4300000000,"digest":"","documents":1200000,"reconnects":0,"finished":"2026-08-18T11:00:00Z","box":"server1"}`,
+		`{"source":"fineweb2","revision":"af9c13333eb9","path":"data/vie_Latn/train/000_00001.parquet","bytes":4300000000,"digest":"","documents":1200000,"reconnects":0,"finished":"2026-08-18T12:00:00Z","box":"server1"}`,
+	)
+	out, _, code := exec(t, "giao", "read", "-dir", dir)
+	if code != 0 {
+		t.Fatalf("gao giao read: exit %d", code)
+	}
+
+	path := giaoReadings(t, strings.TrimSpace(out))
+	if _, errOut, code := exec(t, "giao", "plan", path); code != 0 {
+		t.Fatalf("gao giao plan refused a reading gao giao read produced: exit %d, %s", code, errOut)
+	}
+}
+
+func TestGiaoReadRefusesALedgerThatIsNotAReading(t *testing.T) {
+	dir := ledgerWith(t,
+		`{"source":"glotcc","revision":"9ad140b6be3a","path":"v1.0/vie-Latn/vie-Latn_0.parquet","bytes":2100000000,"digest":"","documents":900000,"reconnects":0,"finished":"2026-08-18T06:19:00Z","box":"server3"}`,
+	)
+	out, errOut, code := exec(t, "giao", "read", "-dir", dir)
+	if code != 1 {
+		t.Fatalf("exit %d, want 1 for a ledger that carries no reading", code)
+	}
+	if out != "" {
+		t.Errorf("it printed a reading anyway: %s", out)
+	}
+	if !strings.Contains(errOut, "one finish time is not a duration") {
+		t.Errorf("stderr says %q, and it should say why", errOut)
+	}
+}
+
+func TestGiaoReadNeedsADirectory(t *testing.T) {
+	if _, _, code := exec(t, "giao", "read"); code != 2 {
+		t.Errorf("exit %d, want 2 without -dir", code)
+	}
+}

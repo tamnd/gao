@@ -89,9 +89,7 @@ func cardBody(b *strings.Builder, d Dataset, m *Manifest) {
 	fmt.Fprintf(b, "This dataset is %s.\n\n", d.Holds)
 
 	if m == nil {
-		if d.Public() {
-			b.WriteString("Nothing has been released to it yet. The card is regenerated from the manifest each time a snapshot is sealed, so when there is a snapshot this is where its counts will be.\n\n")
-		}
+		b.WriteString("Nothing has been released to it yet. The card is regenerated from the manifest each time a snapshot is sealed, so when there is a snapshot this is where its counts will be.\n\n")
 	} else {
 		cardSnapshot(b, m)
 		cardCounts(b, m)
@@ -218,10 +216,9 @@ func cardStages(b *strings.Builder, m *Manifest) {
 }
 
 func cardShipping(b *strings.Builder, d Dataset) {
-	if !d.Public() {
+	if d.Tier == Working {
 		b.WriteString("## What this repo is\n\n")
-		b.WriteString("Private working storage between passes, so that a worker can write a shard, push it and delete it rather than holding everything it has finished. Nothing here is published. What ships is decided by the published repo a document eventually lands in, and it is decided per document rather than per repo.\n\n")
-		return
+		b.WriteString("What a stage wrote on its way to a release, published as it is written so that a box can push a part and delete it rather than holding what it has finished. It is public like everything else here, it is rewritten when a source is pinned again, and it is not covered by a signed manifest. A release is, and that is the difference worth knowing before anybody builds on this.\n\n")
 	}
 
 	b.WriteString("## What ships and what does not\n\n")

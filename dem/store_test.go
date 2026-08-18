@@ -34,7 +34,7 @@ type store struct {
 
 func newStore(t *testing.T) *store {
 	t.Helper()
-	s := &store{t: t, repo: kho.Org + "/vietnamese-text-staging", files: map[string][]byte{}}
+	s := &store{t: t, repo: kho.Org + "/vietnamese-source-text", files: map[string][]byte{}}
 	s.srv = httptest.NewServer(s)
 	t.Cleanup(s.srv.Close)
 	return s

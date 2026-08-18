@@ -225,12 +225,14 @@ func TestTheOutFlagIsInTheUsage(t *testing.T) {
 	}
 }
 
-// The dataset an ingest writes to is the working one. Writing stage output into
-// a published repo would put unfiltered text in a public place.
+// The dataset an ingest writes to is the working one, which is a release nobody
+// has signed rather than a private place. Writing ingest output straight into a
+// published repo would put text that no stage has cleaned under a name that
+// says it was.
 func TestAnIngestWritesToTheWorkingRepo(t *testing.T) {
 	d := kho.Staging()
-	if d.Public() {
-		t.Errorf("%s is public, and an ingest writes there", d.Repo())
+	if d.Tier != kho.Working {
+		t.Errorf("%s is a release and an ingest writes there", d.Repo())
 	}
 	sink := newParts(t.TempDir(), &gat.Docs{}, "server1", io.Discard)
 	if sink.dataset.Name != d.Name {

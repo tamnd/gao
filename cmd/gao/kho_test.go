@@ -273,11 +273,10 @@ func TestKhoDatasetsPrintsEveryRepoAndHowToReadIt(t *testing.T) {
 		if !strings.Contains(out, d.Holds) {
 			t.Errorf("gao kho datasets did not say what is in %s", d.Name)
 		}
-		// A working repo is private, so printing a query that reads it would be
-		// printing a query that fails for everybody except us.
-		q := d.Query("gao-v1.0")
-		if d.Public() != strings.Contains(out, q) {
-			t.Errorf("gao kho datasets printed the wrong thing for %s, which is %s", d.Name, d.Tier)
+		// Every repo is public, so every repo gets the line somebody pastes to
+		// read it.
+		if q := d.Query("gao-v1.0"); !strings.Contains(out, q) {
+			t.Errorf("gao kho datasets printed no way to read %s, which is %s", d.Name, d.Tier)
 		}
 	}
 }
@@ -499,7 +498,7 @@ func TestKhoPushSendsAFileAndSaysWhatItDid(t *testing.T) {
 	t.Setenv(may.StoreEnv, srv.URL)
 
 	path := filepath.Join(t.TempDir(), "README.md")
-	if err := os.WriteFile(path, []byte("# vietnamese-text-staging\n"), 0o600); err != nil {
+	if err := os.WriteFile(path, []byte("# vietnamese-source-text\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	out, errOut, code := exec(t, "kho", "push", "-as", "README.md", path)
