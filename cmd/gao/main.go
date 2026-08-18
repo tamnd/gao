@@ -64,6 +64,7 @@ func commands() []command {
 		{"mam", "the seed: find hosts nobody handed us a list of", runMam},
 		{"mau", "a sample: which shards of a layer nobody has read get read, decided before the reading", runMau},
 		{"nau", "cook: the training plan, its token budget, its curriculum, and the arithmetic between them", runNau},
+		{"nem", "to taste: read the sample gao mau drew and say what a stored byte of each layer holds", runNem},
 		{"ngai", "to hesitate: vi-overrefusal, whether a model will talk about Vietnam, in pairs", runNgai},
 		{"nghe", "to listen: whether a transcript belongs to the audio it came off, without a reference to score it against", runNghe},
 		{"nhat", "pick out the grit: find the documents that hold a benchmark gao is judged on", runNhat},

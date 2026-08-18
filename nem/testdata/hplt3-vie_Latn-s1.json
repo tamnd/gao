@@ -1,0 +1,254 @@
+{
+  "source": "hplt3",
+  "seed": "s1",
+  "digest": "fcede23d5db02324",
+  "tokenizer": "gemma-3@sha256:1299c11d7cf632ef3b4e11937501358ada021bbdf7c47638d13c0ee982f2e79c",
+  "readings": [
+    {
+      "layer": "bucket 5",
+      "rank": 5,
+      "stored": 15049231912,
+      "files": 1,
+      "drawn": 1,
+      "read": 40000000,
+      "documents": 26805,
+      "bytes": 95600162,
+      "chars": 76617311,
+      "syllables": 15255097,
+      "tokens": 26306434,
+      "takes": [
+        {
+          "layer": "bucket 5",
+          "path": "vie_Latn/5_1.jsonl.zst",
+          "bytes": 40000000,
+          "of": 15049231912,
+          "digest": "sha256:1138b009c2ce44a0e349a2a1d6f7256cfa0acfbb0e2099a36778cafb016e781b",
+          "whole": false,
+          "documents": 26805,
+          "chars": 76617311,
+          "syllables": 15255097,
+          "tokens": 26306434
+        }
+      ]
+    },
+    {
+      "layer": "bucket 6",
+      "rank": 6,
+      "stored": 25221053724,
+      "files": 1,
+      "drawn": 1,
+      "read": 40000000,
+      "documents": 30332,
+      "bytes": 97942392,
+      "chars": 76336456,
+      "syllables": 15649136,
+      "tokens": 24665060,
+      "takes": [
+        {
+          "layer": "bucket 6",
+          "path": "vie_Latn/6_1.jsonl.zst",
+          "bytes": 40000000,
+          "of": 25221053724,
+          "digest": "sha256:0deaf7805aa48c6bc30559279e2c20ea4c9030558af67b592f747afcfda7ef4c",
+          "whole": false,
+          "documents": 30332,
+          "chars": 76336456,
+          "syllables": 15649136,
+          "tokens": 24665060
+        }
+      ]
+    },
+    {
+      "layer": "bucket 7",
+      "rank": 7,
+      "stored": 62696175649,
+      "files": 3,
+      "drawn": 3,
+      "read": 40000002,
+      "documents": 30323,
+      "bytes": 97784235,
+      "chars": 75338753,
+      "syllables": 15816497,
+      "tokens": 23090809,
+      "takes": [
+        {
+          "layer": "bucket 7",
+          "path": "vie_Latn/7_1.jsonl.zst",
+          "bytes": 13333334,
+          "of": 26555021262,
+          "digest": "sha256:4a3dc10ec5812cf539ca5a23c05be11a963ea3bfa17ed6fbd6174b55ccc6a52e",
+          "whole": false,
+          "documents": 10285,
+          "chars": 26410173,
+          "syllables": 5614954,
+          "tokens": 7753444
+        },
+        {
+          "layer": "bucket 7",
+          "path": "vie_Latn/7_2.jsonl.zst",
+          "bytes": 13333334,
+          "of": 26333057545,
+          "digest": "sha256:95d32392cb424fd3a0d7f731a22617aa5c1386642abf96758b346c068f27ca86",
+          "whole": false,
+          "documents": 9830,
+          "chars": 25373587,
+          "syllables": 5312823,
+          "tokens": 7907288
+        },
+        {
+          "layer": "bucket 7",
+          "path": "vie_Latn/7_3.jsonl.zst",
+          "bytes": 13333334,
+          "of": 9808096842,
+          "digest": "sha256:42e1d40e83d23f927c926ea691f029ba39aeefb86d17ade8cff9c20f7cee1ce6",
+          "whole": false,
+          "documents": 10208,
+          "chars": 23554993,
+          "syllables": 4888720,
+          "tokens": 7430077
+        }
+      ]
+    },
+    {
+      "layer": "bucket 8",
+      "rank": 8,
+      "stored": 94948274389,
+      "files": 4,
+      "drawn": 4,
+      "read": 40000000,
+      "documents": 22722,
+      "bytes": 113078882,
+      "chars": 86109449,
+      "syllables": 18550459,
+      "tokens": 24461792,
+      "takes": [
+        {
+          "layer": "bucket 8",
+          "path": "vie_Latn/8_1.jsonl.zst",
+          "bytes": 10000000,
+          "of": 26205468588,
+          "digest": "sha256:59848f79c751785c65fa03d7f40bf17800a784eec26ad0c9fa7a618ebba717e2",
+          "whole": false,
+          "documents": 4313,
+          "chars": 23428693,
+          "syllables": 5062569,
+          "tokens": 6520814
+        },
+        {
+          "layer": "bucket 8",
+          "path": "vie_Latn/8_2.jsonl.zst",
+          "bytes": 10000000,
+          "of": 26267064998,
+          "digest": "sha256:8f528cdbd41462054b59614cf8c96e02900f83d93f25b2d9c9555169dfd56959",
+          "whole": false,
+          "documents": 4519,
+          "chars": 21845474,
+          "syllables": 4702318,
+          "tokens": 6218213
+        },
+        {
+          "layer": "bucket 8",
+          "path": "vie_Latn/8_3.jsonl.zst",
+          "bytes": 10000000,
+          "of": 26430374284,
+          "digest": "sha256:112d6d0202a5f25e1f64571e247b8e092140e8caf008f963ae263f3c1a209b43",
+          "whole": false,
+          "documents": 6010,
+          "chars": 21854340,
+          "syllables": 4697278,
+          "tokens": 6268561
+        },
+        {
+          "layer": "bucket 8",
+          "path": "vie_Latn/8_4.jsonl.zst",
+          "bytes": 10000000,
+          "of": 16045366519,
+          "digest": "sha256:92bf2a8b293b3408f4b8ed4d89a5a669e27892f197ca8d8f8d5b3e660a548ed8",
+          "whole": false,
+          "documents": 7880,
+          "chars": 18980942,
+          "syllables": 4088294,
+          "tokens": 5454204
+        }
+      ]
+    },
+    {
+      "layer": "bucket 9",
+      "rank": 9,
+      "stored": 36281731808,
+      "files": 2,
+      "drawn": 2,
+      "read": 40000000,
+      "documents": 13229,
+      "bytes": 122882107,
+      "chars": 93475687,
+      "syllables": 20250789,
+      "tokens": 26207846,
+      "takes": [
+        {
+          "layer": "bucket 9",
+          "path": "vie_Latn/9_1.jsonl.zst",
+          "bytes": 20000000,
+          "of": 26320991139,
+          "digest": "sha256:b8a28f2d0025a266e867a0c29b298915553978561f4f2f819082ba000c8a568d",
+          "whole": false,
+          "documents": 3502,
+          "chars": 48489380,
+          "syllables": 10628276,
+          "tokens": 13415305
+        },
+        {
+          "layer": "bucket 9",
+          "path": "vie_Latn/9_2.jsonl.zst",
+          "bytes": 20000000,
+          "of": 9960740669,
+          "digest": "sha256:c5867f8a4c44f246023e25fbd8abe59f3d8be0635a57ae550a277dcff89b6e23",
+          "whole": false,
+          "documents": 9727,
+          "chars": 44986307,
+          "syllables": 9622513,
+          "tokens": 12792541
+        }
+      ]
+    },
+    {
+      "layer": "bucket 10",
+      "rank": 10,
+      "stored": 294598179,
+      "files": 1,
+      "drawn": 1,
+      "read": 40000000,
+      "documents": 7422,
+      "bytes": 132695935,
+      "chars": 100488658,
+      "syllables": 21898432,
+      "tokens": 28322999,
+      "takes": [
+        {
+          "layer": "bucket 10",
+          "path": "vie_Latn/10_1.jsonl.zst",
+          "bytes": 40000000,
+          "of": 294598179,
+          "digest": "sha256:2658165ebfe1a3b157ad943e331aa34a29a48eee26d3dbb6eb617108815245ec",
+          "whole": false,
+          "documents": 7422,
+          "chars": 100488658,
+          "syllables": 21898432,
+          "tokens": 28322999
+        }
+      ]
+    }
+  ],
+  "documents": 130833,
+  "bytes": 659983713,
+  "chars": 508366314,
+  "syllables": 107420410,
+  "tokens": 153054940,
+  "read": 240000002,
+  "faults": [
+    "6 layers were read off fewer than 16 shards each, starting with bucket 5 at 1, so their rates are rates for the shards that were drawn",
+    "the layers pack their text at between 2.39x and 3.32x, a spread of 39%, so weighting the unread part by stored size carries at least that much of its own error"
+  ],
+  "holds": false,
+  "verdict": "This read 240.0 MB off 12 shards across 6 layers of hplt3, at seed s1, and found 130833 documents holding 660.0 MB of text and 153054940 tokens under gemma-3@sha256:1299c11d7cf632ef3b4e11937501358ada021bbdf7c47638d13c0ee982f2e79c. 2 readings say this is worth less than the line it fills: 6 layers were read off fewer than 16 shards each, starting with bucket 5 at 1, so their rates are rates for the shards that were drawn; and the layers pack their text at between 2.39x and 3.32x, a spread of 39%, so weighting the unread part by stored size carries at least that much of its own error."
+}

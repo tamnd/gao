@@ -10,7 +10,7 @@ The naming runs the length of the pipeline, because rice processing and corpus p
 
 gao v1 targets **300 billion unique natural Vietnamese tokens**, deduplicated globally, every document carrying its provenance.
 
-That is a record only if the incumbents are measured honestly, so the spec measures them. The largest existing public Vietnamese corpus is HPLT v3 `vie_Latn`, which we measure at 176B tokens. The largest corpus any published Vietnamese model has trained on is PhoGPT's, at 102B. CulturaX, the corpus most Vietnamese projects actually use, publishes 55.4B.
+That is a record only if the incumbents are measured honestly, so the spec measures them. The largest existing public Vietnamese corpus is HPLT v3 `vie_Latn`, which we measure at 143.7B tokens after reading 240 MB off every one of its six quality buckets. The largest corpus any published Vietnamese model has trained on is PhoGPT's, at 102B. CulturaX, the corpus most Vietnamese projects actually use, publishes 55.4B.
 
 gao v1 at 300B is 1.7x HPLT v3, 2.9x PhoGPT, and 5.4x CulturaX. It is not 10x any of them, and we never claim it is. The deduplicated Vietnamese HTML web is a bounded object of roughly 205B tokens. Past that boundary the only moves left are a deeper crawl than Common Crawl performs, non-HTML modalities, and synthesis. gao does all three and labels which tokens came from which.
 
@@ -701,7 +701,7 @@ What the reading is worth, when it runs on the real thing, is a number the slate
 
 ## Counting a corpus nobody has finished reading
 
-The 176B this file quotes for HPLT v3 is not a count. It is a rate taken off a handful of shards and multiplied out, and the honest way to write it down is as an interval with the sample size attached. The one number in this project that was actually counted is GlotCC `vie-Latn_0`, at 983,022,920 tokens over 3,228,869,043 characters, which is 0.234 tokens a byte. Everything larger than that is an estimate until a fleet run says otherwise, and `gao uoc` is what turns the estimate into something a reader can argue with.
+The 143.7B this file quotes for HPLT v3 is not a count, and neither was the 176B before it. It is a rate taken off a handful of shards and multiplied out, and the honest way to write it down is as an interval with the sample size attached. The one number in this project that was actually counted is GlotCC `vie-Latn_0`, at 983,022,920 tokens over 3,228,869,043 characters, which is 0.234 tokens a byte. Everything larger than that is an estimate until a fleet run says otherwise, and `gao uoc` is what turns the estimate into something a reader can argue with.
 
 The estimator is a ratio rather than a mean, and the reason is that the manifest is already exact about one of the two quantities. HPLT publishes a part count and a byte total, so 703 GB is known before anything is fetched, and the sample only has to establish tokens per byte. The alternative, mean tokens per part times the part count, has to carry the spread of the shard sizes as well, and that spread is large: parts run from 220 MB to 2 GB, and a sample that happened to draw the big ones reports a total half again too high without anything in it looking wrong. Both estimators are printed, because the gap between them is the argument for the manifest rather than a footnote to it.
 
@@ -738,7 +738,7 @@ The sample has to come off a real box. Reading 44 shards of HPLT is a download a
 
 ## The five buckets that got read and the five that did not
 
-There is a second thing wrong with the 176B and `gao uoc` cannot see it. HPLT does not ship its Vietnamese as one pile. It ships ten quality buckets, and the reading behind that number opened five of them at 40 MB each and weighted what it found by what each bucket takes on disk. That is stratified sampling, it is a sensible way to read a corpus nobody has time to read all of, and the interval `uoc` prints is the wrong interval for it. A sampling interval narrows as the sample grows. Reading the same five buckets a hundred times harder narrows it to nothing while leaving the estimate exactly as wrong as it was, because nothing inside those five says anything at all about the other five.
+There is a second thing wrong with the 176B and `gao uoc` cannot see it. HPLT does not ship its Vietnamese as one pile. It ships it in quality buckets, ten of them was the assumption and six of them is the fact, and the reading behind that number opened five at 40 MB each and weighted what it found by what each bucket takes on disk. That is stratified sampling, it is a sensible way to read a corpus nobody has time to read all of, and the interval `uoc` prints is the wrong interval for it. A sampling interval narrows as the sample grows. Reading the same five buckets a hundred times harder narrows it to nothing while leaving the estimate exactly as wrong as it was, because nothing inside those five says anything at all about the other five.
 
 `gao tang` is the same reading with the layers kept apart. Tầng is a layer.
 
@@ -831,7 +831,82 @@ Bucket 7 is where the rounding shows. Three shards and a 40 MB target divides to
 
 Four things make a plan that runs but is not the sample it looks like, and each of them gets a sentence. A layer whose shards are too big to spread a reading across, which is the one that costs nothing to fix and everything to miss. A listing that stopped early, so the plan draws from whichever corner of the bucket made it into the file, checked by adding the listed shards up against what the layer says it holds. A layer left shut because the listing has no files for it at all. And whether what stays shut sits below everything the plan opens, which is the direction that flatters the number and the reason `tang` exists in the first place. Exit 1 is a plan nobody can run, including one with no seed on it, since a draw nobody can repeat is a reading only we can take.
 
-Running it is a `server1` item, and it is the first one on that box that produces a number rather than a pipeline. The layer file goes next to the estimate when it does, so `gao tang` runs against a reading of all six buckets instead of against an invented ten and a bound. Three of them are already past it: buckets 5, 6 and 10 are one shard each and have been read end to end on `gamingpc` rather than sampled, so what `mau` plans for them is a formality and what comes back is the layer itself.
+The plan has been run and the next section is what came back off it. The layer file it produced goes next to the estimate, so `gao tang` runs against a reading of all six buckets instead of against an invented ten and a bound. Three of them were most of the way there already: buckets 5, 6 and 10 are one shard each and have been read end to end on `gamingpc` rather than sampled, so what `mau` plans for them is a formality and what comes back is the layer itself.
+
+## What came back off the twelve shards
+
+`mau` says which bytes will be read and `nem` is the record of which bytes were. Nếm is to taste. Keeping the two one command apart is the point of the arrangement: the seed, the shard list and the digest are published before anything is fetched, and the reading is checked against them afterwards, which is not a thing a single command that plans and fetches in one breath can offer anybody.
+
+```
+$ gao nem -source hplt3 -seed s1 -layers mau/testdata/hplt3-vie_Latn-layers.jsonl -tokenizer /tmp/gemma3.model -out /tmp/hplt3-read.jsonl mau/testdata/hplt3-vie_Latn-listing.jsonl
+bucket 5       vie_Latn/5_1.jsonl.zst          40.0 MB  59s  26805 documents
+bucket 6       vie_Latn/6_1.jsonl.zst          40.0 MB  1m19s  30332 documents
+bucket 7       vie_Latn/7_1.jsonl.zst          13.3 MB  24s  10285 documents
+bucket 7       vie_Latn/7_2.jsonl.zst          13.3 MB  22s  9830 documents
+bucket 7       vie_Latn/7_3.jsonl.zst          13.3 MB  22s  10208 documents
+bucket 8       vie_Latn/8_1.jsonl.zst          10.0 MB  24s  4313 documents
+bucket 8       vie_Latn/8_2.jsonl.zst          10.0 MB  26s  4519 documents
+bucket 8       vie_Latn/8_3.jsonl.zst          10.0 MB  23s  6010 documents
+bucket 8       vie_Latn/8_4.jsonl.zst          10.0 MB  25s  7880 documents
+bucket 9       vie_Latn/9_1.jsonl.zst          20.0 MB  1m13s  3502 documents
+bucket 9       vie_Latn/9_2.jsonl.zst          20.0 MB  37s  9727 documents
+bucket 10      vie_Latn/10_1.jsonl.zst         40.0 MB  1m0s  7422 documents
+
+/tmp/hplt3-read.jsonl holds the reading, for gao tang to read.
+
+hplt3, 240.0 MB read off 6 layers at seed s1.
+layer      shards  read     documents  text      packs at  the layer holds
+bucket 5   1       40.0 MB  26805      95.6 MB   2.39x     36.0 GB
+bucket 6   1       40.0 MB  30332      97.9 MB   2.45x     61.8 GB
+bucket 7   3       40.0 MB  30323      97.8 MB   2.44x     153.3 GB
+bucket 8   4       40.0 MB  22722      113.1 MB  2.83x     268.4 GB
+bucket 9   2       40.0 MB  13229      122.9 MB  3.07x     111.5 GB
+bucket 10  1       40.0 MB  7422       132.7 MB  3.32x     977.3 MB
+
+seed s1, plan fcede23d5db02324.
+
+This is worth less than the line it fills in:
+  6 layers were read off fewer than 16 shards each, starting with bucket 5 at 1, so their rates are rates for the shards that were drawn
+  the layers pack their text at between 2.39x and 3.32x, a spread of 39%, so weighting the unread part by stored size carries at least that much of its own error
+
+This read 240.0 MB off 12 shards across 6 layers of hplt3, at seed s1, and found 130833 documents holding 660.0 MB of text and 153054940 tokens under gemma-3@sha256:1299c11d7cf632ef3b4e11937501358ada021bbdf7c47638d13c0ee982f2e79c. 2 readings say this is worth less than the line it fills: 6 layers were read off fewer than 16 shards each, starting with bucket 5 at 1, so their rates are rates for the shards that were drawn; and the layers pack their text at between 2.39x and 3.32x, a spread of 39%, so weighting the unread part by stored size carries at least that much of its own error.
+```
+
+That is 240 MB fetched off twelve shards of a 234.5 GB corpus in just under eight minutes, effectively all of it download. The plan digest on the report is `fcede23d5db02324`, which is what `gao mau` prints for the same two files, because the plan is redrawn here rather than read out of one: a reading that took its plan from a file could be pointed at a plan nobody published.
+
+Every prefix is fetched with a range request and the sha256 of what came back is recorded per shard, which is what makes this checkable byte for byte rather than file by file. Somebody with the seed draws the same twelve shards out of the listing, and the digests are how they confirm they read the same bytes of them. The run has been taken three times now and the layer file it writes has come out byte for byte identical each time.
+
+A prefix of a compressed stream ends inside a document, always, unless the take was the whole file. That last partial document is dropped and its compressed bytes are not, so the read column is a hair larger than the bytes that produced the text and every rate here comes back a hair low. On a 40 MB take over documents averaging a few kilobytes it is around one part in ten thousand, and it is in the direction that understates the corpus, which is the only direction an error in this project gets to be in without an argument. It is reported rather than corrected, because correcting it means guessing how much of the tail belonged to the document that got dropped.
+
+Then the finding, which is the reason the exercise was worth eight minutes. A stored byte does not hold the same amount of text across this corpus. Bucket 5 packs 2.39 bytes of text into a stored byte and bucket 10 packs 3.32, a spread of 39 percent, and it runs the way the buckets are ordered: the better the quality score, the more text a compressed byte holds. That is not shocking once it is said out loud, since the buckets are sorted by a document quality score and boilerplate compresses better than prose does, but it had been an assumption inside this project's arithmetic rather than a number anybody had. The estimate weights the layers nobody read by their stored size, and this is the measurement that says what that weighting costs.
+
+The command exits 2, and it is right to. Six layers were read off twelve shards, four of the six buckets ship as one or two files, and a rate measured off the front of a single 15 GB shard is a rate for whatever the crawl happened to put at the front of it. That is a limit of this corpus rather than a failure of the reading, and printing it on its own line is how the next person to quote 2.39x finds out what it is a rate for.
+
+With the layer file beside it the estimate runs against a reading instead of against a bound:
+
+```
+$ gao tang -source hplt3 /tmp/hplt3-read.jsonl
+layer      rank  on disk   read     tokens a stored byte  estimate
+bucket 5   5     15.0 GB   40.0 MB  0.658                 9.9B
+bucket 6   6     25.2 GB   40.0 MB  0.617                 15.6B
+bucket 7   7     62.7 GB   40.0 MB  0.577                 36.2B
+bucket 8   8     94.9 GB   40.0 MB  0.612                 58.1B
+bucket 9   9     36.3 GB   40.0 MB  0.655                 23.8B
+bucket 10  10    294.6 MB  40.0 MB  0.708                 0.2B
+
+6 of 6 layers were read, holding 234.5 GB of the 234.5 GB the source takes on disk.
+The 0 B nobody read is scaled at 0.638 tokens a stored byte, which is the pooled rate of the layers that were, and at the thinnest and the richest of them it would be 143.7B to 143.7B instead.
+
+This estimate carries more than sampling error:
+  the layers that were read do not read at one rate, since bucket 7 gives 0.577 tokens a stored byte and bucket 10 gives 0.708, so a single pooled rate over the layers nobody read is a choice rather than a measurement
+  the weights are stored bytes and a stored byte holds between 2.39 and 3.32 bytes of text across the layers that were read, so every unread layer is weighted by a number that is off by as much as 38.8%
+
+hplt3 estimates 143.7B tokens over 234.5 GB on disk, 143.7B to 143.7B once the layers nobody read are allowed to run as thin as the thinnest layer that was read and as rich as the richest. 2 readings say the estimate carries more than sampling error: the layers that were read do not read at one rate, since bucket 7 gives 0.577 tokens a stored byte and bucket 10 gives 0.708, so a single pooled rate over the layers nobody read is a choice rather than a measurement; and the weights are stored bytes and a stored byte holds between 2.39 and 3.32 bytes of text across the layers that were read, so every unread layer is weighted by a number that is off by as much as 38.8%.
+```
+
+143.7B tokens over 234.5 GB, six of six layers read. The figure this project has been carrying for HPLT v3 vie_Latn is 176B, so the reading takes about 18 percent off the headline, and it takes it off for 240 MB of fetching and one afternoon. That is the argument for reading before publishing, in a line.
+
+The same run found a bug in `tang`, which gets its own change rather than being smuggled in with this one. Both faults printed under that estimate are about the layers nobody read, and there are none of those: the unread part is 0 B, the interval is 143.7B to 143.7B because there is nothing in it to run thin or rich, and a complete reading exits 2 over an error applied to zero bytes. The estimate is correct and the two sentences under it are not.
 
 ## Normalizing before anything reads a character
 
