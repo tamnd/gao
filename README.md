@@ -443,7 +443,16 @@ The pin is not ceremony. Ask a gated repository for a file without credentials a
 gao dem model -o tokenizer.model
 ```
 
-Counting happens during ingestion rather than after it. The largest source is around 700 GB of text, so a design where ingestion writes documents and a later stage reads them back to count is a design that moves 700 GB twice. Bytes, characters, and syllables are counted on every decoding run because they are free. Tokens are behind `-tokenizer`, because tokenizing runs at about 11 MB of text per second per core, which is faster than any source has arrived over the network so far and slow enough to matter the first time one does not.
+Counting happens during ingestion rather than after it. The largest source is around 700 GB of text, so a design where ingestion writes documents and a later stage reads them back to count is a design that moves 700 GB twice. Bytes, characters, and syllables are counted on every decoding run because they are free.
+
+Tokens are behind `-tokenizer` because they are not, and the price turned out to be an order of magnitude worse than the number written here for months. That number was about 11 MB of text per second per core, said to be faster than any source arrives over the network. Nobody had run the tokenizer over Vietnamese to check. Over 52.8 MB of real fineweb2 text it gets 1.1 MB/s on an M series core and 0.5 MB/s on `server3`, which is under the 20 MB/s gate T9 asks for by a factor of twenty, so the pinned tokenizer fails its own throughput gate and `gao dem gates` says it is not eligible.
+
+```
+$ gao dem gates -tokenizer tokenizer.model vi.txt
+  T9   failed   at least 20 MB/s on one core                                0.5 MB/s on one core over 52.8 MB
+```
+
+That is not an argument about a gate threshold, because the counting runs on the goroutine that is decoding the file. An ingest given `-tokenizer` moves at the tokenizer's rate whatever else the box has: `server3` fetched the same source on the same afternoon with the flag and without it and was nine times slower with it. So the sample published below was ingested without one, every part says so in its own metadata, and the token column in it is zero because nobody counted rather than because the documents have no tokens. Counting the corpus is a pass of its own until there is a tokenizer that can keep up with a download, which is a finding about the tokenizer and not about the design.
 
 The four units are not interchangeable, and the bytes column is the one most often quoted wrong. Bytes here means UTF-8 bytes of extracted text: not the size of the file the text arrived in, not the compressed size, and not the Parquet size. Those are three to ten times apart from each other, and a corpus that quotes whichever was to hand has a size nobody can check. The ingest ledger records transfer sizes and `counts.json` records text sizes, in different files, because they answer different questions.
 

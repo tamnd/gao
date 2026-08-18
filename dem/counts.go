@@ -112,8 +112,10 @@ func (t *Tally) Add(d *doc.Document) {
 //
 // This is deliberately the only place tokens are set. The ingest contract runs
 // before this, so a document that was turned away is never tokenized, and the
-// 11 MB per second per core is spent only on text that is actually in the
-// corpus.
+// measured 0.5 to 1.1 MB per second per core is spent only on text that is
+// actually in the corpus. That it is one core is the whole cost: this runs on
+// the goroutine decoding the file, so an ingest with a tokenizer moves at the
+// tokenizer's rate however many cores the box has.
 func (t *Tally) Counting(tok *Tokenizer, next func(*doc.Document) error) func(*doc.Document) error {
 	if tok != nil {
 		t.Tokenizer = tok.Model().Name

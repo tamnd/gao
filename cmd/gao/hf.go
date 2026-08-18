@@ -96,8 +96,12 @@ disk for different reasons.
 A decoding run also counts what it read and writes counts.json beside the ledger:
 documents, text bytes, characters, and syllables per source. With -tokenizer it
 counts tokens too, which is the only number in gao that costs anything to
-produce, at roughly 11 MB of text per second per core. Run 'gao dem model' to
-fetch the tokenizer and 'gao dem counts' to read the result.
+produce. It costs more than the ingest: the pinned tokenizer was measured at
+0.5 MB/s on server3 over 52.8 MB of real text, it runs on the goroutine reading
+the file, and the same source on the same box took nine times longer with the
+flag than without it. Run 'gao dem gates' on a box before deciding to use this
+on a run you want to finish. Run 'gao dem model' to fetch the tokenizer and
+'gao dem counts' to read the result.
 
 The counts are written before the first byte is fetched and rewritten after
 every file, so a run that takes days can be read while it runs and cannot leave

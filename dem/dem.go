@@ -19,9 +19,18 @@
 // [Tally] is attached to the ingest and the numbers come out of the run that was
 // happening anyway.
 //
-// Tokenizing is the expensive part and it is opt-in for that reason. It runs at
-// about 11 MB of text per second per core, which is faster than any source has
-// so far arrived over the network and slower than a local disk, so whether it
-// costs anything depends on what else the run is waiting for. Bytes, characters,
-// and syllables are counted always because they are free.
+// Tokenizing is the expensive part and it is opt-in for that reason. The figure
+// here was 11 MB of text per second per core, said to be faster than any source
+// had so far arrived over the network. It was never measured on Vietnamese. Over
+// 52.8 MB of real fineweb2 text on 2026-08-18 the pinned tokenizer got 1.1 MB/s
+// on an M series core and 0.5 MB/s on server3, which is twenty to forty times
+// under the figure and twenty to forty times under [ThroughputFloor], and it is
+// slower than every source has arrived over the network rather than faster.
+//
+// So an ingest given -tokenizer is a tokenizing run that also fetches, and it
+// shows: server3 wrote parts nine times slower with the flag than without it on
+// the same source and the same box the same afternoon. Counting tokens in the
+// pass that already reads the bytes is a good design and this tokenizer cannot
+// be run that way. Bytes, characters, and syllables are counted always because
+// they are free.
 package dem
