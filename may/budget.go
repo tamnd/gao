@@ -27,9 +27,21 @@ const (
 	// 512 MB target: they were rolled on 1.5 GB of text, which is what 512 MB
 	// costs at 3.0 and not at 2.07.
 	//
-	// The corpus is therefore 574 GB in the store rather than 396, and the
-	// release is about 1100 shards rather than 750. Both follow from the
+	// The corpus is therefore 618 GB in the store rather than 396, and the
+	// release is about 1200 shards rather than 750. Both follow from the
 	// measurement and neither was negotiated afterwards.
+	//
+	// It is one source and the sources are not alike. GlotCC and fineweb2 both
+	// come in near 2.07 and FinePDFs comes in at 1.07, which is text that has
+	// already been through a PDF extractor and has had most of the repetition
+	// taken out of it on the way. Nothing here averages them, because the mix is
+	// not decided yet and an average of three sources weighted by which three
+	// happened to run first is a worse number than one that says which source it
+	// came from. What it means for the budget is that 618 GB is a floor: a
+	// corpus with FinePDFs in it costs more, in proportion to how much of it is
+	// FinePDFs. Where the ratio has to be right per source rather than on
+	// average is in the part roll, and that reads it off the part being written
+	// rather than from here.
 	Compression = 2.07
 )
 
