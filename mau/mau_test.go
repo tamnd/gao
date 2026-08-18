@@ -378,6 +378,69 @@ func TestTheVerdictSaysWhatTheRunWillCostAndWhatItCloses(t *testing.T) {
 	}
 }
 
+// The corpus itself, rather than a corpus shaped the way this package assumed
+// one would be. testdata holds the buckets and shards of HPLT v3 vie_Latn as the
+// release ships them, taken off vie_Latn.map and the sizes in the manifest: six
+// buckets numbered 5 through 10, twelve shards between them, 234.5 GB. Every
+// layer is under MinFiles and four of the six are one or two shards.
+//
+// This is the test the invented fixture could not be. The take was Want/MinFiles
+// worked out once for the whole plan, so on a listing where no layer has sixteen
+// shards every layer drew a sixteenth of the target and the header still said 40
+// MB. Nothing above catches that, because the shards there are 900 MB apiece and
+// every layer has more than sixteen.
+func realHPLT(t *testing.T) ([]tang.Layer, []mau.File) {
+	t.Helper()
+	layers, err := tang.ReadLayers("testdata/hplt3-vie_Latn-layers.jsonl")
+	if err != nil {
+		t.Fatal(err)
+	}
+	files, err := mau.ReadFiles("testdata/hplt3-vie_Latn-listing.jsonl")
+	if err != nil {
+		t.Fatal(err)
+	}
+	return layers, files
+}
+
+func TestALayerReadsItsTargetOffHoweverManyShardsItHas(t *testing.T) {
+	layers, files := realHPLT(t)
+	p := mau.ReadPlan("hplt3", "s1", mau.Want, layers, files)
+
+	silent(t, p.Blocking())
+	if p.Opens != 6 || p.Takes != 12 {
+		t.Errorf("the plan opens %d layers off %d shards, want 6 and 12", p.Opens, p.Takes)
+	}
+	// At the target and a rounding remainder over it, never under. Bucket 7 is
+	// three shards and 40 MB does not divide by three, so the plan takes the extra
+	// two bytes rather than reporting a target it missed.
+	if p.Bytes < 6*mau.Want || p.Bytes > 6*mau.Want+1024 {
+		t.Errorf("the plan reads %d bytes across six layers, want %d", p.Bytes, 6*mau.Want)
+	}
+	for _, r := range p.Reads {
+		if r.Bytes < mau.Want {
+			t.Errorf("%s has %d shards and reads %d bytes against a %d target",
+				r.Layer, r.Files, r.Bytes, mau.Want)
+		}
+		if len(r.Takes) != r.Files {
+			t.Errorf("%s has %d shards and is drawn off %d of them, and a layer under the gate has nothing to leave out",
+				r.Layer, r.Files, len(r.Takes))
+		}
+	}
+}
+
+// And the corpus being what it is, the plan says so rather than reporting six
+// single-shard rates as a reading of the source.
+func TestTheRealCorpusIsUnderTheGateAndThePlanSaysSo(t *testing.T) {
+	layers, files := realHPLT(t)
+	p := mau.ReadPlan("hplt3", "s1", mau.Want, layers, files)
+
+	says(t, p.Faults(), "6 layers are read off fewer than 16 shards each, starting with bucket 5 at 1")
+	if p.Holds() {
+		t.Error("a plan whose every layer is one to four shards holds")
+	}
+	says(t, []string{p.Verdict()}, "This plan reads 240.0 MB off 12 shards across 6 layers of 6 layers")
+}
+
 func TestTheVerdictOfAPlanNobodyCanRunIsTheRefusal(t *testing.T) {
 	p := mau.ReadPlan("hplt-v3", "", mau.Want, hplt(), nil)
 

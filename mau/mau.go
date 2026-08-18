@@ -4,10 +4,11 @@
 // Mẫu is a sample. tang says what the layers nobody opened are worth and how
 // wide the bound over them is, and the only thing that closes that bound is
 // reading them. The item that has been open on this project since the 176B
-// estimate was taken is five HPLT buckets at 40 MB each: two hundred megabytes
-// of reading against seven hundred gigabytes of corpus. That ratio is the whole
-// appeal of it and also the entire problem. Forty megabytes is one part in two
-// thousand of a bucket, and which part decides the answer.
+// estimate was taken is the HPLT v3 buckets at 40 MB each, which against the
+// real vie_Latn listing is six buckets and 240 MB of reading over 234.5 GB of
+// corpus. That ratio is the whole appeal of it and also the entire problem.
+// Forty megabytes is one part in two thousand of the largest bucket, and which
+// part decides the answer.
 //
 // # Why the spread has to come from files and cannot come from offsets
 //
@@ -29,6 +30,14 @@
 // why a plan reads slightly over its target rather than truncating its last file
 // to hit the number exactly: a 300 kB prefix is mostly decoder warmup and one
 // long document, which is the read this package exists to prevent.
+//
+// How far the spread actually goes is a property of the corpus rather than of
+// this package, and on the corpus this was written for it does not go far. HPLT
+// v3 vie_Latn ships as twelve shards over six buckets, one to four shards each,
+// so a layer here is drawn across every shard it has and several layers have
+// one. The plan prints the shard count beside the take and reports every layer
+// under the gate as a fault, which is the honest thing it can do: the reading is
+// still worth taking and it is still a rate for the shards it came off.
 //
 // # Why the plan is written down before the run rather than after
 //
@@ -56,16 +65,27 @@ import (
 
 // Want is what this project quotes for a bucket of HPLT v3, and the default a
 // plan is sized to. It is not a statistical quantity. It is the amount of
-// reading somebody worked out they could afford across ten buckets, and the
-// point of naming it here is that the reading it buys gets spread properly
-// rather than made bigger.
+// reading somebody worked out they could afford a bucket at a time, back when
+// the bucket count was assumed to be ten and before the listing said vie_Latn
+// has six. The point of naming it here is that the reading it buys gets spread
+// properly rather than made bigger.
 const Want = 40_000_000
 
 // MinFiles is how many shards a layer's reading has to be spread across before
-// it is a reading of the layer rather than of the front of a few of its files.
-// Sixteen is chosen against how HPLT ships: a bucket is hundreds of shards, a
-// shard is one stretch of the crawl, and sixteen stretches is enough that no
-// single domain cluster carries the rate.
+// it is a reading of the layer rather than of the front of a few of its files. A
+// shard is one stretch of the crawl and sixteen stretches is enough that no
+// single domain cluster carries the rate, which is the number a sample over a
+// corpus sharded finely enough should want. HPLT v3 vie_Latn is not sharded that
+// finely, so on it this gate is a thing the plan reports rather than a thing it
+// reaches.
+//
+// It is a gate and not a divisor. The distinction did not exist until this was
+// pointed at the real listing, where it turned out to be both: the take was
+// Want/MinFiles for every layer, so a layer that has fewer shards than this read
+// fewer than sixteen takes of a sixteenth each and came back under target
+// without saying so. HPLT v3 vie_Latn is six buckets of one to four shards, so
+// every layer of the one corpus this package was written for hit that, and the
+// plan promised 40 MB a layer in its header and drew 2.5 MB in its table.
 const MinFiles = 16
 
 // MinTake is the least this plan will read off any one file. Under a megabyte a
@@ -164,11 +184,6 @@ func ReadPlan(source, seed string, want int64, layers []tang.Layer, files []File
 		byLayer[f.Layer] = append(byLayer[f.Layer], f)
 	}
 
-	take := want / MinFiles
-	if take < MinTake {
-		take = MinTake
-	}
-
 	var stored int64
 	for _, l := range layers {
 		stored += l.Stored
@@ -180,7 +195,7 @@ func ReadPlan(source, seed string, want int64, layers []tang.Layer, files []File
 			p.ShutBytes += l.Stored
 			p.shut = append(p.shut, l)
 		default:
-			r := plan(l, byLayer[l.Name], seed, want, take)
+			r := plan(l, byLayer[l.Name], seed, want)
 			p.Reads = append(p.Reads, r)
 			p.Bytes += r.Bytes
 			p.Takes += len(r.Takes)
@@ -200,7 +215,23 @@ func ReadPlan(source, seed string, want int64, layers []tang.Layer, files []File
 // verify uses, so the two protocols in this project that sample by file sample
 // the same way. The takes are handed back in path order because the list is read
 // by people next to a listing that is in path order.
-func plan(l tang.Layer, in []File, seed string, want, take int64) Read {
+//
+// How much comes off each file is worked out here rather than once for the whole
+// plan, because it depends on how many shards the layer has. A layer with two
+// hundred shards spreads the target across sixteen of them and a layer with two
+// spreads it across two, and both read the target. The version that divided by
+// MinFiles regardless read a target's worth only when a layer had at least
+// sixteen shards, and quietly read a fraction of it when it did not, which is
+// the case every layer of HPLT v3 vie_Latn is in.
+func plan(l tang.Layer, in []File, seed string, want int64) Read {
+	// Rounded up rather than down, so that a target which does not divide by the
+	// shard count is met rather than missed by the remainder. Bucket 7 of the real
+	// listing is three shards and a 40 MB target, which rounded down is 13333333 a
+	// shard and 39999999 read, and a plan that reports a target it did not reach is
+	// the thing this file is otherwise about.
+	over := int64(min(len(in), MinFiles))
+	take := max((want+over-1)/over, MinTake)
+
 	ranked := slices.Clone(in)
 	rank := make(map[string]doc.Hash, len(in))
 	for _, f := range in {
