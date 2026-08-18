@@ -218,6 +218,8 @@ gao hieu read steps.jsonl                   # what the hardware actually gave ba
 gao hieu spot -mean 4h                      # how often to checkpoint on capacity that gets taken back
 gao chim -loss 2.3141 -bf16 2.3139 step.jsonl  # to sink: what the FP8 cast lost to zero, which the loss curve will not say
 gao keo resumes.jsonl                       # to pull: what it costs to get back into a run once the host is gone
+gao vot -run gao-8b -total 500000 -checkpoint 200 loss.jsonl  # to shoot up: whether the loss spiked, and what rewinding would have cost
+gao vot -run gao-8b -total 500000 -checkpoint 200 -top 3 loss.jsonl  # and the worst of them, when there are more than anybody reads
 
 gao chia -why report.pdf                    # route one PDF: direct extraction, legacy transcode, or OCR
 gao chia *.pdf                              # and the routing distribution over a pile of them
@@ -1967,6 +1969,59 @@ The third is the one worth the package. A loader that restores the weights and q
 
 Those numbers are invented. No arm of S7 has run, and the compute for the three of them is not booked yet. What is not invented is the shape of the answer, which is that the copy that survives a reclaim and the copy a restart reads may not be the same copy, and that is a thing to find out from a drill rather than from a preemption.
 
+## Deciding what a loss spike means before there is a curve to argue about
+
+A pretraining loss curve spikes. At this scale that is an ordinary event rather than a rare one, and it forces the same decision every time: keep training, or stop and rewind to the last checkpoint and throw away everything since. The decision usually gets made at three in the morning by whoever happens to be watching, against a chart, with the run burning money while they think about it. Written down first it costs nothing, so it is written down first. `gao vot` is the protocol: what counts as a spike, how long a run gets to come back before it is a divergence rather than a spike, what the rewind would cost, and which logs cannot answer any of that.
+
+A spike is a step that clears a band, and the band is the interesting part. Ten percent over the trailing median alone reports the clean run's own noise, because early in training the curve falls faster than ten percent per hundred steps and every ordinary step is above the median behind it. Three and a half times the scatter alone reports nothing once the model has fit and the scatter has collapsed. The band is whichever of the two is higher over the trailing hundred rows, so both have to be cleared at once, and one excursion is one finding rather than one per row it stays out for.
+
+```
+$ gao vot -run vot-len -total 4000 -checkpoint 200 vot/testdata/vot-len.jsonl
+vot-len, 400 rows from step 0 to step 3,990, every 10 steps.
+median loss 1.3904, scatter 0.3398, band 10% over the trailing 100 rows and 3.5 times the scatter, checkpoint every 200 steps.
+
+1 spike over the band:
+step   loss    band    over   grad   rows out  came back  rewind
+2,530  1.9062  1.7882  44.0%  1.201  5         2,580      130 steps
+
+rewinding to the checkpoint before each costs 130 steps, 3.2% of a 4,000 step run.
+
+This is not the run it looks like:
+  a rewind at step 2530 throws away 130 steps, which is 3.2% of the run and over the 2.0% one rewind may cost, so the checkpoint cadence of 200 steps is the thing to change rather than the protocol
+
+vot-len logged 400 rows from step 0 to step 3990, every 10 steps, at a median loss of 1.3904 and a scatter of 0.3398. 1 spike cleared the band, 1 of them came back on their own, and rewinding to the checkpoint before each would have cost 130 steps, which is 3.2% of the run. One reading says this is not the run it looks like: a rewind at step 2530 throws away 130 steps, which is 3.2% of the run and over the 2.0% one rewind may cost, so the checkpoint cadence of 200 steps is the thing to change rather than the protocol.
+```
+
+That is a real spike in a real run. Every log in `vot/testdata` came off a character language model trained in Go on the Vietnamese that already ships in this repository, and the spike above was caused the way spikes are actually caused, by a resume that came back without its scheduler state and ran twenty five times too hot for thirty steps. Nothing here was drawn with a formula, and the reason is that a loss curve is easy to fake badly. The noise is not symmetric, it shrinks as the model fits, the decay is not linear, and a real spike does not go up by a constant factor and come back down the way it went up. A detector tuned against a drawn curve has been tuned against whoever drew it. `go test ./vot -update` trains the five logs again from the same text.
+
+They earned their place immediately. The scatter multiplier was six when it was written, and against this log six read that spike, one anybody would see by eye, as an ordinary step. Swept across all three of the four thousand step runs, anything under three starts reporting the clean run's own noise and anything over four and a half stops reporting the recoverable blowup, so the constant is three and a half and the sweep is in the package documentation rather than in somebody's memory. That is what real data buys that review does not.
+
+The better argument came out of a run nobody planned as an argument. `vot-nhieu` makes the same mistake five times over forty thousand steps, and by then the model has memorized seven kilobytes of text and the loss has collapsed to about a twentieth of a nat, so a band that is a fraction of the median is a fraction of nearly nothing and a hundred and two excursions clear it. Three of those hundred and two are the blowups the learning rate caused. Sorted by loss they do not come out on top. Sorted by gradient norm they are the top three in the run, with clear air under them. That is the whole case for keeping the gradient norm on the report, and for treating a log that does not carry one as a log that cannot answer the next question rather than as a log with a column missing.
+
+```
+$ gao vot -run vot-nhieu -total 40000 -checkpoint 200 -top 3 vot/testdata/vot-nhieu.jsonl
+vot-nhieu, 4000 rows from step 0 to step 39,990, every 10 steps.
+median loss 0.0657, scatter 0.0492, band 10% over the trailing 100 rows and 3.5 times the scatter, checkpoint every 200 steps.
+
+102 spikes over the band, the first 3:
+step    loss    band    over     grad   rows out  came back  rewind
+7,920   0.2515  0.1663  193.1%   1.143  1         7,930      120 steps
+8,010   1.9114  0.1730  2209.2%  2.427  201       never      10 steps
+11,450  0.1906  0.1899  87.3%    0.667  1         11,460     50 steps
+
+rewinding to the checkpoint before each costs 9190 steps, 23.0% of a 40,000 step run.
+
+This is not the run it looks like:
+  1 spike never came back inside the band, the first at step 8010 where the loss went to 1.9114 against a trailing 0.0828, so the run was writing into the weights off a curve that had already left
+  the curve holds 102 spikes, over the 3 a run may have before the curve is the finding rather than a thing the protocol handles
+
+vot-nhieu logged 4000 rows from step 0 to step 39990, every 10 steps, at a median loss of 0.0657 and a scatter of 0.0492. 102 spikes cleared the band, 101 of them came back on their own, and rewinding to the checkpoint before each would have cost 9190 steps, which is 23.0% of the run. 2 readings say this is not the run it looks like: 1 spike never came back inside the band, the first at step 8010 where the loss went to 1.9114 against a trailing 0.0828, so the run was writing into the weights off a curve that had already left; and the curve holds 102 spikes, over the 3 a run may have before the curve is the finding rather than a thing the protocol handles.
+```
+
+A hundred and two spikes is the right answer rather than a broken one, and the second fault is the reason there is no threshold tuned until the number looks reasonable. Past a few, the curve is the finding and the table under it is not a work list, so the count is a fault and the command exits nonzero on it. The other faults are the same shape. A spike that never came back is a divergence and gets said in those words, because a run writing into its weights off a curve that has already left is not a run anybody is waiting out. A rewind costing more than two percent of the run is an argument about the checkpoint cadence rather than about the spike, which is what the first fixture says and is why it exits two on a run that recovered. And a log written every hundred steps cannot tell a clean run from an unlogged one, because a spike shorter than the logging interval leaves nothing behind, so coarse logging is a fault against the log rather than a verdict about the run.
+
+The exit codes carry the same distinction as everywhere else in this repository. Zero is a run that held, two is a measurement that failed its gate, and one is a log that is not a measurement at all: no checkpoint cadence beside it, a step logged twice, a step counter that goes backwards, a loss that is not a number, fewer than three windows of rows. Those refusals come back before any spike is reported, since a spike count off a log that cannot be read is worse than no spike count.
+
 ## What sorting a shard by host is worth
 
 Shards are assigned by hash, and that is right for every reason except one. A hash shard is a uniform sample of the corpus, so a stage that processes shard 7 sees what a stage processing all 750 sees, a bug that only shows up on one source shows up in every shard rather than in one file nobody opened, and two copies of a document land together by construction, which is what makes deduplication tractable at all.
@@ -2918,6 +2973,7 @@ hieu/        the effect: what fraction of the hardware a training run turns into
 chim/        to sink: what an FP8 E4M3 step lost to zero, and the checks that catch it
 nhip/        the beat: what each pipeline stage runs at, with the box on every number
 keo/         to pull: what a restart costs once the training host has been taken back
+vot/         to shoot up: the loss spike protocol, read against five real training runs
 may/         the fleet: the four boxes this actually runs on
 ```
 
