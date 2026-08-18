@@ -46,7 +46,7 @@ func TestMeasureCountsFromTheFirstFinish(t *testing.T) {
 	if r.On != "2026-08-18" {
 		t.Errorf("dated %q, want the day the run ended", r.On)
 	}
-	if !strings.Contains(r.How, "glotcc") {
+	if !strings.Contains(r.How, "2 files of glotcc") {
 		t.Errorf("how says %q, and it should say what was fetched", r.How)
 	}
 	if got := r.Rate(); got != 1_750_000 {
@@ -143,9 +143,11 @@ func TestMeasureRefusals(t *testing.T) {
 // A reading has to be one a schedule will take, or deriving it accomplished
 // nothing.
 func TestAMeasuredReadingIsASchedule(t *testing.T) {
+	// server1, because the box a reading is taken on has to be a box the split
+	// may hand work to, and server3 crossed the reserve on 2026-08-18.
 	r, err := Measure([]gat.Entry{
-		entry("server3", 2_100_000_000, "2026-08-18T06:19:00Z"),
-		entry("server3", 2_100_000_000, "2026-08-18T06:39:00Z"),
+		entry("server1", 2_100_000_000, "2026-08-18T06:19:00Z"),
+		entry("server1", 2_100_000_000, "2026-08-18T06:39:00Z"),
 	})
 	if err != nil {
 		t.Fatal(err)

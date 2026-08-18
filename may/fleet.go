@@ -26,7 +26,12 @@ import (
 
 // MeasuredOn is when the inventory below was taken, in ISO 8601. A capacity
 // number without a date is a capacity number nobody should act on.
-const MeasuredOn = "2026-08-03"
+//
+// This is the second reading. The first was 2026-08-03 and every free disk
+// number in it was wrong fifteen days later: server1 was up 70 GB, server3 down
+// 26.6, server2 up 11.8, gamingpc down 32. Run 'gao box check' on a box to be
+// told whether the record still describes it.
+const MeasuredOn = "2026-08-18"
 
 // Box is one machine on the fleet.
 type Box struct {
@@ -75,27 +80,30 @@ var Boxes = []Box{
 	{
 		Name: "gamingpc", Hostname: "GamingPC", OS: "windows", Arch: "amd64",
 		CPU: "13th Gen Intel Core i9-13900K", Cores: 24, Threads: 32,
-		Memory: 68463005696, Disk: 1023249739776, FreeDisk: 329700347904,
-		GPU: "NVIDIA GeForce RTX 4090", GPUMemory: 25769803776,
+		Memory: 68463005696, Disk: 1023249739776, FreeDisk: 297656258560,
+		// 24564 MiB, which is what the card reports as total rather than the
+		// 24 GiB on the box it came in. Batch size is a function of this number,
+		// so it is the reported one and not the advertised one.
+		GPU: "NVIDIA GeForce RTX 4090", GPUMemory: 25757614080,
 		Role: "the only GPU on the fleet: classifiers, tokenizer, OCR, ASR, embeddings, and every evaluation. Also the Windows box of record, which is why Windows is in the CI matrix rather than a courtesy",
 	},
 	{
 		Name: "server3", Hostname: "vmi3391933", OS: "linux", Arch: "amd64",
 		CPU: "AMD EPYC", Cores: 8, Threads: 8,
-		Memory: 25199222784, Disk: 414921494528, FreeDisk: 44280352768,
-		Role: "box of record for pipeline throughput and memory: the most Linux memory on the fleet",
+		Memory: 25199222784, Disk: 414921494528, FreeDisk: 17682468864,
+		Role: "box of record for pipeline throughput and memory: the most Linux memory on the fleet. It fell under the reserve between the first inventory and this one, so it holds no corpus bytes until somebody clears 20 GB on it, and that is why the S1 ingest ran there streaming rather than landing",
 	},
 	{
 		Name: "server2", Hostname: "vmi3112167", OS: "linux", Arch: "amd64",
 		CPU: "AMD EPYC", Cores: 6, Threads: 6,
-		Memory: 12541526016, Disk: 206900281344, FreeDisk: 7972212736,
-		Role: "control plane only. Eight gigabytes of free disk means no corpus bytes land here, and that is a rule rather than an accident",
+		Memory: 12541493248, Disk: 206900281344, FreeDisk: 19753852928,
+		Role: "control plane only. It gained 12 GB between the two inventories and is still under the reserve, so no corpus bytes land here, and that is a rule rather than an accident",
 	},
 	{
 		Name: "server1", Hostname: "doge-01", OS: "linux", Arch: "amd64",
 		CPU: "AMD EPYC", Cores: 4, Threads: 4,
-		Memory: 6213033984, Disk: 419491782656, FreeDisk: 118498254848,
-		Role: "fetch and publish: the most free disk of the Linux boxes and a public route, and crawling is network bound rather than memory bound",
+		Memory: 6213033984, Disk: 419491782656, FreeDisk: 188719312896,
+		Role: "fetch and publish: the most free disk of the Linux boxes by a wide margin and a public route, and crawling is network bound rather than memory bound",
 	},
 }
 

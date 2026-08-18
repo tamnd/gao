@@ -96,8 +96,8 @@ func Measure(es []gat.Entry) (Reading, error) {
 		Bytes:   bytes,
 		Seconds: seconds,
 		On:      ordered[len(ordered)-1].at.UTC().Format(time.DateOnly),
-		How: fmt.Sprintf("gao gat hf over %d files of %s, timed between finishes in the ingest ledger",
-			len(ordered)-1, commas(sources)),
+		How: fmt.Sprintf("gao gat hf over %s of %s, timed between finishes in the ingest ledger",
+			plural(len(ordered)-1, "file"), commas(sources)),
 	}, nil
 }
 

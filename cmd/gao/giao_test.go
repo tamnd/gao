@@ -20,8 +20,10 @@ func giaoReadings(t *testing.T, lines ...string) string {
 	return path
 }
 
-// giaoFleet is three boxes that could run the ingest, at rates in the band the
-// one real reading on this fleet sits in.
+// giaoFleet is the three boxes a reading has been taken on. Two of them can be
+// handed work. server3 is in the file because it is what a reading off a real
+// run looks like when the box it was taken on has since crossed the reserve,
+// and the plan has to say so rather than drop the line.
 func giaoFleet(t *testing.T) string {
 	t.Helper()
 	return giaoReadings(t,
@@ -41,7 +43,8 @@ func TestGiaoPlanPricesTheWholeIngestAgainstOneBox(t *testing.T) {
 		"hplt3",
 		"room for a file",
 		"On the fastest box alone",
-		"513.6 GB over 122 files across 3 boxes",
+		"513.6 GB over 122 files across 2 boxes",
+		"server3 has a reading and may not hold corpus bytes",
 	} {
 		if !strings.Contains(out, want) {
 			t.Errorf("the plan does not say %q:\n%s", want, out)
@@ -137,19 +140,20 @@ func TestGiaoRefusesReadingsThatAreNotASchedule(t *testing.T) {
 }
 
 func TestGiaoExitsTwoOnAScheduleThatShouldNotBeRun(t *testing.T) {
-	// server3 six hundred times slower than the rest is never the box that would
+	// server1 sixty thousand times slower than gamingpc is never the box that would
 	// finish a file soonest, so it draws nothing and its reading bought nothing.
+	// It has to be a box that may hold corpus bytes, since one that may not is
+	// idle rather than at fault, and that is now two of the four.
 	path := giaoReadings(t,
-		`{"box":"gamingpc","bytes":4200000000,"seconds":2266,"measured_on":"2026-08-03","how":"gao dem count over one shard"}`,
-		`{"box":"server1","bytes":4200000000,"seconds":2266,"measured_on":"2026-08-03","how":"gao dem count over one shard"}`,
-		`{"box":"server3","bytes":4200000000,"seconds":1360000,"measured_on":"2026-08-03","how":"gao dem count over one shard"}`,
+		`{"box":"gamingpc","bytes":4200000000,"seconds":2266,"measured_on":"2026-08-18","how":"gao dem count over one shard"}`,
+		`{"box":"server1","bytes":4200000000,"seconds":136000000,"measured_on":"2026-08-18","how":"gao dem count over one shard"}`,
 	)
 
 	out, _, code := exec(t, "giao", "plan", path)
 	if code != 2 {
 		t.Fatalf("gao giao plan on a box that draws nothing: exit %d, want 2", code)
 	}
-	if !strings.Contains(out, "This is not the schedule to run") || !strings.Contains(out, "server3 draws no files") {
+	if !strings.Contains(out, "This is not the schedule to run") || !strings.Contains(out, "server1 draws no files") {
 		t.Errorf("the plan does not name the fault:\n%s", out)
 	}
 }
