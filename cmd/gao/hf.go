@@ -326,9 +326,11 @@ flags:
 	// stale file is gone from the first second.
 	in.Progress = func(r gat.Report) {
 		printFetched(stdout, r)
-		if *decode {
-			saveCounts(stderr, *dir, in.Box, &tally, false)
+		if !*decode {
+			return
 		}
+		settle(&tally, r)
+		saveCounts(stderr, *dir, in.Box, &tally, false)
 	}
 	if *decode {
 		saveCounts(stderr, *dir, in.Box, &tally, false)
@@ -450,6 +452,23 @@ func workName(source, path string) string {
 	return source + "/" + path
 }
 
+// settle folds a finished file's counts into the totals, or throws them away
+// when the file did not finish.
+//
+// The ledger and the counts have to agree about which files are in them. A file
+// that failed leaves no ledger entry, so the next run fetches it from the front
+// and counts every document in it again, and whatever the failed attempt counted
+// is underneath that. gamingpc read most of a 25.2 GB HPLT shard before hitting
+// a record that does not parse, and its counts.json came out 17683770 documents
+// over once the shard was read properly.
+func settle(t *dem.Tally, r gat.Report) {
+	if r.Err != nil {
+		t.Drop()
+		return
+	}
+	t.Commit()
+}
+
 // seedCounts starts the tally from the counts the directory already holds, so
 // that a resumed run reports the corpus in it rather than the session. It
 // returns what it carried, which is the run's own share of the totals it goes on
@@ -462,9 +481,12 @@ func workName(source, path string) string {
 // zeroed with the only record of what was in them a terminal that had scrolled.
 //
 // The counts and the ledger are written by the same run and stay in step. Both
-// only ever record a file that finished, so a run killed mid-file leaves neither
-// a ledger entry nor counts for it, and this adds the same files twice only if
-// somebody deletes the ledger and keeps the counts.
+// only ever record a file that finished, which is what [settle] is for, so a run
+// that died mid-file leaves neither a ledger entry nor counts for it and this
+// adds the same files twice only if somebody deletes the ledger and keeps the
+// counts. That was a claim rather than a mechanism until gamingpc read most of a
+// 25.2 GB shard, failed on a bad record, and left its documents in the counts
+// file for the next run to add to.
 func seedCounts(stdout io.Writer, dir string, ledger *gat.Ledger, tally *dem.Tally) (dem.Counts, error) {
 	if len(ledger.Entries()) == 0 {
 		return dem.Counts{}, nil

@@ -85,7 +85,7 @@ type Incumbent struct {
 // Incumbents are the three corpora the claim is written against, in the order
 // the claim states them.
 var Incumbents = []Incumbent{
-	{"HPLT v3 vie_Latn", 176_000_000_000, "gao's own sampled estimate, standing in until the exact count lands"},
+	{"HPLT v3 vie_Latn", 143_700_000_000, "gao's own reading of 40 MB off every one of its six buckets, standing in until the exact count lands"},
 	{"PhoGPT", 102_000_000_000, "as published by its authors"},
 	{"CulturaX", 55_400_000_000, "as published"},
 }

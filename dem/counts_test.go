@@ -98,6 +98,7 @@ func TestATallyKeepsSourcesApart(t *testing.T) {
 	tally.Add(document(doc.SourceGlotCC, "một", 1))
 	tally.Add(document(doc.SourceGlotCC, "hai", 1))
 	tally.Add(document(doc.SourceFineWeb2, "ba", 1))
+	tally.Commit()
 
 	if got := tally.Source(doc.SourceGlotCC).Documents; got != 2 {
 		t.Errorf("glotcc has %d documents, want 2", got)
@@ -118,6 +119,7 @@ func TestATallyReturnsItsSourcesInAStableOrder(t *testing.T) {
 	for _, s := range []doc.Source{doc.SourceGlotCC, doc.SourceFineWeb2, doc.SourceHPLT3, doc.SourceFinePDFs} {
 		tally.Add(document(s, "text", 1))
 	}
+	tally.Commit()
 
 	want := []doc.Source{doc.SourceFinePDFs, doc.SourceFineWeb2, doc.SourceGlotCC, doc.SourceHPLT3}
 	got := tally.Sources()
@@ -137,6 +139,7 @@ func TestSyntheticTextIsInTheTotalAndOutOfTheCorpusSize(t *testing.T) {
 	var tally dem.Tally
 	tally.Add(document(doc.SourceGlotCC, "viết bởi người", 3))
 	tally.Add(document(doc.SourceSynth, "viết bởi máy", 3))
+	tally.Commit()
 
 	if got := tally.Total().Documents; got != 2 {
 		t.Errorf("the total is %d documents, want both", got)
@@ -164,6 +167,7 @@ func TestATallyIsSafeUnderConcurrentAdds(t *testing.T) {
 		}(i)
 	}
 	wg.Wait()
+	tally.Commit()
 
 	if got := tally.Total().Documents; got != 4000 {
 		t.Errorf("the total is %d documents, want 4000", got)
@@ -189,6 +193,7 @@ func TestCountingPassesEveryDocumentOn(t *testing.T) {
 	if seen != 3 {
 		t.Errorf("the next step saw %d documents, want 3", seen)
 	}
+	tally.Commit()
 	if got := tally.Total().Documents; got != 3 {
 		t.Errorf("the tally has %d documents, want 3", got)
 	}
@@ -201,6 +206,7 @@ func TestCountingWorksWithNothingAfterIt(t *testing.T) {
 	if err := count(document(doc.SourceGlotCC, "một", 1)); err != nil {
 		t.Fatalf("counting with no next step: %v", err)
 	}
+	tally.Commit()
 	if got := tally.Total().Documents; got != 1 {
 		t.Errorf("the tally has %d documents, want 1", got)
 	}
@@ -245,6 +251,7 @@ func TestATallySeededFromAnEarlierRunCarriesIt(t *testing.T) {
 	if err := next(document(doc.SourceFineWeb2, "Việt Nam", 2)); err != nil {
 		t.Fatal(err)
 	}
+	second.Commit()
 
 	got := second.Natural()
 	if got.Documents != before.Documents+1 {
@@ -269,5 +276,58 @@ func TestATallyWillNotBeSeededFromADifferentTokenizer(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "no tokenizer") {
 		t.Errorf("the error is %q, and it has to name both sides for somebody to fix it", err)
+	}
+}
+
+// The whole reason a document waits for its file to finish. gamingpc read two
+// HPLT shards, then read most of a third and hit a record that does not parse,
+// and the run stopped there. The shard left no ledger entry, so the next run
+// fetched it from the front and counted all of it, and the counts file was
+// carrying the first attempt's documents underneath.
+func TestWhatAFailedFileCountedIsNotCarriedIntoTheNextRun(t *testing.T) {
+	var tally dem.Tally
+	for range 2 {
+		tally.Add(document(doc.SourceHPLT3, "một", 1))
+	}
+	tally.Commit()
+
+	// Most of a third file, and then the record that does not parse.
+	for range 5 {
+		tally.Add(document(doc.SourceHPLT3, "hai", 1))
+	}
+	if got := tally.Staged().Documents; got != 5 {
+		t.Errorf("the file being read has %d documents staged, want 5", got)
+	}
+	tally.Drop()
+
+	if got := tally.Total().Documents; got != 2 {
+		t.Errorf("the counts hold %d documents after a file failed, want the 2 that finished", got)
+	}
+	if got := tally.Staged().Documents; got != 0 {
+		t.Errorf("dropping a failed file left %d documents staged", got)
+	}
+
+	// The next run reads the same file from the front and this time it finishes.
+	for range 6 {
+		tally.Add(document(doc.SourceHPLT3, "hai", 1))
+	}
+	tally.Commit()
+
+	if got := tally.Total().Documents; got != 8 {
+		t.Errorf("the counts hold %d documents, want the 2 plus the 6 the file really has", got)
+	}
+}
+
+// A report is written after every file, so it has to be written off the totals
+// rather than off whatever the tally has been handed.
+func TestAReportLeavesOutTheFileThatIsStillBeingRead(t *testing.T) {
+	var tally dem.Tally
+	tally.Add(document(doc.SourceGlotCC, "một", 1))
+	tally.Commit()
+	tally.Add(document(doc.SourceGlotCC, "hai", 1))
+
+	r := tally.Report("gamingpc", at("2026-08-18T12:29:27Z"))
+	if r.Total.Documents != 1 {
+		t.Errorf("the report holds %d documents, want only the file that finished", r.Total.Documents)
 	}
 }

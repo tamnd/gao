@@ -28,6 +28,7 @@ func TestAReportSurvivesARoundTripThroughADirectory(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
+	tally.Commit()
 	dir := t.TempDir()
 	want := tally.Report("server1", at("2026-08-04T07:32:22Z"))
 
@@ -67,6 +68,7 @@ func TestAWrittenReportLeavesNoTemporaryFileBehind(t *testing.T) {
 	dir := t.TempDir()
 	var tally dem.Tally
 	tally.Add(document(doc.SourceGlotCC, "một", 1))
+	tally.Commit()
 
 	if err := tally.Report("server1", at("2026-08-04T07:32:22Z")).Write(dir); err != nil {
 		t.Fatal(err)
@@ -191,6 +193,7 @@ func TestAReportIsWrittenWhereTheLedgerLives(t *testing.T) {
 	dir := t.TempDir()
 	var tally dem.Tally
 	tally.Add(document(doc.SourceGlotCC, "một", 1))
+	tally.Commit()
 	if err := tally.Report("server1", at("2026-08-04T07:32:22Z")).Write(dir); err != nil {
 		t.Fatal(err)
 	}
