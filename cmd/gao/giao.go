@@ -119,12 +119,32 @@ flags:
 	return 0
 }
 
+// giaoJobReport is one file on one box, which is the assignment itself rather
+// than a summary of it.
+//
+// It carries the name in the form the fetcher takes, source and path joined by
+// a slash, because a plan somebody has to retype into another command is a plan
+// somebody retypes wrong. 'gao gat hf -only' reads exactly this.
+type giaoJobReport struct {
+	Source  string  `json:"source"`
+	Path    string  `json:"path"`
+	Name    string  `json:"name"`
+	Bytes   int64   `json:"bytes"`
+	Seconds float64 `json:"seconds"`
+}
+
 type giaoHandReport struct {
 	Box     string  `json:"box"`
 	Rate    float64 `json:"rate"`
 	Files   int     `json:"files"`
 	Bytes   int64   `json:"bytes"`
 	Seconds float64 `json:"seconds"`
+
+	// Jobs is which files, and it is only filled in by 'giao files'. The plan
+	// prices the schedule and the file list is the schedule, so printing 122
+	// entries under a command somebody ran to read five summary rows would bury
+	// the thing they asked for.
+	Jobs []giaoJobReport `json:"jobs,omitempty"`
 }
 
 type giaoGroupReport struct {
@@ -164,8 +184,14 @@ func runGiaoPlan(stdout, stderr io.Writer, args []string, byFile bool) int {
 	fs := flag.NewFlagSet(name, flag.ContinueOnError)
 	fs.SetOutput(stderr)
 	asJSON := fs.Bool("json", false, "print JSON")
+	var only *string
+	usage := "usage: gao " + name + " [-json] readings.jsonl\n\nflags:\n"
+	if byFile {
+		only = fs.String("box", "", "print only this box's files, one name per line, which is what 'gao gat hf -only' reads")
+		usage = "usage: gao " + name + " [-json] [-box NAME] readings.jsonl\n\nflags:\n"
+	}
 	fs.Usage = func() {
-		fmt.Fprintf(stderr, "usage: gao %s [-json] readings.jsonl\n\nflags:\n", name)
+		fmt.Fprint(stderr, usage)
 		fs.PrintDefaults()
 	}
 	if err := fs.Parse(args); err != nil {
@@ -173,6 +199,10 @@ func runGiaoPlan(stdout, stderr io.Writer, args []string, byFile bool) int {
 	}
 	if fs.NArg() != 1 {
 		fs.Usage()
+		return 2
+	}
+	if only != nil && *only != "" && *asJSON {
+		fmt.Fprintf(stderr, "gao %s: -box prints a list for another command to read and -json prints the whole schedule, so asking for both is asking for two different things\n", name)
 		return 2
 	}
 
@@ -205,14 +235,32 @@ func runGiaoPlan(stdout, stderr io.Writer, args []string, byFile bool) int {
 			Makespan: g.Makespan(), Idle: g.Idle(),
 		}
 		for _, h := range g.Hands {
-			gr.Hands = append(gr.Hands, giaoHandReport{
+			hand := giaoHandReport{
 				Box: h.Box, Rate: split.Rate(h.Box), Files: len(h.Jobs), Bytes: h.Bytes, Seconds: h.Seconds,
-			})
+			}
+			if byFile {
+				rate := split.Rate(h.Box)
+				for _, j := range h.Jobs {
+					secs := 0.0
+					if rate > 0 {
+						secs = float64(j.Bytes) / rate
+					}
+					hand.Jobs = append(hand.Jobs, giaoJobReport{
+						Source: j.Source, Path: j.Path, Name: workName(j.Source, j.Path),
+						Bytes: j.Bytes, Seconds: secs,
+					})
+				}
+			}
+			gr.Hands = append(gr.Hands, hand)
 		}
 		report.Groups = append(report.Groups, gr)
 	}
 
 	switch {
+	case only != nil && *only != "":
+		if code := printGiaoBox(stdout, stderr, report, *only); code != 0 {
+			return code
+		}
 	case *asJSON:
 		if code := printJSON(stdout, stderr, report); code != 0 {
 			return code
@@ -283,6 +331,50 @@ func printGiao(w io.Writer, r giaoReport) {
 	}
 
 	fmt.Fprintf(w, "\n%s\n", r.Verdict)
+}
+
+// printGiaoBox writes one box's files, one name per line and nothing else, in
+// the order the schedule hands them out.
+//
+// Nothing else is the point. This is the one output in gao meant to be read by
+// another program rather than by a person, so it carries no header, no totals
+// and no verdict, and 'gao gat hf -only' takes it as it stands. The reasoning
+// behind the list is a command away and it is 'gao giao files' without the flag.
+//
+// A box with no files is not the same as a box that is not in the schedule, and
+// they exit differently. The first is a box the split gave nothing to, which is
+// already a fault the plan reports. The second is a name that is not on the
+// fleet at all, or one under the reserve, and printing an empty list for it
+// would start a run that fetches nothing and look like a box that is up to date.
+func printGiaoBox(stdout, stderr io.Writer, r giaoReport, box string) int {
+	var found bool
+	var lines []string
+	for _, g := range r.Groups {
+		for _, h := range g.Hands {
+			if !strings.EqualFold(h.Box, box) {
+				continue
+			}
+			found = true
+			for _, j := range h.Jobs {
+				lines = append(lines, j.Name)
+			}
+		}
+	}
+	if !found {
+		for _, idle := range r.Unused {
+			if strings.EqualFold(idle, box) {
+				fmt.Fprintf(stderr, "gao giao files: %s draws nothing, so there is no list to hand it: %s\n", box, r.Verdict)
+				return 2
+			}
+		}
+		fmt.Fprintf(stderr, "gao giao files: %s is not a box this schedule hands work to, and the boxes it does are %s\n",
+			box, strings.Join(r.split.Boxes(), ", "))
+		return 2
+	}
+	for _, l := range lines {
+		fmt.Fprintln(stdout, l)
+	}
+	return 0
 }
 
 func printGiaoFiles(w io.Writer, r giaoReport) {

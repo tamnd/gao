@@ -50,6 +50,8 @@ gao gat ledger -dir ingest/                 # what the harvest has finished so f
 gao gat ledger -dir ingest/ -files          # every finished file, and how each one was read
 gao giao plan  readings.jsonl               # to hand over: what the whole ingest costs once it is split across the fleet
 gao giao files readings.jsonl               # and which box fetches which file
+gao giao files -box server1 readings.jsonl > mine.txt  # one box's share, in the form the fetcher takes
+gao gat hf     -dir ingest/ -only mine.txt  # and fetch that share and nothing else
 
 gao dem model  -o tokenizer.model           # fetch the tokenizer that defines a gao token
 gao dem gates  -tokenizer tokenizer.model parts/*.parquet  # and put it through the ten gates before trusting a count
@@ -430,6 +432,81 @@ order  box       bytes     takes       file
 That is order zero, the whole of HPLT v3, out of 126 lines. Six files to `server3`, four to `gamingpc` and two to `server1`, and the two include the second largest file in the manifest, because `server1` is slower per byte and still finishes sooner than either of the others would if it took one more file on top of what it has. The 26.2 GB file it opens with costs it 12.8 hours against the 4.2 the same size costs `server3`, and handing that one over as well would leave `server1` idle for most of the group. All three boxes have the disk to land any file in the manifest, so nothing here is decided by scratch, which is the case the disk check exists for rather than the case it is in. A box under the reserve draws nothing at all rather than drawing the small files, and that is the check doing its work one step earlier than the file list.
 
 The command exits 1 when the readings are not a schedule at all, which covers a box nobody has, two rates for one box, a sample too small to mean anything, and a reading that does not say how it was taken. It exits 2 when they describe a schedule that should not be run as written, which is a box that draws no files or a file no box has room to land. Groups that end late are neither. A group of three files across three boxes of different speeds ends when its slowest file ends however it is dealt out, and the sentence saying so is there to stop somebody hunting for a better split that does not exist.
+
+## Running the schedule the planner wrote
+
+The table above is the answer to which box fetches what, and for a while it was an answer nobody could act on. `gao gat hf` had one way to fetch less than everything, `-limit N`, which takes the first N files of what is left, in manifest order. Three boxes given `-limit 40` fetch the same forty files three times. So the schedule had to be retyped into three commands by hand, and a plan somebody retypes is a plan somebody retypes wrong.
+
+`gao giao files -box NAME` prints one box's share and nothing else, and `gao gat hf -only` takes that file as it stands.
+
+```
+$ gao giao files -box server1 giao/testdata/readings.jsonl
+hplt3/vie_Latn/8_1.jsonl.zst
+hplt3/vie_Latn/9_2.jsonl.zst
+fineweb2/data/vie_Latn/train/001_00000.parquet
+fineweb2/data/vie_Latn/train/003_00004.parquet
+fineweb2/data/vie_Latn/train/002_00002.parquet
+fineweb2/data/vie_Latn/train/004_00000.parquet
+fineweb2/data/vie_Latn/train/004_00001.parquet
+culturax/vi/vi_part_00046.parquet
+culturax/vi/vi_part_00015.parquet
+culturax/vi/vi_part_00049.parquet
+culturax/vi/vi_part_00008.parquet
+culturax/vi/vi_part_00005.parquet
+culturax/vi/vi_part_00034.parquet
+culturax/vi/vi_part_00000.parquet
+culturax/vi/vi_part_00045.parquet
+glotcc/v1.0/vie-Latn/vie-Latn_20.parquet
+glotcc/v1.0/vie-Latn/vie-Latn_14.parquet
+glotcc/v1.0/vie-Latn/vie-Latn_5.parquet
+glotcc/v1.0/vie-Latn/vie-Latn_4.parquet
+```
+
+No header, no totals, no verdict, and the order is the one the schedule hands the files out in. This is the only output in gao written for another program rather than for a person, which is why everything that makes the table readable is missing from it. The reasoning is a command away and it is `gao giao files` without the flag.
+
+The other end takes it as a list of files it may fetch, and says what that leaves.
+
+```
+$ gao giao files -box server1 giao/testdata/readings.jsonl > server1.txt
+$ gao gat hf -dir /tmp/s1dir -only server1.txt -plan
+0 of 122 files done, 0.0 GB of 513.6 GB
+122 files to fetch, 513.6 GB to move
+server1.txt names 19 files, 19 left to fetch, 77.0 GB to move
+```
+
+The two numbers on the last line are the ones worth having. Nineteen files were named and nineteen are left, so this box has not started. On a box that has been running for a day the second number is smaller than the first and the difference is what it got through, which is a more useful thing to read at a glance than the ledger, because the ledger counts the whole ingest and this counts the hand.
+
+Here is the same command against a real fetch of the smallest file in `server3`'s share, 294.6 MB of HPLT v3 over a home connection, followed by the same command again.
+
+```
+$ grep 10_1 server3.txt > one.txt
+$ gao gat hf -dir /tmp/hplt -only one.txt
+0 of 122 files done, 0.0 GB of 513.6 GB
+122 files to fetch, 513.6 GB to move
+one.txt names 1 file, 1 left to fetch, 0.3 GB to move
+
+hplt3      vie_Latn/10_1.jsonl.zst                        0.3 GB  2m17s
+
+1 of 1 files fetched, 0.3 GB in the ledger
+
+$ gao gat hf -dir /tmp/hplt -only one.txt
+1 of 122 files done, 0.3 GB of 513.6 GB
+121 files to fetch, 513.3 GB to move
+one.txt names 1 file, 0 left to fetch, 0.0 GB to move
+```
+
+The second run exits 0 with nothing to do, which is a finished hand and not a mistake. That is the ordinary end of a run on a box that was handed nineteen files and fetched all nineteen, and it is the one case where doing nothing is the right answer.
+
+Every other way of ending up with nothing to fetch is refused. An empty list is refused, and so is a list naming files this manifest does not pin.
+
+```
+$ gao gat hf -dir /tmp/s1dir -only bad.txt -plan
+gao gat hf: bad.txt names 2 files this manifest does not pin, starting with fineweb2/data/vie_Latn/train/999_99999.parquet, typo/what.zst
+```
+
+That refusal is the point of the flag as much as the selection is. A run that quietly fetched nothing would print the same two plan lines as a box that is already finished and then exit 0, and the difference between those two would surface as a box that sat idle overnight. The list is read and checked before the lock is taken and before the ledger is opened, so a wrong path costs a second rather than a lock, and a box handed one leaves nothing behind for the next person to clean up. Both refusals exit 2, which is the code gao uses for a command that will not run rather than a run that failed.
+
+A name that is pinned and already in the ledger is not an error, since that is every resumed run. The check is against the manifest, so a list written against last month's pins fails on the names that moved rather than on the ones that did not.
 
 ## What a record becomes
 

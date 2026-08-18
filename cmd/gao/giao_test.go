@@ -127,6 +127,158 @@ func TestGiaoFilesNamesTheBoxForEveryFile(t *testing.T) {
 	}
 }
 
+// One box's share, in the form the fetcher takes. Everything that makes the
+// table readable is left out on purpose, because this output is read by
+// 'gao gat hf -only' rather than by a person.
+func TestGiaoFilesWritesOneBoxsListAndNothingElse(t *testing.T) {
+	out, errOut, code := exec(t, "giao", "files", "-box", "server3", giaoFleet(t))
+	if code != 0 {
+		t.Fatalf("gao giao files -box server3: exit %d, %s", code, errOut)
+	}
+
+	lines := strings.Split(strings.TrimSpace(out), "\n")
+	if len(lines) == 0 || lines[0] == "" {
+		t.Fatal("server3 draws the largest share of the ingest and its list is empty")
+	}
+	for _, line := range lines {
+		if len(strings.Fields(line)) != 1 {
+			t.Errorf("a line carries something besides the name, which the fetcher would read as a file: %q", line)
+		}
+		if !strings.Contains(line, "/") {
+			t.Errorf("a name is not source and path joined by a slash: %q", line)
+		}
+	}
+	for _, unwanted := range []string{"box", "takes", "hours", "The whole ingest"} {
+		if strings.Contains(out, unwanted) {
+			t.Errorf("the list carries %q, and it is meant to carry names only:\n%s", unwanted, out)
+		}
+	}
+
+	// The same files the table says, which is the claim that makes the list worth
+	// handing to a box.
+	table, _, code := exec(t, "giao", "files", giaoFleet(t))
+	if code != 0 {
+		t.Fatalf("gao giao files: exit %d", code)
+	}
+	var counted int
+	for _, line := range strings.Split(table, "\n") {
+		if strings.Contains(line, "server3") {
+			counted++
+		}
+	}
+	if counted != len(lines) {
+		t.Errorf("the list has %d files and the table books %d onto server3", len(lines), counted)
+	}
+}
+
+// A box the schedule dropped and a box that is not in the schedule at all both
+// exit 2, and they say different things. Printing an empty list for either would
+// start a run that fetches nothing and reads as a box that is already up to date.
+//
+// The dropped case needs a readings file with server2 in it, since a box with no
+// reading is not a box the split dropped, it is a box nobody measured. That is
+// the same constructed reading TestAPlanDropsABoxWithItsNumbersRatherThanQuietly
+// uses and it is invented for the same reason: nothing has ever run on server2.
+func TestGiaoFilesRefusesABoxItHasNoWorkFor(t *testing.T) {
+	dropped := giaoReadings(t,
+		`{"box":"server1","bytes":41000000000,"seconds":8480,"measured_on":"2026-08-18","how":"the fineweb2 ingest, off the run ledger"}`,
+		`{"box":"server2","bytes":41000000000,"seconds":2409,"measured_on":"2026-08-19","how":"invented, because nothing has ever run here"}`,
+	)
+	for _, tc := range []struct {
+		box      string
+		readings string
+		want     string
+	}{
+		{box: "server2", readings: dropped, want: "draws nothing"},
+		{box: "server2", readings: giaoFleet(t), want: "is not a box this schedule hands work to"},
+		{box: "laptop", readings: giaoFleet(t), want: "is not a box this schedule hands work to"},
+	} {
+		t.Run(tc.box+" "+tc.want, func(t *testing.T) {
+			out, errOut, code := exec(t, "giao", "files", "-box", tc.box, tc.readings)
+			if code != 2 {
+				t.Fatalf("exit %d, want 2", code)
+			}
+			if !strings.Contains(errOut, tc.want) {
+				t.Errorf("the refusal does not say %q: %q", tc.want, errOut)
+			}
+			if strings.TrimSpace(out) != "" {
+				t.Errorf("a refused box still got a list:\n%s", out)
+			}
+		})
+	}
+}
+
+// The list and the JSON are two answers to the same question and only one of
+// them can be on stdout at a time, so asking for both is a mistake rather than a
+// preference the command should pick from.
+func TestGiaoFilesRefusesABoxAndJSONTogether(t *testing.T) {
+	_, errOut, code := exec(t, "giao", "files", "-box", "server3", "-json", giaoFleet(t))
+	if code != 2 {
+		t.Fatalf("exit %d, want 2", code)
+	}
+	if !strings.Contains(errOut, "-box") || !strings.Contains(errOut, "-json") {
+		t.Errorf("the refusal does not name both flags: %q", errOut)
+	}
+}
+
+// 'giao plan' prices the schedule and 'giao files' is the schedule, so the file
+// list is in one of them and not the other. A hundred and twenty two entries
+// under a command somebody ran to read five summary rows would bury the rows.
+func TestOnlyGiaoFilesCarriesTheJobsInItsJSON(t *testing.T) {
+	type hand struct {
+		Box  string `json:"box"`
+		Jobs []struct {
+			Source  string  `json:"source"`
+			Path    string  `json:"path"`
+			Name    string  `json:"name"`
+			Bytes   int64   `json:"bytes"`
+			Seconds float64 `json:"seconds"`
+		} `json:"jobs"`
+	}
+	read := func(t *testing.T, args ...string) []hand {
+		t.Helper()
+		out, errOut, code := exec(t, args...)
+		if code != 0 {
+			t.Fatalf("gao %s: exit %d, %s", strings.Join(args, " "), code, errOut)
+		}
+		var got struct {
+			Groups []struct {
+				Hands []hand `json:"hands"`
+			} `json:"groups"`
+		}
+		if err := json.Unmarshal([]byte(out), &got); err != nil {
+			t.Fatalf("%v\n%s", err, out)
+		}
+		var hands []hand
+		for _, g := range got.Groups {
+			hands = append(hands, g.Hands...)
+		}
+		return hands
+	}
+
+	for _, h := range read(t, "giao", "plan", "-json", giaoFleet(t)) {
+		if len(h.Jobs) != 0 {
+			t.Errorf("the plan carries %d files for %s, and it is a summary", len(h.Jobs), h.Box)
+		}
+	}
+
+	var files int
+	for _, h := range read(t, "giao", "files", "-json", giaoFleet(t)) {
+		for _, j := range h.Jobs {
+			files++
+			if j.Name != j.Source+"/"+j.Path {
+				t.Errorf("the name %q is not the source and the path joined by a slash", j.Name)
+			}
+			if j.Bytes <= 0 || j.Seconds <= 0 {
+				t.Errorf("%s is booked at %d bytes and %.1f seconds", j.Name, j.Bytes, j.Seconds)
+			}
+		}
+	}
+	if files != gat.Files() {
+		t.Errorf("the JSON names %d files, the manifest pins %d", files, gat.Files())
+	}
+}
+
 func TestGiaoPrintsTheSamePlanAsJSON(t *testing.T) {
 	out, errOut, code := exec(t, "giao", "plan", "-json", giaoFleet(t))
 	if code != 0 {
