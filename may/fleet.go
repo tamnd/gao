@@ -27,11 +27,26 @@ import (
 // MeasuredOn is when the inventory below was taken, in ISO 8601. A capacity
 // number without a date is a capacity number nobody should act on.
 //
-// This is the second reading. The first was 2026-08-03 and every free disk
+// This is the third reading. The first was 2026-08-03 and every free disk
 // number in it was wrong fifteen days later: server1 was up 70 GB, server3 down
 // 26.6, server2 up 11.8, gamingpc down 32. Run 'gao box check' on a box to be
 // told whether the record still describes it.
-const MeasuredOn = "2026-08-18"
+//
+// The third was taken a day after the second, and only one number moved.
+// server3 went from 17.7 GB free to 43.7, which is 26.0 GB back and puts it
+// over the reserve for the first time. It moved because 'gao box check' was run
+// on all four boxes and said so, in the sentence the drift check was written
+// for: the fleet is larger than the plan thinks. Nothing on the fleet was
+// deleted to produce that number. server3 shares its disk with other work, and
+// what this reading shows is that the free disk on that box is the volatile
+// number of the four, having read 44.3, 17.7 and 43.7 across three inventories
+// while the other three moved by less than a gigabyte between the second and
+// the third.
+//
+// The reading on server3 was taken with a GlotCC ingest running on it, so it is
+// what the box had free while working rather than what it had free at rest.
+// That is the number a plan should be built on.
+const MeasuredOn = "2026-08-19"
 
 // Box is one machine on the fleet.
 type Box struct {
@@ -80,7 +95,7 @@ var Boxes = []Box{
 	{
 		Name: "gamingpc", Hostname: "GamingPC", OS: "windows", Arch: "amd64",
 		CPU: "13th Gen Intel Core i9-13900K", Cores: 24, Threads: 32,
-		Memory: 68463005696, Disk: 1023249739776, FreeDisk: 297656258560,
+		Memory: 68463005696, Disk: 1023249739776, FreeDisk: 297324208128,
 		// 24564 MiB, which is what the card reports as total rather than the
 		// 24 GiB on the box it came in. Batch size is a function of this number,
 		// so it is the reported one and not the advertised one.
@@ -90,19 +105,19 @@ var Boxes = []Box{
 	{
 		Name: "server3", Hostname: "vmi3391933", OS: "linux", Arch: "amd64",
 		CPU: "AMD EPYC", Cores: 8, Threads: 8,
-		Memory: 25199222784, Disk: 414921494528, FreeDisk: 17682468864,
-		Role: "box of record for pipeline throughput and memory: the most Linux memory on the fleet. It fell under the reserve between the first inventory and this one, so it holds no corpus bytes until somebody clears 20 GB on it, and that is why the S1 ingest ran there streaming rather than landing",
+		Memory: 25199222784, Disk: 414921494528, FreeDisk: 43717926912,
+		Role: "box of record for pipeline throughput and memory: the most Linux memory on the fleet and the fastest reading taken on it. It fell under the reserve for the second inventory and came back 26.0 GB over it for the third, so it holds corpus bytes again, and its free disk is the one number on this fleet worth checking before a long run rather than reading off the record",
 	},
 	{
 		Name: "server2", Hostname: "vmi3112167", OS: "linux", Arch: "amd64",
 		CPU: "AMD EPYC", Cores: 6, Threads: 6,
-		Memory: 12541493248, Disk: 206900281344, FreeDisk: 19753852928,
-		Role: "control plane only. It gained 12 GB between the two inventories and is still under the reserve, so no corpus bytes land here, and that is a rule rather than an accident",
+		Memory: 12541493248, Disk: 206900281344, FreeDisk: 19092254720,
+		Role: "control plane only. It is the one box that has been under the reserve at all three inventories, 0.9 GB short of it at the closest, so no corpus bytes land here, and that is a rule rather than an accident",
 	},
 	{
 		Name: "server1", Hostname: "doge-01", OS: "linux", Arch: "amd64",
 		CPU: "AMD EPYC", Cores: 4, Threads: 4,
-		Memory: 6213033984, Disk: 419491782656, FreeDisk: 188719312896,
+		Memory: 6213033984, Disk: 419491782656, FreeDisk: 188950921216,
 		Role: "fetch and publish: the most free disk of the Linux boxes by a wide margin and a public route, and crawling is network bound rather than memory bound",
 	},
 }

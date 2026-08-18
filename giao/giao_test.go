@@ -22,12 +22,17 @@ func reading(box string, mbPerSec float64) Reading {
 	}
 }
 
-// fleet is every box that may hold corpus bytes, which is two of the four as
-// the inventory was measured on 2026-08-18. It was three until server3 lost
-// 26.6 GB and crossed the reserve, and that is why the numbers in these tests
-// changed rather than because the split changed.
+// fleet is every box that may hold corpus bytes, which is three of the four as
+// the inventory was measured on 2026-08-19. It was three, then two when server3
+// lost 26.6 GB and crossed the reserve, and three again when it got 26.0 GB
+// back. That is why the numbers in these tests have moved twice without the
+// split changing, and it is the reason the assertions here are about shape
+// rather than about totals wherever a total would do.
+//
+// The rates are made up and the boxes are not. A test that fed real readings in
+// would restate the inventory and pass for the wrong reason.
 func fleet() []Reading {
-	return []Reading{reading("server1", 60), reading("gamingpc", 25)}
+	return []Reading{reading("server1", 60), reading("gamingpc", 25), reading("server3", 40)}
 }
 
 func TestTheSplitHandsOutEveryFileTheManifestPins(t *testing.T) {
@@ -150,14 +155,20 @@ func TestABoxIsNotOfferedAFileItCannotFetch(t *testing.T) {
 	}
 }
 
-// Two boxes are under the reserve on the inventory of 2026-08-18, and a reading
-// was taken on both. server2 has never had the disk. server3 does the work by
-// hand and the arithmetic still refuses to schedule onto it, which is the case
-// worth having a test for, because that reading came off a real ingest.
+// One box is under the reserve on the inventory of 2026-08-19, and a reading
+// was taken on it anyway. server2 has never had the disk at any of the three
+// inventories, so a fast reading off it still draws nothing, and that is the
+// case worth having a test for: a measurement is not an argument for
+// scheduling onto a box that cannot take the bytes.
+//
+// server3 was the other one and is no longer, having read 43.7 GB free at the
+// third inventory. It left this test by the front door. The reserve did not
+// move, the disk did, and the arithmetic that kept it out is the arithmetic
+// that let it back in.
 func TestABoxThatMayNotHoldCorpusBytesDrawsNothing(t *testing.T) {
-	s := Divide(append(fleet(), reading("server2", 50), reading("server3", 40)))
+	s := Divide(append(fleet(), reading("server2", 50)))
 
-	for _, box := range []string{"server2", "server3"} {
+	for _, box := range []string{"server2"} {
 		if !slices.Contains(s.Idle, box) {
 			t.Fatalf("the split reports %v idle, and %s may not hold corpus bytes", s.Idle, box)
 		}
@@ -267,9 +278,12 @@ func TestAGroupWithTooFewFilesToDivideSaysSoWithoutCallingItAFault(t *testing.T)
 	if len(waiting) == 0 {
 		t.Fatal("finepdfs pins three files across three boxes of different speeds and nothing says the group ends late")
 	}
-	// finepdfs is three files, so on two boxes of different speeds one of them
-	// takes two and the group ends when that box ends however they are dealt out.
-	if !strings.Contains(strings.Join(waiting, "\n"), "order 1 divides 3 files across 2 boxes") {
+	// finepdfs is three files across three boxes of different speeds, so one file
+	// each and the group ends when the slowest of the three ends however they are
+	// dealt out. It read "across 2 boxes" until server3 came back over the
+	// reserve, and the count is asserted because a group that stops being short
+	// of boxes stops being this test.
+	if !strings.Contains(strings.Join(waiting, "\n"), "order 1 divides 3 files across 3 boxes") {
 		t.Errorf("the groups reported as ending late are %q, and finepdfs is not among them", waiting)
 	}
 	for _, w := range waiting {
@@ -314,7 +328,7 @@ func TestABoxThatDrawsNothingIsAFaultRatherThanASchedule(t *testing.T) {
 func TestTheVerdictQuotesTheScheduleAgainstTheOneBoxItReplaces(t *testing.T) {
 	v := Divide(fleet()).Verdict()
 
-	for _, want := range []string{"122 files", "2 boxes", "fastest box alone", "no arrangement can beat"} {
+	for _, want := range []string{"122 files", "3 boxes", "fastest box alone", "no arrangement can beat"} {
 		if !strings.Contains(v, want) {
 			t.Errorf("the verdict does not say %q: %q", want, v)
 		}

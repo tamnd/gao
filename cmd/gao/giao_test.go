@@ -23,11 +23,12 @@ func giaoReadings(t *testing.T, lines ...string) string {
 // giaoFleet is the readings taken off the S1 ingest runs on 2026-08-18, checked
 // in as the file 'gao giao read' produced on each box.
 //
-// Two of the three boxes can be handed work. server3 is in the file because it
-// is what a reading off a real run looks like when the box it was taken on has
-// since crossed the reserve, and the plan has to say so rather than drop the
-// line. It is also the box that ingested and published the whole GlotCC
-// snapshot, which is the reading it carries.
+// All three boxes can be handed work as the inventory reads on 2026-08-19.
+// server3 was under the reserve for one inventory and drew nothing while
+// carrying the fastest reading in the file, which is the reading it took off
+// ingesting and publishing the whole GlotCC snapshot. It read 43.7 GB free at
+// the retake and draws the largest share here. The file did not change. The
+// disk did.
 //
 // It is a path into the repository rather than a temporary file, because the
 // README quotes what this produces and a fixture whose input nobody can read is
@@ -47,12 +48,7 @@ func TestGiaoPlanPricesTheWholeIngestAgainstOneBox(t *testing.T) {
 		"hplt3",
 		"scratch left",
 		"On the fastest box alone",
-		"513.6 GB over 122 files across 2 boxes",
-		// A dropped box is dropped with its numbers, so that a reader can see
-		// that the reserve and not the disk is what took it out.
-		"server3 has a reading and 17.7 GB free",
-		"0 bytes of scratch once the 20.0 GB reserve is taken off",
-		"a fetch holds 1.0 GB while it runs",
+		"513.6 GB over 122 files across 3 boxes",
 	} {
 		if !strings.Contains(out, want) {
 			t.Errorf("the plan does not say %q:\n%s", want, out)
@@ -63,6 +59,43 @@ func TestGiaoPlanPricesTheWholeIngestAgainstOneBox(t *testing.T) {
 	first := strings.Index(out, "hplt3")
 	if later := strings.Index(out, "fineweb2"); later < first {
 		t.Errorf("fineweb2 is printed before hplt3:\n%s", out)
+	}
+}
+
+// A dropped box is dropped with its numbers, so that a reader can see that the
+// reserve and not the disk is what took it out. A box that vanishes between the
+// readings file and the schedule looks like a bug in the schedule.
+//
+// The reading is constructed rather than taken, because the only box the plan
+// drops on the inventory of 2026-08-19 is server2, no corpus bytes land on
+// server2, and so there is no ingest on it to read a rate off. Inventing a rate
+// is the right call here and it would not be in giao/testdata/readings.jsonl:
+// what is under test is the sentence the plan prints about a box it cannot use,
+// and that sentence quotes the box's disk, which is real, rather than its rate.
+func TestAPlanDropsABoxWithItsNumbersRatherThanQuietly(t *testing.T) {
+	path := giaoReadings(t,
+		`{"box":"server1","bytes":41000000000,"seconds":8480,"measured_on":"2026-08-18","how":"the fineweb2 ingest, off the run ledger"}`,
+		`{"box":"server2","bytes":41000000000,"seconds":2409,"measured_on":"2026-08-19","how":"invented, because nothing has ever run here"}`,
+	)
+	out, errOut, code := exec(t, "giao", "plan", path)
+	if code != 0 {
+		t.Fatalf("gao giao plan: exit %d, %s", code, errOut)
+	}
+
+	for _, want := range []string{
+		"server2 has a reading and 19.1 GB free",
+		"0 bytes of scratch once the 20.0 GB reserve is taken off",
+		"a fetch holds 1.0 GB while it runs",
+	} {
+		if !strings.Contains(out, want) {
+			t.Errorf("the plan does not say %q:\n%s", want, out)
+		}
+	}
+	// The fast box is the one that was dropped, so the schedule has to be built
+	// out of the slow one alone. A plan that quietly used the rate it was handed
+	// would come back with two boxes and a shorter ingest than one box can do.
+	if !strings.Contains(out, "over 122 files across 1 box ") {
+		t.Errorf("the schedule is not built out of server1 alone:\n%s", out)
 	}
 }
 
@@ -82,12 +115,14 @@ func TestGiaoFilesNamesTheBoxForEveryFile(t *testing.T) {
 		t.Errorf("the handover lists %d files, the manifest pins 122:\n%s", files, out)
 	}
 
-	// server3 has 16.1 GB of room and the manifest pins six files above 25 GB,
-	// so the handover has to route around it rather than book it a file it
-	// cannot land.
+	// Every box named here is a box that may hold corpus bytes. What a file
+	// costs a box is a fetch in flight and not the size of the file, which is
+	// why a 26.6 GB HPLT shard sits on the same line as a 1.0 GB GlotCC one and
+	// neither is routed around. server2 is the box the inventory drops, and the
+	// thing to check is that no file is booked onto it.
 	for _, line := range strings.Split(out, "\n") {
-		if strings.Contains(line, "server3") && strings.Contains(line, "26.") {
-			t.Errorf("server3 is handed a file it has no room for: %s", line)
+		if strings.Contains(line, "server2") {
+			t.Errorf("server2 holds no corpus bytes and is handed a file: %s", line)
 		}
 	}
 }

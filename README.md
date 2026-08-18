@@ -367,7 +367,7 @@ The seed is refused rather than added when the report was taken with a different
 
 ## Handing the ingest out across the fleet
 
-There are four boxes and two of them, `server2` and `server3`, sit under the 20 GB reserve and hold no corpus bytes at all. The two that are left differ by a factor of eight in threads, a factor of eleven in memory and a factor of two in the rate a reading off them says they get through. So somebody has to decide which box fetches which of the 122 pinned files, and the obvious answer, sixty one files each, is wrong twice over.
+There are four boxes and one of them, `server2`, sits under the 20 GB reserve and holds no corpus bytes at all. The three that are left differ by a factor of eight in threads, a factor of eleven in memory and a factor of three in the rate a reading off them says they get through. So somebody has to decide which box fetches which of the 122 pinned files, and the obvious answer, forty each, is wrong twice over.
 
 It is wrong first because the files are not the same size. The largest is 26.6 GB and the median is 2.1 GB, a thirteenth of it, so equal piles of files are not equal piles of work, and a file cannot be cut in half because it is streamed and hashed as one unit. It is wrong second because the sources cannot all be fetched at once. HPLT v3 is pinned at order zero and ingests alone, since every later source dedups against a store that already holds it. The schedule is a sequence of groups with a barrier at the end of each, not one pile, and the idle time that produces is the cost of the ingest order rather than a mistake in the arithmetic.
 
@@ -376,32 +376,35 @@ It is wrong first because the files are not the same size. The largest is 26.6 G
 ```
 $ gao giao plan giao/testdata/readings.jsonl
 order  sources   files  bytes     takes       waiting at the end
-0      hplt3     12     234.5 GB  34.7 hours  1.6 hours
-1      finepdfs  3      13.0 GB   2.1 hours   16 minutes
-2      fineweb2  30     130.1 GB  19.1 hours  20 minutes
-3      culturax  50     80.1 GB   11.7 hours  1 minute
-5      glotcc    27     55.9 GB   8.2 hours   5 minutes
+0      hplt3     12     234.5 GB  18.3 hours  1.2 hours
+1      finepdfs  3      13.0 GB   1.4 hours   1.9 hours
+2      fineweb2  30     130.1 GB  10.0 hours  30 minutes
+3      culturax  50     80.1 GB   6.2 hours   19 minutes
+5      glotcc    27     55.9 GB   4.4 hours   28 minutes
 
 box       gets through        fetches   of the ingest  scratch left  busy for
-gamingpc  1.3 MB/s (11 Mbit)  362.1 GB  70.5%          244.9 GB      3.1 days
-server1   0.6 MB/s (5 Mbit)   151.6 GB  29.5%          164.6 GB      3.1 days
+server3   1.7 MB/s (14 Mbit)  246.6 GB  48.0%          15.5 GB       39.5 hours
+gamingpc  1.3 MB/s (11 Mbit)  190.1 GB  37.0%          244.6 GB      39.6 hours
+server1   0.6 MB/s (5 Mbit)   77.0 GB   15.0%          164.9 GB      37.5 hours
 
-server3 has a reading and 17.7 GB free, which is 0 bytes of scratch once the 20.0 GB reserve is taken off, against the 2.0 GB a stage needs.
-So it draws nothing, though a fetch holds 1.0 GB while it runs and that is the smaller question.
+The whole ingest takes 40.3 hours, against 39.2 hours if a file could be cut in half and every source fetched at once.
+On the fastest box alone it takes 3.4 days, so the fleet buys 2.0x.
+Order 1 divides 3 files across 3 boxes and still ends 24 minutes after its own floor, because server3 finishes last on data/vie_Latn/train/000_00002.parquet and a file cannot be handed to a second box once it has started.
 
-The whole ingest takes 3.2 days, against 3.1 days if a file could be cut in half and every source fetched at once.
-On the fastest box alone it takes 4.5 days, so the fleet buys 1.4x.
-
-513.6 GB over 122 files across 2 boxes takes 3.2 days, against 4.5 days on the fastest box alone. That is 1% over a split no arrangement can beat, and the gap is the ingest order and the file sizes rather than the fleet.
+513.6 GB over 122 files across 3 boxes takes 40.3 hours, against 3.4 days on the fastest box alone. That is 3% over a split no arrangement can beat, and the gap is the ingest order and the file sizes rather than the fleet.
 ```
 
 Every number in that block comes off the S1 runs. `gao giao read` turns an ingest ledger into a reading by timing between two finishes, and the three lines in `giao/testdata/readings.jsonl` are what it printed on each box on 2026-08-18: `server1` at 4.84 GB in 8480 seconds of fineweb2, `server3` at 4.18 GB in 2409 seconds of GlotCC, `gamingpc` at 4.39 GB in 3292 seconds of FinePDFs.
 
 Read those three next to each other and the first thing they say is that the ranking is not the one anybody would have guessed. `gamingpc` has 32 threads and a 4090 and it comes in slower than `server3`, which has eight cores and no GPU. The reason is that the three readings are on three different sources: GlotCC is zstd compressed JSON lines, FinePDFs is Parquet with 23 columns holding text that has already been through a PDF extractor, and fineweb2 is Parquet again at 4.8 GB a file. A reading is a box and a source together, and calling it a property of the box is the mistake this schedule would make if it had only one of them. What it needs is the rate a box gets through the work it is about to be given, and a reading taken on a different source is the closest thing available rather than the same thing. The file records what each reading was taken on, in the `how` field, so the confound is on the record rather than in somebody's memory.
 
-The second thing is that the fleet is worth less than it looks. Two boxes buy 1.4x over the fastest one alone, and 1.4x is not a shortfall to go looking for. The floor at the bottom of the block is what the same bytes would take if files were divisible and the ingest order did not bind, which nothing can reach. This schedule sits one percent above it, which is as close as the arithmetic gets. The rest of the gap to 2x is that one box is more than twice as fast as the other, so the fleet is worth less than two of its best machine by construction.
+The second thing is that three boxes buy 2.0x over the fastest one alone. The floor at the bottom of the block is what the same bytes would take if files were divisible and the ingest order did not bind, which nothing can reach, and this schedule sits three percent above it. The gap to 3x is that the boxes are not the same speed, so a fleet is never worth its box count, and the three percent on top of that is the ingest order and the file sizes. Both are printed rather than left as a shortfall somebody might go looking for a cause of.
 
-The third is `server3`, and it is the line worth reading twice. It has a reading, it is the fastest box on that reading, and it draws nothing. It is also the box that fetched, decoded and published the entire GlotCC snapshot on the day the reading was taken. Both are true. `server3` has 17.7 GB free against a 20 GB reserve, so it has no scratch at all, and `may.HoldsCorpus` asks whether a box can hold a stage's working set of four shards rather than whether it can hold the one part a fetch has in flight. The plan prints the free disk, the scratch after the reserve, what a stage needs and what a fetch holds for every box it drops, because a box dropped without its numbers looks like a bug. The reserve is not adjusted to let it back in. A safety number that moves the first time it excludes a machine somebody wanted is not a safety number.
+The third thing is `server3`, and it is the line worth reading twice, because for one inventory it was not in this table at all. It had a reading, it was the fastest box on that reading, and it drew nothing, while being the box that fetched, decoded and published the entire GlotCC snapshot on the day the reading was taken. All of that was true at once. It had 17.7 GB free against a 20 GB reserve, so it had no scratch, and `may.HoldsCorpus` asks whether a box can hold a stage's working set of four shards rather than whether it can hold the one part a fetch has in flight.
+
+The reserve was not adjusted to let it back in. A safety number that moves the first time it excludes a machine somebody wanted is not a safety number. What happened instead is that `gao box check` was run on all four boxes on 2026-08-19 and `server3` came back with 43.7 GB free, 26.0 GB more than the record, in the sentence that check exists to print: the fleet is larger than the plan thinks. The inventory was retaken and `server3` draws 48% of the ingest on the same arithmetic that had been giving it nothing. Putting it back cut the whole ingest from 3.2 days to 40.3 hours and took the fleet from 1.4x to 2.0x.
+
+That is the case for a gate made of arithmetic over a dated measurement rather than a list of boxes somebody maintains. It let a machine out and back in without anybody editing a rule, and the only thing needed to notice was running the check. The plan still prints the free disk, the scratch after the reserve, what a stage needs and what a fetch holds for every box it drops, because a box dropped without its numbers looks like a bug. `server2` is the box it drops now, and that one has been under the reserve at all three inventories.
 
 The rate a schedule is built on is the whole thing, and it is not the link. An ingest that decodes fetches a record, puts it to the ingest contract, tokenizes it and writes Parquet, and on this fleet that work is slower than the download by an order of magnitude. `server1` moved 4.84 GB in 8480 seconds, which is 4.6 Mbit, on a box with a public route and nothing wrong with its connection. A readings file therefore carries what a box got through end to end, with the date and a sentence saying how it was taken, and a reading measured across less than a gigabyte is refused: a rate off the first hundred megabytes of a run is a measurement of a congestion window growing and a page cache filling.
 
@@ -410,23 +413,23 @@ The rate a schedule is built on is the whole thing, and it is not the link. An i
 ```
 $ gao giao files giao/testdata/readings.jsonl | head -13
 order  box       bytes     takes       file
-0      gamingpc  26.6 GB   5.5 hours   hplt3/vie_Latn/7_1.jsonl.zst
+0      server3   26.6 GB   4.3 hours   hplt3/vie_Latn/7_1.jsonl.zst
+0      server3   26.3 GB   4.2 hours   hplt3/vie_Latn/7_2.jsonl.zst
+0      server3   26.3 GB   4.2 hours   hplt3/vie_Latn/8_2.jsonl.zst
+0      server3   16.0 GB   2.6 hours   hplt3/vie_Latn/8_4.jsonl.zst
+0      server3   15.0 GB   2.4 hours   hplt3/vie_Latn/5_1.jsonl.zst
+0      server3   294.6 MB  3 minutes   hplt3/vie_Latn/10_1.jsonl.zst
 0      gamingpc  26.4 GB   5.5 hours   hplt3/vie_Latn/8_3.jsonl.zst
 0      gamingpc  26.3 GB   5.5 hours   hplt3/vie_Latn/9_1.jsonl.zst
-0      gamingpc  26.3 GB   5.5 hours   hplt3/vie_Latn/8_2.jsonl.zst
 0      gamingpc  25.2 GB   5.2 hours   hplt3/vie_Latn/6_1.jsonl.zst
-0      gamingpc  16.0 GB   3.3 hours   hplt3/vie_Latn/8_4.jsonl.zst
-0      gamingpc  10.0 GB   2.1 hours   hplt3/vie_Latn/9_2.jsonl.zst
 0      gamingpc  9.8 GB    2.0 hours   hplt3/vie_Latn/7_3.jsonl.zst
-0      server1   26.3 GB   12.8 hours  hplt3/vie_Latn/7_2.jsonl.zst
 0      server1   26.2 GB   12.8 hours  hplt3/vie_Latn/8_1.jsonl.zst
-0      server1   15.0 GB   7.3 hours   hplt3/vie_Latn/5_1.jsonl.zst
-0      server1   294.6 MB  9 minutes   hplt3/vie_Latn/10_1.jsonl.zst
+0      server1   10.0 GB   4.8 hours   hplt3/vie_Latn/9_2.jsonl.zst
 ```
 
-That is order zero, the whole of HPLT v3, out of 125 lines. Eight files to `gamingpc` and four to `server1`, and the four include two of the largest in the manifest, because `server1` is slower per byte and still finishes sooner than `gamingpc` would if it took a ninth file on top of eight. The 26.3 GB file it opens with costs it 12.8 hours against the 5.5 the same file costs `gamingpc`, and handing that one over as well would leave `server1` idle for half a day. Both boxes have the disk to land any file in the manifest, so nothing in this group is decided by scratch, which is the case the disk check exists for rather than the case it is in. A box under the reserve draws nothing at all rather than drawing the small files, and that is the check doing its work one step earlier than the file list.
+That is order zero, the whole of HPLT v3, out of 126 lines. Six files to `server3`, four to `gamingpc` and two to `server1`, and the two include the second largest file in the manifest, because `server1` is slower per byte and still finishes sooner than either of the others would if it took one more file on top of what it has. The 26.2 GB file it opens with costs it 12.8 hours against the 4.2 the same size costs `server3`, and handing that one over as well would leave `server1` idle for most of the group. All three boxes have the disk to land any file in the manifest, so nothing here is decided by scratch, which is the case the disk check exists for rather than the case it is in. A box under the reserve draws nothing at all rather than drawing the small files, and that is the check doing its work one step earlier than the file list.
 
-The command exits 1 when the readings are not a schedule at all, which covers a box nobody has, two rates for one box, a sample too small to mean anything, and a reading that does not say how it was taken. It exits 2 when they describe a schedule that should not be run as written, which is a box that draws no files or a file no box has room to land. Groups that end late are neither. A group of three files across two boxes of different speeds ends when its slowest file ends however it is dealt out, and the sentence saying so is there to stop somebody hunting for a better split that does not exist.
+The command exits 1 when the readings are not a schedule at all, which covers a box nobody has, two rates for one box, a sample too small to mean anything, and a reading that does not say how it was taken. It exits 2 when they describe a schedule that should not be run as written, which is a box that draws no files or a file no box has room to land. Groups that end late are neither. A group of three files across three boxes of different speeds ends when its slowest file ends however it is dealt out, and the sentence saying so is there to stop somebody hunting for a better split that does not exist.
 
 ## What a record becomes
 
@@ -2449,35 +2452,53 @@ gao runs on four real machines with 524 GB of free disk between them, and the co
 
 ```
 $ gao box
-fleet as measured on 2026-08-18
+fleet as measured on 2026-08-19
 
 box       os       cores  memory    free disk  gpu
-gamingpc  windows  24/32  68.5 GB   297.7 GB   NVIDIA GeForce RTX 4090, 25.8 GB
-server3   linux    8/8    25.2 GB   17.7 GB    none
-server2   linux    6/6    12.5 GB   19.8 GB    none
-server1   linux    4/4    6.2 GB    188.7 GB   none
-total              42/50  112.4 GB  523.8 GB   1
+gamingpc  windows  24/32  68.5 GB   297.3 GB   NVIDIA GeForce RTX 4090, 25.8 GB
+server3   linux    8/8    25.2 GB   43.7 GB    none
+server2   linux    6/6    12.5 GB   19.1 GB    none
+server1   linux    4/4    6.2 GB    189.0 GB   none
+total              42/50  112.4 GB  549.1 GB   1
 
 disk budget for 300B natural tokens
   extracted text      1279.2 GB
   compressed at 2.07x 618.0 GB in 1207 shards
-  fleet free disk     523.8 GB across 4 boxes
-  largest single box  297.7 GB on gamingpc
-  working set         542 shards at a time on gamingpc, after the reserve
+  fleet free disk     549.1 GB across 4 boxes
+  largest single box  297.3 GB on gamingpc
+  working set         541 shards at a time on gamingpc, after the reserve
   the corpus does not fit on any one box, so the store of record is off-box and every stage streams
 
 what each box can run, after leaving 20.0 GB of reserve alone
 box       scratch   shards  workers
-gamingpc  277.7 GB  542     32
-server3   0.0 GB    none    no corpus bytes land here
+gamingpc  277.3 GB  541     32
+server3   23.7 GB   46      8
 server2   0.0 GB    none    no corpus bytes land here
-server1   168.7 GB  329     4
-fleet                       36
+server1   169.0 GB  329     4
+fleet                       44
 ```
 
 The roles and the store line are cut from that block for length. Two things in it are measurements rather than choices, and both of them moved. The inventory carries the date it was taken because the first one, fifteen days earlier, had every free disk number wrong: `server1` was up 70 GB, `server3` down 26.6, `server2` up 11.8, `gamingpc` down 32. `gao box check` run on a box says whether the record still describes it. And the compression ratio was 3.0 and assumed, with a note on the constant saying the measured ratio would replace it and that anything under 2.5 moves the shard count. It came in at 2.07, off `server3` decoding 4.2 GB of GlotCC text into 2.0 GB of Parquet, and characters per token came in at 3.28 against an assumed 3.0 on the same run, so the corpus is 618 GB in the store rather than 396 and the release is about 1200 shards rather than 750. Every one of those numbers followed a measurement rather than the other way around.
 
-`server3` crossing the reserve is the change with teeth. It cost the fleet eight of its forty four workers, it took the box that is meant to be the box of record for pipeline throughput out of the pipeline, and nobody decided it: the disk filled with something else between two inventories. The rule is arithmetic rather than a sentence somebody has to remember, so the box left the schedule the moment the number was taken.
+`server3` crossing the reserve is the change with teeth, and it has now crossed it twice. Going under cost the fleet eight of its forty four workers and took the box that is meant to be the box of record for pipeline throughput out of the pipeline, and nobody decided it: the disk filled with something else between two inventories. Coming back gave all eight of them to it again a day later. The rule is arithmetic rather than a sentence somebody has to remember, so the box left the schedule the moment the number was taken and rejoined it the moment the next one was, with nothing edited either time.
+
+That is also the reason the third inventory exists. `gao box check` was run on all four boxes and three of them matched the record to within a gigabyte, while `server3` said this:
+
+```
+$ gao box check -dir /root/gao-ingest
+box          server3
+measured on  /root/gao-ingest  43.4 GB
+recorded     2026-08-18        17.7 GB
+threads      8
+
+the record has moved:
+  server3 has 43.4 GB free and the inventory recorded 17.7 GB on 2026-08-18, so the record is 25.8 GB low
+  server3 is recorded as holding no corpus bytes and has 43.4 GB free today, which is enough to run a stage, so the fleet is larger than the plan thinks
+```
+
+Two sentences, and the second is the one worth having. A box being 25.8 GB off the record is a bookkeeping problem. A box being 25.8 GB off the record in the direction that puts it back over the reserve is a third of the ingest that nobody was scheduling. The check reports the crossing separately from the drift for exactly that reason, in both directions, because a box that has quietly stopped qualifying still appears in a plan with a share of the work.
+
+The reading was taken with a GlotCC ingest running, so it is what the box has free while working rather than at rest, which is the number a plan should be built on. It also moves while you watch it: the retake recorded 43.7 GB and the run above read 43.4 a few minutes later, because a part had opened in between. Free disk on `server3` is the volatile number on this fleet, having read 44.3, 17.7 and 43.7 across three inventories while the other three moved by less than a gigabyte between the second and the third, and that is worth knowing before a run that takes two days.
 
 So the store of record is off-box and the fleet holds a working set. Off-box rather than more disk, because the corpus outlives the machines and disks bought for a rented box cannot be moved, cannot be shared, and are gone when the box is. Object storage rather than a network filesystem, because every access here is a whole shard read or written by name from several machines at once, with no rename, no partial update, and no locking, which is object storage exactly.
 
@@ -2489,7 +2510,7 @@ read_parquet('hf://datasets/open-index/vietnamese-legal-text/data/snapshot=gao-v
 
 The repos are named for the data rather than for the stage that wrote it, because a name like `gao-xay` tells a reader which of our programs ran, which is the one thing they do not care about. Every repo is public and there is no private tier, which is a rule about what may be pushed rather than a setting on a repo: a repo carrying text may only carry text the publication posture says ships, and that is checked in code rather than remembered by whoever creates the repo. The material that has nowhere to go under that rule is not stored somewhere quieter. It stays on the box that produced it and is deleted when the stage that needed it finishes, because a private repo holding text a page reserved is the same publication with a smaller audience and one setting between them.
 
-Offload is what makes the arithmetic work. A worker writes one shard, pushes it, deletes it, and takes the next, so peak disk is two shards per worker no matter how large the corpus gets. That is 4.1 GB on `server1` against a 90 GB budget, and it is why a fleet with 524 GB of disk can process a corpus several times that size. Nothing on the fleet is authoritative and nothing on it is backed up. Every disk here is cache: what is worth keeping is pushed before it is deleted, and what cannot be pushed was not worth keeping. Two of the four boxes hold no corpus bytes at all: `server2` has 19.8 GB free and `server3` has 17.7, both under the 20 GB reserve every box keeps, so the arithmetic says no without anybody having to remember to say it.
+Offload is what makes the arithmetic work. A worker writes one shard, pushes it, deletes it, and takes the next, so peak disk is two shards per worker no matter how large the corpus gets. That is 4.1 GB on `server1` against a 90 GB budget, and it is why a fleet with 549 GB of disk can process a corpus several times that size. Nothing on the fleet is authoritative and nothing on it is backed up. Every disk here is cache: what is worth keeping is pushed before it is deleted, and what cannot be pushed was not worth keeping. One of the four boxes holds no corpus bytes at all: `server2` has 19.1 GB free, under the 20 GB reserve every box keeps, so the arithmetic says no without anybody having to remember to say it.
 
 What a worker pushes is Parquet, which is the second of two storage formats and the only one anybody outside the project sees. Moving a shard through a stage uses segments, JSONL in zstd frames, because six programs append to a shard as it is built and a schema that is one version older still reads. A release is the opposite case: it is read far more often than it is written, and almost every question asked of a corpus is a question about one column. How many restricted documents are there, what is the quality distribution, which hosts dominate. Parquet answers those by reading one column of one row group instead of every byte of every document, and the same file that answers them on the Hub is the file the trainer streams.
 
@@ -2515,28 +2536,30 @@ The paragraph above is arithmetic, and the milestone does not gate on it. It gat
 
 ```
 $ gao box peak -run glotcc -ran 56m33s disk.jsonl
-run        glotcc        on server3, 56m33s of wall clock
-peak       0.5 GB        at 40m40s, during push
-ceiling    90.0 GB       89.5 GB of it left
-predicted  1.0 GB        two shards each for the 1 worker this run had going
-drift      0.5x          the measurement over the arithmetic
-watched    341 readings  across 56m37s, widest gap 10s
-free       17.7 GB       on server3
+run          glotcc        on server3, 56m33s of wall clock
+peak         0.5 GB        at 40m40s, during push
+ceiling      90.0 GB       89.5 GB of it left
+predicted    1.0 GB        two shards each for the 1 worker this run had going
+drift        0.5x          the measurement over the arithmetic
+plan allows  8.2 GB        if a stage used every worker server3 has threads for
+watched      341 readings  across 56m37s, widest gap 10s
+free         43.7 GB       on server3
 
-2 faults:
-  server3 has 17.7 GB free, under the 20.0 GB reserve, so the plan runs no workers on it and this is a run on a box the arithmetic gives nothing to spend
-  the ceiling is 90.0 GB and server3 has 17.7 GB free, so a run that stayed under the ceiling still filled the box
+1 fault:
+  the ceiling is 90.0 GB and server3 has 43.7 GB free, so a run that stayed under the ceiling still filled the box
 
-server3 has 17.7 GB free, under the 20.0 GB reserve, so the plan runs no workers on it and this is a run on a box the arithmetic gives nothing to spend
+the ceiling is 90.0 GB and server3 has 43.7 GB free, so a run that stayed under the ceiling still filled the box
 ```
 
 That is a real run: three GlotCC files, 6.3 GB fetched, 1.5 million documents admitted and none turned away, twelve parts written and pushed and deleted, 12.6 GB of text into 6.1 GB of Parquet, watched every ten seconds from the first byte to the last. It exits 2, and everything worth having in this section is in why.
 
 The peak is 0.5 GB, which is one part in flight rather than one file, on a run that moved 6.3 GB and wrote 6.1 GB. So offload does what it was supposed to do, and it does it harder than the arithmetic claimed: `PeakBytes` allows a worker two shards and the run held one. That is an upper bound behaving like an upper bound, which is worth writing down once rather than tuning.
 
-Then both faults, which are the same 17.7 GB said twice and are not the same claim. `server3` has 17.7 GB free against a 20 GB reserve, so the plan gives it no workers at all and this is a run on a box the arithmetic has nothing to spend on. And the ceiling is 90 GB on a box with 17.7 GB free, so passing the gate proves nothing: this run could have held five times what it did, cleared the ceiling by 85 GB, and filled the machine. A run that reported one of those and not the other would leave somebody thinking the gate held.
+Then the fault, which is that the ceiling is 90 GB on a box with 43.7 GB free, so passing the gate proves nothing: this run could have held twice what the box had, cleared the ceiling by 45 GB, and filled the machine. A gate is a claim about a run and a box together, and a run that reported the first without the second would leave somebody thinking the gate held.
 
-None of that stopped the work. The reserve is headroom for the machine and not a working set for the stage, so a box under it can still stream a corpus through and is still one bad day from a filesystem nobody can log into. The fix is disk on `server3`, not a smaller reserve.
+That trace is from 2026-08-18 and this is what it reads against the inventory of the day after, which is why there is one fault here rather than two. On the day it was taken `server3` had 17.7 GB free, the plan gave it no workers at all, and the second fault said so: this is a run on a box the arithmetic has nothing to spend on. The bytes on disk did not change. The box did. The same trace grading differently is the gate working, because both faults are claims about the machine rather than about the run, and there is no `plan allows` line in the older reading for the same reason.
+
+None of that stopped the work. The reserve is headroom for the machine and not a working set for the stage, so a box under it can still stream a corpus through and is still one bad day from a filesystem nobody can log into. What that argued for at the time was disk on `server3` rather than a smaller reserve, and that is how it went: the disk came back and the box rejoined the schedule on arithmetic nobody edited.
 
 The other half of the reading is the drift, and it is the number that travels. Passing the ceiling and matching the model are different questions. A run that peaks at 60 GB under a 90 GB ceiling has passed the gate and has also said the design's account of its own disk is off by a factor of fifteen, which is fine on the box it ran on and is not fine on the next one, or on the same one next year with a second stage beside it. So the drift is reported next to the gate and a peak more than three times the prediction is a fault in its own right, in either direction.
 
@@ -2551,7 +2574,7 @@ predicted    1.0 GB         two shards each for the 1 worker this run had going
 drift        0.6x           the measurement over the arithmetic
 plan allows  32.8 GB        if a stage used every worker gamingpc has threads for
 watched      1000 readings  across 2h46m23s, widest gap 10s
-free         297.7 GB       on gamingpc
+free         297.3 GB       on gamingpc
 
 gamingpc peaked at 0.6 GB of a 90.0 GB ceiling during push, 0.6 times the 1.0 GB the design predicts, watched every 10s across 2h46m25s
 ```
@@ -2601,8 +2624,8 @@ Everything above says a stage writes a file, pushes it, and deletes it, and that
 
 ```
 $ gao don fit
-box      server1, 188.7 GB free, 20.0 GB reserved
-scratch  168.7 GB, and the crawl stops fetching at 135.0 GB
+box      server1, 189.0 GB free, 20.0 GB reserved
+scratch  169.0 GB, and the crawl stops fetching at 135.2 GB
 fill     5.2 MB per second, at 200 fetches of 26.0 kB
 uplink   12.5 MB per second
 volume   1.0 GB, closing every 3 minutes and pushing in 80 seconds
@@ -2610,7 +2633,7 @@ confirm  5 minutes, during which nothing may be deleted
 held     3.0 GB, which is the open volume and 2 in flight
 outage   7.2 hours of store outage before fetching has to stop
 
-server1 holds 3.0 GB in steady state against a 135.0 GB mark, and the store can be unreachable for 7.2 hours before fetching has to stop
+server1 holds 3.0 GB in steady state against a 135.2 GB mark, and the store can be unreachable for 7.2 hours before fetching has to stop
 ```
 
 Three numbers decide it, and the first is the only one people usually check. The crawl fetches 200 pages a second and each one adds about 26 kB to the archive, so the disk fills at 5.2 MB per second against an uplink that clears 12.5 MB per second. That comparison is necessary and it is not sufficient, which is where capacity plans go wrong. The second number is the open file. A WARC being written cannot be pushed, so at any moment there is a volume on the disk that is not a candidate for going anywhere, and the size of it is a choice: a smaller volume rotates sooner and costs more requests, a larger one holds more of the box hostage. The third is the confirmation window. An upload returning success is not the store telling you it holds those bytes, and between the two there is a gap during which the local copy is the only copy that is known to exist.
@@ -2621,11 +2644,11 @@ The mark is 80% of scratch, and reaching it stops fetching rather than starting 
 
 The last line is the one worth carrying around. `server1` tolerates 7.2 hours of the store being unreachable before fetching has to stop, which is a real operational fact stated in hours rather than a vague sense that there is some slack. It is also the arithmetic behind the checklist item that said a box with room to spare is a few hours of fetching, which was written as an assertion and is now a thing the program computes from the inventory. That it says 7.2 hours today and said 4.2 against the previous inventory is the point rather than an inconsistency: the number is read off the disk the box has, and the box gained 70 GB between the two readings.
 
-Every input can be argued with on the command line, and `-box server2` gets the answer the fleet was always going to give. So does `-box server3`, which is newer and worse, because that box was in the pipeline until the inventory was retaken.
+Every input can be argued with on the command line, and `-box server2` gets the answer the fleet was always going to give.
 
 ```
-$ gao don fit -box server3
-box      server3, 17.7 GB free, 20.0 GB reserved
+$ gao don fit -box server2
+box      server2, 19.1 GB free, 20.0 GB reserved
 scratch  0 B, and the crawl stops fetching at 0 B
 fill     5.2 MB per second, at 200 fetches of 26.0 kB
 uplink   12.5 MB per second
@@ -2634,9 +2657,11 @@ confirm  5 minutes, during which nothing may be deleted
 held     3.0 GB, which is the open volume and 2 in flight
 outage   0 seconds of store outage before fetching has to stop
 
-the crawl does not start: one volume is 1.0 GB and the mark on server3 is 0 B, so the box fills before the first file is even closed
-  and steady state holds 3.0 GB, which is over the 0 B mark on server3, because a push takes 80 seconds and a confirmation takes 5 minutes and nothing may be deleted in between
+the crawl does not start: one volume is 1.0 GB and the mark on server2 is 0 B, so the box fills before the first file is even closed
+  and steady state holds 3.0 GB, which is over the 0 B mark on server2, because a push takes 80 seconds and a confirmation takes 5 minutes and nothing may be deleted in between
 ```
+
+`server3` answered the same way for one inventory and does not now. It has 43.7 GB free, 23.7 of it scratch, and it tolerates 61 minutes of the store being unreachable against `server1` at 7.2 hours. That is the same command reading the same rates off a box with a seventh of the room, and 61 minutes is a real answer rather than a refusal: it is long enough to survive a store hiccup and short enough that nobody should point a six week crawl at that box while `server1` exists.
 
 Arithmetic is a plan, and a plan is not evidence. A crawl that ran for six weeks either deleted only bytes the store had confirmed or it did not, and afterwards the two are indistinguishable from the disk, because in both cases the file is gone. The only place that difference survives is what was written down while it happened, so the rotation logs one line per file per step and `gao don read` folds it back up. Four states, in the order they happen: resident, pushed, verified, reclaimed. Reaching reclaimed without having been seen at verified is the fault the package was written to catch, and it is reported as the sentence a person needs rather than as a count, naming the file and how much crawl is now in a state nobody can resolve. Three others come with it: a verification with no upload behind it, which passed against whatever was already at that path, a file reported with two different hashes, which is the one case where the upload succeeded and the bytes are still wrong, and a file that went somewhere without recording where. The reader refuses nothing and returns everything, because a log with a fault in it is a log whose other lines are still the only record of what happened.
 

@@ -37,20 +37,31 @@
 // there so that the gap between it and the schedule can be read as what it is,
 // which is the shape of the work rather than a shortage of machines.
 //
-// Boxes that may hold corpus bytes is [may.HoldsCorpus], and on this fleet it
-// excludes the box that carries the fastest reading. server3 has 17.7 GB free
-// against a 20.0 GB reserve, so it has no scratch at all and draws nothing
-// here, and it is also the box that fetched, decoded and published the whole of
-// the GlotCC ingest on 2026-08-18, 1,500,000 documents and 12.6 GB of text into
-// 6.1 GB of Parquet. Both of those are true. [may.HoldsCorpus] asks whether a
-// box can hold a stage's working set,
-// which is four shards, and a fetch holds [InFlight], which is two, so the
-// schedule is answering a larger question than the one it is asking about. What
-// keeps server3 out is the reserve rather than the disk, and 'gao giao plan'
-// prints those numbers for every box it drops rather than dropping it quietly.
-// The reserve is not adjusted here to let a box back in. A safety number that
+// Boxes that may hold corpus bytes is [may.HoldsCorpus], and for one inventory
+// it excluded the box carrying the fastest reading. server3 had 17.7 GB free
+// against a 20.0 GB reserve, so it had no scratch at all and drew nothing here,
+// and it was also the box that fetched, decoded and published the whole of the
+// GlotCC ingest on 2026-08-18, 1,500,000 documents and 12.6 GB of text into
+// 6.1 GB of Parquet. Both of those were true, because [may.HoldsCorpus] asks
+// whether a box can hold a stage's working set, which is four shards, and a
+// fetch holds [InFlight], which is two, so the schedule answers a larger
+// question than the one it is asking about.
+//
+// The reserve was not adjusted to let that box back in. A safety number that
 // moves the first time it excludes a machine somebody wanted is not a safety
-// number.
+// number. What happened instead is that 'gao box check' was run on all four
+// boxes on 2026-08-19 and said server3 had 43.7 GB free, 26.0 GB more than the
+// record, in the sentence the drift check exists to print: the fleet is larger
+// than the plan thinks. The inventory was retaken and server3 draws 48% of the
+// ingest here on the same arithmetic that had been giving it nothing.
+//
+// That is the argument for keeping the two numbers apart. A gate made of
+// arithmetic over a dated measurement lets a box out and back in without
+// anybody editing a rule, and the only thing needed to notice was running the
+// check. 'gao giao plan' still prints the free disk, the scratch after the
+// reserve, what a stage needs and what a fetch holds for every box it drops,
+// because a box dropped without its numbers looks like a bug. server2 is the
+// one it drops now, and it has been under the reserve at all three inventories.
 package giao
 
 import (
