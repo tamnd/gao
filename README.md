@@ -12,7 +12,7 @@ gao v1 targets **300 billion unique natural Vietnamese tokens**, deduplicated gl
 
 That is a record only if the incumbents are measured honestly, so the spec measures them. The largest existing public Vietnamese corpus is HPLT v3 `vie_Latn`, which we measure at 143.7B tokens after reading 240 MB off every one of its six quality buckets. The largest corpus any published Vietnamese model has trained on is PhoGPT's, at 102B. CulturaX, the corpus most Vietnamese projects actually use, publishes 55.4B.
 
-gao v1 at 300B is 1.7x HPLT v3, 2.9x PhoGPT, and 5.4x CulturaX. It is not 10x any of them, and we never claim it is. The deduplicated Vietnamese HTML web is a bounded object of roughly 205B tokens. Past that boundary the only moves left are a deeper crawl than Common Crawl performs, non-HTML modalities, and synthesis. gao does all three and labels which tokens came from which.
+gao v1 at 300B is 2.1x HPLT v3, 2.9x PhoGPT, and 5.4x CulturaX. It is not 10x any of them, and we never claim it is. The deduplicated Vietnamese HTML web is a bounded object of roughly 173B tokens. Past that boundary the only moves left are a deeper crawl than Common Crawl performs, non-HTML modalities, and synthesis. gao does all three and labels which tokens came from which.
 
 ## Status
 
@@ -364,6 +364,10 @@ of which 37.9 GB came off earlier runs and 4.2 GB was read by this one
 ```
 
 The seed is refused rather than added when the report was taken with a different tokenizer, for the same reason two tokenizers are never summed. The counts and the ledger are written by the same run and both only ever record a file that finished, so a run killed mid file leaves neither, and the only way to double count is to delete the ledger and keep the counts.
+
+That last sentence was a claim and not a mechanism, and a real run caught it. `gamingpc` read two HPLT shards, then spent two hours on a 25.2 GB third one and hit a record that does not parse, and the run stopped there as it should. The shard left no ledger entry, so the next run fetched it again from the front and read all of it. What nobody had thought about is that the first attempt's documents were still in the tally when the failed run wrote its last `counts.json`, and the resumed run seeded from that file and added the whole shard on top. 17683770 documents counted twice, on a box where nothing else in the directory disagreed: the ledger was right, the parts in the store were right, the part names collided on the second pass and were skipped rather than duplicated, and only `counts.json` was 34 percent over.
+
+So a document now waits for its file. It is staged as it is read and joins the totals when the file finishes, and when the file fails what it counted is thrown away. An ingest works one file at a time and stops at the first failure, so there is only ever one file staged, which is what makes a rule this simple correct rather than approximately correct. The counts a box has on disk are the counts of the files in its ledger, always, and that is now the thing the code does rather than the thing the comment said.
 
 `-dir` has no default. A command that starts a 513.6 GB download into whichever directory it was run from is a command that does it once by accident.
 
@@ -732,7 +736,9 @@ hplt-v3 vie_Latn counted exactly 176.0B, outside the 164.4B to 171.8B that was p
 so the sample missed and every ratio quoted against the estimate was quoted against a number that was wrong
 ```
 
-That last clause is the whole reason the command exists. The 300B claim in this README is stated as 1.7x HPLT, and the tokenizer comparison, the mixture weights and the disk budget are all quoted against the same estimate. When the estimate misses, none of those are wrong by a little in some private way. They are wrong by the amount it missed by, in public, in a file people have already read. Writing the interval down first is what makes that a correction instead of a discovery.
+That last clause is the whole reason the command exists. The 300B claim in this README is stated as a multiple of HPLT, and the tokenizer comparison, the mixture weights and the disk budget are all quoted against the same estimate. When the estimate misses, none of those are wrong by a little in some private way. They are wrong by the amount it missed by, in public, in a file people have already read. Writing the interval down first is what makes that a correction instead of a discovery.
+
+That is not hypothetical any more. The estimate for HPLT v3 moved from 176B to 143.7B once every bucket was read, which took the headline ratio from 1.7x to 2.1x and the public union it is measured against from about 205B down to about 173B. Both moved in the direction that flatters this project, which is the direction to be most suspicious of, so it is worth saying plainly that the 300B claim did not get easier. The ceiling on what can be downloaded came down with it, and what has to be crawled or made to reach 300B went up by roughly the same 32B. One number did not move with the rest. P03-1 in the prediction register still says the exact count lands within 15% of the 176B estimate, because that is the prediction that was written and a register whose entries get edited when a better number arrives is not a register. 143.7B is 18.4% under 176B, so on the reading we have now that prediction is failing, and the register is the right place to find that out.
 
 The sample has to come off a real box. Reading 44 shards of HPLT is a download and a tokenizer pass on `server1`, `server2`, `server3` or `gamingpc`, and a rate measured on a laptop over three shards somebody had lying around is the failure this command was written to make visible rather than one it can catch.
 
@@ -2375,23 +2381,23 @@ phap-luat          2M         9.8 GB    7.3B        2.1B       4.1B    1.6%
 gao-voice          1M         2.6 GB    1.9B        0.6B       1.1B    0.4%
 
 license class           documents  tokens  share  ships
-open                    807M       215.4B  83.7%  yes
-permissive-attribution  53M        31.3B   12.2%  yes
-restricted              6M         9.7B    3.8%   held
+open                    706M       201.4B  78.2%  yes
+permissive-attribution  157M       50.9B   19.8%  yes
+restricted              2M         4.1B    1.6%   held
 unredistributable       1M         1.1B    0.4%   held
 
 gao-v1.0, counted off gao-2026-09 in gao-64k tokens.
-The headline is 257.5B of natural tokens over 867M documents, and it is the natural number because a reader who downloads a Vietnamese corpus believes a person wrote it.
+The headline is 257.5B of natural tokens over 866M documents, and it is the natural number because a reader who downloads a Vietnamese corpus believes a person wrote it.
 21.7B of generated text sits beside it on its own line, added to nothing, since 257.5B and 279.2B are answers to different questions.
-246.7B of the headline ships and 10.8B stays in the store, which license class decides rather than preference.
+252.3B of the headline ships and 5.2B stays in the store, which license class decides rather than preference.
 
-Against the corpora the claim is written over, that is 1.5x HPLT v3 vie_Latn, 2.5x PhoGPT, 4.6x CulturaX.
-gao-v1.0 came back at 257.5B of natural tokens against the 300.0B claimed, which is still 1.5x HPLT v3 vie_Latn, 2.5x PhoGPT, 4.6x CulturaX, and those are the ratios the headline gets restated with.
+Against the corpora the claim is written over, that is 1.8x HPLT v3 vie_Latn, 2.5x PhoGPT, 4.6x CulturaX.
+gao-v1.0 came back at 257.5B of natural tokens against the 300.0B claimed, which is still 1.8x HPLT v3 vie_Latn, 2.5x PhoGPT, 4.6x CulturaX, and those are the ratios the headline gets restated with.
 ```
 
 The numbers above are invented. No source has been ingested and the crawl has not started, so this is the shape of the answer rather than the answer.
 
-The last two lines are the point of the whole package. The claim in this README is 300B natural tokens, which is 1.7x HPLT v3, 2.9x PhoGPT and 5.4x CulturaX, and the kill criterion for the release slice says that under 250B the project publishes the real number and restates those ratios. So the ratios are computed from the number that came back rather than written down beside it, because a ratio restated by hand is a ratio that gets restated once, in the release note, while the three other places it appears keep quoting the claim. Missing the target and tripping the kill criterion are different events with different consequences and the exit code tells them apart: 1 when the counts are not a release count at all, 2 when the corpus came in under the floor, 0 when it is short but alive, with the shortfall stated in the verdict rather than rounded away.
+The last two lines are the point of the whole package. The claim in this README is 300B natural tokens, which is 2.1x HPLT v3, 2.9x PhoGPT and 5.4x CulturaX, and the kill criterion for the release slice says that under 250B the project publishes the real number and restates those ratios. So the ratios are computed from the number that came back rather than written down beside it, because a ratio restated by hand is a ratio that gets restated once, in the release note, while the three other places it appears keep quoting the claim. Missing the target and tripping the kill criterion are different events with different consequences and the exit code tells them apart: 1 when the counts are not a release count at all, 2 when the corpus came in under the floor, 0 when it is short but alive, with the shortfall stated in the verdict rather than rounded away.
 
 ## What a release costs on disk, column by column
 

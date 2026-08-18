@@ -155,11 +155,11 @@ func TestTheRatiosAreComputedFromTheNumberThatCameBack(t *testing.T) {
 		t.Fatal("180B natural did not trip a kill criterion written at 250B")
 	}
 	against := strings.Join(short.Restate(), ", ")
-	if strings.Contains(against, "1.7x") {
+	if strings.Contains(against, "2.1x") {
 		t.Errorf("the ratios still read as the 300B claim: %s", against)
 	}
-	if !strings.HasPrefix(against, "1.0x HPLT") {
-		t.Errorf("180B against HPLT's 176B is about even and the restatement says %s", against)
+	if !strings.HasPrefix(against, "1.3x HPLT") {
+		t.Errorf("180B against HPLT's 143.7B is 1.3x and the restatement says %s", against)
 	}
 	if v := short.Verdict(); !strings.Contains(v, "180.0B") || !strings.Contains(v, "rather than defended") {
 		t.Errorf("a killed release does not read as one:\n  %s", v)

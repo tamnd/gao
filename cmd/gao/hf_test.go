@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -682,6 +683,39 @@ func TestCountsThatCannotBeWrittenDoNotStopTheRun(t *testing.T) {
 	}
 }
 
+// The counts written after each file are the counts of the files in the ledger,
+// which means the file that failed is not one of them. gamingpc's run stopped on
+// a bad record two hours into a 25.2 GB shard, and the counts it left behind
+// were carried into the run that then read the whole shard properly.
+func TestAFailedFileLeavesNothingBehindInTheCounts(t *testing.T) {
+	var tally dem.Tally
+	count := tally.Counting(nil, nil)
+	add := func(n int) {
+		t.Helper()
+		for range n {
+			if err := count(&doc.Document{Provenance: doc.Provenance{Source: doc.SourceHPLT3}, Text: "Việt Nam"}); err != nil {
+				t.Fatal(err)
+			}
+		}
+	}
+
+	add(2)
+	settle(&tally, gat.Report{})
+	add(5)
+	settle(&tally, gat.Report{Err: errors.New("the file has a record that does not parse")})
+
+	if got := tally.Total().Documents; got != 2 {
+		t.Errorf("the counts hold %d documents, want the 2 off the file that finished", got)
+	}
+
+	// The next run reads that file again from the front, all of it this time.
+	add(6)
+	settle(&tally, gat.Report{})
+	if got := tally.Total().Documents; got != 8 {
+		t.Errorf("the counts hold %d documents, want 2 plus the 6 the file really holds", got)
+	}
+}
+
 // A directory with counts in it and no ledger is one somebody has half cleared
 // out, not one to resume, and adding its counts to a fresh run would report a
 // corpus twice the size of what is in the store.
@@ -692,6 +726,7 @@ func TestCountsAreCarriedOnlyWhenTheLedgerNamesTheFiles(t *testing.T) {
 	if err := count(&doc.Document{Provenance: doc.Provenance{Source: doc.SourceFineWeb2}, Text: "Việt Nam"}); err != nil {
 		t.Fatal(err)
 	}
+	earlier.Commit()
 	if err := earlier.Report("server1", time.Now()).Write(dir); err != nil {
 		t.Fatal(err)
 	}
@@ -747,6 +782,7 @@ func TestAResumedRunSaysHowMuchOfTheTextItRead(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
+	tally.Commit()
 
 	var out bytes.Buffer
 	printTally(&out, &tally, dem.Counts{})

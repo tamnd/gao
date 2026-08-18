@@ -85,27 +85,83 @@ func (c Counts) BytesPerChar() float64 {
 // It is written to from the ingest's decoding goroutines, so it locks. The lock
 // is held for four additions and never across anything that can block, which is
 // why one mutex is enough at the rate documents arrive.
+//
+// Documents land in a staging area first and only join the totals when the file
+// they came out of finishes. An ingest works one file at a time and stops at the
+// first failure, so the file being read is the only one staged, and the totals
+// are always the counts of files that are also in the ledger. [Tally.Commit] and
+// [Tally.Drop] are the two ends of that.
 type Tally struct {
 	// Tokenizer names the tokenizer, or is empty when the run did not tokenize.
 	Tokenizer string
 
-	mu sync.Mutex
-	by map[doc.Source]*Counts
+	mu   sync.Mutex
+	by   map[doc.Source]*Counts
+	open map[doc.Source]*Counts
 }
 
-// Add folds a document into its source's counts.
+// Add folds a document into the counts staged for the file being read.
 func (t *Tally) Add(d *doc.Document) {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	if t.open == nil {
+		t.open = make(map[doc.Source]*Counts)
+	}
+	c, ok := t.open[d.Source]
+	if !ok {
+		c = &Counts{}
+		t.open[d.Source] = c
+	}
+	c.Add(d)
+}
+
+// Commit folds what the finished file counted into the totals.
+//
+// Called once a file is through and in the ledger. Calling it on a file that
+// counted nothing is a no-op, which is what a run of a source with no documents
+// in it should be.
+func (t *Tally) Commit() {
 	t.mu.Lock()
 	defer t.mu.Unlock()
 	if t.by == nil {
 		t.by = make(map[doc.Source]*Counts)
 	}
-	c, ok := t.by[d.Source]
-	if !ok {
-		c = &Counts{}
-		t.by[d.Source] = c
+	for s, staged := range t.open {
+		c, ok := t.by[s]
+		if !ok {
+			c = &Counts{}
+			t.by[s] = c
+		}
+		c.Merge(*staged)
 	}
-	c.Add(d)
+	clear(t.open)
+}
+
+// Drop throws away what a file counted before it failed.
+//
+// This is the whole reason the staging exists. A file that dies partway through
+// leaves no ledger entry, so the next run fetches it again from the front and
+// counts every document in it a second time, and the counts that were kept from
+// the first attempt are added on top. gamingpc read most of a 25.2 GB HPLT shard
+// before hitting a record that does not parse, and the counts.json it left
+// carried 17683770 documents that the completed run then counted again, which
+// put the box 34% over on a number nothing else in the directory disagreed with.
+func (t *Tally) Drop() {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	clear(t.open)
+}
+
+// Staged is what the file being read has counted so far, which is not part of
+// any total until it finishes.
+func (t *Tally) Staged() Counts {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	var c Counts
+	for _, staged := range t.open {
+		c.Merge(*staged)
+	}
+	return c
 }
 
 // Counting returns a function that folds each document into the tally, and, when

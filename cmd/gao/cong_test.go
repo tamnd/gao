@@ -106,11 +106,11 @@ func TestCongExitsTwoOnTheKillCriterion(t *testing.T) {
 	}
 	// The ratios have to be the ones this corpus earned rather than the ones the
 	// plan was written with.
-	if strings.Contains(out, "1.7x HPLT") {
+	if strings.Contains(out, "2.1x HPLT") {
 		t.Errorf("the ratios were quoted rather than computed:\n%s", out)
 	}
-	if !strings.Contains(out, "1.0x HPLT v3 vie_Latn") {
-		t.Errorf("180B against HPLT's 176B did not restate as about even:\n%s", out)
+	if !strings.Contains(out, "1.3x HPLT v3 vie_Latn") {
+		t.Errorf("180B against HPLT's 143.7B did not restate as 1.3x:\n%s", out)
 	}
 }
 
