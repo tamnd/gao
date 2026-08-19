@@ -72,7 +72,7 @@ func Card(d Dataset, m *Manifest, x []Indexed) string {
 // twenty lines of output is a dependency to explain at every upgrade.
 func cardFrontMatter(b *strings.Builder, d Dataset, m *Manifest, x []Indexed) {
 	b.WriteString("---\n")
-	fmt.Fprintf(b, "pretty_name: %s\n", cardPretty(d.Name))
+	fmt.Fprintf(b, "pretty_name: %s\n", cardTitle(d))
 	b.WriteString("language:\n  - " + Language + "\n")
 
 	// Not an SPDX identifier, because there is no single license here to name.
@@ -89,7 +89,18 @@ func cardFrontMatter(b *strings.Builder, d Dataset, m *Manifest, x []Indexed) {
 	if d.Text {
 		b.WriteString("task_categories:\n  - text-generation\n  - fill-mask\n")
 	}
-	b.WriteString("tags:\n  - vietnamese\n  - pretraining\n  - parquet\n")
+
+	// These three are the Hub's own vocabulary and they are the difference
+	// between a repo that turns up in a faceted search and one that only turns
+	// up for somebody who already knows its name. They are constants here
+	// because they are properties of how this corpus is built rather than of
+	// any one repo: found text, one language, nobody annotated anything.
+	b.WriteString("multilinguality:\n  - monolingual\n")
+	b.WriteString("language_creators:\n  - found\n")
+	b.WriteString("annotations_creators:\n  - no-annotation\n")
+	b.WriteString("source_datasets:\n  - original\n")
+
+	b.WriteString("tags:\n  - vietnamese\n  - pretraining\n  - parquet\n  - web\n  - corpus\n")
 	if !d.Text {
 		b.WriteString("  - metadata-only\n")
 	}
@@ -139,10 +150,11 @@ func cardDocuments(m *Manifest, x []Indexed) int64 {
 }
 
 func cardBody(b *strings.Builder, d Dataset, m *Manifest, x []Indexed) {
-	fmt.Fprintf(b, "# %s\n\n", cardPretty(d.Name))
+	fmt.Fprintf(b, "# %s\n\n", cardTitle(d))
 	fmt.Fprintf(b, "> %s\n\n", cardTagline(d, m, x))
 	fmt.Fprintf(b, "This dataset is %s.\n\n", d.Holds)
 	cardContents(b, d, m, x)
+	cardWhatIsIt(b, d, m, x)
 
 	switch {
 	case m != nil:
@@ -154,13 +166,22 @@ func cardBody(b *strings.Builder, d Dataset, m *Manifest, x []Indexed) {
 	default:
 		cardUnsealed(b)
 	}
+	if m == nil {
+		cardSources(b, x)
+	}
 	cardLayout(b, d, m, x)
 	cardReading(b, d, m, x)
+	cardUses(b, d, m, x)
+	if d.Text {
+		cardRow(b, d)
+	}
 	cardFields(b, d)
 	cardShipping(b, d)
 	if m == nil && d.Tier == Working {
+		cardCaveats(b, x)
 		cardNotARelease(b)
 	}
+	cardCitation(b, d, x)
 
 	b.WriteString("## Where this comes from\n\n")
 	fmt.Fprintf(b, "The pipeline that built it, the ingest contract every document had to pass, and the reasoning behind both are at %s.\n\n", Repository)
@@ -199,23 +220,42 @@ func cardTagline(d Dataset, m *Manifest, x []Indexed) string {
 // which the Hub renders as links.
 func cardContents(b *strings.Builder, d Dataset, m *Manifest, x []Indexed) {
 	b.WriteString("## Contents\n\n")
-	items := []string{"[What is in it](#what-is-in-it)"}
+	var items []string
+	if m == nil && d.Tier == Working {
+		items = append(items, "[What is it](#what-is-it)")
+	}
+	items = append(items, "[What is in it](#what-is-in-it)")
 	if m != nil {
 		items = append(items, "[This snapshot](#this-snapshot)")
 		if len(m.Stages) > 0 {
 			items = append(items, "[How it was produced](#how-it-was-produced)")
 		}
 	}
+	if m == nil && len(BySource(x)) > 0 {
+		items = append(items, "[Where the text came from](#where-the-text-came-from)")
+	}
 	items = append(items,
 		"[How it is laid out](#how-it-is-laid-out)",
 		"[Reading it](#reading-it)",
-		"[The columns](#the-columns)",
-		"[What ships and what does not](#what-ships-and-what-does-not)",
 	)
-	if m == nil && d.Tier == Working {
-		items = append(items, "[What this is not](#what-this-is-not)")
+	if m == nil && len(BySource(x)) > 0 {
+		items = append(items, "[What you can build with it](#what-you-can-build-with-it)")
 	}
-	items = append(items, "[Where this comes from](#where-this-comes-from)")
+	if d.Text {
+		items = append(items, "[One row](#one-row)")
+	}
+	items = append(items, "[The columns](#the-columns)")
+	if d.Tier == Working {
+		items = append(items, "[What this repo is](#what-this-repo-is)")
+	}
+	items = append(items, "[What ships and what does not](#what-ships-and-what-does-not)")
+	if m == nil && d.Tier == Working {
+		items = append(items,
+			"[Things to know before you use it](#things-to-know-before-you-use-it)",
+			"[What this is not](#what-this-is-not)",
+		)
+	}
+	items = append(items, "[Citation](#citation)", "[Where this comes from](#where-this-comes-from)")
 	for _, i := range items {
 		fmt.Fprintf(b, "- %s\n", i)
 	}
@@ -540,6 +580,16 @@ func cardReading(b *strings.Builder, d Dataset, m *Manifest, x []Indexed) {
 	fmt.Fprintf(b, "FROM read_parquet('%s')\n", cardGlob(d, m, by))
 	b.WriteString("GROUP BY license_class ORDER BY documents DESC;\n")
 	b.WriteString("```\n\n")
+	if s, ok := cardSmallest(by); ok {
+		cardMeasuredBox(b, s, cardMeasured{
+			Source: "finepdfs", Documents: 1218257,
+			Cols: []cardColumn{
+				{Head: "license_class", Type: "varchar", Cells: []string{"permissive-attribution"}},
+				{Head: "documents", Type: "int64", Right: true, Cells: []string{"1218257"}},
+				{Head: "mean_syllables", Type: "double", Right: true, Cells: []string{"3555.0"}},
+			},
+		})
+	}
 
 	b.WriteString("**Look at some documents.** Reading `text` is the one thing here that is not cheap: the row groups hold 50,000 documents each, so the smallest useful read of the text column is a row group of it, which on a full sized part is a couple of hundred megabytes. That is why this one is pointed at a single part, and at the smallest part in the repo, rather than at a glob.\n\n")
 	b.WriteString("```sql\n")
@@ -554,20 +604,7 @@ func cardReading(b *strings.Builder, d Dataset, m *Manifest, x []Indexed) {
 	fmt.Fprintf(b, "DESCRIBE SELECT * FROM read_parquet('%s');\n", cardOnePart(d, m, x))
 	b.WriteString("```\n\n")
 
-	b.WriteString("### Python\n\n")
-	b.WriteString("The configs in this card's front matter are what `datasets` reads, so a source is a config name.\n\n")
-	b.WriteString("```python\nfrom datasets import load_dataset\n\n")
-	if m == nil && len(by) > 0 {
-		fmt.Fprintf(b, "# One source, streamed rather than downloaded.\nds = load_dataset(%q, %q, split=\"train\", streaming=True)\n", d.Repo(), by[len(by)-1].Source)
-		b.WriteString("print(next(iter(ds))[\"url\"])\n```\n\n")
-		b.WriteString("```python\n")
-		b.WriteString("from huggingface_hub import snapshot_download\n\n")
-		fmt.Fprintf(b, "# One source on disk, which for the smallest of these is %s.\nsnapshot_download(\n    %q,\n    repo_type=\"dataset\",\n    allow_patterns=\"%s/%s/*\",\n)\n",
-			may.Size(by[len(by)-1].Bytes), d.Repo(), DataDir, by[len(by)-1].Source)
-		b.WriteString("```\n\n")
-	} else {
-		fmt.Fprintf(b, "ds = load_dataset(%q, split=\"train\", streaming=True)\nprint(next(iter(ds))[\"url\"])\n```\n\n", d.Repo())
-	}
+	cardPython(b, d, m, x)
 }
 
 // cardIndexOutput is the answer the query above came back with, so a reader can
@@ -791,6 +828,13 @@ func cardSize(n int64) string {
 
 // cardPretty turns a repo name into a title. The names are chosen to describe what
 // is in them, which means they already read as titles once the hyphens are gone.
+func cardTitle(d Dataset) string {
+	if d.Pretty != "" {
+		return d.Pretty
+	}
+	return cardPretty(d.Name)
+}
+
 func cardPretty(name string) string {
 	words := strings.Split(name, "-")
 	for i, w := range words {

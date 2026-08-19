@@ -93,6 +93,12 @@ type Dataset struct {
 	// Tier is whether it outlives the run.
 	Tier Tier
 
+	// Pretty is the title on the card, for a repo whose name does not make one.
+	// Most of these are words with hyphens between them and title casing the
+	// name is the right answer. A name that is a coinage is not: capitalizing
+	// vitco gives Vitco, which reads as a typo rather than as a name.
+	Pretty string
+
 	// Holds is what is in it, in a sentence, and it is the first line of the
 	// dataset card.
 	Holds string
@@ -183,8 +189,9 @@ var datasets = []Dataset{
 		},
 	},
 	{
-		Name:    "vietnamese-raw-text",
+		Name:    "vitco",
 		Tier:    Working,
+		Pretty:  "ViTco",
 		Holds:   "the pinned public Vietnamese corpora as gao read them, every source put to one contract and one schema, before any cleaning",
 		Text:    true,
 		Classes: []doc.LicenseClass{doc.LicenseOpen, doc.LicensePermissiveAttribution},
@@ -202,7 +209,7 @@ func Datasets() []Dataset {
 // built. It is named here rather than passed around, because every stage writes
 // to the same place and a stage that took the repo as an argument is a stage
 // somebody can point at a published one by mistake.
-const StageRepo = "vietnamese-raw-text"
+const StageRepo = "vitco"
 
 // Staging returns that repo. It panics if the table does not have it, which is
 // a broken build rather than a runtime condition, since the table is a constant.

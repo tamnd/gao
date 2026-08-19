@@ -151,7 +151,12 @@ func TestTheNamesDescribeTheDataRatherThanTheCode(t *testing.T) {
 				t.Errorf("%s is named after the code rather than the data", d.Name)
 			}
 		}
-		if !strings.HasPrefix(d.Name, "vietnamese-") {
+		// The language has to be in the name, because it is the first thing
+		// anybody filters on and the second thing they read after the org. Spelled
+		// out is the usual form and is what every published repo uses. A coinage
+		// gets to carry it as the prefix instead, which is the whole reason vitco
+		// is spelled the way it is.
+		if !strings.HasPrefix(d.Name, "vietnamese-") && !strings.HasPrefix(d.Name, "vi") {
 			t.Errorf("%s does not say what language it is, which is the first thing anybody filters on", d.Name)
 		}
 	}

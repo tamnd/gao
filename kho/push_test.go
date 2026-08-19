@@ -49,7 +49,7 @@ type hub struct {
 	srv *httptest.Server
 }
 
-const testRepo = Org + "/vietnamese-raw-text"
+const testRepo = Org + "/vitco"
 
 func newHub(t *testing.T) *hub {
 	t.Helper()
