@@ -1,6 +1,7 @@
 package assign
 
 import (
+	"fmt"
 	"slices"
 	"sort"
 	"strings"
@@ -328,7 +329,8 @@ func TestABoxThatDrawsNothingIsAFaultRatherThanASchedule(t *testing.T) {
 func TestTheVerdictQuotesTheScheduleAgainstTheOneBoxItReplaces(t *testing.T) {
 	v := Divide(boxes()).Verdict()
 
-	for _, want := range []string{"122 files", "3 boxes", "fastest box alone", "no arrangement can beat"} {
+	want := fmt.Sprintf("%d files", harvest.Files())
+	for _, want := range []string{want, "3 boxes", "fastest box alone", "no arrangement can beat"} {
 		if !strings.Contains(v, want) {
 			t.Errorf("the verdict does not say %q: %q", want, v)
 		}
@@ -370,10 +372,11 @@ func TestARateIsTheTwoNumbersRatherThanTheirQuotient(t *testing.T) {
 }
 
 // The package doc leads on the spread between the largest pinned file and the
-// median, because that spread is the reason the split is not forty files each.
-// It said a fiftieth for a while and the manifest said a thirteenth, which is
-// the sort of number that goes stale the first time a source is pinned or
-// dropped and that nobody rereads.
+// median, because that spread is the reason the split is not twenty four files
+// each. It said a fiftieth for a while and the manifest said a thirteenth, and
+// dropping CulturaX moved it again to a sixth, which is the sort of number that
+// goes stale the first time a source is pinned or dropped and that nobody
+// rereads.
 func TestTheSpreadTheDocQuotesIsTheSpreadTheManifestHas(t *testing.T) {
 	jobs := Jobs()
 	if len(jobs) == 0 {
@@ -393,13 +396,13 @@ func TestTheSpreadTheDocQuotesIsTheSpreadTheManifestHas(t *testing.T) {
 	if median <= 0 {
 		t.Fatal("the median pinned file is zero bytes")
 	}
-	if n := largest / median; n < 11 || n > 15 {
-		t.Errorf("the largest pinned file is %d times the median, the package doc says a thirteenth", n)
+	if n := largest / median; n < 5 || n > 8 {
+		t.Errorf("the largest pinned file is %d times the median, the package doc says a sixth", n)
 	}
 	if g := float64(largest) / 1e9; g < 26.0 || g > 27.2 {
 		t.Errorf("the largest pinned file is %.1f GB, the package doc says 26.6", g)
 	}
-	if g := float64(median) / 1e9; g < 1.9 || g > 2.3 {
-		t.Errorf("the median pinned file is %.1f GB, the package doc says 2.1", g)
+	if g := float64(median) / 1e9; g < 4.1 || g > 4.7 {
+		t.Errorf("the median pinned file is %.1f GB, the package doc says 4.4", g)
 	}
 }

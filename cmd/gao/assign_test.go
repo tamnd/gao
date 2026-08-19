@@ -2,13 +2,36 @@ package main
 
 import (
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 
+	"github.com/tamnd/gao/fleet"
 	"github.com/tamnd/gao/harvest"
 )
+
+// pinnedSize is the size of the ingest as the manifest currently has it, in the
+// words the verdict uses. It is computed rather than written down because a
+// source leaving the fetch list moves both halves of it, and a test that pins
+// the old pair reads as the plan having broken.
+func pinnedSize() string {
+	return fmt.Sprintf("%s over %d files", fleet.GB(harvest.TotalBytes()), harvest.Files())
+}
+
+// pinnedOrders is how many ingest orders have a source left in them, which is
+// how many groups a plan comes back with.
+func pinnedOrders() int {
+	var orders []int
+	for _, p := range harvest.Sources() {
+		if !slices.Contains(orders, p.Order) {
+			orders = append(orders, p.Order)
+		}
+	}
+	return len(orders)
+}
 
 // assignReadings writes a readings file and returns the path to it.
 func assignReadings(t *testing.T, lines ...string) string {
@@ -48,7 +71,7 @@ func TestAssignPlanPricesTheWholeIngestAgainstOneBox(t *testing.T) {
 		"hplt3",
 		"scratch left",
 		"On the fastest box alone",
-		"513.6 GB over 122 files across 3 boxes",
+		pinnedSize() + " across 3 boxes",
 	} {
 		if !strings.Contains(out, want) {
 			t.Errorf("the plan does not say %q:\n%s", want, out)
@@ -94,7 +117,7 @@ func TestAPlanDropsABoxWithItsNumbersRatherThanQuietly(t *testing.T) {
 	// The fast box is the one that was dropped, so the schedule has to be built
 	// out of the slow one alone. A plan that quietly used the rate it was handed
 	// would come back with two boxes and a shorter ingest than one box can do.
-	if !strings.Contains(out, "over 122 files across 1 box ") {
+	if !strings.Contains(out, pinnedSize()+" across 1 box ") {
 		t.Errorf("the schedule is not built out of server1 alone:\n%s", out)
 	}
 }
@@ -111,8 +134,8 @@ func TestAssignFilesNamesTheBoxForEveryFile(t *testing.T) {
 			files++
 		}
 	}
-	if files != 122 {
-		t.Errorf("the handover lists %d files, the manifest pins 122:\n%s", files, out)
+	if files != harvest.Files() {
+		t.Errorf("the handover lists %d files, the manifest pins %d:\n%s", files, harvest.Files(), out)
 	}
 
 	// Every box named here is a box that may hold corpus bytes. What a file
@@ -309,8 +332,8 @@ func TestAssignPrintsTheSamePlanAsJSON(t *testing.T) {
 	if !got.Holds || got.Seconds <= 0 {
 		t.Errorf("the JSON says holds=%v over %.0f seconds", got.Holds, got.Seconds)
 	}
-	if len(got.Groups) != 5 {
-		t.Fatalf("the JSON has %d groups, the manifest pins five orders that are not dropped", len(got.Groups))
+	if len(got.Groups) != pinnedOrders() {
+		t.Fatalf("the JSON has %d groups, the manifest pins %d orders that are not dropped", len(got.Groups), pinnedOrders())
 	}
 	if got.Groups[0].Order != 0 {
 		t.Errorf("the first group is order %d", got.Groups[0].Order)

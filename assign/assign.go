@@ -1,7 +1,7 @@
 // Package assign is to hand over: which box fetches which file of the ingest, and
 // what the whole ingest costs in wall clock once it is split across the fleet.
 //
-// The manifest pins 122 files and 513.6 GB, and what decides how long that takes
+// The manifest pins 72 files and 433.5 GB, and what decides how long that takes
 // is usually not the link. A decoding ingest fetches a record, puts it to the
 // ingest contract, tokenizes it and writes Parquet, and the fastest reading on
 // this fleet is 4.2 GB of Vietnamese in 40m09s. So the number a schedule needs
@@ -20,9 +20,9 @@
 //
 // Two things then make the split easy to get wrong. The first is that the files
 // are not the same size. The largest pinned file is 26.6 GB and the median is
-// 2.1 GB, a thirteenth of it, so dividing 122 files into equal piles leaves one
-// box working for a day after the others have gone quiet, and a file cannot be
-// cut in half because it is streamed and hashed as one unit. The second is that
+// 4.4 GB, a sixth of it, so dividing 72 files into equal piles leaves one box
+// working for hours after the others have gone quiet, and a file cannot be cut
+// in half because it is streamed and hashed as one unit. The second is that
 // the sources cannot all be fetched at once. HPLT v3 is pinned at order zero and
 // ingests alone, because every later source dedups against a store that already
 // holds it and the retention numbers are only reproducible against a fixed

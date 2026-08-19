@@ -2,10 +2,10 @@ package mill
 
 // Measuring how much of one source is already in another.
 //
-// Five Hugging Face sources are ingested and every one of them is built out of
+// Four Hugging Face sources are ingested and every one of them is built out of
 // Common Crawl. Adding their published token counts together is the number
 // nobody should quote, because a document that appears in HPLT and in FineWeb2
-// and in CulturaX has been counted three times, and there is no way to know how
+// and in GlotCC has been counted three times, and there is no way to know how
 // far off that sum is except by measuring.
 //
 // The measurement is deliberately asymmetric. GlotCC is a fraction of the size
@@ -27,9 +27,9 @@ import (
 // MaxSources is how many sources one overlap measurement holds.
 //
 // The membership of each document is a bitset in a uint64, since a document
-// that is in three of five sources has to carry which three, and half a billion
+// that is in three of four sources has to carry which three, and half a billion
 // of those is four gigabytes at eight bytes each and thirty two at anything
-// wider. Five sources are ingested and the cap is well above that.
+// wider. Four sources are ingested and the cap is well above that.
 const MaxSources = 64
 
 // An Overlap measures how much several sources share.

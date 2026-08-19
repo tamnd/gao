@@ -1,7 +1,7 @@
 // Package total adds up a release without letting the addition decide anything.
 //
 // Cộng is to add. The arithmetic is trivial and every hard part of this is
-// about what may be added to what. A corpus assembled from five ingested
+// about what may be added to what. A corpus assembled from four ingested
 // sources, a crawl, a recovery pass, three extraction routes and a generator
 // does not have one number, it has several, and the way that gets published
 // wrong is not a bad sum. It is a good sum over rows that had no business being

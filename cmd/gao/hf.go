@@ -69,9 +69,9 @@ Without -decode the bytes are counted and thrown away, which is what checks that
 a source can be fetched at all. With it, every record is mapped onto a gao
 document and put to the ingest contract: the ones that carry their provenance
 are admitted and counted, and the ones that do not go to -rejects with the reason
-they failed. Five sources decode today. The sixth is CulturaX, which is gated and
-whose terms have not been granted, so nobody has read a byte of it to write a
-mapping against.
+they failed. Every source the manifest fetches decodes. The one that does not is
+CulturaX, and it is dropped rather than pending: it is gated, the terms have not
+been granted, and nobody has read a byte of it to write a mapping against.
 
 The three that ship Parquet are decoded by range request rather than by streaming,
 because the format keeps its schema in a footer at the end of the file and cannot
@@ -122,9 +122,10 @@ Counting happens here rather than in a later pass because the largest source is
 around 700 GB of text, and a design where ingestion writes documents and
 something else reads them back to count is a design that moves 700 GB twice.
 
-Gated sources need a token in `+fleet.TokenEnv+`, and CulturaX is the gated one.
+Gated sources need a token in `+fleet.TokenEnv+` that has been granted the terms.
+CulturaX is the gated one and no token here has been, which is why it is dropped.
 
-There is no default for -dir. A command that starts a 513.6 GB download into
+There is no default for -dir. A command that starts a 433.5 GB download into
 whichever directory it happened to be run from is a command that will do it once
 by accident, and the ledger it leaves behind is the record of an ingest nobody
 meant to start.

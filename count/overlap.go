@@ -2,21 +2,21 @@ package count
 
 // What the sources have in common, measured rather than assumed.
 //
-// The number everybody wants from a corpus built out of five web dumps is how
+// The number everybody wants from a corpus built out of four web dumps is how
 // big it is after the copies are taken out, and the number nobody publishes is
 // how much of each source was already in another one. Both come from the same
 // pass. The key files are sorted, so walking all of them together in one go
 // yields each distinct document once along with the set of sources that hold it,
 // and every question is a count over those sets.
 //
-// One pass rather than one pass per pair matters at this size. Five sources is
-// ten pairs, and the pairs are not independent work: a document in three sources
+// One pass rather than one pass per pair matters at this size. Four sources is
+// six pairs, and the pairs are not independent work: a document in three sources
 // is in three pairs, and finding that out three times over is three times the
 // reading for an answer that was already in hand the first time.
 //
 // The bit per source is why there is a ceiling of sixty four sources here. gao
-// has five and the reason to raise the ceiling would be a corpus of a different
-// shape, which would want a different pass anyway.
+// ingests four and the reason to raise the ceiling would be a corpus of a
+// different shape, which would want a different pass anyway.
 //
 // What this counts is the same text and not the same page, and the difference is
 // larger than it sounds. Identity is a blake3 over the extracted text, so

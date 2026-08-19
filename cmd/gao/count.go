@@ -573,7 +573,7 @@ Every number here was counted rather than sampled or estimated.
 The pass reads all of the files once, together. The key files are sorted, so
 walking them in step yields each distinct document with the set of sources that
 hold it, and that set answers every pairwise intersection, the union, and what
-each source contributes that nothing else does. Five sources is ten pairs, and
+each source contributes that nothing else does. Four sources is six pairs, and
 measuring the pairs one at a time would read the same document three times to
 learn what one read already said.
 

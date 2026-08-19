@@ -47,11 +47,12 @@ type RandomDecoder interface {
 // RandomDecoderFor returns the decoder for a source whose files have to be read
 // out of order, which is the ones that ship Parquet.
 //
-// CulturaX is pinned, ships Parquet, and is not here. It is gated, and the terms
-// have not been granted, so nobody working on gao has read a byte of it. A
-// mapping written from the dataset card alone would be a guess with a version
-// number on it, and the other five were all written against the real file. It
-// gets a decoder when it gets a grant.
+// CulturaX is pinned, ships Parquet, and is not here. It is gated, the terms
+// have not been granted, and every request for a byte of it comes back a 403,
+// so nobody working on gao has read one. A mapping written from the dataset card
+// alone would be a guess with a version number on it, and the others were all
+// written against the real file. The manifest drops it rather than leaving it
+// pending, and it gets a decoder if it ever gets a grant.
 func RandomDecoderFor(s doc.Source) (RandomDecoder, bool) {
 	switch s {
 	case doc.SourceFineWeb2:

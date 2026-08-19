@@ -405,27 +405,52 @@ func TestAnInterruptedRunIsNotAFailedOne(t *testing.T) {
 	}
 }
 
-// The refusal has to come before the ledger is opened and before a byte moves,
-// because the alternative is finding out that a source cannot be decoded after
-// two hundred gigabytes of somebody else's bandwidth.
-func TestHFRefusesToDecodeASourceItCannotDecode(t *testing.T) {
+// Every source on the fetch list decodes, so a decoding plan over all of them
+// goes through. The one source without a mapping is CulturaX and it is dropped,
+// which is a refusal by name rather than a missing decoder, so the check that a
+// run cannot start on something it cannot decode is now made in harvest against
+// the whole manifest and made here on the source that is off the list.
+func TestHFPlansADecodingRunOverEverySourceItFetches(t *testing.T) {
 	for _, args := range [][]string{
 		{"harvest", "hf", "-dir", t.TempDir(), "-decode", "-plan"},
-		{"harvest", "hf", "-dir", t.TempDir(), "-source", "culturax", "-decode", "-plan"},
-		// -rejects implies -decode, so it is refused on the same grounds.
+		// -rejects implies -decode, so it takes the same route.
 		{"harvest", "hf", "-dir", t.TempDir(), "-rejects", filepath.Join(t.TempDir(), "vo.jsonl.zst"), "-plan"},
+	} {
+		out, errOut, code := exec(t, args...)
+		if code != 0 {
+			t.Fatalf("%v: exit %d, %s", args, code, errOut)
+		}
+		if !strings.Contains(out, "files to fetch") {
+			t.Errorf("%v: no plan was printed:\n%s", args, out)
+		}
+		if strings.Contains(out, "culturax") {
+			t.Errorf("%v: culturax is dropped and the plan fetches it:\n%s", args, out)
+		}
+	}
+}
+
+// The refusal has to come before the ledger is opened and before a byte moves,
+// because the alternative is finding out that a source cannot be fetched after
+// two hundred gigabytes of somebody else's bandwidth. For CulturaX there is no
+// download to get two hundred gigabytes into: it is gated, the terms were never
+// granted, and every request for a byte of it comes back a 403.
+func TestHFRefusesADroppedSourceWithTheReasonItWasDropped(t *testing.T) {
+	for _, args := range [][]string{
+		{"harvest", "hf", "-dir", t.TempDir(), "-source", "culturax", "-decode", "-plan"},
+		{"harvest", "hf", "-dir", t.TempDir(), "-source", "culturax", "-plan"},
 	} {
 		out, errOut, code := exec(t, args...)
 		if code != 1 {
 			t.Fatalf("%v: exit %d, want 1", args, code)
 		}
-		if !strings.Contains(errOut, "no decoder") || !strings.Contains(errOut, "culturax") {
-			t.Errorf("%v: the error does not name what cannot be decoded: %q", args, errOut)
+		if !strings.Contains(errOut, "culturax") || !strings.Contains(errOut, "dropped") {
+			t.Errorf("%v: the error does not say the source is dropped: %q", args, errOut)
 		}
-		// The way out is in the message, because the person who hit this wants to
-		// know what to run next and not what went wrong.
-		if !strings.Contains(errOut, "-source") {
-			t.Errorf("%v: the error does not say what to do instead: %q", args, errOut)
+		// The reason travels with the refusal, because the next question is
+		// always why and the answer is a field in the manifest rather than
+		// something the reader has to go and find.
+		if !strings.Contains(errOut, "Gated") {
+			t.Errorf("%v: the refusal carries no reason: %q", args, errOut)
 		}
 		if strings.Contains(out, "files to fetch") {
 			t.Errorf("%v: a plan was printed for a run that cannot happen:\n%s", args, out)

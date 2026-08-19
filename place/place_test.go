@@ -426,7 +426,7 @@ func TestASliceKnowsHowManyItWants(t *testing.T) {
 
 func TestTheFrameDescribesItselfInASentence(t *testing.T) {
 	d := Fixed().Describe()
-	if !strings.Contains(d, "200000 documents") || !strings.Contains(d, "6 sources") || !strings.Contains(d, "4 bands") {
+	if !strings.Contains(d, "200000 documents") || !strings.Contains(d, "5 sources") || !strings.Contains(d, "4 bands") {
 		t.Errorf("the frame does not describe its own shape: %s", d)
 	}
 	if strings.Contains(d, "\n") {

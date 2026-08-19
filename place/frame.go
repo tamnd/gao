@@ -24,20 +24,25 @@ func Fixed() Frame {
 // is deliberate: a reference set drawn in proportion to the corpus is 85% web
 // text, which trains a classifier that has seen almost nothing of what the
 // corpus is short of.
+//
+// CulturaX held 10% of this draw and holds none of it now. It is gated, the
+// terms were never granted, and the manifest drops it, so a frame that asks a
+// labeler for two thousand documents out of it is asking for documents that are
+// not in the corpus. The share went to the two derived sets that are, since the
+// job it was doing here was showing the rubric a set built to somebody else's
+// recipe.
 func slicesOf() []Slice {
 	return []Slice{
 		{"hplt3", 0.30,
 			"the largest source and the one the headline token count rests on, so the classifier has to be right about it before it is right about anything"},
 		{"crawl", 0.25,
 			"the only source nobody else has cleaned, which makes it the one where a quality call is load bearing rather than a second opinion on somebody else's filter"},
-		{"fineweb2", 0.15,
+		{"fineweb2", 0.20,
 			"already filtered upstream, and a share this size is what says whether our rubric agrees with that filter or quietly replaces it"},
-		{"culturax", 0.10,
-			"the oldest of the derived sets and the one most likely to hold text the others have since dropped, which is a different distribution rather than a smaller one"},
 		{"finepdfs", 0.15,
 			"three times its share of the corpus, because PDFs are where the edited long form is and a classifier that has seen fifty of them will call the rest of them boilerplate"},
-		{"glotcc", 0.05,
-			"the smallest source, kept in at a share big enough to notice if the rubric behaves differently on it"},
+		{"glotcc", 0.10,
+			"the smallest source, at twice the share its size argues for, because a derived set built to a different recipe is where the rubric is most likely to behave differently and nobody would notice at 5%"},
 	}
 }
 
