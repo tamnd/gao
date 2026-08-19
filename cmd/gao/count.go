@@ -41,6 +41,8 @@ func runCount(stdout, stderr io.Writer, args []string) int {
 		return runCountOverlap(stdout, stderr, args[1:])
 	case "verify":
 		return runCountVerify(stdout, stderr, args[1:])
+	case "repair":
+		return runCountRepair(stdout, stderr, args[1:])
 	case "help", "-h", "--help":
 		countUsage(stdout)
 		return 0
@@ -66,6 +68,7 @@ subcommands:
   keys       read the document identities of a snapshot out of the store
   overlap    print what the sources have in common, from their key files
   verify     check a published count against the store it came from
+  repair     rewrite an ingest's counts from the store, for a run that counted twice
 
 run 'gao count <subcommand> -h' for the flags of a single subcommand.
 `)
@@ -374,6 +377,187 @@ flags:
 	fmt.Fprintf(stdout, "  repeats    %s of the source is a copy of something already in it\n", percent(keys.Duplication()))
 	fmt.Fprintf(stdout, "\nwritten to %s\n", path)
 	return 0
+}
+
+func runCountRepair(stdout, stderr io.Writer, args []string) int {
+	fs := flag.NewFlagSet("count repair", flag.ContinueOnError)
+	fs.SetOutput(stderr)
+	repo := fs.String("repo", store.StageRepo, "the dataset repo the parts are in")
+	dir := fs.String("dir", "verify", "where the resume records are kept")
+	into := fs.String("o", "", "the ingest directory whose counts.json to rewrite")
+	box := fs.String("box", "", "the box the repaired report is attributed to, defaulting to this one")
+	model := fs.String("tokenizer", "", "the tokenizer to name on the repaired report")
+	fs.Usage = func() {
+		fmt.Fprint(stderr, `usage: gao count repair -o DIR [-repo NAME] [SNAPSHOT ...]
+
+Rewrites an ingest's counts.json from what the store holds. With no snapshot it
+rebuilds from every snapshot the repo has.
+
+An ingest counts as it goes, which makes its total a running tally, and a tally
+is a number that has to be right every single time it is touched. It was not. A
+shard that failed partway through left its documents in the tally, the resumed
+run read the whole shard again, and the total came out over by the length of the
+first attempt. The counting code no longer works that way, since a document is
+staged and only joins the totals when its file finishes, but a file already
+written on a box carries the number the old code produced and no amount of
+correct code fixes a file.
+
+The store is the repair. It is a set of parts, each written once, each carrying
+its own documents' shape columns, so adding them up cannot double count: a
+document that is in the store twice is in the store twice, and that is the truth
+about the corpus rather than an accident of a tally. This reads the same columns
+'gao count verify -level counts' reads, over every part, and shares its resume
+records, so a verify already run is not paid for again.
+
+What does not come back is bytes. The byte length of the text is not a column,
+so a rebuilt report carries zero there and says in its 'from' field that it was
+rebuilt, which is what makes that zero readable. Nothing here scales the old
+byte figure by the ratio of the document counts. That would put five significant
+figures on the assumption that the documents counted twice were of average size,
+which nobody measured and which is the failure being repaired.
+
+The old file is kept beside the new one as counts.json.before, because a repair
+that destroys the evidence cannot be checked afterwards.
+
+Reading a working repo needs a token in `+fleet.TokenEnv+` with access to it.
+
+flags:
+`)
+		fs.PrintDefaults()
+	}
+	if err := fs.Parse(args); err != nil {
+		return 2
+	}
+	if *into == "" {
+		fmt.Fprintln(stderr, "gao count repair: -o names the ingest directory to rewrite, and there is no default for it")
+		return 2
+	}
+
+	// The report being replaced is read before anything reaches the network, so
+	// that a directory that is not one an ingest wrote costs nothing to find
+	// out about. It is also what the summary at the end is put beside, since
+	// the point of a repair is the difference it made rather than the number it
+	// landed on.
+	was, err := count.ReadReport(*into)
+	if err != nil {
+		fmt.Fprintf(stderr, "gao count repair: %v\n", err)
+		return 1
+	}
+	if was.From == count.FromStore {
+		fmt.Fprintf(stdout, "%s was already rebuilt from the store, and rebuilding it again reads the corpus to land on the same numbers\n", filepath.Join(*into, count.File))
+		return 0
+	}
+
+	d, ok := store.Lookup(*repo)
+	if !ok {
+		fmt.Fprintf(stderr, "gao count repair: no dataset named %q\n", *repo)
+		fmt.Fprintln(stderr, "run 'gao store datasets' for the list")
+		return 1
+	}
+	s := &count.Store{Repo: d.Repo(), Token: fleet.Token(), API: pushAPI()}
+
+	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
+	defer stop()
+
+	snapshots := fs.Args()
+	if len(snapshots) == 0 {
+		found, err := s.Snapshots(ctx)
+		if err != nil {
+			fmt.Fprintf(stderr, "gao count repair: %v\n", err)
+			return 1
+		}
+		if len(found) == 0 {
+			fmt.Fprintf(stdout, "%s holds no ingested snapshots\n", d.Repo())
+			return 0
+		}
+		snapshots = found
+	}
+
+	by := map[doc.Source]count.Counts{}
+	for _, snapshot := range snapshots {
+		fmt.Fprintf(stdout, "\nadding up the shape columns of %s\n", snapshot)
+		c, err := count.RecountOf(ctx, s, snapshot, *dir, func(part store.Stored, i, of int, c count.Counts, moved int64, fromLog bool) {
+			read := fleet.Size(moved) + " read so far"
+			if fromLog {
+				read = "read on an earlier run"
+			}
+			fmt.Fprintf(stdout, "  %4d/%d  %-52s %10d documents, %s\n",
+				i, of, filepath.Base(part.Path), c.Documents, read)
+		})
+		if err != nil {
+			fmt.Fprintf(stderr, "gao count repair: %v\n", err)
+			return 1
+		}
+		source := doc.Source(count.SourceOf(snapshot))
+		acc := by[source]
+		acc.Merge(c)
+		by[source] = acc
+	}
+
+	on := *box
+	if on == "" {
+		on = fleet.Label()
+	}
+	tokenizer := *model
+	if tokenizer == "" {
+		tokenizer = was.Tokenizer
+	}
+	now := count.Rebuilt(on, tokenizer, time.Now(), by)
+
+	kept := filepath.Join(*into, count.File+".before")
+	if err := keepBefore(filepath.Join(*into, count.File), kept); err != nil {
+		fmt.Fprintf(stderr, "gao count repair: %v\n", err)
+		return 1
+	}
+	if err := now.Write(*into); err != nil {
+		fmt.Fprintf(stderr, "gao count repair: %v\n", err)
+		return 1
+	}
+
+	printRepair(stdout, was, now)
+	fmt.Fprintf(stdout, "\nwritten to %s, and what was there is at %s\n", filepath.Join(*into, count.File), kept)
+	return 0
+}
+
+// keepBefore copies the report about to be overwritten, so the repair can be
+// argued with afterwards by somebody who was not in the room.
+func keepBefore(from, to string) error {
+	b, err := os.ReadFile(from)
+	if err != nil {
+		return err
+	}
+	return os.WriteFile(to, b, 0o644)
+}
+
+// printRepair puts the two reports side by side per source, because a repair is
+// only reviewable as a difference.
+func printRepair(w io.Writer, was, now count.Report) {
+	fmt.Fprintln(w)
+	tw := tabwriter.NewWriter(w, 0, 0, 2, ' ', 0)
+	fmt.Fprint(tw, "source\t\tdocuments\tchars\tsyllables\ttokens\n")
+	for _, s := range now.Sources {
+		var before count.Counts
+		for _, o := range was.Sources {
+			if o.Source == s.Source {
+				before = o.Counts
+			}
+		}
+		fmt.Fprintf(tw, "%s\twas\t%d\t%d\t%d\t%s\n",
+			s.Source, before.Documents, before.Chars, before.Syllables, tokenColumn(before))
+		fmt.Fprintf(tw, "\tstored\t%d\t%d\t%d\t%s\n",
+			s.Documents, s.Chars, s.Syllables, tokenColumn(s.Counts))
+		if d := before.Documents - s.Documents; d != 0 {
+			fmt.Fprintf(tw, "\tover by\t%d\t\t\t\n", d)
+		}
+	}
+	_ = tw.Flush()
+
+	if was.Total.Bytes > 0 {
+		fmt.Fprintf(w, "\nthe byte column is now zero, where the ingest had %s. The store does not carry the byte\n", fleet.GB(was.Total.Bytes))
+		fmt.Fprint(w, "length of the text, and the old figure came from the same tally that was over on documents,\n")
+		fmt.Fprint(w, "so it is dropped rather than kept or scaled. 'gao count verify -level text' measures bytes\n")
+		fmt.Fprint(w, "per character on a sample, which is the honest way back to a byte count.\n")
+	}
 }
 
 func runCountOverlap(stdout, stderr io.Writer, args []string) int {

@@ -697,3 +697,106 @@ func TestPrintShapeDoesNotClaimAByteCountItCannotHave(t *testing.T) {
 		t.Errorf("the output does not say why there is no byte count:\n%s", out)
 	}
 }
+
+// Nothing below reaches the store. Rebuilding is settled in count against real
+// parts, and what is left for the command is the checks it makes before it goes
+// anywhere and the table it prints afterwards.
+
+func TestCountRepairNeedsTheDirectoryItIsRewriting(t *testing.T) {
+	_, errOut, code := exec(t, "count", "repair")
+	if code != 2 {
+		t.Errorf("gao count repair with no -o: exit %d, want 2", code)
+	}
+	if !strings.Contains(errOut, "-o") {
+		t.Errorf("the error does not say which flag is missing:\n%s", errOut)
+	}
+}
+
+func TestCountRepairSaysWhenTheDirectoryIsNotAnIngest(t *testing.T) {
+	_, errOut, code := exec(t, "count", "repair", "-o", t.TempDir())
+	if code != 1 {
+		t.Errorf("gao count repair on an empty directory: exit %d, want 1", code)
+	}
+	if !strings.Contains(errOut, "no counts") {
+		t.Errorf("the error does not say the directory has no counts:\n%s", errOut)
+	}
+}
+
+// A repair reads every part in the corpus, so running it twice on the same
+// directory is hours of reading to land on the numbers already in the file.
+func TestCountRepairDoesNotRebuildAReportItAlreadyRebuilt(t *testing.T) {
+	dir := writeCounts(t, count.Report{
+		Box:      "server3",
+		Finished: time.Now().UTC(),
+		Complete: true,
+		From:     count.FromStore,
+		Sources: []count.SourceCounts{
+			{Source: doc.SourceGlotCC, Counts: count.Counts{Documents: 13232715}},
+		},
+	})
+
+	out, _, code := exec(t, "count", "repair", "-o", dir)
+	if code != 0 {
+		t.Fatalf("gao count repair on a rebuilt report: exit %d, want 0", code)
+	}
+	if !strings.Contains(out, "already rebuilt") {
+		t.Errorf("the run does not say the report was already rebuilt:\n%s", out)
+	}
+	if _, err := os.Stat(filepath.Join(dir, count.File+".before")); !os.IsNotExist(err) {
+		t.Error("a run that did nothing still moved the old report aside")
+	}
+}
+
+// The point of a repair is the difference it made, so the table carries both
+// numbers and the byte column explains itself rather than showing a bare zero.
+func TestTheRepairTablePutsTheTwoCountsSideBySide(t *testing.T) {
+	was := count.Report{
+		Box:       "server3",
+		Tokenizer: "gemma-3",
+		Sources: []count.SourceCounts{
+			{Source: doc.SourceGlotCC, Counts: count.Counts{Documents: 13457227, Bytes: 41 << 30, Chars: 1000, Syllables: 200, Tokens: 330}},
+		},
+		Total: count.Counts{Documents: 13457227, Bytes: 41 << 30},
+	}
+	now := count.Rebuilt("server3", "gemma-3", time.Now(), map[doc.Source]count.Counts{
+		doc.SourceGlotCC: {Documents: 13232715, Chars: 990, Syllables: 198, Tokens: 327},
+	})
+
+	var b bytes.Buffer
+	printRepair(&b, was, now)
+	out := b.String()
+
+	for _, want := range []string{
+		"13457227",
+		"13232715",
+		"over by",
+		"224512", // 13457227 - 13232715
+		"the byte column is now zero",
+		"44.0 GB", // 41 GiB in the decimal units the fleet prints
+	} {
+		if !strings.Contains(out, want) {
+			t.Errorf("the repair table does not mention %q:\n%s", want, out)
+		}
+	}
+}
+
+// A source the ingest never counted has no was line to print, and printing a
+// zero there would read as a source that lost every document it had.
+func TestTheRepairTableSaysNothingAboutBytesWhenTheIngestCountedNone(t *testing.T) {
+	now := count.Rebuilt("server3", "", time.Now(), map[doc.Source]count.Counts{
+		doc.SourceGlotCC: {Documents: 10},
+	})
+
+	var b bytes.Buffer
+	printRepair(&b, count.Report{}, now)
+	if strings.Contains(b.String(), "byte column") {
+		t.Errorf("a repair with no byte figure to drop still explained dropping one:\n%s", b.String())
+	}
+}
+
+func TestCountRepairIsInTheCountUsage(t *testing.T) {
+	_, errOut, _ := exec(t, "count")
+	if !strings.Contains(errOut, "repair") {
+		t.Errorf("the count usage does not mention repair:\n%s", errOut)
+	}
+}
