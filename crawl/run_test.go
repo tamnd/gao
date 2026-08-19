@@ -192,7 +192,7 @@ func TestAStoppedCrawlIsNotAFailure(t *testing.T) {
 	ctx, cancel := context.WithCancel(t.Context())
 	cancel()
 	if _, err := Run(ctx, RunOptions{Frontier: f, Sink: s, Crawler: c, Workers: 2}); err != nil {
-		t.Errorf("a cancelled crawl came back as an error: %v", err)
+		t.Errorf("a canceled crawl came back as an error: %v", err)
 	}
 }
 

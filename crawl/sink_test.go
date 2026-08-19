@@ -92,6 +92,7 @@ func TestTheLocatorNamesTheRecordThePageCameFrom(t *testing.T) {
 	if err != nil {
 		t.Fatalf("the response would not parse: %v", err)
 	}
+	defer func() { _ = res.Body.Close() }()
 	body, _ := io.ReadAll(res.Body)
 	if !strings.Contains(string(body), "Xin chao") {
 		t.Errorf("the body at that offset is %q", body)

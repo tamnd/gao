@@ -235,7 +235,7 @@ func OpenSink(o SinkOptions) (*Sink, error) {
 //
 // A crawl is restarted. It is restarted to take a new binary, and it is
 // restarted by its own supervisor after a box loses its network, so the run that
-// is going now is rarely the run that wrote the volumes under it. Ageing only
+// is going now is rarely the run that wrote the volumes under it. Aging only
 // what this process wrote means a box set to keep two volumes keeps two per run
 // and every restart resets the count, which is how a disk that is supposed to
 // hold a gigabyte ends up holding all of it. server2 had four volumes and 7 GB
@@ -460,7 +460,7 @@ func (s *Sink) volume() error {
 	return nil
 }
 
-// rotate closes the open volume and moves the counter on, ageing out the oldest
+// rotate closes the open volume and moves the counter on, aging out the oldest
 // volume if the run is only keeping a few.
 func (s *Sink) rotate() error {
 	if s.warc == nil {
@@ -498,7 +498,7 @@ func (s *Sink) age() error {
 		old := s.done[0]
 		s.done = s.done[1:]
 		if err := os.Remove(filepath.Join(s.o.Dir, filepath.FromSlash(old))); err != nil && !os.IsNotExist(err) {
-			return fmt.Errorf("crawl: ageing out %s: %w", old, err)
+			return fmt.Errorf("crawl: aging out %s: %w", old, err)
 		}
 		s.stats.Aged++
 	}

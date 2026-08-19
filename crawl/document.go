@@ -133,10 +133,10 @@ func Build(v *harvest.Visit, p *Page, o BuildOptions) Verdict {
 	d.Diacritics = m.Diacritic()
 	d.Heuristics = m.Heuristics()
 
-	// The reservation is honoured after the measurements are taken and before
+	// The reservation is honored after the measurements are taken and before
 	// anything is kept. Taking the measurements costs nothing and a rejection
 	// that carries them can be counted, which is how the crawl knows what
-	// honouring reservations costs it.
+	// honoring reservations costs it.
 	if reason, detail, bad := reserve.Reject(); bad {
 		out := refuse(d, StageReserve, reason, detail)
 		out.Measured = m

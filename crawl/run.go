@@ -114,9 +114,9 @@ func (p Progress) Rate() float64 {
 }
 
 // Run crawls until the frontier is empty, the page limit is reached, or the
-// context is cancelled.
+// context is canceled.
 //
-// A cancelled context is not an error. Stopping a crawl is how a crawl ends, and
+// A canceled context is not an error. Stopping a crawl is how a crawl ends, and
 // what matters is that the frontier and the sink are left in a state the next
 // run picks up from, which is what the deferred flush is for.
 func Run(ctx context.Context, o RunOptions) (Progress, error) {
@@ -204,8 +204,12 @@ type loop struct {
 // when the frontier is empty or the run has fetched what it was asked for.
 func (r *loop) feed(ctx context.Context, urls chan<- string) error {
 	for {
-		if ctx.Err() != nil {
+		// A stopped crawl is a finished crawl rather than a failed one, so the
+		// cancellation ends the feed and is not passed on as the run's error.
+		select {
+		case <-ctx.Done():
 			return nil
+		default:
 		}
 		if r.o.Pages > 0 && r.fetched.Load() >= r.o.Pages {
 			return nil

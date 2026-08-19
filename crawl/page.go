@@ -194,7 +194,7 @@ func (p *Page) readMeta(n *html.Node) {
 // readLinks collects every href on the page, resolved and absolute.
 //
 // A link with rel=nofollow is left out. It is the one link level instruction
-// that is nearly universally understood to mean do not go there, and honouring
+// that is nearly universally understood to mean do not go there, and honoring
 // it costs a crawl almost nothing: it is on comment links and on paid links,
 // which are the two kinds of link least likely to lead to a Vietnamese article.
 func (p *Page) readLinks(root *html.Node, base *url.URL) {
@@ -296,7 +296,7 @@ func (b block) score() int {
 // mainText picks the container that holds the page's content and renders it.
 //
 // Containers are scored from the deepest up, and the best one wins outright
-// rather than being merged with its neighbours. An article split across two divs
+// rather than being merged with its neighbors. An article split across two divs
 // loses the second one, and that is the right trade: merging containers by score
 // is how an extractor ends up with the article followed by the list of related
 // stories, and a document with a nav column glued to the end of it is worse than

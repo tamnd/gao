@@ -21,7 +21,7 @@ func read(t *testing.T, base, doc string) *Page {
 
 // The shape of nearly every Vietnamese news page: a masthead, a navigation bar
 // of every section on the site, the article, a column of related headlines, and
-// a footer with the licence number in it.
+// a footer with the license number in it.
 const newsPage = `<!doctype html>
 <html lang="vi">
 <head>

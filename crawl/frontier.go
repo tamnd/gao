@@ -307,15 +307,15 @@ func OpenFrontier(o FrontierOptions) (*Frontier, error) {
 	f.filter = make([]uint64, (f.bits+63)/64)
 
 	if err := f.openRuns(m); err != nil {
-		f.Close()
+		_ = f.Close()
 		return nil, err
 	}
 	if err := f.openLog(); err != nil {
-		f.Close()
+		_ = f.Close()
 		return nil, err
 	}
 	if err := f.openQueue(m); err != nil {
-		f.Close()
+		_ = f.Close()
 		return nil, err
 	}
 	return f, nil
@@ -375,7 +375,7 @@ func (f *Frontier) loadRun(name string) (*run, error) {
 				// URLs offered a second time, which is what the frontier is for.
 				break
 			}
-			fh.Close()
+			_ = fh.Close()
 			return nil, fmt.Errorf("crawl: reading %s: %w", name, err)
 		}
 		h := binary.BigEndian.Uint64(buf[:])
@@ -411,11 +411,11 @@ func (f *Frontier) openLog() error {
 	}
 	// Truncate to whole hashes, for the same reason a run is.
 	if err := fh.Truncate(n * 8); err != nil {
-		fh.Close()
+		_ = fh.Close()
 		return fmt.Errorf("crawl: opening the pending hashes: %w", err)
 	}
 	if _, err := fh.Seek(0, io.SeekEnd); err != nil {
-		fh.Close()
+		_ = fh.Close()
 		return fmt.Errorf("crawl: opening the pending hashes: %w", err)
 	}
 	f.log, f.logw = fh, bufio.NewWriterSize(fh, 1<<16)
@@ -434,12 +434,12 @@ func (f *Frontier) openQueue(m *manifest) error {
 		}
 		info, err := w.Stat()
 		if err != nil {
-			w.Close()
+			_ = w.Close()
 			return fmt.Errorf("crawl: opening the queue: %w", err)
 		}
 		r, err := os.Open(b.path)
 		if err != nil {
-			w.Close()
+			_ = w.Close()
 			return fmt.Errorf("crawl: opening the queue: %w", err)
 		}
 		b.w, b.bw, b.r, b.end = w, bufio.NewWriterSize(w, 1<<16), r, info.Size()
@@ -447,8 +447,8 @@ func (f *Frontier) openQueue(m *manifest) error {
 			b.head = min(m.Heads[i], b.end)
 		}
 		if _, err := b.r.Seek(b.head, io.SeekStart); err != nil {
-			w.Close()
-			r.Close()
+			_ = w.Close()
+			_ = r.Close()
 			return fmt.Errorf("crawl: opening the queue: %w", err)
 		}
 		b.br = bufio.NewReaderSize(b.r, 1<<16)
@@ -881,7 +881,7 @@ func (f *Frontier) compactRuns() error {
 		f.runs = f.runs[:len(f.runs)-2]
 		f.runs = append(f.runs, merged)
 		for _, old := range []*run{a, b} {
-			old.f.Close()
+			_ = old.f.Close()
 			if err := os.Remove(filepath.Join(f.dir, old.name)); err != nil {
 				return fmt.Errorf("crawl: removing a merged run: %w", err)
 			}
@@ -902,7 +902,7 @@ func (f *Frontier) writeRun(name string, hashes []uint64) (*run, error) {
 	for _, h := range hashes {
 		binary.BigEndian.PutUint64(buf[:], h)
 		if _, err := bw.Write(buf[:]); err != nil {
-			fh.Close()
+			_ = fh.Close()
 			return nil, fmt.Errorf("crawl: writing a frontier run: %w", err)
 		}
 		if r.count%fanout == 0 {
@@ -911,7 +911,7 @@ func (f *Frontier) writeRun(name string, hashes []uint64) (*run, error) {
 		r.count++
 	}
 	if err := bw.Flush(); err != nil {
-		fh.Close()
+		_ = fh.Close()
 		return nil, fmt.Errorf("crawl: writing a frontier run: %w", err)
 	}
 	if err := fh.Close(); err != nil {
@@ -951,12 +951,12 @@ func (f *Frontier) mergeRuns(name string, a, b *run) (*run, error) {
 
 	ha, oka, err := ra.next()
 	if err != nil {
-		fh.Close()
+		_ = fh.Close()
 		return nil, err
 	}
 	hb, okb, err := rb.next()
 	if err != nil {
-		fh.Close()
+		_ = fh.Close()
 		return nil, err
 	}
 	for oka || okb {
@@ -976,16 +976,16 @@ func (f *Frontier) mergeRuns(name string, a, b *run) (*run, error) {
 			ha, oka, err = ra.next()
 		}
 		if err != nil {
-			fh.Close()
+			_ = fh.Close()
 			return nil, err
 		}
 		if err := write(h); err != nil {
-			fh.Close()
+			_ = fh.Close()
 			return nil, fmt.Errorf("crawl: merging frontier runs: %w", err)
 		}
 	}
 	if err := bw.Flush(); err != nil {
-		fh.Close()
+		_ = fh.Close()
 		return nil, fmt.Errorf("crawl: merging frontier runs: %w", err)
 	}
 	if err := fh.Close(); err != nil {
@@ -1089,7 +1089,7 @@ func (b *bucket) compact() error {
 	src := io.NewSectionReader(b.r, b.head, b.end-b.head)
 	n, err := io.Copy(out, src)
 	if err != nil {
-		out.Close()
+		_ = out.Close()
 		return fmt.Errorf("crawl: compacting %s: %w", b.path, err)
 	}
 	if err := out.Close(); err != nil {
@@ -1110,7 +1110,7 @@ func (b *bucket) compact() error {
 	}
 	r, err := os.Open(b.path)
 	if err != nil {
-		w.Close()
+		_ = w.Close()
 		return fmt.Errorf("crawl: compacting %s: %w", b.path, err)
 	}
 	b.w, b.bw, b.r, b.br = w, bufio.NewWriterSize(w, 1<<16), r, bufio.NewReaderSize(r, 1<<16)

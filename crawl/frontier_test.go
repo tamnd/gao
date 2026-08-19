@@ -20,7 +20,7 @@ func open(t *testing.T, o FrontierOptions) *Frontier {
 	if err != nil {
 		t.Fatalf("OpenFrontier: %v", err)
 	}
-	t.Cleanup(func() { f.Close() })
+	t.Cleanup(func() { _ = f.Close() })
 	return f
 }
 
@@ -200,7 +200,7 @@ func TestTheSeenSetSurvivesBeingSpilledAndMerged(t *testing.T) {
 	// every merge the compaction does.
 	f := open(t, FrontierOptions{Dir: dir, Pending: 4})
 
-	var urls []string
+	urls := make([]string, 0, 100)
 	for i := range 100 {
 		u := fmt.Sprintf("https://h%02d.example/p%d", i%17, i)
 		urls = append(urls, u)

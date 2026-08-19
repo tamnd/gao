@@ -190,7 +190,7 @@ flags:
 			// Not the run's context. A crawl is stopped by a signal and the last
 			// thing it does is close both rolls, which is where the part holding
 			// everything since the last one gets pushed. Under the run's context
-			// that push is already cancelled before it starts, so every stop
+			// that push is already canceled before it starts, so every stop
 			// leaves its final part on the disk and out of the dataset. The
 			// timeout is what keeps a stop from hanging on a store that is not
 			// answering.
@@ -314,7 +314,7 @@ func crawlSeeds(path string, args []string) ([]string, error) {
 		if err != nil {
 			return nil, err
 		}
-		defer f.Close()
+		defer func() { _ = f.Close() }()
 		r = f
 	}
 	s := bufio.NewScanner(r)
