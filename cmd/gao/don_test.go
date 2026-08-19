@@ -100,7 +100,7 @@ func rotationLog(t *testing.T, files map[string][]string) string {
 	for name, states := range files {
 		for _, state := range states {
 			minute++
-			b.WriteString(`{"name":"` + name + `","path":"data/snapshot=gao-crawl-2026-09/` + name +
+			b.WriteString(`{"name":"` + name + `","path":"data/gao-crawl-2026-09/` + name +
 				`","bytes":1000000000,"hash":"1f4a` + name + `","state":"` + state +
 				`","at":"2026-09-14T03:` + pad(minute) + `:00Z","box":"server1"}` + "\n")
 		}
@@ -165,7 +165,7 @@ func TestTheOldestThingStillOnTheBoxIsNamed(t *testing.T) {
 	if !strings.Contains(out, "The oldest thing still on the box is part-00003.warc.gz") {
 		t.Errorf("the stuck file was not named:\n%s", out)
 	}
-	if !strings.Contains(out, "data/snapshot=gao-crawl-2026-09") {
+	if !strings.Contains(out, "data/gao-crawl-2026-09") {
 		t.Errorf("the per file table does not carry the store path:\n%s", out)
 	}
 }

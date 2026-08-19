@@ -20,7 +20,7 @@ func life(name string, bytes int64, through State) []Event {
 	for s := Resident; s <= through; s++ {
 		out = append(out, Event{
 			Name:  name,
-			Path:  "data/snapshot=gao-crawl-2026-09/" + name,
+			Path:  "data/gao-crawl-2026-09/" + name,
 			Bytes: bytes,
 			Hash:  "1f4a" + name,
 			State: s,

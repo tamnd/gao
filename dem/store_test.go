@@ -411,7 +411,7 @@ func TestAPartsKeyFileIsNamedAfterThePart(t *testing.T) {
 	if got, want := partKeys(kho.StagePath(snapshot, 3, 7)), "f00003-p00007"+KeysExt; got != want {
 		t.Errorf("partKeys = %q, want %q", got, want)
 	}
-	if got, want := partKeys("data/snapshot=x/part-00002-of-00774.parquet"), "part-00002-of-00774"+KeysExt; got != want {
+	if got, want := partKeys("data/x/part-00002-of-00774.parquet"), "part-00002-of-00774"+KeysExt; got != want {
 		t.Errorf("partKeys for a published shard = %q, want %q", got, want)
 	}
 }

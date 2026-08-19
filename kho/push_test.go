@@ -398,7 +398,7 @@ func TestAPushPutsTheBytesInStorageAndPointsThePathAtThem(t *testing.T) {
 			t.Errorf("%s went to the hub without the token", step)
 		}
 	}
-	if len(h.commits) != 1 || !strings.Contains(h.commits[0], "part-00000") {
+	if len(h.commits) != 1 || !strings.Contains(h.commits[0], path) {
 		t.Errorf("the commit message does not name the file: %v", h.commits)
 	}
 }

@@ -313,7 +313,7 @@ func TestTheQueryIsTheParentsParquetWithThePredicateOnIt(t *testing.T) {
 		t.Fatal("the repo is not in the table")
 	}
 	q := edu().Query(d)
-	for _, want := range []string{"snapshot=gao-v1.0", "quality >= 0.8", d.Repo()} {
+	for _, want := range []string{"/gao-v1.0/", "quality >= 0.8", d.Repo()} {
 		if !strings.Contains(q, want) {
 			t.Errorf("the query does not carry %s:\n%s", want, q)
 		}

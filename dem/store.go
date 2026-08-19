@@ -84,14 +84,19 @@ func (s *Store) Snapshots(ctx context.Context) ([]string, error) {
 //
 // Path order is the order the parts were written in, which is not required for
 // anything here and makes a long run's progress readable.
+//
+// A source keeps every revision it was ever pinned at in the one directory, so
+// the listing is by source and the snapshot is matched off each path. Reading
+// the directory as though it were the snapshot would hand a run at one revision
+// the parts of another.
 func (s *Store) Parts(ctx context.Context, snapshot string) ([]kho.Stored, error) {
-	files, err := s.pusher().List(ctx, kho.SnapshotDir(snapshot))
+	files, err := s.pusher().List(ctx, kho.SourceDir(snapshot))
 	if err != nil {
 		return nil, err
 	}
 	parts := make([]kho.Stored, 0, len(files))
 	for _, f := range files {
-		if f.Parquet() {
+		if got, _, _, ok := kho.ParseStagePath(f.Path); ok && got == snapshot {
 			parts = append(parts, f)
 		}
 	}

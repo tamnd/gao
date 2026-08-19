@@ -95,7 +95,7 @@ func TestAListingNamesEveryPartInASnapshot(t *testing.T) {
 	fill(t, h, "glotcc-9ad140b6be3a", 3)
 	fill(t, h, "fineweb2-1c0ffee1c0ff", 2)
 
-	got, err := h.pusher().List(t.Context(), SnapshotDir("glotcc-9ad140b6be3a"))
+	got, err := h.pusher().List(t.Context(), SourceDir("glotcc-9ad140b6be3a"))
 	if err != nil {
 		t.Fatalf("List: %v", err)
 	}
@@ -216,8 +216,8 @@ func TestTheNextPageIsTheOneTheLinkHeaderPointsAt(t *testing.T) {
 
 func TestAResolveURLPointsAtTheBranchTheRepoIsRead(t *testing.T) {
 	p := &Pusher{Repo: testRepo, API: "https://hub.example"}
-	want := "https://hub.example/datasets/" + testRepo + "/resolve/main/data/snapshot=x/part-00000.parquet"
-	if got := p.ResolveURL("data/snapshot=x/part-00000.parquet"); got != want {
+	want := "https://hub.example/datasets/" + testRepo + "/resolve/main/data/x/part-00000.parquet"
+	if got := p.ResolveURL("data/x/part-00000.parquet"); got != want {
 		t.Errorf("ResolveURL = %q, want %q", got, want)
 	}
 }
