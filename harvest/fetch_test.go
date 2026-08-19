@@ -35,10 +35,11 @@ func sha(b []byte) string {
 type host struct {
 	mu       sync.Mutex
 	content  []byte
-	drops    int  // connections still to be cut short
-	cut      int  // bytes to send before cutting
-	ignore   bool // answer 200 and the whole file even to a Range request
-	status   int  // when non-zero, the status to answer with instead
+	drops    int   // connections still to be cut short
+	cut      int   // bytes to send before cutting
+	cuts     []int // when set, the bytes to send on each cut in turn, then cut
+	ignore   bool  // answer 200 and the whole file even to a Range request
+	status   int   // when non-zero, the status to answer with instead
 	ranges   []string
 	auths    []string
 	requests int
@@ -54,6 +55,9 @@ func (h *host) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		h.drops--
 	}
 	content, cut, ignore, status := h.content, h.cut, h.ignore, h.status
+	if drop && len(h.cuts) > 0 {
+		cut, h.cuts = h.cuts[0], h.cuts[1:]
+	}
 	h.mu.Unlock()
 
 	if status != 0 {
@@ -395,8 +399,14 @@ func TestTheTokenGoesToTheHubAndNowhereElse(t *testing.T) {
 	}
 }
 
-func TestAHostThatKeepsDroppingIsGivenUpOn(t *testing.T) {
-	h := &host{drops: 100, cut: 100}
+// A host that answers the range request and then sends nothing is not a link
+// that keeps going down. Nothing about the file is moving, so the reconnects
+// buy nothing and the budget runs out.
+func TestAHostThatStopsSendingIsGivenUpOn(t *testing.T) {
+	// Three hundred bytes on the first connection and nothing on any of the
+	// ones after it, which is a transfer that started and then stopped rather
+	// than one that never started.
+	h := &host{drops: 100, cuts: []int{300}}
 	s, p, f := serveFile(t, h)
 
 	fetch := &Fetcher{Client: s.Client(), Retries: 2, RetryWait: time.Millisecond}
@@ -412,10 +422,69 @@ func TestAHostThatKeepsDroppingIsGivenUpOn(t *testing.T) {
 	}
 	// The byte it stopped at is the useful part of the message: it says whether
 	// the transfer was making progress or failing at the start every time.
-	for _, want := range []string{"gave up at byte 300", "2 reconnects"} {
+	for _, want := range []string{"gave up at byte 300", "2 reconnects", "moved nothing"} {
 		if !strings.Contains(err.Error(), want) {
 			t.Errorf("the error does not mention %q: %v", want, err)
 		}
+	}
+}
+
+// The case the whole retry budget exists for, and the one it got wrong until a
+// real run found it. A link that drops every few gigabytes spends more than
+// five reconnects on a 26 GB file and every one of them is followed by hours of
+// working transfer, so a budget counted over the life of the file abandons a
+// download that is nearly finished. Counted consecutively, the file lands.
+func TestATransferThatKeepsMovingKeepsItsBudget(t *testing.T) {
+	// Eight drops against a budget of two. Every reconnect is followed by a
+	// thousand bytes, so none of them is a stall.
+	h := &host{drops: 8, cut: 1000}
+	s, p, f := serveFile(t, h)
+
+	fetch := &Fetcher{Client: s.Client(), Retries: 2, RetryWait: time.Millisecond}
+	b, err := fetch.Open(t.Context(), p, f)
+	if err != nil {
+		t.Fatalf("Open: %v", err)
+	}
+	defer func() { _ = b.Close() }()
+
+	got := readAll(t, b)
+	if string(got) != string(body) {
+		t.Fatalf("the file came out %d bytes, want %d", len(got), len(body))
+	}
+	if b.Digest() != f.Digest {
+		t.Errorf("the file hashes to %s, want %s", b.Digest(), f.Digest)
+	}
+	if b.Reconnects() != 8 {
+		t.Errorf("the fetcher reconnected %d times, want 8", b.Reconnects())
+	}
+	if !b.Done() {
+		t.Error("a file that arrived whole and verified does not read as done")
+	}
+}
+
+// The other half of the consecutive rule. A host that hands out a byte per
+// connection makes progress by that definition every time and would reset the
+// budget forever, so the total is capped as well.
+func TestATransferThatBarelyMovesStillStops(t *testing.T) {
+	h := &host{drops: 1000, cut: 1}
+	s, p, f := serveFile(t, h)
+
+	fetch := &Fetcher{Client: s.Client(), Retries: 1, RetryWait: time.Microsecond}
+	b, err := fetch.Open(t.Context(), p, f)
+	if err != nil {
+		t.Fatalf("Open: %v", err)
+	}
+	defer func() { _ = b.Close() }()
+
+	_, err = io.ReadAll(b)
+	if err == nil {
+		t.Fatal("a host sending a byte at a time finished the file")
+	}
+	if !strings.Contains(err.Error(), "ceiling") {
+		t.Errorf("the error does not say the ceiling was reached: %v", err)
+	}
+	if b.Reconnects() != RetryCeiling {
+		t.Errorf("the fetcher reconnected %d times, want the ceiling of %d", b.Reconnects(), RetryCeiling)
 	}
 }
 
@@ -518,5 +587,14 @@ func TestTheFetcherDefaultsAreUsableOnTheirOwn(t *testing.T) {
 	}
 	if (&Fetcher{Retries: 3}).retries() != 3 {
 		t.Error("an explicit retry count is not honored")
+	}
+	if f.ceiling() != DefaultRetries*RetryCeiling {
+		t.Errorf("the default ceiling is %d reconnects", f.ceiling())
+	}
+	// A fetcher that does not retry has nothing to cap. Were the ceiling
+	// computed some other way it would hand a no-retry fetcher a hundred of
+	// them, which is the opposite of what it was set to.
+	if (&Fetcher{Retries: -1}).ceiling() != 0 {
+		t.Error("a fetcher with no retries has a ceiling above zero")
 	}
 }

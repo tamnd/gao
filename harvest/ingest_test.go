@@ -296,9 +296,10 @@ func TestTheLedgerRecordsHowMuchTroubleAFileWas(t *testing.T) {
 	if _, err := in.Run(t.Context(), []Work{{Pin: p, File: f}}); err != nil {
 		t.Fatalf("Run: %v", err)
 	}
-	// Two reconnects at twenty milliseconds and forty, so the elapsed time is
-	// long enough to be measurable on any clock the fleet runs.
-	if report.Elapsed < 60*time.Millisecond {
+	// Two reconnects at twenty milliseconds each. They do not back off further
+	// because bytes arrived in between, and a transfer that is moving again
+	// should be waiting on the host rather than on a timer.
+	if report.Elapsed < 40*time.Millisecond {
 		t.Errorf("a transfer that backed off twice reports %s elapsed", report.Elapsed)
 	}
 	entries := l.Entries()
