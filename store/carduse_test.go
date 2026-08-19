@@ -2,6 +2,7 @@ package store
 
 import (
 	"regexp"
+	"strconv"
 	"strings"
 	"testing"
 )
@@ -171,4 +172,59 @@ func cardSection(card, head string) (string, bool) {
 		return body, true
 	}
 	return rest, true
+}
+
+// The keep rate is the number a reader of this card is most likely to quote
+// somewhere else, so the arithmetic in the table has to be the arithmetic in
+// the percentages beside it, and the total line has to be the sum rather than
+// an average of the two rates.
+func TestTheKeepRateTableAddsUp(t *testing.T) {
+	var b strings.Builder
+	cardKeepRate(&b)
+	card := b.String()
+
+	var parts int
+	var raw, kept int64
+	for _, k := range cardCleanKeep {
+		parts += k.Parts
+		raw += k.Raw
+		kept += k.Kept
+
+		want := strconv.FormatFloat(100*float64(k.Kept)/float64(k.Raw), 'f', 1, 64) + "%"
+		if k.Pct != want {
+			t.Errorf("%s is written down as %s kept, and %d of %d is %s", k.Source, k.Pct, k.Kept, k.Raw, want)
+		}
+		if !strings.Contains(card, "`"+k.Source+"`") {
+			t.Errorf("the table does not name %s:\n%s", k.Source, card)
+		}
+	}
+
+	total := strconv.FormatFloat(100*float64(kept)/float64(raw), 'f', 1, 64) + "%"
+	if !strings.Contains(card, total) {
+		t.Errorf("the table does not carry the overall rate of %s:\n%s", total, card)
+	}
+	if !strings.Contains(card, cardCommas(raw)) || !strings.Contains(card, cardCommas(kept)) {
+		t.Errorf("the total line is not %s in and %s out:\n%s", cardCommas(raw), cardCommas(kept), card)
+	}
+	if !strings.Contains(card, "over the "+strconv.Itoa(parts)+" parts named in the table") {
+		t.Errorf("the card does not say the reading was taken over %d parts:\n%s", parts, card)
+	}
+}
+
+// A breakdown that does not account for the whole difference is a breakdown of
+// the interesting part, and reading it as the whole story is how a card ends up
+// claiming a corpus lost documents for one reason when it lost them for four.
+// The normalizer's own residue is the fifth and is not printed, so the four
+// reasons come to less than the difference rather than to all of it.
+func TestTheReasonsForDroppingDocumentsDoNotOutrunTheDocumentsDropped(t *testing.T) {
+	w := cardCleanWhy
+	went := w.In - w.Out
+	named := w.Repetition + w.Boilerplate + w.Language + w.Short
+
+	if named > went {
+		t.Errorf("the reasons account for %d documents and only %d went", named, went)
+	}
+	if went-named > went/100 {
+		t.Errorf("%d of the %d that went are unaccounted for, which is more than the normalizer's share", went-named, went)
+	}
 }
