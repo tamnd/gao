@@ -47,7 +47,15 @@ const Extractor = "gao-crawl@" + ExtractorVersion
 // document that has been extracted and nothing else. The leading zero says that
 // no cleaning stage has touched it, the same as it does for an ingest.
 //
-// It moved to 0.2.0 when fetched_at changed meaning. Rows written by 0.1.0 were
+// It moved to 0.2.0 when two published columns changed meaning, and both
+// changes came out of reading the first fleet run rather than the code.
+//
+// A 403 is now filed under the fetch reason rather than the robots one, so
+// reject_reason separates a publisher who stated a rule from a server that put
+// up a wall. Under 0.1.0 the two are added together and only reject_detail
+// tells them apart.
+//
+// And fetched_at changed. Rows written by 0.1.0 were
 // stamped when a worker picked the URL up, before the fetch waited for the
 // host's turn, so a pair of them can say two requests went to one site in the
 // same millisecond when the requests were a second apart. Rows written by 0.2.0

@@ -498,7 +498,9 @@ func TestASkippedURLIsWrittenDownLikeEverythingElse(t *testing.T) {
 		want reject.Reason
 	}{
 		{harvest.ErrDeclined, reject.ReasonRobots},
-		{harvest.ErrBlocked, reject.ReasonRobots},
+		// A wall is not a rule. Only the first of these is a publisher saying
+		// no in a place meant for saying it.
+		{harvest.ErrBlocked, reject.ReasonFetch},
 		{harvest.ErrBusy, reject.ReasonFetch},
 		{harvest.ErrTooLarge, reject.ReasonFetch},
 		{errors.New("dial tcp: i/o timeout"), reject.ReasonFetch},

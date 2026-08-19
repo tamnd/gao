@@ -106,7 +106,15 @@ func Reject(err error) (reject.Reason, string, bool) {
 	case errors.Is(err, ErrDeclined):
 		return reject.ReasonRobots, err.Error(), true
 	case errors.Is(err, ErrBlocked):
-		return reject.ReasonRobots, err.Error(), true
+		// A 403 is a non-200 status and that is what it is filed as. It reads
+		// like a robots decision and it is not one: robots means a publisher
+		// stated a rule in a file or a meta tag, and counting a bot wall under
+		// it inflates the number of Vietnamese sites that asked to be left
+		// alone. On the first fleet run that was 832 refusals against 999 real
+		// disallows, so the reason column would have overstated it by four
+		// fifths. The error keeps the host and the status, so a reader who
+		// wants the walls back can have them from the detail.
+		return reject.ReasonFetch, err.Error(), true
 	case errors.Is(err, ErrBusy):
 		return reject.ReasonFetch, err.Error(), true
 	case errors.Is(err, ErrTooLarge):
