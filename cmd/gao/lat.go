@@ -11,13 +11,13 @@ import (
 )
 
 func runLat(stdout, stderr io.Writer, args []string) int {
-	fs := flag.NewFlagSet("lat", flag.ContinueOnError)
+	fs := flag.NewFlagSet("slice", flag.ContinueOnError)
 	fs.SetOutput(stderr)
 	asJSON := fs.Bool("json", false, "print JSON")
 	snapshot := fs.String("snapshot", "", "the snapshot directory the slices are views over")
 	head := fs.String("head", "", "the head of the lineage, if it is not the snapshot itself, to check the slices are not behind a removal")
 	fs.Usage = func() {
-		fmt.Fprint(stderr, `usage: gao lat -snapshot dir [-head dir] [-json] slice-dir...
+		fmt.Fprint(stderr, `usage: gao slice -snapshot dir [-head dir] [-json] slice-dir...
 
 Check a release slice against the snapshot it is a view over.
 
@@ -53,14 +53,14 @@ flags:
 
 	parent, err := kho.ReadManifest(*snapshot)
 	if err != nil {
-		fmt.Fprintf(stderr, "gao lat: %v\n", err)
+		fmt.Fprintf(stderr, "gao slice: %v\n", err)
 		return 1
 	}
 	var latest *kho.Manifest
 	if *head != "" {
 		latest, err = kho.ReadManifest(*head)
 		if err != nil {
-			fmt.Fprintf(stderr, "gao lat: %v\n", err)
+			fmt.Fprintf(stderr, "gao slice: %v\n", err)
 			return 1
 		}
 	}
@@ -69,7 +69,7 @@ flags:
 	for _, dir := range fs.Args() {
 		s, err := lat.Read(dir)
 		if err != nil {
-			fmt.Fprintf(stderr, "gao lat: %v\n", err)
+			fmt.Fprintf(stderr, "gao slice: %v\n", err)
 			return 1
 		}
 		line := latLine{Slice: s, Faults: s.Against(parent)}

@@ -22,7 +22,7 @@ func TestXayOverlapCountsASharedDocumentOnce(t *testing.T) {
 
 	var stdout, stderr bytes.Buffer
 	if code := runXay(&stdout, &stderr, append([]string{"-overlap", "-json"}, files...)); code != 0 {
-		t.Fatalf("gao xay -overlap = %d, want 0\n%s", code, stderr.String())
+		t.Fatalf("gao mill -overlap = %d, want 0\n%s", code, stderr.String())
 	}
 	var m xay.Matrix
 	if err := json.Unmarshal(stdout.Bytes(), &m); err != nil {
@@ -50,7 +50,7 @@ func TestXayOverlapNamesTheSources(t *testing.T) {
 
 	var stdout, stderr bytes.Buffer
 	if code := runXay(&stdout, &stderr, append([]string{"-overlap"}, files...)); code != 0 {
-		t.Fatalf("gao xay -overlap = %d, want 0\n%s", code, stderr.String())
+		t.Fatalf("gao mill -overlap = %d, want 0\n%s", code, stderr.String())
 	}
 	out := stdout.String()
 	for _, want := range []string{"hplt.txt", "fineweb2.txt", "the source on the left"} {
@@ -68,7 +68,7 @@ func TestXayRefusesToRunTwoMeasurementsAtOnce(t *testing.T) {
 
 	var stdout, stderr bytes.Buffer
 	if code := runXay(&stdout, &stderr, []string{"-overlap", "-curve", file}); code != 2 {
-		t.Errorf("gao xay -overlap -curve = %d, want 2", code)
+		t.Errorf("gao mill -overlap -curve = %d, want 2", code)
 	}
 	if !strings.Contains(stderr.String(), "Run one of them") {
 		t.Errorf("the refusal does not say what to do instead: %q", stderr.String())

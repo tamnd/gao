@@ -47,7 +47,7 @@ func TestBangKeepsTheTwoArmsApart(t *testing.T) {
 	// pinned revision and the board carries that wherever it is printed.
 	out, _, code := exec(t, "bang", "board", bangSuite(t, 3.0, 3.0))
 	if code != 2 {
-		t.Fatalf("gao bang board: exit %d, want 2", code)
+		t.Fatalf("gao board board: exit %d, want 2", code)
 	}
 
 	for _, want := range []string{
@@ -69,7 +69,7 @@ func TestBangKeepsTheTwoArmsApart(t *testing.T) {
 func TestBangNamesTheModelThatOnlyReadsTranslatedEnglish(t *testing.T) {
 	out, _, code := exec(t, "bang", "board", bangSuite(t, 0.5, 6.0))
 	if code != 2 {
-		t.Fatalf("gao bang board on a translationese gap: exit %d, want 2", code)
+		t.Fatalf("gao board board on a translationese gap: exit %d, want 2", code)
 	}
 	if !strings.Contains(out, "reads translated English rather than one that writes Vietnamese") {
 		t.Errorf("the board does not name the gap:\n%s", out)
@@ -82,7 +82,7 @@ func TestBangNamesTheModelThatOnlyReadsTranslatedEnglish(t *testing.T) {
 func TestBangRowsMarksTheBenchmarksGaoBuiltItself(t *testing.T) {
 	out, _, code := exec(t, "bang", "rows", bangSuite(t, 3.0, 3.0))
 	if code != 2 {
-		t.Fatalf("gao bang rows: exit %d, want 2", code)
+		t.Fatalf("gao board rows: exit %d, want 2", code)
 	}
 
 	var rows, own int
@@ -108,7 +108,7 @@ func TestBangRowsMarksTheBenchmarksGaoBuiltItself(t *testing.T) {
 func TestBangPrintsTheSameBoardAsJSON(t *testing.T) {
 	out, _, code := exec(t, "bang", "board", "-json", bangSuite(t, 3.0, 3.0))
 	if code != 2 {
-		t.Fatalf("gao bang board -json: exit %d, want 2", code)
+		t.Fatalf("gao board board -json: exit %d, want 2", code)
 	}
 
 	var got struct {
@@ -181,7 +181,7 @@ func TestBangHoldsWhenEveryRowCanBeRunAgain(t *testing.T) {
 
 	out, errOut, code := exec(t, "bang", "board", "-roster", path, bangScores(t, lines...))
 	if code != 0 {
-		t.Fatalf("gao bang board on a pinned roster: exit %d, %s\n%s", code, errOut, out)
+		t.Fatalf("gao board board on a pinned roster: exit %d, %s\n%s", code, errOut, out)
 	}
 	if strings.Contains(out, "cannot be published") {
 		t.Errorf("a board with nothing wrong with it refuses to be published:\n%s", out)
@@ -199,7 +199,7 @@ func TestBangRefusesScoresThatAreNotAScoreboard(t *testing.T) {
 
 	out, _, code := exec(t, "bang", "board", path)
 	if code != 1 {
-		t.Fatalf("gao bang board on two of twenty four benchmarks: exit %d, want 1", code)
+		t.Fatalf("gao board board on two of twenty four benchmarks: exit %d, want 1", code)
 	}
 	if !strings.Contains(out, "chosen after the results") {
 		t.Errorf("the refusal does not say why:\n%s", out)
@@ -217,7 +217,7 @@ func TestBangSaysWhichLineOfTheScoresIsWrong(t *testing.T) {
 
 	_, errOut, code := exec(t, "bang", "board", path)
 	if code != 1 {
-		t.Fatalf("gao bang board on a file it cannot read: exit %d, want 1", code)
+		t.Fatalf("gao board board on a file it cannot read: exit %d, want 1", code)
 	}
 	if !strings.Contains(errOut, ":2:") || !strings.Contains(errOut, "f1") {
 		t.Errorf("the error does not say which line or which field: %q", errOut)
@@ -244,7 +244,7 @@ func TestBangWithoutASubcommandSaysWhatItTakes(t *testing.T) {
 func TestBangHelpSaysWhyTheArmsAreNotAdded(t *testing.T) {
 	out, _, code := exec(t, "bang", "help")
 	if code != 0 {
-		t.Fatalf("gao bang help: exit %d", code)
+		t.Fatalf("gao board help: exit %d", code)
 	}
 	if !strings.Contains(out, "never added together") {
 		t.Errorf("the help does not say what the board refuses to do:\n%s", out)

@@ -46,7 +46,7 @@ func TestXayChoosesTheThresholdFromTheRuns(t *testing.T) {
 
 	var stdout, stderr bytes.Buffer
 	if code := runXay(&stdout, &stderr, []string{"-choose", path, "-json"}); code != 0 {
-		t.Fatalf("gao xay -choose = %d, want 0\n%s", code, stderr.String())
+		t.Fatalf("gao mill -choose = %d, want 0\n%s", code, stderr.String())
 	}
 	var c xay.Choice
 	if err := json.Unmarshal(stdout.Bytes(), &c); err != nil {
@@ -72,7 +72,7 @@ func TestXayReportsACurveThatDidNotSeparate(t *testing.T) {
 
 	var stdout, stderr bytes.Buffer
 	if code := runXay(&stdout, &stderr, []string{"-choose", path}); code != 0 {
-		t.Fatalf("gao xay -choose = %d, want 0\n%s", code, stderr.String())
+		t.Fatalf("gao mill -choose = %d, want 0\n%s", code, stderr.String())
 	}
 	out := stdout.String()
 	if !strings.Contains(out, "0.71") {
@@ -93,7 +93,7 @@ func TestXayExitsNonZeroOnRunsThatCannotChoose(t *testing.T) {
 
 	var stdout, stderr bytes.Buffer
 	if code := runXay(&stdout, &stderr, []string{"-choose", path}); code != 1 {
-		t.Errorf("gao xay -choose on two runs = %d, want 1\n%s", code, stderr.String())
+		t.Errorf("gao mill -choose on two runs = %d, want 1\n%s", code, stderr.String())
 	}
 	if !strings.Contains(stderr.String(), "cannot choose a threshold") {
 		t.Errorf("the refusal does not say why: %q", stderr.String())
@@ -105,7 +105,7 @@ func TestXayChooseSaysWhichFileItCouldNotRead(t *testing.T) {
 
 	var stdout, stderr bytes.Buffer
 	if code := runXay(&stdout, &stderr, []string{"-choose", missing}); code != 1 {
-		t.Errorf("gao xay -choose on a missing file = %d, want 1", code)
+		t.Errorf("gao mill -choose on a missing file = %d, want 1", code)
 	}
 	if !strings.Contains(stderr.String(), "khong-co.json") {
 		t.Errorf("stderr does not name the file: %q", stderr.String())
@@ -124,7 +124,7 @@ func TestXayChoosePrintsTheRunsUnderTheAnswer(t *testing.T) {
 
 	var stdout, stderr bytes.Buffer
 	if code := runXay(&stdout, &stderr, []string{"-choose", path}); code != 0 {
-		t.Fatalf("gao xay -choose = %d, want 0\n%s", code, stderr.String())
+		t.Fatalf("gao mill -choose = %d, want 0\n%s", code, stderr.String())
 	}
 	out := stdout.String()
 	for _, want := range []string{"threshold 0.80", "retention", "vi-cloze", "gamingpc"} {

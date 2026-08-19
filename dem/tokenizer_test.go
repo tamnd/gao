@@ -13,7 +13,7 @@ import (
 // ModelEnv is where these tests look for the tokenizer.
 //
 // It is not in the repository. It is 4.7 MB of somebody else's protobuf, it is
-// pinned by digest rather than by being carried around, and `gao dem model`
+// pinned by digest rather than by being carried around, and `gao count model`
 // fetches it. A skip here is a real gap in what was tested rather than a
 // formality, so it says how to close it.
 const ModelEnv = "GAO_TOKENIZER"
@@ -22,7 +22,7 @@ func tokenizer(t *testing.T) *dem.Tokenizer {
 	t.Helper()
 	path := os.Getenv(ModelEnv)
 	if path == "" {
-		t.Skipf("no tokenizer: run `gao dem model -o tokenizer.model` and set %s to it", ModelEnv)
+		t.Skipf("no tokenizer: run `gao count model -o tokenizer.model` and set %s to it", ModelEnv)
 	}
 	tok, err := dem.Open(dem.Gemma3, path)
 	if err != nil {
@@ -57,7 +57,7 @@ func TestLoadRefusesAFileThatIsNotATokenizer(t *testing.T) {
 func TestOpenRefusesAFileThatIsNotThePinnedTokenizer(t *testing.T) {
 	path := os.Getenv(ModelEnv)
 	if path == "" {
-		t.Skipf("no tokenizer: run `gao dem model -o tokenizer.model` and set %s to it", ModelEnv)
+		t.Skipf("no tokenizer: run `gao count model -o tokenizer.model` and set %s to it", ModelEnv)
 	}
 
 	// The right file against the wrong pin, which is what a bumped tokenizer

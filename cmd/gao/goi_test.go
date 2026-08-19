@@ -164,7 +164,7 @@ func TestGoiJSONCarriesTheColumnsAndWhatWasRead(t *testing.T) {
 
 func TestGoiWithoutAShardIsAUsageError(t *testing.T) {
 	if _, _, code := exec(t, "goi"); code != 2 {
-		t.Error("gao goi with no shards did not exit 2")
+		t.Error("gao pack with no shards did not exit 2")
 	}
 	if _, _, code := exec(t, "goi", filepath.Join(t.TempDir(), "nothing.parquet")); code != 1 {
 		t.Error("a shard that is not there did not exit 1")

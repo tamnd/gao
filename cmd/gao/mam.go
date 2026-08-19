@@ -31,20 +31,20 @@ func runMam(stdout, stderr io.Writer, args []string) int {
 		mamUsage(stdout)
 		return 0
 	default:
-		fmt.Fprintf(stderr, "gao mam: unknown subcommand %q\n", args[0])
+		fmt.Fprintf(stderr, "gao seed: unknown subcommand %q\n", args[0])
 		mamUsage(stderr)
 		return 2
 	}
 }
 
 func mamUsage(w io.Writer) {
-	fmt.Fprint(w, `usage: gao mam <subcommand> [flags]
+	fmt.Fprint(w, `usage: gao seed <subcommand> [flags]
 
 subcommands:
   ct   read Certificate Transparency and print the hosts it names
   oai  ask university repositories for their catalogs, and say which of them answer
 
-run 'gao mam <subcommand> -h' for the flags of a single subcommand.
+run 'gao seed <subcommand> -h' for the flags of a single subcommand.
 `)
 }
 
@@ -54,7 +54,7 @@ run 'gao mam <subcommand> -h' for the flags of a single subcommand.
 // a `.vn` search is one very large body and the useful thing is to pull it once
 // and read it many times. -search asks for it.
 func runMamCT(stdout, stderr io.Writer, args []string) int {
-	fs := flag.NewFlagSet("mam ct", flag.ContinueOnError)
+	fs := flag.NewFlagSet("seed ct", flag.ContinueOnError)
 	fs.SetOutput(stderr)
 	suffix := fs.String("suffix", "vn", "keep only hosts under this suffix, on a label boundary")
 	seed := fs.String("seed", "", "a file of hosts we already have, one per line: print only what is new")
@@ -63,7 +63,7 @@ func runMamCT(stdout, stderr io.Writer, args []string) int {
 	search := fs.String("search", "", "ask this Certificate Transparency search front end instead of reading a file")
 	timeout := fs.Duration("timeout", 10*time.Minute, "how long to wait for the search")
 	fs.Usage = func() {
-		fmt.Fprint(stderr, `usage: gao mam ct [flags] [FILE]
+		fmt.Fprint(stderr, `usage: gao seed ct [flags] [FILE]
 
 Reads a Certificate Transparency search result and prints the hosts it names,
 one per line, deduplicated and sorted, ready to be a seed list.
@@ -112,7 +112,7 @@ flags:
 		found, err = mam.Hosts(stdin, *suffix)
 	}
 	if err != nil {
-		fmt.Fprintf(stderr, "gao mam ct: %v\n", err)
+		fmt.Fprintf(stderr, "gao seed ct: %v\n", err)
 		return 1
 	}
 
@@ -131,7 +131,7 @@ flags:
 	if *seed != "" {
 		have, err := readHosts(*seed)
 		if err != nil {
-			fmt.Fprintf(stderr, "gao mam ct: %v\n", err)
+			fmt.Fprintf(stderr, "gao seed ct: %v\n", err)
 			return 1
 		}
 		before := len(found)
@@ -199,7 +199,7 @@ func readHosts(path string) ([]string, error) {
 // without crawling a search form. With -links it is harvesting the catalog into
 // URLs the frontier can take.
 func runMamOAI(stdout, stderr io.Writer, args []string) int {
-	fs := flag.NewFlagSet("mam oai", flag.ContinueOnError)
+	fs := flag.NewFlagSet("seed oai", flag.ContinueOnError)
 	fs.SetOutput(stderr)
 	links := fs.Bool("links", false, "harvest the catalog and print the URLs in it, one per line")
 	max := fs.Int("max", 0, "stop after this many records per repository, or every record when zero")
@@ -207,7 +207,7 @@ func runMamOAI(stdout, stderr io.Writer, args []string) int {
 	set := fs.String("set", "", "harvest one set rather than the whole repository")
 	timeout := fs.Duration("timeout", 2*time.Minute, "how long to wait for one repository")
 	fs.Usage = func() {
-		fmt.Fprint(stderr, `usage: gao mam oai [flags] BASE [BASE ...]
+		fmt.Fprint(stderr, `usage: gao seed oai [flags] BASE [BASE ...]
 
 Asks each OAI-PMH base URL who it is and whether it will hand over its catalog.
 Base URLs are read from the arguments, or one per line from standard input.
@@ -236,7 +236,7 @@ flags:
 
 	bases, err := readURLs(fs.Args(), stdin)
 	if err != nil {
-		fmt.Fprintf(stderr, "gao mam oai: %v\n", err)
+		fmt.Fprintf(stderr, "gao seed oai: %v\n", err)
 		return 2
 	}
 
@@ -244,7 +244,7 @@ flags:
 	if *from != "" {
 		since, err = time.Parse(time.DateOnly, *from)
 		if err != nil {
-			fmt.Fprintf(stderr, "gao mam oai: -from wants a date like 2024-03-15: %v\n", err)
+			fmt.Fprintf(stderr, "gao seed oai: -from wants a date like 2024-03-15: %v\n", err)
 			return 2
 		}
 	}

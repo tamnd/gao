@@ -210,7 +210,7 @@ func TestATrainingLogThatIsNotThereIsAFailure(t *testing.T) {
 	if code != 1 {
 		t.Fatalf("exit %d, want 1: %s", code, errOut)
 	}
-	if !strings.Contains(errOut, "gao hieu:") {
+	if !strings.Contains(errOut, "gao efficiency:") {
 		t.Errorf("the failure was not attributed: %s", errOut)
 	}
 }
@@ -220,7 +220,7 @@ func TestHieuWithoutASubcommandPrintsUsage(t *testing.T) {
 	if code != 2 {
 		t.Fatalf("exit %d, want 2: %s", code, errOut)
 	}
-	if !strings.Contains(errOut, "usage: gao hieu") {
+	if !strings.Contains(errOut, "usage: gao efficiency") {
 		t.Errorf("no usage printed: %s", errOut)
 	}
 }
@@ -240,7 +240,7 @@ func TestHieuHelpGoesToStdout(t *testing.T) {
 	if code != 0 {
 		t.Fatalf("exit %d", code)
 	}
-	if !strings.Contains(out, "usage: gao hieu") {
+	if !strings.Contains(out, "usage: gao efficiency") {
 		t.Errorf("help did not go to stdout: %s", out)
 	}
 }

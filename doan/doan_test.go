@@ -19,7 +19,7 @@ func result(r Register, id, state, reading string) Result {
 			claim = p.Claim
 		}
 	}
-	return Result{ID: id, Claim: claim, State: state, Reading: reading, By: "gao dem counts", Box: "server1"}
+	return Result{ID: id, Claim: claim, State: state, Reading: reading, By: "gao count counts", Box: "server1"}
 }
 
 // resolve marks the first n predictions of the register, alternating so that the
@@ -282,7 +282,7 @@ func TestReadingResultsOffDisk(t *testing.T) {
 	path := filepath.Join(dir, "results.jsonl")
 	r := Published()
 	lines := []string{
-		fmt.Sprintf(`{"id":"P03-1","claim":%q,"state":"dung","reading":"181.4B tokens","by":"gao dem counts","box":"server1"}`, r.Predictions[0].Claim),
+		fmt.Sprintf(`{"id":"P03-1","claim":%q,"state":"dung","reading":"181.4B tokens","by":"gao count counts","box":"server1"}`, r.Predictions[0].Claim),
 	}
 	if err := os.WriteFile(path, []byte(strings.Join(lines, "\n")+"\n"), 0o600); err != nil {
 		t.Fatal(err)

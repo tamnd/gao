@@ -11,13 +11,13 @@ import (
 )
 
 func runSoiField(stdout, stderr io.Writer, args []string) int {
-	fs := flag.NewFlagSet("soi field", flag.ContinueOnError)
+	fs := flag.NewFlagSet("inspect field", flag.ContinueOnError)
 	fs.SetOutput(stderr)
 	asJSON := fs.Bool("json", false, "print JSON")
 	pages := fs.Int64("pages", soi.Slice, "how many pages the plan expects to reach OCR, which is what turns a rate into a cost")
 	box := fs.String("box", "gamingpc", "the box whose accelerator the field was evaluated on")
 	fs.Usage = func() {
-		fmt.Fprint(stderr, `usage: gao soi field [-pages N] [-box name] [-json] engines.jsonl
+		fmt.Fprint(stderr, `usage: gao inspect field [-pages N] [-box name] [-json] engines.jsonl
 
 Read a field of candidate OCR engines, losers included.
 
@@ -57,13 +57,13 @@ flags:
 
 	b, ok := may.Lookup(*box)
 	if !ok || !b.HasGPU() {
-		fmt.Fprintf(stderr, "gao soi: %s is not a box on the fleet with an accelerator in it, and the one that has one is gamingpc\n", *box)
+		fmt.Fprintf(stderr, "gao inspect: %s is not a box on the fleet with an accelerator in it, and the one that has one is gamingpc\n", *box)
 		return 2
 	}
 
 	f, err := soi.ReadField(b.GPUMemory, *pages, soi.S4, fs.Arg(0))
 	if err != nil {
-		fmt.Fprintf(stderr, "gao soi: %v\n", err)
+		fmt.Fprintf(stderr, "gao inspect: %v\n", err)
 		return 1
 	}
 

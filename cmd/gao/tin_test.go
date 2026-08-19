@@ -199,7 +199,7 @@ func TestAFileThatIsNotThereIsAFailureRatherThanAnEmptyStudy(t *testing.T) {
 	if code != 1 {
 		t.Fatalf("exit %d, want 1: %s\n%s", code, out, errOut)
 	}
-	if !strings.Contains(errOut, "gao tin:") {
+	if !strings.Contains(errOut, "gao trust:") {
 		t.Errorf("the failure was not attributed: %s", errOut)
 	}
 }
@@ -209,7 +209,7 @@ func TestReadWithoutAFileIsAUsageError(t *testing.T) {
 	if code != 2 {
 		t.Fatalf("exit %d, want 2: %s\n%s", code, out, errOut)
 	}
-	if !strings.Contains(errOut, "usage: gao tin") {
+	if !strings.Contains(errOut, "usage: gao trust") {
 		t.Errorf("no usage printed: %s", errOut)
 	}
 }
@@ -219,7 +219,7 @@ func TestTinWithoutASubcommandPrintsUsage(t *testing.T) {
 	if code != 2 {
 		t.Fatalf("exit %d, want 2: %s", code, errOut)
 	}
-	if !strings.Contains(errOut, "usage: gao tin") {
+	if !strings.Contains(errOut, "usage: gao trust") {
 		t.Errorf("no usage printed: %s", errOut)
 	}
 }
@@ -239,7 +239,7 @@ func TestTinHelpGoesToStdout(t *testing.T) {
 	if code != 0 {
 		t.Fatalf("exit %d", code)
 	}
-	if !strings.Contains(out, "usage: gao tin") {
+	if !strings.Contains(out, "usage: gao trust") {
 		t.Errorf("help did not go to stdout: %s", out)
 	}
 }

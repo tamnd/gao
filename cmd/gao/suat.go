@@ -10,13 +10,13 @@ import (
 )
 
 func runSuat(stdout, stderr io.Writer, args []string) int {
-	fs := flag.NewFlagSet("suat", flag.ContinueOnError)
+	fs := flag.NewFlagSet("yield", flag.ContinueOnError)
 	fs.SetOutput(stderr)
 	asJSON := fs.Bool("json", false, "print JSON")
 	crawl := fs.String("crawl", "gao-crawl-2026-09", "the crawl these measurements came from")
 	next := fs.Int64("next", 0, "divide this many further fetches between the target classes")
 	fs.Usage = func() {
-		fmt.Fprint(stderr, `usage: gao suat [-crawl name] [-next fetches] [-json] yield.jsonl
+		fmt.Fprint(stderr, `usage: gao yield [-crawl name] [-next fetches] [-json] yield.jsonl
 
 Read the crawl's net yield while it is still running.
 
@@ -59,7 +59,7 @@ flags:
 
 	r, err := suat.ReadRun(*crawl, fs.Arg(0))
 	if err != nil {
-		fmt.Fprintf(stderr, "gao suat: %v\n", err)
+		fmt.Fprintf(stderr, "gao yield: %v\n", err)
 		return 1
 	}
 	p, _ := r.Latest()

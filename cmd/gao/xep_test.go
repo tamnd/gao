@@ -285,7 +285,7 @@ func TestALabelFileThatIsNotThereSaysSo(t *testing.T) {
 	if code != 1 {
 		t.Errorf("exit %d, want 1", code)
 	}
-	if !strings.Contains(errOut, "gao xep:") {
+	if !strings.Contains(errOut, "gao place:") {
 		t.Errorf("the error is not attributed: %s", errOut)
 	}
 }
@@ -295,7 +295,7 @@ func TestAFrameFileThatIsNotThereSaysSoToo(t *testing.T) {
 	if code != 1 {
 		t.Errorf("exit %d, want 1", code)
 	}
-	if !strings.Contains(errOut, "gao xep:") {
+	if !strings.Contains(errOut, "gao place:") {
 		t.Errorf("the error is not attributed: %s", errOut)
 	}
 }

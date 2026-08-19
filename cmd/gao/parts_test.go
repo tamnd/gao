@@ -216,7 +216,7 @@ func TestARunThatWroteSomethingSaysWhereItIs(t *testing.T) {
 func TestTheOutFlagIsInTheUsage(t *testing.T) {
 	_, errOut, code := exec(t, "gat", "hf", "-h")
 	if code != 2 {
-		t.Fatalf("gao gat hf -h: exit %d, want 2", code)
+		t.Fatalf("gao harvest hf -h: exit %d, want 2", code)
 	}
 	for _, want := range []string{"-out", "parquet"} {
 		if !strings.Contains(errOut, want) {
@@ -352,7 +352,7 @@ func TestAPartThatFailedToPushIsNotDeleted(t *testing.T) {
 func TestPushingWithNowhereToWriteIsRefused(t *testing.T) {
 	_, errOut, code := exec(t, "gat", "hf", "-dir", t.TempDir(), "-push")
 	if code != 2 {
-		t.Fatalf("gao gat hf -push with no -out: exit %d, want 2", code)
+		t.Fatalf("gao harvest hf -push with no -out: exit %d, want 2", code)
 	}
 	if !strings.Contains(errOut, "-out") {
 		t.Errorf("the error does not say what is missing:\n%s", errOut)
@@ -362,7 +362,7 @@ func TestPushingWithNowhereToWriteIsRefused(t *testing.T) {
 func TestThePushFlagIsInTheUsage(t *testing.T) {
 	_, errOut, code := exec(t, "gat", "hf", "-h")
 	if code != 2 {
-		t.Fatalf("gao gat hf -h: exit %d, want 2", code)
+		t.Fatalf("gao harvest hf -h: exit %d, want 2", code)
 	}
 	if !strings.Contains(errOut, "-push") {
 		t.Errorf("the usage does not mention -push:\n%s", errOut)

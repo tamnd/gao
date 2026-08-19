@@ -11,12 +11,12 @@ import (
 )
 
 func runNghe(stdout, stderr io.Writer, args []string) int {
-	fs := flag.NewFlagSet("nghe", flag.ContinueOnError)
+	fs := flag.NewFlagSet("listen", flag.ContinueOnError)
 	fs.SetOutput(stderr)
 	asJSON := fs.Bool("json", false, "print JSON")
 	name := fs.String("set", "gao-voice", "the speech artifact these tracks belong to")
 	fs.Usage = func() {
-		fmt.Fprint(stderr, `usage: gao nghe [-set NAME] [-json] tracks.jsonl
+		fmt.Fprint(stderr, `usage: gao listen [-set NAME] [-json] tracks.jsonl
 
 To listen: whether a transcript belongs to the audio it came off.
 
@@ -27,7 +27,7 @@ meets silence, or music, or a tone it has no model for, and emits the same
 sentence until the recording ends.
 
 That failure survives everything downstream. The loop is fluent Vietnamese, so
-gao sang admits it. It lives inside one document, so nothing that looks for
+gao sift admits it. It lives inside one document, so nothing that looks for
 duplicate documents sees it. It reads as speech and trains a model to repeat
 itself. The only place it can be caught is here.
 
@@ -59,7 +59,7 @@ flags:
 
 	s, err := nghe.ReadSet(*name, fs.Arg(0))
 	if err != nil {
-		fmt.Fprintf(stderr, "gao nghe: %v\n", err)
+		fmt.Fprintf(stderr, "gao listen: %v\n", err)
 		return 1
 	}
 

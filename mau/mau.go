@@ -47,7 +47,7 @@
 // quickly. Fixing which files get read, at a seed, before the first byte moves,
 // is what makes the number that comes back a measurement rather than a choice.
 //
-// The seed is on the report for the same reason it is on gao dem verify: a
+// The seed is on the report for the same reason it is on gao count verify: a
 // third party with the seed and the listing draws the same files, so the reading
 // is checkable by somebody who does not trust us. The digest is over the takes
 // themselves, so a plan quietly regenerated against a different listing is a
@@ -211,7 +211,7 @@ func ReadPlan(source, seed string, want int64, layers []tang.Layer, files []File
 
 // plan picks the files for one layer.
 //
-// The order is blake3 of the seed with the path, which is the draw gao dem
+// The order is blake3 of the seed with the path, which is the draw gao count
 // verify uses, so the two protocols in this project that sample by file sample
 // the same way. The takes are handed back in path order because the list is read
 // by people next to a listing that is in path order.

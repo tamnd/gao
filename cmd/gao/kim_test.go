@@ -225,7 +225,7 @@ func TestGradingWithoutTheSetIsAUsageError(t *testing.T) {
 	if code != 2 {
 		t.Fatalf("exit %d, want 2: %s\n%s", code, out, errOut)
 	}
-	if !strings.Contains(errOut, "usage: gao kim") {
+	if !strings.Contains(errOut, "usage: gao needle") {
 		t.Errorf("no usage printed: %s", errOut)
 	}
 }
@@ -236,7 +236,7 @@ func TestAMissingFileIsAFailureRatherThanAnEmptyRun(t *testing.T) {
 	if code != 1 {
 		t.Fatalf("exit %d, want 1: %s", code, errOut)
 	}
-	if !strings.Contains(errOut, "gao kim:") {
+	if !strings.Contains(errOut, "gao needle:") {
 		t.Errorf("the failure was not attributed: %s", errOut)
 	}
 }
@@ -246,7 +246,7 @@ func TestKimWithoutASubcommandPrintsUsage(t *testing.T) {
 	if code != 2 {
 		t.Fatalf("exit %d, want 2: %s", code, errOut)
 	}
-	if !strings.Contains(errOut, "usage: gao kim") {
+	if !strings.Contains(errOut, "usage: gao needle") {
 		t.Errorf("no usage printed: %s", errOut)
 	}
 }
@@ -266,7 +266,7 @@ func TestKimHelpGoesToStdout(t *testing.T) {
 	if code != 0 {
 		t.Fatalf("exit %d", code)
 	}
-	if !strings.Contains(out, "usage: gao kim") {
+	if !strings.Contains(out, "usage: gao needle") {
 		t.Errorf("help did not go to stdout: %s", out)
 	}
 }

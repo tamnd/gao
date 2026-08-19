@@ -11,13 +11,13 @@ import (
 )
 
 func runDemFertility(stdout, stderr io.Writer, args []string) int {
-	fs := flag.NewFlagSet("dem fertility", flag.ContinueOnError)
+	fs := flag.NewFlagSet("count fertility", flag.ContinueOnError)
 	fs.SetOutput(stderr)
 	asJSON := fs.Bool("json", false, "print JSON")
 	roster := fs.Bool("roster", false, "print the candidates and their pins rather than a measurement")
 	fs.Usage = func() {
-		fmt.Fprint(stderr, `usage: gao dem fertility [-roster] [-json]
-       gao dem fertility [-json] fertility.jsonl
+		fmt.Fprint(stderr, `usage: gao count fertility [-roster] [-json]
+       gao count fertility [-json] fertility.jsonl
 
 Fertility is the multiplier on everything downstream. A tokenizer that spends
 1.99 tokens per Vietnamese syllable where another spends 1.50 makes every
@@ -53,7 +53,7 @@ flags:
 
 	readings, err := dem.ReadFertility(fs.Arg(0))
 	if err != nil {
-		fmt.Fprintf(stderr, "gao dem: %v\n", err)
+		fmt.Fprintf(stderr, "gao count: %v\n", err)
 		return 1
 	}
 	s := dem.Fold(readings)

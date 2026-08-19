@@ -83,7 +83,7 @@ func TestKhoReproduceRebuildsASnapshotAndSaysWhatItRanOn(t *testing.T) {
 
 	out, errOut, code := exec(t, "kho", "reproduce", dir)
 	if code != 0 {
-		t.Fatalf("gao kho reproduce: exit %d\n%s\n%s", code, out, errOut)
+		t.Fatalf("gao store reproduce: exit %d\n%s\n%s", code, out, errOut)
 	}
 	for _, want := range []string{"2026-09", "40", "3 rebuilt to the same bytes, 0 did not", "ok"} {
 		if !strings.Contains(out, want) {
@@ -106,7 +106,7 @@ func TestKhoReproduceOnASnapshotWrittenWithOtherSettings(t *testing.T) {
 
 	out, errOut, code := exec(t, "kho", "reproduce", "-frame-bytes", "2048", dir)
 	if code != 1 {
-		t.Fatalf("gao kho reproduce at the wrong frame size: exit %d\n%s", code, out)
+		t.Fatalf("gao store reproduce at the wrong frame size: exit %d\n%s", code, out)
 	}
 	for _, want := range []string{"the shards that did not rebuild", "recorded", "rebuilt", "first differ at byte"} {
 		if !strings.Contains(out, want) {
@@ -255,7 +255,7 @@ func TestKhoReproduceUsageErrors(t *testing.T) {
 func TestKhoReproduceIsInTheSubcommandList(t *testing.T) {
 	out, _, code := exec(t, "kho", "help")
 	if code != 0 {
-		t.Fatalf("gao kho help: exit %d", code)
+		t.Fatalf("gao store help: exit %d", code)
 	}
 	if !strings.Contains(out, "reproduce") {
 		t.Errorf("reproduce is not in the subcommand list:\n%s", out)

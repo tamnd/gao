@@ -10,12 +10,12 @@ import (
 )
 
 func runGiu(stdout, stderr io.Writer, args []string) int {
-	fs := flag.NewFlagSet("giu", flag.ContinueOnError)
+	fs := flag.NewFlagSet("keep", flag.ContinueOnError)
 	fs.SetOutput(stderr)
 	asJSON := fs.Bool("json", false, "print JSON")
 	model := fs.String("model", "gao-8b-distilled", "the model the seven specialists were distilled into")
 	fs.Usage = func() {
-		fmt.Fprint(stderr, `usage: gao giu [-model name] [-json] retention.jsonl
+		fmt.Fprint(stderr, `usage: gao keep [-model name] [-json] retention.jsonl
 
 To keep: what the distilled model kept of each specialist's gain.
 
@@ -57,7 +57,7 @@ flags:
 
 	p, err := giu.ReadPanel(*model, fs.Arg(0))
 	if err != nil {
-		fmt.Fprintf(stderr, "gao giu: %v\n", err)
+		fmt.Fprintf(stderr, "gao keep: %v\n", err)
 		return 1
 	}
 

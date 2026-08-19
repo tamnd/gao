@@ -29,16 +29,16 @@ func runGiao(stdout, stderr io.Writer, args []string) int {
 		giaoUsage(stdout)
 		return 0
 	default:
-		fmt.Fprintf(stderr, "gao giao: no subcommand named %s\n", args[0])
+		fmt.Fprintf(stderr, "gao assign: no subcommand named %s\n", args[0])
 		giaoUsage(stderr)
 		return 2
 	}
 }
 
 func giaoUsage(w io.Writer) {
-	fmt.Fprint(w, `usage: gao giao plan  [-json] readings.jsonl
-       gao giao files [-json] readings.jsonl
-       gao giao read  -dir DIR
+	fmt.Fprint(w, `usage: gao assign plan  [-json] readings.jsonl
+       gao assign files [-json] readings.jsonl
+       gao assign read  -dir DIR
 
 To hand over: which box fetches which file of the ingest, and what the whole
 thing costs once it is split.
@@ -62,20 +62,20 @@ a typed one looks exactly like a measured one on the page.
 Exits 1 when the readings are not a schedule, and 2 when they are one that
 should not be run as written.
 
-run 'gao giao <command> -h' for the flags of one of them.
+run 'gao assign <command> -h' for the flags of one of them.
 `)
 }
 
 // runGiaoRead prints the reading a finished ingest earned.
 func runGiaoRead(stdout, stderr io.Writer, args []string) int {
-	fs := flag.NewFlagSet("giao read", flag.ContinueOnError)
+	fs := flag.NewFlagSet("assign read", flag.ContinueOnError)
 	fs.SetOutput(stderr)
 	dir := fs.String("dir", "", "the ingest directory holding the ledger")
 	fs.Usage = func() {
-		fmt.Fprint(stderr, `usage: gao giao read -dir DIR
+		fmt.Fprint(stderr, `usage: gao assign read -dir DIR
 
 Derives this box's reading from the ledger an ingest left in DIR and prints it
-as one JSON line, which is what 'gao giao plan' reads.
+as one JSON line, which is what 'gao assign plan' reads.
 
 The window is between the first finished file and the last, so the first file's
 bytes are not counted: the ledger records when a file finished and not when it
@@ -100,20 +100,20 @@ flags:
 
 	ledger, err := gat.OpenLedger(*dir)
 	if err != nil {
-		fmt.Fprintf(stderr, "gao giao read: %v\n", err)
+		fmt.Fprintf(stderr, "gao assign read: %v\n", err)
 		return 1
 	}
 	defer func() { _ = ledger.Close() }()
 
 	reading, err := giao.Measure(ledger.Entries())
 	if err != nil {
-		fmt.Fprintf(stderr, "gao giao read: %v\n", err)
+		fmt.Fprintf(stderr, "gao assign read: %v\n", err)
 		return 1
 	}
 	// One line and not indented, because the whole point is that it is appended
 	// to a readings file, and the readings file is JSON lines.
 	if err := json.NewEncoder(stdout).Encode(reading); err != nil {
-		fmt.Fprintf(stderr, "gao giao read: %v\n", err)
+		fmt.Fprintf(stderr, "gao assign read: %v\n", err)
 		return 1
 	}
 	return 0
@@ -124,7 +124,7 @@ flags:
 //
 // It carries the name in the form the fetcher takes, source and path joined by
 // a slash, because a plan somebody has to retype into another command is a plan
-// somebody retypes wrong. 'gao gat hf -only' reads exactly this.
+// somebody retypes wrong. 'gao harvest hf -only' reads exactly this.
 type giaoJobReport struct {
 	Source  string  `json:"source"`
 	Path    string  `json:"path"`
@@ -187,7 +187,7 @@ func runGiaoPlan(stdout, stderr io.Writer, args []string, byFile bool) int {
 	var only *string
 	usage := "usage: gao " + name + " [-json] readings.jsonl\n\nflags:\n"
 	if byFile {
-		only = fs.String("box", "", "print only this box's files, one name per line, which is what 'gao gat hf -only' reads")
+		only = fs.String("box", "", "print only this box's files, one name per line, which is what 'gao harvest hf -only' reads")
 		usage = "usage: gao " + name + " [-json] [-box NAME] readings.jsonl\n\nflags:\n"
 	}
 	fs.Usage = func() {
@@ -208,7 +208,7 @@ func runGiaoPlan(stdout, stderr io.Writer, args []string, byFile bool) int {
 
 	readings, err := giao.ReadReadings(fs.Arg(0))
 	if err != nil {
-		fmt.Fprintf(stderr, "gao giao: %v\n", err)
+		fmt.Fprintf(stderr, "gao assign: %v\n", err)
 		return 1
 	}
 
@@ -338,8 +338,8 @@ func printGiao(w io.Writer, r giaoReport) {
 //
 // Nothing else is the point. This is the one output in gao meant to be read by
 // another program rather than by a person, so it carries no header, no totals
-// and no verdict, and 'gao gat hf -only' takes it as it stands. The reasoning
-// behind the list is a command away and it is 'gao giao files' without the flag.
+// and no verdict, and 'gao harvest hf -only' takes it as it stands. The reasoning
+// behind the list is a command away and it is 'gao assign files' without the flag.
 //
 // A box with no files is not the same as a box that is not in the schedule, and
 // they exit differently. The first is a box the split gave nothing to, which is
@@ -363,11 +363,11 @@ func printGiaoBox(stdout, stderr io.Writer, r giaoReport, box string) int {
 	if !found {
 		for _, idle := range r.Unused {
 			if strings.EqualFold(idle, box) {
-				fmt.Fprintf(stderr, "gao giao files: %s draws nothing, so there is no list to hand it: %s\n", box, r.Verdict)
+				fmt.Fprintf(stderr, "gao assign files: %s draws nothing, so there is no list to hand it: %s\n", box, r.Verdict)
 				return 2
 			}
 		}
-		fmt.Fprintf(stderr, "gao giao files: %s is not a box this schedule hands work to, and the boxes it does are %s\n",
+		fmt.Fprintf(stderr, "gao assign files: %s is not a box this schedule hands work to, and the boxes it does are %s\n",
 			box, strings.Join(r.split.Boxes(), ", "))
 		return 2
 	}

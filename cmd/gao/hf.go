@@ -22,12 +22,12 @@ import (
 )
 
 func runGatHF(stdout, stderr io.Writer, args []string) int {
-	fs := flag.NewFlagSet("gat hf", flag.ContinueOnError)
+	fs := flag.NewFlagSet("harvest hf", flag.ContinueOnError)
 	fs.SetOutput(stderr)
 	dir := fs.String("dir", "", "the ingest directory, which is where the ledger lives")
 	source := fs.String("source", "", "fetch one source rather than all of them, by name")
 	limit := fs.Int("limit", 0, "stop after this many files, which is how a new box is tried out")
-	only := fs.String("only", "", "fetch only the files named in this list, which is what 'gao giao files -box NAME' writes")
+	only := fs.String("only", "", "fetch only the files named in this list, which is what 'gao assign files -box NAME' writes")
 	plan := fs.Bool("plan", false, "print what would be fetched and fetch nothing")
 	decode := fs.Bool("decode", false, "decode each file into documents and put them to the ingest contract")
 	rejects := fs.String("rejects", "", "write the documents the contract turned away to this file, which implies -decode")
@@ -35,14 +35,14 @@ func runGatHF(stdout, stderr io.Writer, args []string) int {
 	tokenizer := fs.String("tokenizer", "", "count tokens with the tokenizer at this path, which implies -decode")
 	out := fs.String("out", "", "write the documents the contract admits under this directory as parquet, which implies -decode")
 	push := fs.Bool("push", false, "push each part to the store as it closes and delete the local copy, which needs -out")
-	disk := fs.String("watch", "", "sample the disk this run holds into this file, which is what 'gao box peak' reads")
+	disk := fs.String("watch", "", "sample the disk this run holds into this file, which is what 'gao fleet peak' reads")
 	fs.Usage = func() {
-		fmt.Fprint(stderr, `usage: gao gat hf -dir DIR [-source NAME] [-limit N] [-only FILE] [-plan] [-decode] [-out DIR] [-push] [-tokenizer PATH] [-watch FILE]
+		fmt.Fprint(stderr, `usage: gao harvest hf -dir DIR [-source NAME] [-limit N] [-only FILE] [-plan] [-decode] [-out DIR] [-push] [-tokenizer PATH] [-watch FILE]
 
 Fetches the files in the ingest manifest at the revisions they are pinned to.
 
 A source the manifest marks dropped is refused by name, with the reason, before
-the ledger is opened. 'gao gat pins' lists them under the download total.
+the ledger is opened. 'gao harvest pins' lists them under the download total.
 
 Nothing is written to disk except the ledger. The largest pinned file is 26.6 GB
 and the box that fetches it peaks at 4.1 GB, so a file is streamed through
@@ -58,7 +58,7 @@ into one corpus.
 
 With -only the run fetches the files named in a list and leaves the rest, which
 is how one box performs its share of a fleet schedule rather than the whole
-ingest. The list is what 'gao giao files -box NAME' writes, one name per line,
+ingest. The list is what 'gao assign files -box NAME' writes, one name per line,
 source and path joined by a slash. An empty list and a name that is not pinned
 are both refused, because a run that quietly fetches nothing looks exactly like a
 box that is already up to date. This is the flag to reach for on a fleet. -limit
@@ -99,7 +99,7 @@ skips what is already up there without sending it a second time.
 
 With -watch the run samples the disk it is holding every ten seconds and writes
 the trace to that file, which is what turns the disk budget from arithmetic into
-a measurement. Run 'gao box peak' over it afterwards. The sample says which half
+a measurement. Run 'gao fleet peak' over it afterwards. The sample says which half
 of the work it was taken during, since writing a part and sending it hold the
 disk for different reasons.
 
@@ -109,14 +109,14 @@ counts tokens too, which is the only number in gao that costs anything to
 produce. It costs more than the ingest: the pinned tokenizer was measured at
 0.5 MB/s on server3 over 52.8 MB of real text, it runs on the goroutine reading
 the file, and the same source on the same box took nine times longer with the
-flag than without it. Run 'gao dem gates' on a box before deciding to use this
-on a run you want to finish. Run 'gao dem model' to fetch the tokenizer and
-'gao dem counts' to read the result.
+flag than without it. Run 'gao count gates' on a box before deciding to use this
+on a run you want to finish. Run 'gao count model' to fetch the tokenizer and
+'gao count counts' to read the result.
 
 The counts are written before the first byte is fetched and rewritten after
 every file, so a run that takes days can be read while it runs and cannot leave
 an earlier run's numbers sitting in the directory. A report written mid run says
-so, and 'gao dem counts' prints which boxes had not finished.
+so, and 'gao count counts' prints which boxes had not finished.
 
 Counting happens here rather than in a later pass because the largest source is
 around 700 GB of text, and a design where ingestion writes documents and
@@ -141,20 +141,20 @@ flags:
 		return 2
 	}
 	if *dir == "" {
-		fmt.Fprint(stderr, "gao gat hf: -dir is required, because an ingest that picks its own directory is one nobody meant to start\n")
+		fmt.Fprint(stderr, "gao harvest hf: -dir is required, because an ingest that picks its own directory is one nobody meant to start\n")
 		return 2
 	}
 
 	sources, err := hfSources(*source)
 	if err != nil {
-		fmt.Fprintf(stderr, "gao gat hf: %v\n", err)
+		fmt.Fprintf(stderr, "gao harvest hf: %v\n", err)
 		return 1
 	}
 	if *rejects != "" || *tokenizer != "" || *out != "" {
 		*decode = true
 	}
 	if *push && *out == "" {
-		fmt.Fprint(stderr, "gao gat hf: -push needs -out, because a part is written before it is pushed\n")
+		fmt.Fprint(stderr, "gao harvest hf: -push needs -out, because a part is written before it is pushed\n")
 		return 2
 	}
 
@@ -167,7 +167,7 @@ flags:
 	if *only != "" {
 		names, err = readOnly(*only, sources)
 		if err != nil {
-			fmt.Fprintf(stderr, "gao gat hf: %v\n", err)
+			fmt.Fprintf(stderr, "gao harvest hf: %v\n", err)
 			return 2
 		}
 	}
@@ -179,14 +179,14 @@ flags:
 	if *tokenizer != "" {
 		tok, err = dem.Open(dem.Gemma3, *tokenizer)
 		if err != nil {
-			fmt.Fprintf(stderr, "gao gat hf: %v\n", err)
-			fmt.Fprint(stderr, "run 'gao dem model -o PATH' to fetch the tokenizer gao counts with\n")
+			fmt.Fprintf(stderr, "gao harvest hf: %v\n", err)
+			fmt.Fprint(stderr, "run 'gao count model -o PATH' to fetch the tokenizer gao counts with\n")
 			return 1
 		}
 	}
 	if *decode {
 		if ok, missing := gat.Decodable(sources); !ok {
-			fmt.Fprintf(stderr, "gao gat hf: %v: %s\n", gat.ErrNoDecoder, sourceList(missing))
+			fmt.Fprintf(stderr, "gao harvest hf: %v: %s\n", gat.ErrNoDecoder, sourceList(missing))
 			fmt.Fprint(stderr, "pick a source with -source, or drop -decode to fetch and count the bytes\n")
 			return 1
 		}
@@ -197,21 +197,21 @@ flags:
 	// and takes no lock, so the plan stays readable while an ingest is running,
 	// which is when somebody most wants to read it.
 	if !*plan {
-		lock, err := gat.LockDir(*dir, "gao gat hf")
+		lock, err := gat.LockDir(*dir, "gao harvest hf")
 		if err != nil {
-			fmt.Fprintf(stderr, "gao gat hf: %v\n", err)
+			fmt.Fprintf(stderr, "gao harvest hf: %v\n", err)
 			return 1
 		}
 		defer func() {
 			if err := lock.Release(); err != nil {
-				fmt.Fprintf(stderr, "gao gat hf: %v\n", err)
+				fmt.Fprintf(stderr, "gao harvest hf: %v\n", err)
 			}
 		}()
 	}
 
 	ledger, err := gat.OpenLedger(*dir)
 	if err != nil {
-		fmt.Fprintf(stderr, "gao gat hf: %v\n", err)
+		fmt.Fprintf(stderr, "gao harvest hf: %v\n", err)
 		return 1
 	}
 	defer func() { _ = ledger.Close() }()
@@ -249,14 +249,14 @@ flags:
 		var closeRejects func() error
 		docs, closeRejects, err = openDocs(*rejects, *sample)
 		if err != nil {
-			fmt.Fprintf(stderr, "gao gat hf: %v\n", err)
+			fmt.Fprintf(stderr, "gao harvest hf: %v\n", err)
 			return 1
 		}
 		// Closed here rather than deferred, so that the segment is finished and
 		// its error reported before the summary claims the run went well.
 		defer func() {
 			if err := closeRejects(); err != nil {
-				fmt.Fprintf(stderr, "gao gat hf: closing the reject store: %v\n", err)
+				fmt.Fprintf(stderr, "gao harvest hf: closing the reject store: %v\n", err)
 			}
 		}()
 		in.Sink = docs
@@ -276,7 +276,7 @@ flags:
 			// takes to fill the first part.
 			written.push = &kho.Pusher{Repo: written.dataset.Repo(), Token: may.Token()}
 			if err := written.push.EnsureRepo(ctx, written.dataset); err != nil {
-				fmt.Fprintf(stderr, "gao gat hf: %v\n", err)
+				fmt.Fprintf(stderr, "gao harvest hf: %v\n", err)
 				return 1
 			}
 		}
@@ -287,7 +287,7 @@ flags:
 		// is a directory somebody has half cleared out rather than one to resume.
 		var err error
 		if seeded, err = seedCounts(stdout, *dir, ledger, &tally); err != nil {
-			fmt.Fprintf(stderr, "gao gat hf: %v\n", err)
+			fmt.Fprintf(stderr, "gao harvest hf: %v\n", err)
 			return 1
 		}
 	}
@@ -302,13 +302,13 @@ flags:
 		}
 		w, err := watch(*disk, []string{*dir, *out}, in.Box, stage)
 		if err != nil {
-			fmt.Fprintf(stderr, "gao gat hf: %v\n", err)
+			fmt.Fprintf(stderr, "gao harvest hf: %v\n", err)
 			return 1
 		}
 		stopWatch = func() {
 			stopWatch = func() {}
 			if err := w.Close(); err != nil {
-				fmt.Fprintf(stderr, "gao gat hf: %v\n", err)
+				fmt.Fprintf(stderr, "gao harvest hf: %v\n", err)
 			}
 		}
 		// The deferred call is for the paths that leave early. The run itself
@@ -361,10 +361,10 @@ flags:
 }
 
 // readOnly reads the list of files a run is limited to and checks it against the
-// manifest, which is how the schedule 'gao giao plan' prices becomes the run one
+// manifest, which is how the schedule 'gao assign plan' prices becomes the run one
 // box actually performs.
 //
-// The list is what 'gao giao files -box NAME' writes: one name per line, source
+// The list is what 'gao assign files -box NAME' writes: one name per line, source
 // and path joined by a slash, in the order the schedule hands them out. Blank
 // lines are skipped so that a list that picked up a trailing newline on the way
 // between two machines still works.
@@ -446,7 +446,7 @@ func keepOnly(stdout io.Writer, todo []gat.Work, want map[string]bool, path stri
 
 // workName is the name one file goes by outside the ledger, which is the source
 // and the path with a slash between them. It is written in one place because
-// 'gao giao files' prints it and 'gao gat hf -only' reads it, and a scheduler
+// 'gao assign files' prints it and 'gao harvest hf -only' reads it, and a scheduler
 // and a fetcher that disagree about what a file is called agree on nothing.
 func workName(source, path string) string {
 	return source + "/" + path
@@ -520,7 +520,7 @@ func saveCounts(stderr io.Writer, dir, box string, tally *dem.Tally, complete bo
 	r := tally.Report(box, time.Now())
 	r.Complete = complete
 	if err := r.Write(dir); err != nil {
-		fmt.Fprintf(stderr, "gao gat hf: writing the counts: %v\n", err)
+		fmt.Fprintf(stderr, "gao harvest hf: writing the counts: %v\n", err)
 	}
 }
 
@@ -672,13 +672,13 @@ func round(d time.Duration) time.Duration { return d.Round(time.Second) }
 func hfError(stderr io.Writer, err error) int {
 	switch {
 	case errors.Is(err, context.Canceled):
-		fmt.Fprintln(stderr, "gao gat hf: stopped, and the ledger has everything that finished")
+		fmt.Fprintln(stderr, "gao harvest hf: stopped, and the ledger has everything that finished")
 		return 0
 	case errors.Is(err, gat.ErrGated):
-		fmt.Fprintf(stderr, "gao gat hf: %v\n", err)
+		fmt.Fprintf(stderr, "gao harvest hf: %v\n", err)
 		return 1
 	default:
-		fmt.Fprintf(stderr, "gao gat hf: %v\n", err)
+		fmt.Fprintf(stderr, "gao harvest hf: %v\n", err)
 		return 1
 	}
 }
@@ -687,12 +687,12 @@ func hfError(stderr io.Writer, err error) int {
 // opening the ledger for writing, so it is safe to run against a directory an
 // ingest is using.
 func runGatLedger(stdout, stderr io.Writer, args []string) int {
-	fs := flag.NewFlagSet("gat ledger", flag.ContinueOnError)
+	fs := flag.NewFlagSet("harvest ledger", flag.ContinueOnError)
 	fs.SetOutput(stderr)
 	dir := fs.String("dir", "", "the ingest directory")
 	files := fs.Bool("files", false, "list every finished file rather than a total per source")
 	fs.Usage = func() {
-		fmt.Fprint(stderr, `usage: gao gat ledger -dir DIR [-files]
+		fmt.Fprint(stderr, `usage: gao harvest ledger -dir DIR [-files]
 
 Prints what an ingest has finished. It opens the ledger read only, so it is safe
 to run on a box that is fetching into the same directory.
@@ -715,7 +715,7 @@ flags:
 
 	entries, err := gat.ReadLedger(*dir)
 	if err != nil {
-		fmt.Fprintf(stderr, "gao gat ledger: %v\n", err)
+		fmt.Fprintf(stderr, "gao harvest ledger: %v\n", err)
 		return 1
 	}
 	printLedger(stdout, entries, *files)
@@ -725,7 +725,7 @@ flags:
 	// A lock that cannot be read is a note and not a failure, because this
 	// command claims nothing and the numbers above it are still the numbers.
 	if h, err := gat.ReadHolder(*dir); err != nil {
-		fmt.Fprintf(stderr, "gao gat ledger: %v\n", err)
+		fmt.Fprintf(stderr, "gao harvest ledger: %v\n", err)
 	} else if h.PID != 0 {
 		fmt.Fprintf(stdout, "\nan ingest is running here: %s\n", h)
 	}

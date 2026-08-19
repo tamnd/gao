@@ -10,14 +10,14 @@ import (
 )
 
 func runChim(stdout, stderr io.Writer, args []string) int {
-	fs := flag.NewFlagSet("chim", flag.ContinueOnError)
+	fs := flag.NewFlagSet("sink", flag.ContinueOnError)
 	fs.SetOutput(stderr)
 	asJSON := fs.Bool("json", false, "print JSON")
 	model := fs.String("model", "com-30B-A3B-base", "the model the step came off")
 	loss := fs.Float64("loss", 0, "the FP8 run's loss on this step")
 	ref := fs.Float64("bf16", 0, "the BF16 run's loss on the same step and the same batch")
 	fs.Usage = func() {
-		fmt.Fprint(stderr, `usage: gao chim [-model name] [-loss x] [-bf16 x] [-json] step.jsonl
+		fmt.Fprint(stderr, `usage: gao sink [-model name] [-loss x] [-bf16 x] [-json] step.jsonl
 
 To sink: what an FP8 E4M3 step lost to zero.
 
@@ -64,7 +64,7 @@ flags:
 
 	s, err := chim.ReadStep(*model, *loss, *ref, fs.Arg(0))
 	if err != nil {
-		fmt.Fprintf(stderr, "gao chim: %v\n", err)
+		fmt.Fprintf(stderr, "gao sink: %v\n", err)
 		return 1
 	}
 

@@ -35,7 +35,7 @@ func TestChiaRoutesEachDocumentAndCountsThem(t *testing.T) {
 
 	out, _, code := exec(t, "chia", a, b)
 	if code != 0 {
-		t.Fatalf("gao chia: exit %d, want 0\n%s", code, out)
+		t.Fatalf("gao route: exit %d, want 0\n%s", code, out)
 	}
 	if !strings.Contains(out, "T\t"+a) {
 		t.Errorf("the page of prose was not routed to T:\n%s", out)
@@ -53,7 +53,7 @@ func TestChiaLabelsTheDistributionWithTheBoxItRanOn(t *testing.T) {
 	dir := t.TempDir()
 	out, _, code := exec(t, "chia", "-box", "gamingpc", writePDF(t, dir, "a.pdf", pdfProse))
 	if code != 0 {
-		t.Fatalf("gao chia: exit %d, want 0", code)
+		t.Fatalf("gao route: exit %d, want 0", code)
 	}
 	if !strings.Contains(out, "routed on gamingpc") {
 		t.Errorf("the distribution does not name the box:\n%s", out)
@@ -64,11 +64,11 @@ func TestChiaExplainsItselfWhenAsked(t *testing.T) {
 	dir := t.TempDir()
 	out, _, code := exec(t, "chia", "-why", writePDF(t, dir, "a.pdf", pdfProse))
 	if code != 0 {
-		t.Fatalf("gao chia -why: exit %d, want 0", code)
+		t.Fatalf("gao route -why: exit %d, want 0", code)
 	}
 	for _, want := range []string{"pages", "characters a page", "image"} {
 		if !strings.Contains(out, want) {
-			t.Errorf("gao chia -why did not print %q:\n%s", want, out)
+			t.Errorf("gao route -why did not print %q:\n%s", want, out)
 		}
 	}
 }
@@ -79,7 +79,7 @@ func TestChiaExplainsItselfWhenAsked(t *testing.T) {
 func TestChiaFailsOnAFileItCannotRead(t *testing.T) {
 	_, errOut, code := exec(t, "chia", filepath.Join(t.TempDir(), "khong-co.pdf"))
 	if code != 1 {
-		t.Errorf("gao chia on a missing file: exit %d, want 1", code)
+		t.Errorf("gao route on a missing file: exit %d, want 1", code)
 	}
 	if !strings.Contains(errOut, "khong-co.pdf") {
 		t.Errorf("stderr did not name the file it could not read: %q", errOut)
@@ -89,7 +89,7 @@ func TestChiaFailsOnAFileItCannotRead(t *testing.T) {
 func TestChiaWithNoFilesSaysWhatItIsFor(t *testing.T) {
 	_, errOut, code := exec(t, "chia")
 	if code != 2 {
-		t.Errorf("gao chia: exit %d, want 2", code)
+		t.Errorf("gao route: exit %d, want 2", code)
 	}
 	for _, want := range []string{"born digital", "legacy", "OCR"} {
 		if !strings.Contains(errOut, want) {

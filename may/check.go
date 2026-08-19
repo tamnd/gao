@@ -5,7 +5,7 @@ package may
 // The inventory is data with a date on it, and the date is there because the
 // numbers move. They moved: the fleet was recorded on 2026-08-03, and two weeks
 // later one box had lost 26 GB of free disk and another had gained 70. That is
-// not a bookkeeping problem. A plan reads the recorded number, and 'gao box
+// not a bookkeeping problem. A plan reads the recorded number, and 'gao fleet
 // peak' printed a fault sentence saying a box had 44.3 GB free while the box
 // had 18.2, which is a sentence somebody would have acted on.
 //

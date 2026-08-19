@@ -35,7 +35,7 @@ Read the recall figure with that in mind. It is recall against a policy, not rec
 
 ## What it measures
 
-Run it two ways. `go test ./che -run TestTheRecallOfEachDetector -v` prints the table whether it passes or not, and `gao che -recall` prints the same thing from an installed binary, which is the point of embedding the set rather than reading it off disk.
+Run it two ways. `go test ./che -run TestTheRecallOfEachDetector -v` prints the table whether it passes or not, and `gao cover -recall` prints the same thing from an installed binary, which is the point of embedding the set rather than reading it off disk.
 
 | detector | marked | covered | recall | found | precision |
 | --- | --- | --- | --- | --- | --- |

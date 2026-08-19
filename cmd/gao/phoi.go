@@ -17,13 +17,13 @@ import (
 )
 
 func runPhoi(stdout, stderr io.Writer, args []string) int {
-	fs := flag.NewFlagSet("phoi", flag.ContinueOnError)
+	fs := flag.NewFlagSet("normalize", flag.ContinueOnError)
 	fs.SetOutput(stderr)
 	report := fs.Bool("report", false, "print what normalization did instead of the normalized text")
 	total := fs.Bool("total", false, "with -report, print the total and not a line per document")
 	asJSON := fs.Bool("json", false, "with -report, print JSON")
 	fs.Usage = func() {
-		fmt.Fprint(stderr, `usage: gao phoi [-report [-total] [-json]] [file...]
+		fmt.Fprint(stderr, `usage: gao normalize [-report [-total] [-json]] [file...]
 
 Normalize Vietnamese text, which is the first thing done to a document and the
 thing every stage after it assumes has been done. With no file it reads standard
@@ -55,11 +55,11 @@ flags:
 		return 2
 	}
 	if *asJSON && !*report {
-		fmt.Fprintln(stderr, "gao phoi: -json only means something with -report")
+		fmt.Fprintln(stderr, "gao normalize: -json only means something with -report")
 		return 2
 	}
 	if *total && !*report {
-		fmt.Fprintln(stderr, "gao phoi: -total only means something with -report")
+		fmt.Fprintln(stderr, "gao normalize: -total only means something with -report")
 		return 2
 	}
 
@@ -76,18 +76,18 @@ flags:
 			// loses where each one ended, which is the one thing a normalizer
 			// must not do.
 			if filepath.Ext(name) == ".parquet" {
-				fmt.Fprintf(stderr, "gao phoi: %s holds many documents, and normalizing them onto one stream loses where each one ended. Use -report\n", name)
+				fmt.Fprintf(stderr, "gao normalize: %s holds many documents, and normalizing them onto one stream loses where each one ended. Use -report\n", name)
 				return 2
 			}
 			text, err := readDocument(name)
 			if err != nil {
-				fmt.Fprintf(stderr, "gao phoi: %v\n", err)
+				fmt.Fprintf(stderr, "gao normalize: %v\n", err)
 				return 1
 			}
 			r := phoi.Normalize(string(text))
 			tally.Add(r)
 			if _, err := io.WriteString(stdout, r.Text); err != nil {
-				fmt.Fprintf(stderr, "gao phoi: %v\n", err)
+				fmt.Fprintf(stderr, "gao normalize: %v\n", err)
 				return 1
 			}
 			continue
@@ -111,7 +111,7 @@ flags:
 			return nil
 		})
 		if err != nil {
-			fmt.Fprintf(stderr, "gao phoi: %v\n", err)
+			fmt.Fprintf(stderr, "gao normalize: %v\n", err)
 			return 1
 		}
 	}
@@ -123,7 +123,7 @@ flags:
 		enc := json.NewEncoder(stdout)
 		enc.SetIndent("", "  ")
 		if err := enc.Encode(phoiReport{Documents: lines, Total: tally}); err != nil {
-			fmt.Fprintf(stderr, "gao phoi: %v\n", err)
+			fmt.Fprintf(stderr, "gao normalize: %v\n", err)
 			return 1
 		}
 		return 0

@@ -11,21 +11,21 @@ import (
 )
 
 func runMau(stdout, stderr io.Writer, args []string) int {
-	fs := flag.NewFlagSet("mau", flag.ContinueOnError)
+	fs := flag.NewFlagSet("sample", flag.ContinueOnError)
 	fs.SetOutput(stderr)
 	asJSON := fs.Bool("json", false, "print JSON")
 	takes := fs.Bool("takes", false, "print the read list itself, one shard and its byte count per line")
 	source := fs.String("source", "", "the source being read")
 	seed := fs.String("seed", "", "the seed the shards are drawn with, so a third party draws the same ones")
-	layers := fs.String("layers", "", "the layer file, the same one gao tang reads")
+	layers := fs.String("layers", "", "the layer file, the same one gao layers reads")
 	want := fs.Int64("bytes", mau.Want, "how much to read off each unread layer")
 	fs.Usage = func() {
-		fmt.Fprint(stderr, `usage: gao mau -source name -seed s -layers layers.jsonl [-bytes N] [-takes] [-json] files.jsonl
+		fmt.Fprint(stderr, `usage: gao sample -source name -seed s -layers layers.jsonl [-bytes N] [-takes] [-json] files.jsonl
 
 Decide which shards of the layers nobody has read get read, before anybody reads
 them.
 
-The layer file is the one gao tang reads, and the listing is one JSON object per
+The layer file is the one gao layers reads, and the listing is one JSON object per
 shard: its layer, its path, and its size, as the source publishes them. Nothing
 here is measured. The whole point of a plan is that it exists before the fetching
 does.
@@ -37,7 +37,7 @@ shard is forty megabytes of whichever domains the crawl put at the front of it,
 and it costs exactly what forty megabytes off sixteen shards costs, so the
 spread is a gate here rather than a detail.
 
-The draw is blake3 of the seed with the path, which is the draw gao dem verify
+The draw is blake3 of the seed with the path, which is the draw gao count verify
 uses. A third party with the seed and the listing gets the same shards, and the
 digest is over the takes themselves, so a plan regenerated against a different
 listing is a different plan rather than the same one with different files in it.
@@ -59,12 +59,12 @@ flags:
 
 	read, err := tang.ReadLayers(*layers)
 	if err != nil {
-		fmt.Fprintf(stderr, "gao mau: %v\n", err)
+		fmt.Fprintf(stderr, "gao sample: %v\n", err)
 		return 1
 	}
 	files, err := mau.ReadFiles(fs.Arg(0))
 	if err != nil {
-		fmt.Fprintf(stderr, "gao mau: %v\n", err)
+		fmt.Fprintf(stderr, "gao sample: %v\n", err)
 		return 1
 	}
 

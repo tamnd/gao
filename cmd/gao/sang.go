@@ -15,12 +15,12 @@ import (
 )
 
 func runSang(stdout, stderr io.Writer, args []string) int {
-	fs := flag.NewFlagSet("sang", flag.ContinueOnError)
+	fs := flag.NewFlagSet("sift", flag.ContinueOnError)
 	fs.SetOutput(stderr)
 	minSyllables := fs.Int("min-syllables", sang.Default().MinSyllables, "the shortest thing that counts as a document")
 	asJSON := fs.Bool("json", false, "print JSON")
 	fs.Usage = func() {
-		fmt.Fprint(stderr, `usage: gao sang [-min-syllables n] [-json] file...
+		fmt.Fprint(stderr, `usage: gao sift [-min-syllables n] [-json] file...
 
 Measure documents and say which of them are Vietnamese prose. A file is either
 a parquet part written by the ingest, in which case every row in it is a
@@ -50,13 +50,13 @@ flags:
 	}
 	files := fs.Args()
 	if len(files) == 0 {
-		fmt.Fprintln(stderr, "gao sang: nothing to read. Give it parquet parts or text files")
+		fmt.Fprintln(stderr, "gao sift: nothing to read. Give it parquet parts or text files")
 		return 2
 	}
 
 	limits := sang.Default()
 	if *minSyllables < 0 {
-		fmt.Fprintf(stderr, "gao sang: a document cannot be shorter than no syllables, and %d is\n", *minSyllables)
+		fmt.Fprintf(stderr, "gao sift: a document cannot be shorter than no syllables, and %d is\n", *minSyllables)
 		return 2
 	}
 	limits.MinSyllables = *minSyllables
@@ -68,7 +68,7 @@ flags:
 	for _, name := range files {
 		texts, err := readDocuments(name)
 		if err != nil {
-			fmt.Fprintf(stderr, "gao sang: %v\n", err)
+			fmt.Fprintf(stderr, "gao sift: %v\n", err)
 			return 1
 		}
 		for i, text := range texts {

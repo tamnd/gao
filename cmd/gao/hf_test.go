@@ -30,7 +30,7 @@ func TestTheHFPlanSaysWhatIsLeftAndFetchesNothing(t *testing.T) {
 	dir := t.TempDir()
 	out, _, code := exec(t, "gat", "hf", "-dir", dir, "-plan")
 	if code != 0 {
-		t.Fatalf("gao gat hf -plan: exit %d, want 0", code)
+		t.Fatalf("gao harvest hf -plan: exit %d, want 0", code)
 	}
 	for _, want := range []string{
 		fmt.Sprintf("0 of %d files done", gat.Files()),
@@ -113,7 +113,7 @@ func TestTheHFLimitBoundsWhatARunWillTake(t *testing.T) {
 }
 
 // onlyList writes a file selection list and returns the path to it. The shape is
-// what 'gao giao files -box NAME' prints, one name per line and nothing else.
+// what 'gao assign files -box NAME' prints, one name per line and nothing else.
 func onlyList(t *testing.T, names ...string) string {
 	t.Helper()
 	path := filepath.Join(t.TempDir(), "mine.txt")
@@ -139,7 +139,7 @@ func TestOnlyTakesTheFilesItWasNamedRatherThanTheFirstOnes(t *testing.T) {
 
 	out, errOut, code := exec(t, "gat", "hf", "-dir", t.TempDir(), "-only", path, "-plan")
 	if code != 0 {
-		t.Fatalf("gao gat hf -only: exit %d, %s", code, errOut)
+		t.Fatalf("gao harvest hf -only: exit %d, %s", code, errOut)
 	}
 	want := fmt.Sprintf("names 2 files, 2 left to fetch, %s to move", may.GB(a.Bytes+b.Bytes))
 	if !strings.Contains(out, want) {
@@ -150,7 +150,7 @@ func TestOnlyTakesTheFilesItWasNamedRatherThanTheFirstOnes(t *testing.T) {
 	// picks two other files and moves a different number of bytes.
 	limited, _, code := exec(t, "gat", "hf", "-dir", t.TempDir(), "-limit", "2", "-plan")
 	if code != 0 {
-		t.Fatalf("gao gat hf -limit 2: exit %d", code)
+		t.Fatalf("gao harvest hf -limit 2: exit %d", code)
 	}
 	if strings.Contains(limited, may.GB(a.Bytes+b.Bytes)) {
 		t.Errorf("a limit of two takes the same bytes as the list, so this proves nothing:\n%s", limited)
@@ -243,12 +243,12 @@ func TestAListWhoseFilesAreAllDoneIsAFinishedHand(t *testing.T) {
 }
 
 // The two commands agree about what a file is called. This is the join the
-// schedule was missing: 'gao giao files -box NAME' writes the list and 'gao gat
+// schedule was missing: 'gao assign files -box NAME' writes the list and 'gao harvest
 // hf -only' takes it, with nothing in between to edit it by hand.
 func TestTheScheduleTheSplitPrintsIsTheOneTheFetcherTakes(t *testing.T) {
 	names, errOut, code := exec(t, "giao", "files", "-box", "server3", giaoFleet(t))
 	if code != 0 {
-		t.Fatalf("gao giao files -box: exit %d, %s", code, errOut)
+		t.Fatalf("gao assign files -box: exit %d, %s", code, errOut)
 	}
 	path := filepath.Join(t.TempDir(), "server3.txt")
 	if err := os.WriteFile(path, []byte(names), 0o600); err != nil {
@@ -258,7 +258,7 @@ func TestTheScheduleTheSplitPrintsIsTheOneTheFetcherTakes(t *testing.T) {
 	want := len(strings.Fields(names))
 	out, errOut, code := exec(t, "gat", "hf", "-dir", t.TempDir(), "-only", path, "-plan")
 	if code != 0 {
-		t.Fatalf("gao gat hf -only: exit %d, %s", code, errOut)
+		t.Fatalf("gao harvest hf -only: exit %d, %s", code, errOut)
 	}
 	if want == 0 || want >= gat.Files() {
 		t.Fatalf("the schedule hands server3 %d of the %d pinned files, which is not a share of it", want, gat.Files())
@@ -271,7 +271,7 @@ func TestTheScheduleTheSplitPrintsIsTheOneTheFetcherTakes(t *testing.T) {
 func TestHFRefusesASourceItHasNoPinFor(t *testing.T) {
 	_, errOut, code := exec(t, "gat", "hf", "-dir", t.TempDir(), "-source", "commoncrawl", "-plan")
 	if code == 0 {
-		t.Error("gao gat hf accepted a source that is not pinned")
+		t.Error("gao harvest hf accepted a source that is not pinned")
 	}
 	if !strings.Contains(errOut, "commoncrawl") {
 		t.Errorf("the error does not name the source asked for: %q", errOut)
@@ -542,7 +542,7 @@ func TestHFIsInTheGatHelpAndTheUsage(t *testing.T) {
 	}
 	for _, want := range []string{"hf", "ledger", "resuming"} {
 		if !strings.Contains(out, want) {
-			t.Errorf("gao gat help does not mention %q:\n%s", want, out)
+			t.Errorf("gao harvest help does not mention %q:\n%s", want, out)
 		}
 	}
 
@@ -550,7 +550,7 @@ func TestHFIsInTheGatHelpAndTheUsage(t *testing.T) {
 	// the first fetch and this is where somebody looks.
 	_, errOut, code := exec(t, "gat", "hf", "-h")
 	if code != 2 {
-		t.Errorf("gao gat hf -h: exit %d, want 2", code)
+		t.Errorf("gao harvest hf -h: exit %d, want 2", code)
 	}
 	if !strings.Contains(errOut, may.TokenEnv) {
 		t.Errorf("the usage does not name %s:\n%s", may.TokenEnv, errOut)
@@ -558,7 +558,7 @@ func TestHFIsInTheGatHelpAndTheUsage(t *testing.T) {
 
 	// Which sources decode is in the usage rather than only in the error,
 	// because it decides whether a run is worth starting.
-	for _, want := range []string{"-decode", "-rejects", "-only", "gao giao files -box NAME", "CulturaX", "Parquet", "range request"} {
+	for _, want := range []string{"-decode", "-rejects", "-only", "gao assign files -box NAME", "CulturaX", "Parquet", "range request"} {
 		if !strings.Contains(errOut, want) {
 			t.Errorf("the usage does not mention %q:\n%s", want, errOut)
 		}
@@ -571,7 +571,7 @@ func TestHFIsInTheGatHelpAndTheUsage(t *testing.T) {
 // same document segment.
 func TestHFRefusesADirectoryAnotherIngestIsHolding(t *testing.T) {
 	dir := t.TempDir()
-	lock, err := gat.LockDir(dir, "gao gat hf")
+	lock, err := gat.LockDir(dir, "gao harvest hf")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -592,7 +592,7 @@ func TestHFRefusesADirectoryAnotherIngestIsHolding(t *testing.T) {
 // is the moment somebody most wants to read it.
 func TestHFCanStillPrintThePlanWhileAnIngestHoldsTheDirectory(t *testing.T) {
 	dir := t.TempDir()
-	lock, err := gat.LockDir(dir, "gao gat hf")
+	lock, err := gat.LockDir(dir, "gao harvest hf")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -619,7 +619,7 @@ func TestTheLedgerCommandSaysWhenAnIngestIsRunning(t *testing.T) {
 		t.Errorf("an unlocked directory reported a running ingest:\n%s", out)
 	}
 
-	lock, err := gat.LockDir(dir, "gao gat hf")
+	lock, err := gat.LockDir(dir, "gao harvest hf")
 	if err != nil {
 		t.Fatal(err)
 	}

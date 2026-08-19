@@ -28,10 +28,10 @@ func TestPhoiWritesTheNormalizedText(t *testing.T) {
 
 	var stdout, stderr bytes.Buffer
 	if code := runPhoi(&stdout, &stderr, []string{path}); code != 0 {
-		t.Fatalf("gao phoi = %d, want 0\n%s", code, stderr.String())
+		t.Fatalf("gao normalize = %d, want 0\n%s", code, stderr.String())
 	}
 	if got := stdout.String(); got != "Hòa bình\n" {
-		t.Errorf("gao phoi wrote %q, want %q", got, "Hòa bình\n")
+		t.Errorf("gao normalize wrote %q, want %q", got, "Hòa bình\n")
 	}
 }
 
@@ -40,7 +40,7 @@ func TestPhoiReportsWhatItDid(t *testing.T) {
 
 	var stdout, stderr bytes.Buffer
 	if code := runPhoi(&stdout, &stderr, []string{"-report", path}); code != 0 {
-		t.Fatalf("gao phoi -report = %d, want 0\n%s", code, stderr.String())
+		t.Fatalf("gao normalize -report = %d, want 0\n%s", code, stderr.String())
 	}
 	out := stdout.String()
 	for _, want := range []string{"tones", "residue", "syllables", "input method keystrokes"} {
@@ -61,7 +61,7 @@ func TestPhoiSaysWhyADocumentDoesNotGoOn(t *testing.T) {
 
 	var stdout, stderr bytes.Buffer
 	if code := runPhoi(&stdout, &stderr, []string{"-report", path}); code != 0 {
-		t.Fatalf("gao phoi -report = %d, want 0\n%s", code, stderr.String())
+		t.Fatalf("gao normalize -report = %d, want 0\n%s", code, stderr.String())
 	}
 	out := stdout.String()
 	if !strings.Contains(out, "no, residue") {
@@ -90,7 +90,7 @@ func TestPhoiReportsSeveralDocumentsWithATotal(t *testing.T) {
 
 	var stdout, stderr bytes.Buffer
 	if code := runPhoi(&stdout, &stderr, append([]string{"-report"}, paths...)); code != 0 {
-		t.Fatalf("gao phoi -report = %d, want 0\n%s", code, stderr.String())
+		t.Fatalf("gao normalize -report = %d, want 0\n%s", code, stderr.String())
 	}
 	if got := stdout.String(); !strings.Contains(got, "3 documents") {
 		t.Errorf("the report has no total line:\n%s", got)
@@ -102,7 +102,7 @@ func TestPhoiReportsJSON(t *testing.T) {
 
 	var stdout, stderr bytes.Buffer
 	if code := runPhoi(&stdout, &stderr, []string{"-report", "-json", path}); code != 0 {
-		t.Fatalf("gao phoi -report -json = %d, want 0\n%s", code, stderr.String())
+		t.Fatalf("gao normalize -report -json = %d, want 0\n%s", code, stderr.String())
 	}
 	var got phoiReport
 	if err := json.Unmarshal(stdout.Bytes(), &got); err != nil {
@@ -124,7 +124,7 @@ func TestPhoiReportsJSON(t *testing.T) {
 func TestPhoiRefusesJSONWithoutReport(t *testing.T) {
 	var stdout, stderr bytes.Buffer
 	if code := runPhoi(&stdout, &stderr, []string{"-json"}); code != 2 {
-		t.Fatalf("gao phoi -json = %d, want 2", code)
+		t.Fatalf("gao normalize -json = %d, want 2", code)
 	}
 	if !strings.Contains(stderr.String(), "-report") {
 		t.Errorf("the error does not say what to do about it: %q", stderr.String())
@@ -134,7 +134,7 @@ func TestPhoiRefusesJSONWithoutReport(t *testing.T) {
 func TestPhoiSaysWhichFileItCouldNotRead(t *testing.T) {
 	var stdout, stderr bytes.Buffer
 	if code := runPhoi(&stdout, &stderr, []string{filepath.Join(t.TempDir(), "gone.txt")}); code != 1 {
-		t.Fatalf("gao phoi = %d, want 1", code)
+		t.Fatalf("gao normalize = %d, want 1", code)
 	}
 	if !strings.Contains(stderr.String(), "gone.txt") {
 		t.Errorf("the error does not name the file: %q", stderr.String())
@@ -179,7 +179,7 @@ func TestPhoiReportsEveryRowOfAPart(t *testing.T) {
 
 	var stdout, stderr bytes.Buffer
 	if code := runPhoi(&stdout, &stderr, []string{"-report", "-json", path}); code != 0 {
-		t.Fatalf("gao phoi -report PART = %d, want 0\n%s", code, stderr.String())
+		t.Fatalf("gao normalize -report PART = %d, want 0\n%s", code, stderr.String())
 	}
 	var got phoiReport
 	if err := json.Unmarshal(stdout.Bytes(), &got); err != nil {
@@ -204,7 +204,7 @@ func TestPhoiPrintsATotalWithoutALinePerDocument(t *testing.T) {
 
 	var stdout, stderr bytes.Buffer
 	if code := runPhoi(&stdout, &stderr, []string{"-report", "-total", path}); code != 0 {
-		t.Fatalf("gao phoi -report -total = %d, want 0\n%s", code, stderr.String())
+		t.Fatalf("gao normalize -report -total = %d, want 0\n%s", code, stderr.String())
 	}
 	out := stdout.String()
 	if !strings.Contains(out, "3 documents") {
@@ -227,7 +227,7 @@ func TestPhoiSeparatesRepairFromLayout(t *testing.T) {
 
 	var stdout, stderr bytes.Buffer
 	if code := runPhoi(&stdout, &stderr, []string{"-report", "-total", path}); code != 0 {
-		t.Fatalf("gao phoi -report -total = %d, want 0\n%s", code, stderr.String())
+		t.Fatalf("gao normalize -report -total = %d, want 0\n%s", code, stderr.String())
 	}
 	out := stdout.String()
 	if !strings.Contains(out, "changed 75.0% of the documents by at least one byte, and 50.0% of them by something other than layout") {
@@ -238,7 +238,7 @@ func TestPhoiSeparatesRepairFromLayout(t *testing.T) {
 func TestPhoiRefusesTotalWithoutReport(t *testing.T) {
 	var stdout, stderr bytes.Buffer
 	if code := runPhoi(&stdout, &stderr, []string{"-total"}); code != 2 {
-		t.Fatalf("gao phoi -total = %d, want 2", code)
+		t.Fatalf("gao normalize -total = %d, want 2", code)
 	}
 	if !strings.Contains(stderr.String(), "-report") {
 		t.Errorf("the error does not say what to do about it: %q", stderr.String())
@@ -252,7 +252,7 @@ func TestPhoiRefusesToNormalizeAPartOntoOneStream(t *testing.T) {
 
 	var stdout, stderr bytes.Buffer
 	if code := runPhoi(&stdout, &stderr, []string{path}); code != 2 {
-		t.Fatalf("gao phoi PART = %d, want 2\n%s", code, stderr.String())
+		t.Fatalf("gao normalize PART = %d, want 2\n%s", code, stderr.String())
 	}
 	if !strings.Contains(stderr.String(), "-report") {
 		t.Errorf("the error does not say what to do instead: %q", stderr.String())
@@ -292,7 +292,7 @@ func TestPhoiNamesTheFontEncodingItReadADocumentOutOf(t *testing.T) {
 
 	var stdout, stderr bytes.Buffer
 	if code := runPhoi(&stdout, &stderr, []string{"-report", path}); code != 0 {
-		t.Fatalf("gao phoi -report = %d, want 0\n%s", code, stderr.String())
+		t.Fatalf("gao normalize -report = %d, want 0\n%s", code, stderr.String())
 	}
 	out := stdout.String()
 	if !strings.Contains(out, "TCVN3") {
@@ -313,7 +313,7 @@ func TestPhoiWritesTheTranscodedText(t *testing.T) {
 
 	var stdout, stderr bytes.Buffer
 	if code := runPhoi(&stdout, &stderr, []string{path}); code != 0 {
-		t.Fatalf("gao phoi = %d, want 0\n%s", code, stderr.String())
+		t.Fatalf("gao normalize = %d, want 0\n%s", code, stderr.String())
 	}
 	if stdout.String() != unicodePage {
 		t.Errorf("the filter wrote\n%q\nwant\n%q", stdout.String(), unicodePage)
@@ -328,7 +328,7 @@ func TestPhoiBreaksTheFontEncodingsDownByName(t *testing.T) {
 
 	var stdout, stderr bytes.Buffer
 	if code := runPhoi(&stdout, &stderr, []string{"-report", "-total", path}); code != 0 {
-		t.Fatalf("gao phoi -report -total = %d, want 0\n%s", code, stderr.String())
+		t.Fatalf("gao normalize -report -total = %d, want 0\n%s", code, stderr.String())
 	}
 	out := stdout.String()
 	if !strings.Contains(out, "3 documents were written in a font encoding rather than in Unicode: 2 in TCVN3, 1 in VNI-WIN.") {

@@ -11,13 +11,13 @@ import (
 )
 
 func runBoc(stdout, stderr io.Writer, args []string) int {
-	fs := flag.NewFlagSet("boc", flag.ContinueOnError)
+	fs := flag.NewFlagSet("husk", flag.ContinueOnError)
 	fs.SetOutput(stderr)
 	asJSON := fs.Bool("json", false, "print JSON")
 	text := fs.Bool("text", false, "print the posts rather than a summary of them")
 	furniture := fs.Bool("furniture", false, "print what was dropped as furniture, which is how a bad extraction gets caught")
 	fs.Usage = func() {
-		fmt.Fprint(stderr, `usage: gao boc [-text] [-furniture] [-json] page.html [page.html...]
+		fmt.Fprint(stderr, `usage: gao husk [-text] [-furniture] [-json] page.html [page.html...]
 
 Peel the posts out of a forum thread and leave the page behind.
 
@@ -63,12 +63,12 @@ flags:
 	for _, name := range pages {
 		page, err := readDocument(name)
 		if err != nil {
-			fmt.Fprintf(stderr, "gao boc: %v\n", err)
+			fmt.Fprintf(stderr, "gao husk: %v\n", err)
 			return 1
 		}
 		t, err := boc.Peel(bytes.NewReader(page))
 		if err != nil {
-			fmt.Fprintf(stderr, "gao boc: %s: %v\n", name, err)
+			fmt.Fprintf(stderr, "gao husk: %s: %v\n", name, err)
 			return 1
 		}
 		lines = append(lines, bocLine{Page: name, Thread: t})

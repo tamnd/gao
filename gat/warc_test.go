@@ -187,7 +187,7 @@ func TestEveryRecordIsItsOwnGzipMember(t *testing.T) {
 	}
 }
 
-// The same fetch written twice has to produce the same file. `gao kho reproduce`
+// The same fetch written twice has to produce the same file. `gao store reproduce`
 // rebuilds a snapshot and compares bytes, and a random record id would mean
 // every WARC in the corpus fails that comparison for a reason that is not a
 // problem, which is worse than not checking.

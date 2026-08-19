@@ -128,7 +128,7 @@ type Fallback struct {
 
 // RecipeOnly is the standing fallback for Q1.
 //
-// Even in the narrowest reading of the text and data mining allowance, gao can
+// Even in the narrowest reading of the text and data mining allowance, gao weigh
 // publish the URL list, every metadata column, every classifier and its reference
 // set, and the whole pipeline. That is still the largest and most reproducible
 // Vietnamese corpus artifact anybody has published. It is a build script rather

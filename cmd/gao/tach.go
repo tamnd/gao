@@ -10,14 +10,14 @@ import (
 )
 
 func runTach(stdout, stderr io.Writer, args []string) int {
-	fs := flag.NewFlagSet("tach", flag.ContinueOnError)
+	fs := flag.NewFlagSet("separate", flag.ContinueOnError)
 	fs.SetOutput(stderr)
 	asJSON := fs.Bool("json", false, "print JSON")
 	text := fs.Bool("text", false, "print the extracted thread instead of the measurements")
 	minPosts := fs.Int("min-posts", 0, "how many messages a page needs before it is a thread")
 	minChars := fs.Int("min-chars", 0, "the shortest a message can be and still count")
 	fs.Usage = func() {
-		fmt.Fprint(stderr, `usage: gao tach [-text] [-min-posts n] [-min-chars n] [-json] page.html [page.html...]
+		fmt.Fprint(stderr, `usage: gao separate [-text] [-min-posts n] [-min-chars n] [-json] page.html [page.html...]
 
 Read forum pages as the threads they are.
 
@@ -59,7 +59,7 @@ flags:
 	for _, name := range pages {
 		page, err := readDocument(name)
 		if err != nil {
-			fmt.Fprintf(stderr, "gao tach: %v\n", err)
+			fmt.Fprintf(stderr, "gao separate: %v\n", err)
 			return 1
 		}
 		var thread *tach.Thread

@@ -30,14 +30,14 @@ func runCham(stdout, stderr io.Writer, args []string) int {
 		chamUsage(stdout)
 		return 0
 	default:
-		fmt.Fprintf(stderr, "gao cham: unknown subcommand %q\n", args[0])
+		fmt.Fprintf(stderr, "gao grade: unknown subcommand %q\n", args[0])
 		chamUsage(stderr)
 		return 2
 	}
 }
 
 func chamUsage(w io.Writer) {
-	fmt.Fprint(w, `usage: gao cham <subcommand> [flags] [files...]
+	fmt.Fprint(w, `usage: gao grade <subcommand> [flags] [files...]
 
 Grades sampled answers against something that can be checked.
 
@@ -53,16 +53,16 @@ subcommands:
   dau     grade diacritic restoration rollouts against the pages they came from
   trich   grade legal citation rollouts against a register of instruments
 
-run 'gao cham <subcommand> -h' for the flags of a single subcommand.
+run 'gao grade <subcommand> -h' for the flags of a single subcommand.
 `)
 }
 
 func runChamRoster(stdout, stderr io.Writer, args []string) int {
-	fs := flag.NewFlagSet("cham roster", flag.ContinueOnError)
+	fs := flag.NewFlagSet("grade roster", flag.ContinueOnError)
 	fs.SetOutput(stderr)
 	asJSON := fs.Bool("json", false, "print the roster as JSON")
 	fs.Usage = func() {
-		fmt.Fprint(stderr, `usage: gao cham roster [-json]
+		fmt.Fprint(stderr, `usage: gao grade roster [-json]
 
 Prints the seven arms of the reinforcement learning stage, what each is asked to
 do, what its reward is computed from, and where its ground truth comes from.
@@ -236,13 +236,13 @@ func ellipsis(s string, n int) string {
 }
 
 func runChamDau(stdout, stderr io.Writer, args []string) int {
-	fs := flag.NewFlagSet("cham dau", flag.ContinueOnError)
+	fs := flag.NewFlagSet("grade dau", flag.ContinueOnError)
 	fs.SetOutput(stderr)
 	rollouts := fs.String("rollouts", "", "the sampled answers to grade, one prompt per line")
 	asJSON := fs.Bool("json", false, "print the graded batch as JSON")
 	verbose := fs.Bool("v", false, "print every group and every rollout, which is the sample log")
 	fs.Usage = func() {
-		fmt.Fprint(stderr, `usage: gao cham dau -rollouts FILE <corpus file...>
+		fmt.Fprint(stderr, `usage: gao grade dau -rollouts FILE <corpus file...>
 
 Grades diacritic restoration rollouts. The key is built from the corpus files
 given here: each page is dictated as its own answer, and the prompt is that page
@@ -274,7 +274,7 @@ flags:
 
 	sets, err := readChamRollouts(*rollouts)
 	if err != nil {
-		fmt.Fprintf(stderr, "gao cham dau: %v\n", err)
+		fmt.Fprintf(stderr, "gao grade dau: %v\n", err)
 		return 1
 	}
 
@@ -288,12 +288,12 @@ flags:
 			return nil
 		})
 		if err != nil {
-			fmt.Fprintf(stderr, "gao cham dau: %s: %v\n", name, err)
+			fmt.Fprintf(stderr, "gao grade dau: %s: %v\n", name, err)
 			return 1
 		}
 	}
 	if v.Items() == 0 {
-		fmt.Fprintf(stderr, "gao cham dau: the key holds no pages, and %d were refused for being typed without marks\n", refused)
+		fmt.Fprintf(stderr, "gao grade dau: the key holds no pages, and %d were refused for being typed without marks\n", refused)
 		return 1
 	}
 
@@ -306,13 +306,13 @@ flags:
 }
 
 func runChamTrich(stdout, stderr io.Writer, args []string) int {
-	fs := flag.NewFlagSet("cham trich", flag.ContinueOnError)
+	fs := flag.NewFlagSet("grade trich", flag.ContinueOnError)
 	fs.SetOutput(stderr)
 	registry := fs.String("register", "", "the instruments that exist, one JSON object per line with kind, id, and articles")
 	asJSON := fs.Bool("json", false, "print the graded batch as JSON")
 	verbose := fs.Bool("v", false, "print every group and every rollout, which is the sample log")
 	fs.Usage = func() {
-		fmt.Fprint(stderr, `usage: gao cham trich -register FILE <rollouts.jsonl>
+		fmt.Fprint(stderr, `usage: gao grade trich -register FILE <rollouts.jsonl>
 
 Grades legal citation rollouts. Each line of the rollout file carries the
 prompt, the instruments an answer has to rest on in its "must" field, and the
@@ -348,12 +348,12 @@ flags:
 
 	reg, err := readChamRegister(*registry)
 	if err != nil {
-		fmt.Fprintf(stderr, "gao cham trich: %v\n", err)
+		fmt.Fprintf(stderr, "gao grade trich: %v\n", err)
 		return 1
 	}
 	sets, err := readChamRollouts(fs.Arg(0))
 	if err != nil {
-		fmt.Fprintf(stderr, "gao cham trich: %v\n", err)
+		fmt.Fprintf(stderr, "gao grade trich: %v\n", err)
 		return 1
 	}
 
@@ -361,7 +361,7 @@ flags:
 	var graded []chamRollouts
 	for _, set := range sets {
 		if !v.Ask(set.Prompt, set.Must...) {
-			fmt.Fprintf(stderr, "gao cham trich: %q asks for something the register does not hold, so no answer to it could win\n",
+			fmt.Fprintf(stderr, "gao grade trich: %q asks for something the register does not hold, so no answer to it could win\n",
 				ellipsis(set.Prompt, 60))
 			return 1
 		}

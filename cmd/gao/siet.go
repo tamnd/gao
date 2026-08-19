@@ -23,15 +23,15 @@ func runSiet(stdout, stderr io.Writer, args []string) int {
 		sietUsage(stdout)
 		return 0
 	default:
-		fmt.Fprintf(stderr, "gao siet: no subcommand named %s\n", args[0])
+		fmt.Fprintf(stderr, "gao tighten: no subcommand named %s\n", args[0])
 		sietUsage(stderr)
 		return 2
 	}
 }
 
 func sietUsage(w io.Writer) {
-	fmt.Fprint(w, `usage: gao siet recipe [-config recipe.json] [-why] [-json]
-       gao siet read [-config recipe.json] [-specialist name] [-json] steps.jsonl
+	fmt.Fprint(w, `usage: gao tighten recipe [-config recipe.json] [-why] [-json]
+       gao tighten read [-config recipe.json] [-specialist name] [-json] steps.jsonl
 
 The GRPO step the specialists are trained with, and a run read back against it.
 
@@ -54,7 +54,7 @@ and the mean reward, and the hardware it ran on.
 Exits 1 when the log is not one run, and 2 when the configuration cannot be what
 it says it is or the run has something in it worth reading before the reward.
 
-run 'gao siet <command> -h' for the flags of one of them.
+run 'gao tighten <command> -h' for the flags of one of them.
 `)
 }
 
@@ -66,20 +66,20 @@ func sietConfig(stderr io.Writer, path string) (siet.Recipe, bool) {
 	}
 	r, err := siet.ReadRecipe(path)
 	if err != nil {
-		fmt.Fprintf(stderr, "gao siet: %v\n", err)
+		fmt.Fprintf(stderr, "gao tighten: %v\n", err)
 		return siet.Recipe{}, false
 	}
 	return r, true
 }
 
 func runSietRecipe(stdout, stderr io.Writer, args []string) int {
-	fs := flag.NewFlagSet("siet recipe", flag.ContinueOnError)
+	fs := flag.NewFlagSet("tighten recipe", flag.ContinueOnError)
 	fs.SetOutput(stderr)
 	asJSON := fs.Bool("json", false, "print JSON")
 	config := fs.String("config", "", "read the configuration from a JSON file rather than taking the plan's")
 	why := fs.Bool("why", false, "print the reason each setting is what it is")
 	fs.Usage = func() {
-		fmt.Fprint(stderr, "usage: gao siet recipe [-config recipe.json] [-why] [-json]\n\nThe GRPO step as it is configured, checked before anything runs under it.\n\nflags:\n")
+		fmt.Fprint(stderr, "usage: gao tighten recipe [-config recipe.json] [-why] [-json]\n\nThe GRPO step as it is configured, checked before anything runs under it.\n\nflags:\n")
 		fs.PrintDefaults()
 	}
 	if err := fs.Parse(args); err != nil {
@@ -97,13 +97,13 @@ func runSietRecipe(stdout, stderr io.Writer, args []string) int {
 }
 
 func runSietRead(stdout, stderr io.Writer, args []string) int {
-	fs := flag.NewFlagSet("siet read", flag.ContinueOnError)
+	fs := flag.NewFlagSet("tighten read", flag.ContinueOnError)
 	fs.SetOutput(stderr)
 	asJSON := fs.Bool("json", false, "print JSON")
 	config := fs.String("config", "", "read the configuration from a JSON file rather than taking the plan's")
 	specialist := fs.String("specialist", "", "which specialist the log came off")
 	fs.Usage = func() {
-		fmt.Fprint(stderr, "usage: gao siet read [-config recipe.json] [-specialist name] [-json] steps.jsonl\n\nA training log read against the configuration it was taken under.\n\nflags:\n")
+		fmt.Fprint(stderr, "usage: gao tighten read [-config recipe.json] [-specialist name] [-json] steps.jsonl\n\nA training log read against the configuration it was taken under.\n\nflags:\n")
 		fs.PrintDefaults()
 	}
 	if err := fs.Parse(args); err != nil {
@@ -209,7 +209,7 @@ type sietRunReport struct {
 func sietRead(stdout, stderr io.Writer, recipe siet.Recipe, specialist, path string, asJSON bool) int {
 	r, err := siet.ReadRun(specialist, path, recipe)
 	if err != nil {
-		fmt.Fprintf(stderr, "gao siet: %v\n", err)
+		fmt.Fprintf(stderr, "gao tighten: %v\n", err)
 		return 1
 	}
 

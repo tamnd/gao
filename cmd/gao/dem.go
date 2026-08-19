@@ -45,14 +45,14 @@ func runDem(stdout, stderr io.Writer, args []string) int {
 		demUsage(stdout)
 		return 0
 	default:
-		fmt.Fprintf(stderr, "gao dem: unknown subcommand %q\n", args[0])
+		fmt.Fprintf(stderr, "gao count: unknown subcommand %q\n", args[0])
 		demUsage(stderr)
 		return 2
 	}
 }
 
 func demUsage(w io.Writer) {
-	fmt.Fprint(w, `usage: gao dem <subcommand> [flags]
+	fmt.Fprint(w, `usage: gao count <subcommand> [flags]
 
 Counting, in the units gao publishes. A token count means nothing until the
 tokenizer is named, so the tokenizer is a pinned file with a digest rather than
@@ -67,17 +67,17 @@ subcommands:
   overlap    print what the sources have in common, from their key files
   verify     check a published count against the store it came from
 
-run 'gao dem <subcommand> -h' for the flags of a single subcommand.
+run 'gao count <subcommand> -h' for the flags of a single subcommand.
 `)
 }
 
 func runDemModel(stdout, stderr io.Writer, args []string) int {
-	fs := flag.NewFlagSet("dem model", flag.ContinueOnError)
+	fs := flag.NewFlagSet("count model", flag.ContinueOnError)
 	fs.SetOutput(stderr)
 	out := fs.String("o", "", "write the tokenizer here")
 	timeout := fs.Duration("timeout", 2*time.Minute, "how long to wait for the download")
 	fs.Usage = func() {
-		fmt.Fprint(stderr, `usage: gao dem model [-o PATH]
+		fmt.Fprint(stderr, `usage: gao count model [-o PATH]
 
 Fetches the tokenizer that defines a gao token and checks it against its pinned
 digest. With no -o it prints the pin and downloads nothing.
@@ -139,10 +139,10 @@ flags:
 }
 
 func runDemCounts(stdout, stderr io.Writer, args []string) int {
-	fs := flag.NewFlagSet("dem counts", flag.ContinueOnError)
+	fs := flag.NewFlagSet("count counts", flag.ContinueOnError)
 	fs.SetOutput(stderr)
 	fs.Usage = func() {
-		fmt.Fprint(stderr, `usage: gao dem counts DIR [DIR ...]
+		fmt.Fprint(stderr, `usage: gao count counts DIR [DIR ...]
 
 Prints the counts an ingest produced. Given more than one directory it adds them
 up, which is how four boxes that each did part of the work report one number.
@@ -170,7 +170,7 @@ as a corpus size.
 	for _, dir := range fs.Args() {
 		r, err := dem.ReadReport(dir)
 		if err != nil {
-			fmt.Fprintf(stderr, "gao dem counts: %v\n", err)
+			fmt.Fprintf(stderr, "gao count counts: %v\n", err)
 			return 1
 		}
 		reports = append(reports, r)
@@ -178,7 +178,7 @@ as a corpus size.
 
 	merged, err := dem.Merge(reports...)
 	if err != nil {
-		fmt.Fprintf(stderr, "gao dem counts: %v\n", err)
+		fmt.Fprintf(stderr, "gao count counts: %v\n", err)
 		return 1
 	}
 	printCounts(stdout, merged, reports)
@@ -279,13 +279,13 @@ func ratio(f float64) string {
 }
 
 func runDemKeys(stdout, stderr io.Writer, args []string) int {
-	fs := flag.NewFlagSet("dem keys", flag.ContinueOnError)
+	fs := flag.NewFlagSet("count keys", flag.ContinueOnError)
 	fs.SetOutput(stderr)
 	repo := fs.String("repo", kho.StageRepo, "the dataset repo the parts are in")
 	dir := fs.String("dir", "keys", "where the key files are written")
 	out := fs.String("o", "", "write the snapshot's key file here instead of DIR/SNAPSHOT.keys")
 	fs.Usage = func() {
-		fmt.Fprint(stderr, `usage: gao dem keys [-repo NAME] [-dir DIR] [-o PATH] [SNAPSHOT]
+		fmt.Fprint(stderr, `usage: gao count keys [-repo NAME] [-dir DIR] [-o PATH] [SNAPSHOT]
 
 Reads the document identities of one snapshot out of the store and writes them
 sorted to a key file. With no snapshot it prints the snapshots the repo holds.
@@ -317,8 +317,8 @@ flags:
 
 	d, ok := kho.Lookup(*repo)
 	if !ok {
-		fmt.Fprintf(stderr, "gao dem keys: no dataset named %q\n", *repo)
-		fmt.Fprintln(stderr, "run 'gao kho datasets' for the list")
+		fmt.Fprintf(stderr, "gao count keys: no dataset named %q\n", *repo)
+		fmt.Fprintln(stderr, "run 'gao store datasets' for the list")
 		return 1
 	}
 	s := &dem.Store{Repo: d.Repo(), Token: may.Token(), API: pushAPI()}
@@ -329,7 +329,7 @@ flags:
 	if fs.NArg() == 0 {
 		snapshots, err := s.Snapshots(ctx)
 		if err != nil {
-			fmt.Fprintf(stderr, "gao dem keys: %v\n", err)
+			fmt.Fprintf(stderr, "gao count keys: %v\n", err)
 			return 1
 		}
 		if len(snapshots) == 0 {
@@ -340,7 +340,7 @@ flags:
 		for _, snapshot := range snapshots {
 			fmt.Fprintf(stdout, "  %-40s %s\n", snapshot, dem.SourceOf(snapshot))
 		}
-		fmt.Fprint(stdout, "\nrun 'gao dem keys SNAPSHOT' to read one of them.\n")
+		fmt.Fprint(stdout, "\nrun 'gao count keys SNAPSHOT' to read one of them.\n")
 		return 0
 	}
 
@@ -351,7 +351,7 @@ flags:
 		path = filepath.Join(*dir, snapshot+dem.KeysExt)
 	}
 	if err := os.MkdirAll(filepath.Dir(path), 0o750); err != nil {
-		fmt.Fprintf(stderr, "gao dem keys: %v\n", err)
+		fmt.Fprintf(stderr, "gao count keys: %v\n", err)
 		return 1
 	}
 
@@ -363,7 +363,7 @@ flags:
 			i, of, filepath.Base(part.Path), k.Documents, may.Size(moved))
 	})
 	if err != nil {
-		fmt.Fprintf(stderr, "gao dem keys: %v\n", err)
+		fmt.Fprintf(stderr, "gao count keys: %v\n", err)
 		return 1
 	}
 
@@ -377,13 +377,13 @@ flags:
 }
 
 func runDemOverlap(stdout, stderr io.Writer, args []string) int {
-	fs := flag.NewFlagSet("dem overlap", flag.ContinueOnError)
+	fs := flag.NewFlagSet("count overlap", flag.ContinueOnError)
 	fs.SetOutput(stderr)
 	asJSON := fs.Bool("json", false, "print the matrix as json instead of a table")
 	fs.Usage = func() {
-		fmt.Fprint(stderr, `usage: gao dem overlap FILE [FILE ...]
+		fmt.Fprint(stderr, `usage: gao count overlap FILE [FILE ...]
 
-Prints what the sources have in common, from the key files 'gao dem keys' wrote.
+Prints what the sources have in common, from the key files 'gao count keys' wrote.
 Every number here was counted rather than sampled or estimated.
 
 The pass reads all of the files once, together. The key files are sorted, so
@@ -411,13 +411,13 @@ flags:
 
 	m, err := dem.Measure(fs.Args()...)
 	if err != nil {
-		fmt.Fprintf(stderr, "gao dem overlap: %v\n", err)
+		fmt.Fprintf(stderr, "gao count overlap: %v\n", err)
 		return 1
 	}
 	if *asJSON {
 		b, err := json.MarshalIndent(m, "", "  ")
 		if err != nil {
-			fmt.Fprintf(stderr, "gao dem overlap: %v\n", err)
+			fmt.Fprintf(stderr, "gao count overlap: %v\n", err)
 			return 1
 		}
 		fmt.Fprintf(stdout, "%s\n", b)
@@ -493,7 +493,7 @@ func (d *dirs) Set(v string) error {
 }
 
 func runDemVerify(stdout, stderr io.Writer, args []string) int {
-	fs := flag.NewFlagSet("dem verify", flag.ContinueOnError)
+	fs := flag.NewFlagSet("count verify", flag.ContinueOnError)
 	fs.SetOutput(stderr)
 	var counts dirs
 	repo := fs.String("repo", kho.StageRepo, "the dataset repo the parts are in")
@@ -506,7 +506,7 @@ func runDemVerify(stdout, stderr io.Writer, args []string) int {
 	rate := fs.Float64("rate", 100, "the link rate in megabits the budget assumes")
 	model := fs.String("tokenizer", "", "the pinned tokenizer, without which the token column is not checked")
 	fs.Usage = func() {
-		fmt.Fprint(stderr, `usage: gao dem verify [-level plan|counts|text] [flags] [SNAPSHOT ...]
+		fmt.Fprint(stderr, `usage: gao count verify [-level plan|counts|text] [flags] [SNAPSHOT ...]
 
 Checks a published count against the store it came from, without downloading the
 corpus. With no snapshot it checks every snapshot the repo holds.
@@ -553,14 +553,14 @@ flags:
 	}
 	want, ok := verifyLevel(*level)
 	if !ok {
-		fmt.Fprintf(stderr, "gao dem verify: no level named %q, and there are three: plan, counts, text\n", *level)
+		fmt.Fprintf(stderr, "gao count verify: no level named %q, and there are three: plan, counts, text\n", *level)
 		return 2
 	}
 
 	d, ok := kho.Lookup(*repo)
 	if !ok {
-		fmt.Fprintf(stderr, "gao dem verify: no dataset named %q\n", *repo)
-		fmt.Fprintln(stderr, "run 'gao kho datasets' for the list")
+		fmt.Fprintf(stderr, "gao count verify: no dataset named %q\n", *repo)
+		fmt.Fprintln(stderr, "run 'gao store datasets' for the list")
 		return 1
 	}
 	s := &dem.Store{Repo: d.Repo(), Token: may.Token(), API: pushAPI()}
@@ -571,14 +571,14 @@ flags:
 		for _, c := range counts {
 			r, err := dem.ReadReport(c)
 			if err != nil {
-				fmt.Fprintf(stderr, "gao dem verify: %v\n", err)
+				fmt.Fprintf(stderr, "gao count verify: %v\n", err)
 				return 1
 			}
 			reports = append(reports, r)
 		}
 		merged, err := dem.Merge(reports...)
 		if err != nil {
-			fmt.Fprintf(stderr, "gao dem verify: %v\n", err)
+			fmt.Fprintf(stderr, "gao count verify: %v\n", err)
 			return 1
 		}
 		claimed = merged
@@ -588,7 +588,7 @@ flags:
 	if *model != "" {
 		t, err := dem.Open(dem.Gemma3, *model)
 		if err != nil {
-			fmt.Fprintf(stderr, "gao dem verify: %v\n", err)
+			fmt.Fprintf(stderr, "gao count verify: %v\n", err)
 			return 1
 		}
 		tok = t
@@ -601,7 +601,7 @@ flags:
 	if len(snapshots) == 0 {
 		found, err := s.Snapshots(ctx)
 		if err != nil {
-			fmt.Fprintf(stderr, "gao dem verify: %v\n", err)
+			fmt.Fprintf(stderr, "gao count verify: %v\n", err)
 			return 1
 		}
 		if len(found) == 0 {
@@ -616,11 +616,11 @@ flags:
 	for _, snapshot := range snapshots {
 		parts, err := s.Parts(ctx, snapshot)
 		if err != nil {
-			fmt.Fprintf(stderr, "gao dem verify: %v\n", err)
+			fmt.Fprintf(stderr, "gao count verify: %v\n", err)
 			return 1
 		}
 		if len(parts) == 0 {
-			fmt.Fprintf(stderr, "gao dem verify: %s holds no parts of %s\n", d.Repo(), snapshot)
+			fmt.Fprintf(stderr, "gao count verify: %s holds no parts of %s\n", d.Repo(), snapshot)
 			return 1
 		}
 		source := doc.Source(dem.SourceOf(snapshot))
@@ -645,7 +645,7 @@ flags:
 				i, of, filepath.Base(part.Path), c.Documents, was)
 		})
 		if err != nil {
-			fmt.Fprintf(stderr, "gao dem verify: %v\n", err)
+			fmt.Fprintf(stderr, "gao count verify: %v\n", err)
 			return 1
 		}
 		if resumed > 0 {
@@ -666,7 +666,7 @@ flags:
 		for _, part := range sample {
 			spot, err := dem.SpotPart(ctx, s, part, tok)
 			if err != nil {
-				fmt.Fprintf(stderr, "gao dem verify: %v\n", err)
+				fmt.Fprintf(stderr, "gao count verify: %v\n", err)
 				return 1
 			}
 			printSpot(stdout, spot)

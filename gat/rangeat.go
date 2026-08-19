@@ -102,7 +102,7 @@ var ErrNoRange = errors.New("gat: the host does not answer range requests")
 // has to be asked for is a length that can change between the ask and the read,
 // and upstream the pinned size is the one the file is pinned to. A host now
 // serving a different one is drift rather than a fact to adopt, and
-// `gao gat drift` is where that is asked about.
+// `gao harvest drift` is where that is asked about.
 type Remote struct {
 	// Name is the path of the file and From is who is serving it. Neither is
 	// used to find anything. They are what turns a failed read into a sentence

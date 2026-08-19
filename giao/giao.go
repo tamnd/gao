@@ -15,7 +15,7 @@
 // compresses at 2.07, so part of the gap between two boxes here is the shape of
 // what each was fetching. The schedule uses them anyway, because a reading off
 // the wrong source is still a run that happened and the alternative is a guess,
-// but it is why 'gao giao plan' prints how each one was taken rather than only
+// but it is why 'gao assign plan' prints how each one was taken rather than only
 // the rate it works out to.
 //
 // Two things then make the split easy to get wrong. The first is that the files
@@ -49,7 +49,7 @@
 //
 // The reserve was not adjusted to let that box back in. A safety number that
 // moves the first time it excludes a machine somebody wanted is not a safety
-// number. What happened instead is that 'gao box check' was run on all four
+// number. What happened instead is that 'gao fleet check' was run on all four
 // boxes on 2026-08-19 and said server3 had 43.7 GB free, 26.0 GB more than the
 // record, in the sentence the drift check exists to print: the fleet is larger
 // than the plan thinks. The inventory was retaken and server3 draws 48% of the
@@ -58,7 +58,7 @@
 // That is the argument for keeping the two numbers apart. A gate made of
 // arithmetic over a dated measurement lets a box out and back in without
 // anybody editing a rule, and the only thing needed to notice was running the
-// check. 'gao giao plan' still prints the free disk, the scratch after the
+// check. 'gao assign plan' still prints the free disk, the scratch after the
 // reserve, what a stage needs and what a fetch holds for every box it drops,
 // because a box dropped without its numbers looks like a bug. server2 is the
 // one it drops now, and it has been under the reserve at all three inventories.
@@ -472,7 +472,7 @@ func (s Split) Waiting() []string {
 // away, and with -out and -push what the box holds is the part being written
 // and then sent, which is one shard. server3 fetched three GlotCC files on
 // 2026-08-18 with a trace running, 6.3 GB in and 6.1 GB of Parquet out across
-// 56m33s, and 'gao box peak' read 0.5 GB off it.
+// 56m33s, and 'gao fleet peak' read 0.5 GB off it.
 //
 // So a box needs room for a part rather than for a file, and the number is the
 // same whichever file it draws, which is why it is a constant. Two shards and

@@ -66,8 +66,8 @@ schema:
 
 ## takedown: check the takedown register and fail on anything past the promise
 takedown:
-	$(GO) run ./cmd/gao xoa check
-	$(GO) run ./cmd/gao xoa status
+	$(GO) run ./cmd/gao takedown check
+	$(GO) run ./cmd/gao takedown status
 
 ## clean: remove build and coverage output
 clean:

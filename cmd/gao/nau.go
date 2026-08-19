@@ -10,10 +10,10 @@ import (
 )
 
 func runNau(stdout, stderr io.Writer, args []string) int {
-	fs := flag.NewFlagSet("nau", flag.ContinueOnError)
+	fs := flag.NewFlagSet("cook", flag.ContinueOnError)
 	fs.SetOutput(stderr)
 	fs.Usage = func() {
-		fmt.Fprint(stderr, `usage: gao nau <subcommand>
+		fmt.Fprint(stderr, `usage: gao cook <subcommand>
 
 The training plan, as arithmetic rather than as prose.
 
@@ -51,7 +51,7 @@ subcommands:
 	case "check":
 		return runNauCheck(stdout)
 	default:
-		fmt.Fprintf(stderr, "gao nau: unknown subcommand %q\n", fs.Arg(0))
+		fmt.Fprintf(stderr, "gao cook: unknown subcommand %q\n", fs.Arg(0))
 		fs.Usage()
 		return 2
 	}
@@ -90,7 +90,7 @@ func runNauCurriculum(stdout io.Writer) int {
 
 func runNauReconcile(stdout io.Writer) int {
 	fmt.Fprint(stdout, nau.Report())
-	fmt.Fprintf(stdout, "\nA component more than %.0f point off is a decision somebody owes, and gao nau questions has them.\n", nau.Tolerance)
+	fmt.Fprintf(stdout, "\nA component more than %.0f point off is a decision somebody owes, and gao cook questions has them.\n", nau.Tolerance)
 	return 0
 }
 

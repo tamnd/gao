@@ -23,14 +23,14 @@ func runThu(stdout, stderr io.Writer, args []string) int {
 		thuUsage(stdout)
 		return 0
 	default:
-		fmt.Fprintf(stderr, "gao thu: no subcommand named %s\n", args[0])
+		fmt.Fprintf(stderr, "gao try: no subcommand named %s\n", args[0])
 		thuUsage(stderr)
 		return 2
 	}
 }
 
 func thuUsage(w io.Writer) {
-	fmt.Fprint(w, `usage: gao thu <command> [flags]
+	fmt.Fprint(w, `usage: gao try <command> [flags]
 
 The ablation slate: forty runs, fixed before any of them runs.
 
@@ -53,13 +53,13 @@ commands:
 }
 
 func runThuSlate(stdout, stderr io.Writer, args []string) int {
-	fs := flag.NewFlagSet("thu slate", flag.ContinueOnError)
+	fs := flag.NewFlagSet("try slate", flag.ContinueOnError)
 	fs.SetOutput(stderr)
 	asJSON := fs.Bool("json", false, "print JSON")
 	knobs := fs.Bool("knobs", false, "print what the slate varies rather than every run")
 	path := fs.String("slate", "", "read the slate from a file instead of the one this build ships")
 	fs.Usage = func() {
-		fmt.Fprint(stderr, "usage: gao thu slate [-knobs] [-json] [-slate file]\n\nflags:\n")
+		fmt.Fprint(stderr, "usage: gao try slate [-knobs] [-json] [-slate file]\n\nflags:\n")
 		fs.PrintDefaults()
 	}
 	if err := fs.Parse(args); err != nil {
@@ -96,12 +96,12 @@ func runThuSlate(stdout, stderr io.Writer, args []string) int {
 }
 
 func runThuRead(stdout, stderr io.Writer, args []string) int {
-	fs := flag.NewFlagSet("thu read", flag.ContinueOnError)
+	fs := flag.NewFlagSet("try read", flag.ContinueOnError)
 	fs.SetOutput(stderr)
 	asJSON := fs.Bool("json", false, "print JSON")
 	path := fs.String("slate", "", "read the slate from a file instead of the one this build ships")
 	fs.Usage = func() {
-		fmt.Fprint(stderr, `usage: gao thu read [-json] [-slate file] results.jsonl
+		fmt.Fprint(stderr, `usage: gao try read [-json] [-slate file] results.jsonl
 
 Read a set of results against the slate they were produced under.
 
@@ -132,7 +132,7 @@ flags:
 	}
 	results, err := thu.ReadResults(fs.Arg(0))
 	if err != nil {
-		fmt.Fprintf(stderr, "gao thu: %v\n", err)
+		fmt.Fprintf(stderr, "gao try: %v\n", err)
 		return 1
 	}
 
@@ -168,7 +168,7 @@ func readThuSlate(stderr io.Writer, path string) (thu.Slate, int) {
 	}
 	s, err := thu.ReadSlate(path)
 	if err != nil {
-		fmt.Fprintf(stderr, "gao thu: %v\n", err)
+		fmt.Fprintf(stderr, "gao try: %v\n", err)
 		return thu.Slate{}, 1
 	}
 	return s, 0

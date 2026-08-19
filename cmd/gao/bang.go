@@ -24,15 +24,15 @@ func runBang(stdout, stderr io.Writer, args []string) int {
 		bangUsage(stdout)
 		return 0
 	default:
-		fmt.Fprintf(stderr, "gao bang: no subcommand named %s\n", args[0])
+		fmt.Fprintf(stderr, "gao board: no subcommand named %s\n", args[0])
 		bangUsage(stderr)
 		return 2
 	}
 }
 
 func bangUsage(w io.Writer) {
-	fmt.Fprint(w, `usage: gao bang board [-json] [-roster path] scores.jsonl
-       gao bang rows  [-json] [-roster path] scores.jsonl
+	fmt.Fprint(w, `usage: gao board board [-json] [-roster path] scores.jsonl
+       gao board rows  [-json] [-roster path] scores.jsonl
 
 The board: the release scores read against nhat's roster, with the benchmarks
 written in Vietnamese kept apart from the English ones translated into it.
@@ -49,7 +49,7 @@ the builder's own instruments carry the claim has to say so out loud.
 Exits 1 when the scores are not a scoreboard, and 2 when they are one that
 cannot be published as it stands.
 
-run 'gao bang <command> -h' for the flags of one of them.
+run 'gao board <command> -h' for the flags of one of them.
 `)
 }
 
@@ -101,12 +101,12 @@ func runBangBoard(stdout, stderr io.Writer, args []string, byRow bool) int {
 
 	ros, err := readRoster(*roster)
 	if err != nil {
-		fmt.Fprintf(stderr, "gao bang: %v\n", err)
+		fmt.Fprintf(stderr, "gao board: %v\n", err)
 		return 1
 	}
 	scores, err := bang.ReadScores(fs.Arg(0))
 	if err != nil {
-		fmt.Fprintf(stderr, "gao bang: %v\n", err)
+		fmt.Fprintf(stderr, "gao board: %v\n", err)
 		return 1
 	}
 

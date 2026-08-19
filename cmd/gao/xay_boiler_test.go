@@ -89,7 +89,7 @@ func boilerPart(t *testing.T) string {
 func TestXayBoilerCountsWhatEveryPageOfAHostCarries(t *testing.T) {
 	var stdout, stderr bytes.Buffer
 	if code := runXay(&stdout, &stderr, []string{"-boiler", "-json", boilerPart(t)}); code != 0 {
-		t.Fatalf("gao xay -boiler = %d, want 0\n%s", code, stderr.String())
+		t.Fatalf("gao mill -boiler = %d, want 0\n%s", code, stderr.String())
 	}
 	var got boilerRun
 	if err := json.Unmarshal(stdout.Bytes(), &got); err != nil {
@@ -124,7 +124,7 @@ func TestXayBoilerCountsWhatEveryPageOfAHostCarries(t *testing.T) {
 func TestXayBoilerSaysWhatItCountedAsFurniture(t *testing.T) {
 	var stdout, stderr bytes.Buffer
 	if code := runXay(&stdout, &stderr, []string{"-boiler", boilerPart(t)}); code != 0 {
-		t.Fatalf("gao xay -boiler = %d, want 0\n%s", code, stderr.String())
+		t.Fatalf("gao mill -boiler = %d, want 0\n%s", code, stderr.String())
 	}
 	out := stdout.String()
 	for _, want := range []string{"vnbao.vn", "diendan.vn", "24 of 32 lines were furniture"} {
@@ -149,7 +149,7 @@ func TestXayBoilerReportsThePagesItEmptied(t *testing.T) {
 
 	var stdout, stderr bytes.Buffer
 	if code := runXay(&stdout, &stderr, []string{"-boiler", path}); code != 0 {
-		t.Fatalf("gao xay -boiler = %d, want 0\n%s", code, stderr.String())
+		t.Fatalf("gao mill -boiler = %d, want 0\n%s", code, stderr.String())
 	}
 	if !strings.Contains(stdout.String(), "1 documents were nothing but furniture") {
 		t.Errorf("the run does not report the page it emptied\n%s", stdout.String())
@@ -165,7 +165,7 @@ func TestXayBoilerRefusesATextFile(t *testing.T) {
 
 	var stdout, stderr bytes.Buffer
 	if code := runXay(&stdout, &stderr, []string{"-boiler", path}); code != 2 {
-		t.Fatalf("gao xay -boiler a.txt = %d, want 2\n%s", code, stderr.String())
+		t.Fatalf("gao mill -boiler a.txt = %d, want 2\n%s", code, stderr.String())
 	}
 	if !strings.Contains(stderr.String(), "does not carry") {
 		t.Errorf("it does not say why: %s", stderr.String())
@@ -177,7 +177,7 @@ func TestXayBoilerRefusesATextFile(t *testing.T) {
 func TestXayBoilerAndCurveAreNotRunTogether(t *testing.T) {
 	var stdout, stderr bytes.Buffer
 	if code := runXay(&stdout, &stderr, []string{"-boiler", "-curve", boilerPart(t)}); code != 2 {
-		t.Fatalf("gao xay -boiler -curve = %d, want 2\n%s", code, stderr.String())
+		t.Fatalf("gao mill -boiler -curve = %d, want 2\n%s", code, stderr.String())
 	}
 	if !strings.Contains(stderr.String(), "different measurements") {
 		t.Errorf("it does not say why: %s", stderr.String())
@@ -189,7 +189,7 @@ func TestXayBoilerAndCurveAreNotRunTogether(t *testing.T) {
 func TestXayBoilerCutsTheTableAndSaysSo(t *testing.T) {
 	var stdout, stderr bytes.Buffer
 	if code := runXay(&stdout, &stderr, []string{"-boiler", "-hosts", "1", boilerPart(t)}); code != 0 {
-		t.Fatalf("gao xay -boiler -hosts 1 = %d, want 0\n%s", code, stderr.String())
+		t.Fatalf("gao mill -boiler -hosts 1 = %d, want 0\n%s", code, stderr.String())
 	}
 	out := stdout.String()
 	if strings.Contains(out, "diendan.vn") {

@@ -11,14 +11,14 @@ import (
 )
 
 func runTron(stdout, stderr io.Writer, args []string) int {
-	fs := flag.NewFlagSet("tron", flag.ContinueOnError)
+	fs := flag.NewFlagSet("mix", flag.ContinueOnError)
 	fs.SetOutput(stderr)
 	asJSON := fs.Bool("json", false, "print JSON")
 	name := fs.String("name", "com-1.0-sft", "the finetuning set these slices compose")
 	slate := fs.Bool("slate", false, "print the slate the set is composed against, and what each capability is on it for")
 	fs.Usage = func() {
-		fmt.Fprint(stderr, `usage: gao tron [-name set] [-json] slices.jsonl
-       gao tron -slate
+		fmt.Fprint(stderr, `usage: gao mix [-name set] [-json] slices.jsonl
+       gao mix -slate
 
 Compose the supervised finetuning set without letting the mixing hide where the
 examples came from.
@@ -72,7 +72,7 @@ flags:
 
 	s, err := tron.ReadSet(*name, fs.Arg(0))
 	if err != nil {
-		fmt.Fprintf(stderr, "gao tron: %v\n", err)
+		fmt.Fprintf(stderr, "gao mix: %v\n", err)
 		return 1
 	}
 

@@ -34,7 +34,7 @@ func doanResults(t *testing.T, lines ...string) string {
 
 func doanResult(t *testing.T, id, state, reading, box string) string {
 	t.Helper()
-	return fmt.Sprintf(`{"id":%q,"claim":%q,"state":%q,"reading":%q,"by":"gao dem counts","box":%q}`,
+	return fmt.Sprintf(`{"id":%q,"claim":%q,"state":%q,"reading":%q,"by":"gao count counts","box":%q}`,
 		id, claim(t, id), state, reading, box)
 }
 
@@ -80,14 +80,14 @@ func TestDoanPrintsTheMissesWhateverElseWasAskedFor(t *testing.T) {
 	if !strings.Contains(out, "1 prediction came back wrong") {
 		t.Errorf("the miss is not printed in full:\n%s", out)
 	}
-	if !strings.Contains(out, "3.28 characters per token, measured by gao dem counts on server3") {
+	if !strings.Contains(out, "3.28 characters per token, measured by gao count counts on server3") {
 		t.Errorf("the miss does not carry its reading and its box:\n%s", out)
 	}
 }
 
 func TestDoanRefusesAResultMeasuredAgainstAnEditedClaim(t *testing.T) {
 	path := doanResults(t,
-		`{"id":"P03-1","claim":"the HPLT v3 count is somewhere near the estimate","state":"dung","reading":"181.4B tokens","by":"gao dem counts","box":"server1"}`,
+		`{"id":"P03-1","claim":"the HPLT v3 count is somewhere near the estimate","state":"dung","reading":"181.4B tokens","by":"gao count counts","box":"server1"}`,
 	)
 	out, _, code := exec(t, "doan", "-results", path)
 	if code != 1 {
@@ -142,7 +142,7 @@ func TestDoanJSONCarriesTheDigestAndTheBand(t *testing.T) {
 
 func TestDoanWithAnArgumentIsAUsageError(t *testing.T) {
 	if _, _, code := exec(t, "doan", "S1"); code != 2 {
-		t.Error("gao doan with a positional argument did not exit 2")
+		t.Error("gao predict with a positional argument did not exit 2")
 	}
 	if _, _, code := exec(t, "doan", "-results", filepath.Join(t.TempDir(), "nothing.jsonl")); code != 1 {
 		t.Error("a results file that is not there did not exit 1")

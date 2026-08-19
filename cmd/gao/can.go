@@ -12,12 +12,12 @@ import (
 )
 
 func runCan(stdout, stderr io.Writer, args []string) int {
-	fs := flag.NewFlagSet("can", flag.ContinueOnError)
+	fs := flag.NewFlagSet("weigh", flag.ContinueOnError)
 	fs.SetOutput(stderr)
 	asJSON := fs.Bool("json", false, "print JSON")
 	name := fs.String("name", "com-8B-cpt", "what the comparison is called")
 	fs.Usage = func() {
-		fmt.Fprint(stderr, `usage: gao can [-name comparison] [-json] arms.jsonl
+		fmt.Fprint(stderr, `usage: gao weigh [-name comparison] [-json] arms.jsonl
 
 Weigh the three continued pretraining arms against each other.
 
@@ -55,7 +55,7 @@ flags:
 
 	c, err := can.ReadComparison(*name, fs.Arg(0))
 	if err != nil {
-		fmt.Fprintf(stderr, "gao can: %v\n", err)
+		fmt.Fprintf(stderr, "gao weigh: %v\n", err)
 		return 1
 	}
 

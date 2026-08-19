@@ -9,7 +9,7 @@ package dem
 // is a few megabytes of reading.
 //
 // That is measured rather than claimed. The reader counts what it moved and the
-// report carries it, for the same reason gao kho weigh does: the cheapness is
+// report carries it, for the same reason gao store weigh does: the cheapness is
 // the reason this can be run after every ingest instead of once a quarter, and
 // an unmeasured claim about how little was read is the first thing to become
 // false when somebody changes a Parquet library version.

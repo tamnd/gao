@@ -38,13 +38,13 @@ func registerStageChecks() {
 }
 
 func runKhoReproduce(stdout, stderr io.Writer, args []string) int {
-	fs := flag.NewFlagSet("kho reproduce", flag.ContinueOnError)
+	fs := flag.NewFlagSet("store reproduce", flag.ContinueOnError)
 	fs.SetOutput(stderr)
 	verbose := fs.Bool("v", false, "print a line per shard rather than only the ones that differ")
 	stop := fs.Bool("stop", false, "return after the first shard that does not rebuild")
 	frame := fs.Int("frame-bytes", kho.DefaultFrameBytes, "the frame size the snapshot was written at")
 	fs.Usage = func() {
-		fmt.Fprint(stderr, `usage: gao kho reproduce [flags] <snapshot dir>
+		fmt.Fprint(stderr, `usage: gao store reproduce [flags] <snapshot dir>
 
 Rebuilds every shard of a snapshot from the documents it holds and checks the
 bytes against what the manifest recorded.
@@ -103,7 +103,7 @@ flags:
 
 	report, err := kho.Reproduce(fs.Arg(0), opts...)
 	if report == nil {
-		fmt.Fprintf(stderr, "gao kho reproduce: %v\n", err)
+		fmt.Fprintf(stderr, "gao store reproduce: %v\n", err)
 		return 1
 	}
 	if *verbose {

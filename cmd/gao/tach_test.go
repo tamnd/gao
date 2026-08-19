@@ -59,7 +59,7 @@ func writePage(t *testing.T, name, page string) string {
 func TestTachReadsAThreadAndSaysWhatItDropped(t *testing.T) {
 	out, _, code := exec(t, "tach", writePage(t, "thread.html", tachThread))
 	if code != 0 {
-		t.Fatalf("gao tach: exit %d, want 0\n%s", code, out)
+		t.Fatalf("gao separate: exit %d, want 0\n%s", code, out)
 	}
 	for _, want := range []string{"3", "1 of 1 pages read as threads", "posts"} {
 		if !strings.Contains(out, want) {
@@ -74,7 +74,7 @@ func TestTachReadsAThreadAndSaysWhatItDropped(t *testing.T) {
 func TestTachSaysSoWhenThePageIsNotAThread(t *testing.T) {
 	out, _, code := exec(t, "tach", writePage(t, "article.html", tachArticle))
 	if code != 1 {
-		t.Fatalf("gao tach on an article: exit %d, want 1\n%s", code, out)
+		t.Fatalf("gao separate on an article: exit %d, want 1\n%s", code, out)
 	}
 	if !strings.Contains(out, "not a thread") {
 		t.Errorf("the output does not say the page was not a thread:\n%s", out)
@@ -96,7 +96,7 @@ func TestTachCountsThePagesThatWereNotThreads(t *testing.T) {
 
 	out, _, code := exec(t, "tach", thread, article)
 	if code != 0 {
-		t.Fatalf("gao tach: exit %d, want 0\n%s", code, out)
+		t.Fatalf("gao separate: exit %d, want 0\n%s", code, out)
 	}
 	if !strings.Contains(out, "1 of 2 pages read as threads") {
 		t.Errorf("the run summary did not count the page that was not a thread:\n%s", out)
@@ -106,7 +106,7 @@ func TestTachCountsThePagesThatWereNotThreads(t *testing.T) {
 func TestTachTextPrintsTheThreadItself(t *testing.T) {
 	out, _, code := exec(t, "tach", "-text", writePage(t, "thread.html", tachThread))
 	if code != 0 {
-		t.Fatalf("gao tach -text: exit %d, want 0\n%s", code, out)
+		t.Fatalf("gao separate -text: exit %d, want 0\n%s", code, out)
 	}
 	if !strings.Contains(out, "# Bộ gõ tiếng Việt trên Linux") {
 		t.Errorf("the title is missing:\n%s", out)
@@ -129,7 +129,7 @@ func TestTachJSONCarriesThePostsAndTheRun(t *testing.T) {
 	out, _, code := exec(t, "tach", "-json",
 		writePage(t, "thread.html", tachThread), writePage(t, "article.html", tachArticle))
 	if code != 0 {
-		t.Fatalf("gao tach -json: exit %d, want 0\n%s", code, out)
+		t.Fatalf("gao separate -json: exit %d, want 0\n%s", code, out)
 	}
 
 	var report tachReport
@@ -172,9 +172,9 @@ func TestTachFloorsAreReachableFromTheCommandLine(t *testing.T) {
 func TestTachWithoutPagesExplainsItself(t *testing.T) {
 	_, stderr, code := exec(t, "tach")
 	if code != 2 {
-		t.Fatalf("gao tach: exit %d, want 2", code)
+		t.Fatalf("gao separate: exit %d, want 2", code)
 	}
-	if !strings.Contains(stderr, "usage: gao tach") {
+	if !strings.Contains(stderr, "usage: gao separate") {
 		t.Errorf("stderr did not print the usage:\n%s", stderr)
 	}
 }
@@ -183,15 +183,15 @@ func TestTachOnAMissingFileFails(t *testing.T) {
 	missing := filepath.Join(t.TempDir(), "khong-co.html")
 	_, stderr, code := exec(t, "tach", missing)
 	if code != 1 {
-		t.Fatalf("gao tach on a missing file: exit %d, want 1", code)
+		t.Fatalf("gao separate on a missing file: exit %d, want 1", code)
 	}
-	if !strings.Contains(stderr, "gao tach:") {
+	if !strings.Contains(stderr, "gao separate:") {
 		t.Errorf("stderr did not name the command:\n%s", stderr)
 	}
 }
 
 func TestTachRejectsAnUnknownFlag(t *testing.T) {
 	if _, _, code := exec(t, "tach", "-nosuchflag"); code != 2 {
-		t.Errorf("gao tach -nosuchflag: exit %d, want 2", code)
+		t.Errorf("gao separate -nosuchflag: exit %d, want 2", code)
 	}
 }

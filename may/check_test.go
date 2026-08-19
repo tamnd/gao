@@ -12,7 +12,7 @@ func live(box string, free int64, threads int) Live {
 }
 
 // The measurement that made this exist: server3 was recorded at 44.3 GB on
-// 2026-08-03 and had 17.7 GB fifteen days later, and 'gao box peak' printed the
+// 2026-08-03 and had 17.7 GB fifteen days later, and 'gao fleet peak' printed the
 // recorded number in a fault sentence about the run. The inventory has been
 // retaken since, so the same 26.6 GB is applied to a box that has room to lose
 // it, which is the case a run would actually hit next.

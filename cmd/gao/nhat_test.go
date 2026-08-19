@@ -66,7 +66,7 @@ func nhatList(t *testing.T, dir string) string {
 func TestNhatPrintsTheRosterInTheRepository(t *testing.T) {
 	var stdout, stderr bytes.Buffer
 	if code := runNhat(&stdout, &stderr, []string{"-benchmarks"}); code != 0 {
-		t.Fatalf("gao nhat -benchmarks = %d, want 0\n%s", code, stderr.String())
+		t.Fatalf("gao pick -benchmarks = %d, want 0\n%s", code, stderr.String())
 	}
 	out := stdout.String()
 	for _, want := range []string{"vmlu", "mmlu-vi", "translated", "held out", "It only grows"} {
@@ -79,7 +79,7 @@ func TestNhatPrintsTheRosterInTheRepository(t *testing.T) {
 func TestNhatPrintsTheRosterAsJSON(t *testing.T) {
 	var stdout, stderr bytes.Buffer
 	if code := runNhat(&stdout, &stderr, []string{"-benchmarks", "-json"}); code != 0 {
-		t.Fatalf("gao nhat -benchmarks -json = %d, want 0\n%s", code, stderr.String())
+		t.Fatalf("gao pick -benchmarks -json = %d, want 0\n%s", code, stderr.String())
 	}
 	var got struct {
 		Version    string `json:"version"`
@@ -110,7 +110,7 @@ func TestNhatFindsATestItemInADocument(t *testing.T) {
 		"-roster", nhatRoster(t, dir), "-list", nhatList(t, dir), "-json", contaminated, clean,
 	})
 	if code != 0 {
-		t.Fatalf("gao nhat = %d, want 0, since finding contamination is a result rather than an error\n%s", code, stderr.String())
+		t.Fatalf("gao pick = %d, want 0, since finding contamination is a result rather than an error\n%s", code, stderr.String())
 	}
 	var got nhatRun
 	if err := json.Unmarshal(stdout.Bytes(), &got); err != nil {
@@ -146,7 +146,7 @@ func TestNhatReportsTheBenchmarksNothingTouched(t *testing.T) {
 	if code := runNhat(&stdout, &stderr, []string{
 		"-roster", nhatRoster(t, dir), "-list", nhatList(t, dir), path,
 	}); code != 0 {
-		t.Fatalf("gao nhat = %d, want 0\n%s", code, stderr.String())
+		t.Fatalf("gao pick = %d, want 0\n%s", code, stderr.String())
 	}
 	out := stdout.String()
 	for _, want := range []string{"vmlu", "mmlu-vi", "translated", "stay in the eval table"} {
@@ -164,7 +164,7 @@ func TestNhatSaysWhenItFoundNothing(t *testing.T) {
 	if code := runNhat(&stdout, &stderr, []string{
 		"-roster", nhatRoster(t, dir), "-list", nhatList(t, dir), path,
 	}); code != 0 {
-		t.Fatalf("gao nhat = %d, want 0\n%s", code, stderr.String())
+		t.Fatalf("gao pick = %d, want 0\n%s", code, stderr.String())
 	}
 	if !strings.Contains(stdout.String(), "Nothing was found") {
 		t.Errorf("a clean run does not say so\n%s", stdout.String())
@@ -188,7 +188,7 @@ func TestNhatRefusesAListThatIsMissingARosteredBenchmark(t *testing.T) {
 	var stdout, stderr bytes.Buffer
 	code := runNhat(&stdout, &stderr, []string{"-roster", nhatRoster(t, dir), "-list", short, path})
 	if code != 1 {
-		t.Fatalf("gao nhat = %d, want 1\n%s", code, stderr.String())
+		t.Fatalf("gao pick = %d, want 1\n%s", code, stderr.String())
 	}
 	if !strings.Contains(stderr.String(), "mmlu-vi") {
 		t.Errorf("it does not name the benchmark that is missing: %s", stderr.String())
@@ -206,7 +206,7 @@ func TestNhatShowsTheDocumentsItFlagged(t *testing.T) {
 	if code := runNhat(&stdout, &stderr, []string{
 		"-roster", nhatRoster(t, dir), "-list", nhatList(t, dir), "-show", "5", path,
 	}); code != 0 {
-		t.Fatalf("gao nhat -show 5 = %d, want 0\n%s", code, stderr.String())
+		t.Fatalf("gao pick -show 5 = %d, want 0\n%s", code, stderr.String())
 	}
 	out := stdout.String()
 	if !strings.Contains(out, "a.txt") {
@@ -229,7 +229,7 @@ func TestNhatNamesTheRowOfAPart(t *testing.T) {
 	if code := runNhat(&stdout, &stderr, []string{
 		"-roster", nhatRoster(t, dir), "-list", nhatList(t, dir), "-show", "5", part,
 	}); code != 0 {
-		t.Fatalf("gao nhat = %d, want 0\n%s", code, stderr.String())
+		t.Fatalf("gao pick = %d, want 0\n%s", code, stderr.String())
 	}
 	if !strings.Contains(stdout.String(), "#1") {
 		t.Errorf("the flagged row of the part is not named\n%s", stdout.String())
@@ -242,7 +242,7 @@ func TestNhatNeedsAListToCheckAgainst(t *testing.T) {
 
 	var stdout, stderr bytes.Buffer
 	if code := runNhat(&stdout, &stderr, []string{path}); code != 2 {
-		t.Fatalf("gao nhat with no list = %d, want 2\n%s", code, stderr.String())
+		t.Fatalf("gao pick with no list = %d, want 2\n%s", code, stderr.String())
 	}
 	if !strings.Contains(stderr.String(), "-benchmarks") {
 		t.Errorf("it does not say what to do instead: %s", stderr.String())
@@ -253,7 +253,7 @@ func TestNhatNeedsSomethingToCheck(t *testing.T) {
 	dir := t.TempDir()
 	var stdout, stderr bytes.Buffer
 	if code := runNhat(&stdout, &stderr, []string{"-roster", nhatRoster(t, dir), "-list", nhatList(t, dir)}); code != 2 {
-		t.Fatalf("gao nhat with no files = %d, want 2\n%s", code, stderr.String())
+		t.Fatalf("gao pick with no files = %d, want 2\n%s", code, stderr.String())
 	}
 }
 
@@ -263,7 +263,7 @@ func TestNhatBenchmarksTakesNoFiles(t *testing.T) {
 
 	var stdout, stderr bytes.Buffer
 	if code := runNhat(&stdout, &stderr, []string{"-benchmarks", path}); code != 2 {
-		t.Fatalf("gao nhat -benchmarks a.txt = %d, want 2\n%s", code, stderr.String())
+		t.Fatalf("gao pick -benchmarks a.txt = %d, want 2\n%s", code, stderr.String())
 	}
 }
 
@@ -271,7 +271,7 @@ func TestNhatSaysWhenTheRosterIsNotThere(t *testing.T) {
 	dir := t.TempDir()
 	var stdout, stderr bytes.Buffer
 	if code := runNhat(&stdout, &stderr, []string{"-roster", filepath.Join(dir, "gone.json"), "-benchmarks"}); code != 1 {
-		t.Fatalf("gao nhat with a roster that is not there = %d, want 1\n%s", code, stderr.String())
+		t.Fatalf("gao pick with a roster that is not there = %d, want 1\n%s", code, stderr.String())
 	}
 }
 

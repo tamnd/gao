@@ -32,7 +32,7 @@ func dienSet(t *testing.T) (set string, items []dien.Item) {
 		"-function", "5", "-band", "20", "-min-chars", "100"},
 		dauCorpus(t, dienPages)...)
 	if _, errOut, code := exec(t, args...); code != 0 {
-		t.Fatalf("gao dien build: exit %d\n%s", code, errOut)
+		t.Fatalf("gao fill build: exit %d\n%s", code, errOut)
 	}
 	b, err := os.ReadFile(set)
 	if err != nil {

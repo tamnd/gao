@@ -25,14 +25,14 @@ func runGieo(stdout, stderr io.Writer, args []string) int {
 		gieoUsage(stdout)
 		return 0
 	default:
-		fmt.Fprintf(stderr, "gao gieo: no subcommand named %s\n", args[0])
+		fmt.Fprintf(stderr, "gao sow: no subcommand named %s\n", args[0])
 		gieoUsage(stderr)
 		return 2
 	}
 }
 
 func gieoUsage(w io.Writer) {
-	fmt.Fprint(w, `usage: gao gieo <command> [flags]
+	fmt.Fprint(w, `usage: gao sow <command> [flags]
 
 The generator card for gao-synth, and the recipe it is written against.
 
@@ -56,13 +56,13 @@ commands:
 }
 
 func runGieoRecipe(stdout, stderr io.Writer, args []string) int {
-	fs := flag.NewFlagSet("gieo recipe", flag.ContinueOnError)
+	fs := flag.NewFlagSet("sow recipe", flag.ContinueOnError)
 	fs.SetOutput(stderr)
 	asJSON := fs.Bool("json", false, "print JSON")
 	prompts := fs.Bool("prompts", false, "print the prompts verbatim, which is what anybody reproducing this needs")
 	path := fs.String("recipe", "", "read the recipe from a file instead of the one this build ships")
 	fs.Usage = func() {
-		fmt.Fprint(stderr, "usage: gao gieo recipe [-prompts] [-json] [-recipe file]\n\nflags:\n")
+		fmt.Fprint(stderr, "usage: gao sow recipe [-prompts] [-json] [-recipe file]\n\nflags:\n")
 		fs.PrintDefaults()
 	}
 	if err := fs.Parse(args); err != nil {
@@ -93,12 +93,12 @@ func runGieoRecipe(stdout, stderr io.Writer, args []string) int {
 }
 
 func runGieoCard(stdout, stderr io.Writer, args []string) int {
-	fs := flag.NewFlagSet("gieo card", flag.ContinueOnError)
+	fs := flag.NewFlagSet("sow card", flag.ContinueOnError)
 	fs.SetOutput(stderr)
 	asJSON := fs.Bool("json", false, "print JSON")
 	path := fs.String("recipe", "", "read the recipe from a file instead of the one this build ships")
 	fs.Usage = func() {
-		fmt.Fprint(stderr, `usage: gao gieo card [-json] [-recipe file] dir
+		fmt.Fprint(stderr, `usage: gao sow card [-json] [-recipe file] dir
 
 Check the generator card in dir against the recipe it names.
 
@@ -123,7 +123,7 @@ flags:
 	}
 	c, err := gieo.ReadCard(fs.Arg(0))
 	if err != nil {
-		fmt.Fprintf(stderr, "gao gieo: %v\n", err)
+		fmt.Fprintf(stderr, "gao sow: %v\n", err)
 		return 1
 	}
 
@@ -163,7 +163,7 @@ func readGieoRecipe(stderr io.Writer, path string) (gieo.Recipe, int) {
 	}
 	r, err := gieo.ReadRecipe(path)
 	if err != nil {
-		fmt.Fprintf(stderr, "gao gieo: %v\n", err)
+		fmt.Fprintf(stderr, "gao sow: %v\n", err)
 		return gieo.Recipe{}, 1
 	}
 	return r, 0

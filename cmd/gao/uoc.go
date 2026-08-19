@@ -10,7 +10,7 @@ import (
 )
 
 func runUoc(stdout, stderr io.Writer, args []string) int {
-	fs := flag.NewFlagSet("uoc", flag.ContinueOnError)
+	fs := flag.NewFlagSet("estimate", flag.ContinueOnError)
 	fs.SetOutput(stderr)
 	asJSON := fs.Bool("json", false, "print JSON")
 	source := fs.String("source", "", "the source being estimated")
@@ -20,7 +20,7 @@ func runUoc(stdout, stderr io.Writer, args []string) int {
 	bytes := fs.Int64("bytes", 0, "bytes in the whole source, off the pinned manifest")
 	exact := fs.Int64("exact", 0, "the exact count, once it exists, to check against the interval that was published")
 	fs.Usage = func() {
-		fmt.Fprint(stderr, `usage: gao uoc -source name -parts N -bytes N -seed s [-exact N] [-json] sample.jsonl
+		fmt.Fprint(stderr, `usage: gao estimate -source name -parts N -bytes N -seed s [-exact N] [-json] sample.jsonl
 
 Turn a sampled reading into an interval, and say what it would cost to narrow it.
 
@@ -61,7 +61,7 @@ flags:
 
 	s, err := uoc.ReadSource(*source, *snapshot, *seed, *parts, *bytes, fs.Arg(0))
 	if err != nil {
-		fmt.Fprintf(stderr, "gao uoc: %v\n", err)
+		fmt.Fprintf(stderr, "gao estimate: %v\n", err)
 		return 1
 	}
 

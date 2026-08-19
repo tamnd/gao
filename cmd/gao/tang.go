@@ -10,13 +10,13 @@ import (
 )
 
 func runTang(stdout, stderr io.Writer, args []string) int {
-	fs := flag.NewFlagSet("tang", flag.ContinueOnError)
+	fs := flag.NewFlagSet("layers", flag.ContinueOnError)
 	fs.SetOutput(stderr)
 	asJSON := fs.Bool("json", false, "print JSON")
 	source := fs.String("source", "", "the source being estimated")
 	quoted := fs.Int64("quoted", 0, "the number this project publishes for the source, to check the reading against")
 	fs.Usage = func() {
-		fmt.Fprint(stderr, `usage: gao tang -source name [-quoted N] [-json] layers.jsonl
+		fmt.Fprint(stderr, `usage: gao layers -source name [-quoted N] [-json] layers.jsonl
 
 Read an estimate that was taken layer by layer and say what the layers nobody
 opened are worth.
@@ -29,7 +29,7 @@ The range printed here is not a sampling interval. It is the bound on the part
 of the corpus that was never read: every unread byte at the thinnest rate any
 layer read at, and every unread byte at the richest. Reading more of the layers
 already read does not close it, which is the whole reason it is printed
-separately from the interval gao uoc computes.
+separately from the interval gao estimate computes.
 
 When the layers nobody read sit below every layer that was read, the report says
 so in those words. Clean text reads at a higher rate per byte, so scaling the
@@ -54,7 +54,7 @@ flags:
 
 	layers, err := tang.ReadLayers(fs.Arg(0))
 	if err != nil {
-		fmt.Fprintf(stderr, "gao tang: %v\n", err)
+		fmt.Fprintf(stderr, "gao layers: %v\n", err)
 		return 1
 	}
 

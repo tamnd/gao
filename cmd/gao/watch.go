@@ -13,7 +13,7 @@ package main
 // So the run writes its own trace. A shell loop around du would do the same
 // arithmetic and would not be part of the thing being measured, which matters
 // on the day somebody has to reproduce the number: the flag is in the command
-// that produced the reading, and 'gao box peak' reads the file back.
+// that produced the reading, and 'gao fleet peak' reads the file back.
 //
 // Ten seconds between samples, against the thirty second resolution a peak is
 // read at, because a part written and pushed inside a sampling gap is a part the
@@ -24,7 +24,7 @@ package main
 // waiting on, so on a box busy enough for that walk to take longer than ten
 // seconds the walk was eating the next sample. server1's FineWeb2 trace came
 // back with 2168 gaps of exactly 10s and 26 longer ones, every one a multiple of
-// ten, up to 1m10s. That is a dropped tick and not a slow disk, and 'gao box
+// ten, up to 1m10s. That is a dropped tick and not a slow disk, and 'gao fleet
 // peak' refused six hours of real ingest over it, which is the correct answer to
 // the trace and the wrong answer about the run.
 
@@ -56,7 +56,7 @@ var watchHeld = heldBytes
 // get a new goroutine every ten seconds for the length of the run, and a watcher
 // that takes a box down is worse than a watcher that misses a reading. When
 // every slot is busy the tick is dropped and the hole it leaves in the trace is
-// what 'gao box peak' grades the trace on, which is where a filesystem that
+// what 'gao fleet peak' grades the trace on, which is where a filesystem that
 // slow belongs in the report.
 const watchSlots = 4
 
@@ -91,7 +91,7 @@ type watcher struct {
 func watch(path string, dirs []string, box string, stage func() string) (*watcher, error) {
 	f, err := os.Create(path)
 	if err != nil {
-		return nil, fmt.Errorf("gao gat hf: opening the disk trace: %w", err)
+		return nil, fmt.Errorf("gao harvest hf: opening the disk trace: %w", err)
 	}
 	w := &watcher{
 		f:     f,
@@ -127,7 +127,7 @@ func watch(path string, dirs []string, box string, stage func() string) (*watche
 //
 // The sample carries the tick it belongs to rather than the time it finished, so
 // the readings stay on the ten second grid even when one of them lands late, and
-// a late one can be written after an early one. gao box peak sorts the trace
+// a late one can be written after an early one. gao fleet peak sorts the trace
 // before it reads it, for this reason.
 func (w *watcher) take(at time.Time) {
 	select {
@@ -194,7 +194,7 @@ func (w *watcher) Close() error {
 		err = cerr
 	}
 	if err != nil {
-		return fmt.Errorf("gao gat hf: the disk trace: %w", err)
+		return fmt.Errorf("gao harvest hf: the disk trace: %w", err)
 	}
 	return nil
 }

@@ -5,7 +5,7 @@
 // deliberate split from the published format. Six producers append to the store
 // continuously, across pipeline upgrades that change the schema, and Parquet is
 // a bad fit for both of those. The release is Parquet, written once by
-// [gao kho release], because consumers want columnar reads and predicate
+// [gao store release], because consumers want columnar reads and predicate
 // pushdown. Both carry the same schema and the conversion is lossless.
 //
 // Segments are seekable. Deduplication at half a billion documents and

@@ -25,16 +25,16 @@ func runChon(stdout, stderr io.Writer, args []string) int {
 		chonUsage(stdout)
 		return 0
 	default:
-		fmt.Fprintf(stderr, "gao chon: no subcommand named %s\n\n", args[0])
+		fmt.Fprintf(stderr, "gao choose: no subcommand named %s\n\n", args[0])
 		chonUsage(stderr)
 		return 2
 	}
 }
 
 func chonUsage(w io.Writer) {
-	fmt.Fprint(w, `usage: gao chon criteria [-json]
-       gao chon bases    [-json]
-       gao chon score    bases.jsonl [-json]
+	fmt.Fprint(w, `usage: gao choose criteria [-json]
+       gao choose bases    [-json]
+       gao choose score    bases.jsonl [-json]
 
 Choosing a base model, in the order the criteria were written down.
 
@@ -56,12 +56,12 @@ subcommands:
   bases     the roster: what each candidate is, before anybody measures it
   score     put the measurements against the roster, and see whether it decides
 
-run 'gao chon <subcommand> -h' for the flags of a single subcommand.
+run 'gao choose <subcommand> -h' for the flags of a single subcommand.
 `)
 }
 
 func runChonCriteria(stdout, stderr io.Writer, args []string) int {
-	fs := flag.NewFlagSet("chon criteria", flag.ContinueOnError)
+	fs := flag.NewFlagSet("choose criteria", flag.ContinueOnError)
 	fs.SetOutput(stderr)
 	asJSON := fs.Bool("json", false, "print JSON")
 	fs.Usage = func() { chonUsage(stderr); fs.PrintDefaults() }
@@ -91,7 +91,7 @@ func runChonCriteria(stdout, stderr io.Writer, args []string) int {
 }
 
 func runChonBases(stdout, stderr io.Writer, args []string) int {
-	fs := flag.NewFlagSet("chon bases", flag.ContinueOnError)
+	fs := flag.NewFlagSet("choose bases", flag.ContinueOnError)
 	fs.SetOutput(stderr)
 	asJSON := fs.Bool("json", false, "print JSON")
 	fs.Usage = func() { chonUsage(stderr); fs.PrintDefaults() }
@@ -119,7 +119,7 @@ func runChonBases(stdout, stderr io.Writer, args []string) int {
 }
 
 func runChonScore(stdout, stderr io.Writer, args []string) int {
-	fs := flag.NewFlagSet("chon score", flag.ContinueOnError)
+	fs := flag.NewFlagSet("choose score", flag.ContinueOnError)
 	fs.SetOutput(stderr)
 	asJSON := fs.Bool("json", false, "print JSON")
 	fs.Usage = func() { chonUsage(stderr); fs.PrintDefaults() }
@@ -132,7 +132,7 @@ func runChonScore(stdout, stderr io.Writer, args []string) int {
 	}
 	readings, err := chon.ReadReadings(fs.Arg(0))
 	if err != nil {
-		fmt.Fprintf(stderr, "gao chon: %v\n", err)
+		fmt.Fprintf(stderr, "gao choose: %v\n", err)
 		return 1
 	}
 	table := chon.Score(readings)

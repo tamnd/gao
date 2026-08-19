@@ -10,12 +10,12 @@ import (
 )
 
 func runLap(stdout, stderr io.Writer, args []string) int {
-	fs := flag.NewFlagSet("lap", flag.ContinueOnError)
+	fs := flag.NewFlagSet("repeat", flag.ContinueOnError)
 	fs.SetOutput(stderr)
 	asJSON := fs.Bool("json", false, "print JSON")
 	generator := fs.String("generator", "", "the generator that wrote the set, as the card names it")
 	fs.Usage = func() {
-		fmt.Fprint(stderr, `usage: gao lap -generator name [-json] run.jsonl
+		fmt.Fprint(stderr, `usage: gao repeat -generator name [-json] run.jsonl
 
 Read a set of generated documents in the order it was generated and say whether
 it is a corpus or one prompt run a million times.
@@ -55,7 +55,7 @@ flags:
 
 	docs, err := lap.ReadDocs(fs.Arg(0))
 	if err != nil {
-		fmt.Fprintf(stderr, "gao lap: %v\n", err)
+		fmt.Fprintf(stderr, "gao repeat: %v\n", err)
 		return 1
 	}
 

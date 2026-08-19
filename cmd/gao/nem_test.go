@@ -35,7 +35,7 @@ func TestNemRefusesBeforeItFetchesAnything(t *testing.T) {
 		{"a tokenizer that is not there",
 			[]string{"-source", "hplt3", "-seed", "s1", "-layers", layers,
 				"-tokenizer", filepath.Join(t.TempDir(), "nothing.model"), files},
-			"run 'gao dem model -o PATH' to fetch the tokenizer"},
+			"run 'gao count model -o PATH' to fetch the tokenizer"},
 	} {
 		t.Run(c.name, func(t *testing.T) {
 			out, errOut, code := exec(t, append([]string{"nem"}, c.args...)...)
@@ -75,11 +75,11 @@ func TestNemUsageNamesWhatItDoesAndWhatItCosts(t *testing.T) {
 		t.Fatalf("exit %d, want 2", code)
 	}
 	for _, want := range []string{
-		"gao nem -source name -seed s -layers layers.jsonl",
+		"gao taste -source name -seed s -layers layers.jsonl",
 		"-tokenizer",
 		"-out",
 		"the digest this prints is the digest that command prints for the same",
-		"gao dem model -o PATH",
+		"gao count model -o PATH",
 	} {
 		if !strings.Contains(errOut, want) {
 			t.Errorf("the usage does not say %q:\n%s", want, errOut)

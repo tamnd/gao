@@ -38,201 +38,205 @@ The binary is static and cross compiles cleanly. `CGO_ENABLED=0` everywhere.
 
 ## Usage
 
-One binary, subcommands named for the rice verbs.
+One binary. Every subcommand is an English verb, and every one of them also
+answers to the Vietnamese verb the package is named for, so `gao clean` and
+`gao sach` run the same thing. The Vietnamese names are what the source tree
+uses, because rice processing and corpus processing turn out to be the same
+handful of verbs. `gao help` prints both.
 
 ```
-gao gat pins                                # the ingest manifest: what we download, at which revision
-gao gat drift                               # ask every host whether it still serves what we pinned
-gao gat hf     -dir ingest/                 # harvest from Hugging Face, resuming where it left off
-gao gat hf     -dir ingest/ -decode         # and put every record to the ingest contract as it streams
-gao gat hf     -dir ingest/ -out parts/ -push  # and write parquet, push it, and free the disk as it goes
-gao gat ledger -dir ingest/                 # what the harvest has finished so far
-gao gat ledger -dir ingest/ -files          # every finished file, and how each one was read
-gao giao plan  readings.jsonl               # to hand over: what the whole ingest costs once it is split across the fleet
-gao giao files readings.jsonl               # and which box fetches which file
-gao giao files -box server1 readings.jsonl > mine.txt  # one box's share, in the form the fetcher takes
-gao gat hf     -dir ingest/ -only mine.txt  # and fetch that share and nothing else
+gao harvest pins                                # the ingest manifest: what we download, at which revision
+gao harvest drift                               # ask every host whether it still serves what we pinned
+gao harvest hf     -dir ingest/                 # harvest from Hugging Face, resuming where it left off
+gao harvest hf     -dir ingest/ -decode         # and put every record to the ingest contract as it streams
+gao harvest hf     -dir ingest/ -out parts/ -push  # and write parquet, push it, and free the disk as it goes
+gao harvest ledger -dir ingest/                 # what the harvest has finished so far
+gao harvest ledger -dir ingest/ -files          # every finished file, and how each one was read
+gao assign plan  readings.jsonl               # what the whole ingest costs once it is split across the fleet
+gao assign files readings.jsonl               # and which box fetches which file
+gao assign files -box server1 readings.jsonl > mine.txt  # one box's share, in the form the fetcher takes
+gao harvest hf     -dir ingest/ -only mine.txt  # and fetch that share and nothing else
 
-gao dem model  -o tokenizer.model           # fetch the tokenizer that defines a gao token
-gao dem gates  -tokenizer tokenizer.model parts/*.parquet  # and put it through the ten gates before trusting a count
-gao gat hf     -dir ingest/ -tokenizer tokenizer.model  # and count tokens while harvesting
-gao dem fertility                           # the candidate tokenizers, and which of them anybody has pinned
-gao dem fertility fertility.jsonl           # and what each one costs for the same Vietnamese, measured
-gao tieng -source gao parts/*.txt           # a syllable: what a syllable-atomic tokenizer would govern, and what it gives up
-gao tieng -source gao -top 40 parts/*.txt   # and the runs it forbids, longest table first
-gao dem counts ingest/                      # what the harvest counted, per source
-gao dem keys   glotcc-abc1234               # read a snapshot's document identities back out of the store
-gao dem overlap keys/*.keys                 # what the sources have in common, counted rather than sampled
-gao dem verify -level counts -counts ingest/  # check a published count against the store it came from
-gao uoc -source hplt-v3 -parts 1214 -bytes 703000000000 -seed hplt-v3-2026-08 sample.jsonl  # to estimate: what a sampled count is worth, as an interval
-gao uoc -exact 176000000000 -source hplt-v3 -parts 1214 -bytes 703000000000 -seed hplt-v3-2026-08 sample.jsonl  # and whether the exact count, once there is one, landed inside it
-gao tang -source hplt-v3 layers.jsonl       # the layers: what an estimate taken bucket by bucket is worth over the buckets nobody opened
-gao tang -source hplt-v3 -quoted 176000000000 layers.jsonl  # and whether the number this project publishes is one the reading covers
-gao mau -source hplt-v3 -seed s -layers layers.jsonl files.jsonl  # a sample: which shards of the buckets nobody opened get read
-gao mau -source hplt-v3 -seed s -layers layers.jsonl -takes files.jsonl  # the read list on its own, which is what does the fetching
-gao gat cc     --snapshots all              # recover Vietnamese from Common Crawl
-gao gat crawl  --policy crawl.toml          # crawl the Vietnamese web directly
-gao gat media  --from crawl                 # fetch PDFs, audio, video
+gao count model  -o tokenizer.model           # fetch the tokenizer that defines a gao token
+gao count gates  -tokenizer tokenizer.model parts/*.parquet  # and put it through the ten gates before trusting a count
+gao harvest hf     -dir ingest/ -tokenizer tokenizer.model  # and count tokens while harvesting
+gao count fertility                           # the candidate tokenizers, and which of them anybody has pinned
+gao count fertility fertility.jsonl           # and what each one costs for the same Vietnamese, measured
+gao syllable -source gao parts/*.txt           # a syllable: what a syllable-atomic tokenizer would govern, and what it gives up
+gao syllable -source gao -top 40 parts/*.txt   # and the runs it forbids, longest table first
+gao count counts ingest/                      # what the harvest counted, per source
+gao count keys   glotcc-abc1234               # read a snapshot's document identities back out of the store
+gao count overlap keys/*.keys                 # what the sources have in common, counted rather than sampled
+gao count verify -level counts -counts ingest/  # check a published count against the store it came from
+gao estimate -source hplt-v3 -parts 1214 -bytes 703000000000 -seed hplt-v3-2026-08 sample.jsonl  # what a sampled count is worth, as an interval
+gao estimate -exact 176000000000 -source hplt-v3 -parts 1214 -bytes 703000000000 -seed hplt-v3-2026-08 sample.jsonl  # and whether the exact count, once there is one, landed inside it
+gao layers -source hplt-v3 layers.jsonl       # what an estimate taken bucket by bucket is worth over the buckets nobody opened
+gao layers -source hplt-v3 -quoted 176000000000 layers.jsonl  # and whether the number this project publishes is one the reading covers
+gao sample -source hplt-v3 -seed s -layers layers.jsonl files.jsonl  # a sample: which shards of the buckets nobody opened get read
+gao sample -source hplt-v3 -seed s -layers layers.jsonl -takes files.jsonl  # the read list on its own, which is what does the fetching
+gao harvest cc     --snapshots all              # recover Vietnamese from Common Crawl
+gao harvest crawl  --policy crawl.toml          # crawl the Vietnamese web directly
+gao harvest media  --from crawl                 # fetch PDFs, audio, video
 
-gao bien canon < seeds.txt                  # the frontier: one spelling per page, and what merged with what
-gao bien shape -count < frontier.txt        # what templates a frontier is made of, heaviest first
-gao bien budget -shapes < frontier.txt      # what the budget would ask for, and what it would refuse
-gao bien fit                                # whether the frontier fits on server1, before the first fetch
-gao bien fit -measure 20000                 # and the same answer read off a real heap rather than worked out
+gao frontier canon < seeds.txt                  # one spelling per page, and what merged with what
+gao frontier shape -count < frontier.txt        # what templates a frontier is made of, heaviest first
+gao frontier budget -shapes < frontier.txt      # what the budget would ask for, and what it would refuse
+gao frontier fit                                # whether the frontier fits on server1, before the first fetch
+gao frontier fit -measure 20000                 # and the same answer read off a real heap rather than worked out
 
-gao mam ct -counts < ct.json                # the seed: hosts Certificate Transparency names, heaviest first
-gao mam ct -direct -seed seed.txt < ct.json # and which of them a seed list did not already have
-gao mam oai < repositories.txt              # which university repositories will hand over a catalog
-gao mam oai -links -from 2024-01-01 BASE    # and the URLs in one, ready for the frontier
+gao seed ct -counts < ct.json                # hosts Certificate Transparency names, heaviest first
+gao seed ct -direct -seed seed.txt < ct.json # and which of them a seed list did not already have
+gao seed oai < repositories.txt              # which university repositories will hand over a catalog
+gao seed oai -links -from 2024-01-01 BASE    # and the URLs in one, ready for the frontier
 
-gao suat yield.jsonl                        # a rate: net yield per target class, read while the crawl runs
-gao cho hosts.jsonl                         # to wait: what the crawl left between requests to one host, on a real box under load
-gao suat -json yield.jsonl                  # the same reading, for whatever watches the crawl overnight
-gao suat -next 100000000 yield.jsonl        # what the per class numbers say to do with the next hundred million fetches
+gao yield yield.jsonl                        # a rate: net yield per target class, read while the crawl runs
+gao wait hosts.jsonl                         # what the crawl left between requests to one host, on a real box under load
+gao yield -json yield.jsonl                  # the same reading, for whatever watches the crawl overnight
+gao yield -next 100000000 yield.jsonl        # what the per class numbers say to do with the next hundred million fetches
 
-gao gat fetch -warc gao.warc.gz URL         # fetch a page and keep the bytes the site actually served
-gao gat warc  gao.warc.gz                   # what is in an archive: one line per record
-gao gat warc  -uri URL gao.warc.gz          # a page back out of the archive, without asking the site again
+gao harvest fetch -warc gao.warc.gz URL         # fetch a page and keep the bytes the site actually served
+gao harvest warc  gao.warc.gz                   # what is in an archive: one line per record
+gao harvest warc  -uri URL gao.warc.gz          # a page back out of the archive, without asking the site again
 
-gao boc thread.html                         # to husk: the conversation out of a forum page, and not the sidebar
-gao boc -text -furniture thread.html        # the posts, and the repeated lines that were dropped to get them
-gao boc -json pages/*.html                  # over a crawl, where the number that matters is how many held a thread
+gao husk thread.html                         # the conversation out of a forum page, and not the sidebar
+gao husk -text -furniture thread.html        # the posts, and the repeated lines that were dropped to get them
+gao husk -json pages/*.html                  # over a crawl, where the number that matters is how many held a thread
 
-gao don fit                                 # clear away: whether bytes leave the box faster than the crawl writes them
-gao don fit -uplink 1500000                 # and what a slower link does, which is give the disk a deadline
-gao don read rotation.jsonl                 # what the rotation did, and whether it deleted anything unconfirmed
+gao clear fit                                 # clear away: whether bytes leave the box faster than the crawl writes them
+gao clear fit -uplink 1500000                 # and what a slower link does, which is give the disk a deadline
+gao clear read rotation.jsonl                 # what the rotation did, and whether it deleted anything unconfirmed
 
-gao phoi       doc.txt                      # dry: normalize a document and write it out
-gao phoi -report ingest/*.txt               # what normalizing did, per document, with a total
-gao phoi -report -total parts/*.parquet     # and over parts, where the total is the part anybody reads
-gao sang       parts/*.parquet              # sift: which documents are Vietnamese prose, and why the rest are not
-gao sang -min-syllables 40 parts/*.parquet  # and what a different length floor would keep
-gao xep frame                               # to place: the gao-refset draw and the four band scale, with its digest
-gao xep frame -rubric                       # and what puts a document in each band, with the calls people get wrong
-gao xep read labels.jsonl                   # read a labeling back: coverage, agreement, and who did the labeling
-gao xep agree labels.jsonl                  # and what that agreement is worth once chance is taken out of it
-gao xay        parts/*.parquet              # mill: what the corpus holds more than one copy of
-gao xay -curve parts/*.parquet              # and what every deduplication threshold would cost
-gao xay -boiler parts/*.parquet             # and the furniture every page of a host carries
-gao xay -overlap parts/*.parquet            # and how much of each source is already in another one
-gao xay -choose runs.json                   # the threshold the ablation runs support, or the reason there is none
-gao soi        page.txt reading.txt         # judge a machine's reading of a page against what it says
-gao soi -matrix page.txt reading.txt        # and what each of the six tones was read as
-gao soi field engines.jsonl                 # the whole field of candidate engines, losers included, against the card they ran on
-gao tach       thread.html                  # separate: read a forum page as the thread it is
-gao tach -text thread.html                  # and print the conversation, which is what to check first
-gao che        doc.txt                      # cover: tag over the personal data in a document
-gao che -level L2 -report parts/*.parquet   # and what a corpus holds, per kind, before covering it
-gao nhat -benchmarks                        # pick out the grit: what gao is judged on, and it only grows
-gao nhat -list benchmarks.json parts/*.parquet  # and which documents hold a benchmark's own test items
-gao dau build -o vi-diacritic.jsonl parts/*.parquet  # the mark: build the diacritic restoration task set
-gao dau baseline -items vi-diacritic.jsonl other/*.parquet  # the two numbers a model has to beat
-gao dau grade -items vi-diacritic.jsonl answers.jsonl  # and score a model's answers against them
-gao dien build -count other/*.parquet -o vi-cloze.jsonl parts/*.parquet  # fill in: build the cloze proxy the ablation slate is scored by
-gao dien baseline -items vi-cloze.jsonl other/*.parquet  # what picking the commonest candidate scores
-gao dien grade -items vi-cloze.jsonl answers.jsonl  # and score a model's answers against the set
-gao dien validate recipes.json              # whether the proxy agrees with full scale, or the slate is exploratory
-gao tron -slate                             # to mix: the finetuning slate, and what each capability is on it for
-gao tron sft.jsonl                          # a composed set, with native origin kept a column rather than a note
-gao tron -json sft.jsonl                    # the same, for whatever writes the model card
-gao cham roster                             # mark: the seven specialists, and which of their verifiers are written
-gao cham dau -rollouts rollouts.jsonl parts/*.parquet  # grade restoration rollouts against the pages they came from
-gao cham trich -register instruments.jsonl rollouts.jsonl  # grade legal citations against the instruments that exist
-gao siet recipe -why                        # to tighten: the GRPO step the specialists are trained with, and what each setting fixes
-gao siet read -specialist dau steps.jsonl   # a training log read back against the configuration it was taken under
-gao giu retention.jsonl                     # to keep: what the distillation kept of each specialist, against merging the same checkpoints
-gao ngai items                              # to hesitate: vi-overrefusal, a line per topic and the line each one draws
-gao ngai items -pairs                       # every pair verbatim, which is the only way to check where that line falls
-gao ngai grade replies.jsonl                # both numbers off one set, and how often a pair was treated the same way
-gao theo items                              # to follow: vi-adherence, a line per prompt shape and what that shape invites
-gao theo items -prompts                     # every prompt verbatim, with the sentence saying why it is in the set
-gao theo grade replies.jsonl                # the whole answer read rather than the top, and how far in it turned
-gao kim frame                               # the needle: vi-needle, the grid the long context test is fixed on before it is built
-gao kim check items.jsonl                   # check a built set against that grid, before a model is asked anything
-gao kim grade -items items.jsonl -curve replies.jsonl  # read a run, with recall at every depth rather than one average
-gao hoi questions.jsonl                     # to ask: whether a long document question needs the document, or only its first page
-gao hoi -rejects questions.jsonl            # and what every question that did not survive failed on
-gao gian ladder                             # to stretch: the three windows the context is extended through, and what each one is trained on
-gao gian pool parts/*.parquet               # and whether the corpus holds enough naturally long Vietnamese to climb them
-gao chot harness                            # close the ledger: the evaluation harness, fixed before any result exists
-gao chot digest                             # the digest every published result has to carry
-gao chot audit results.json                 # and whether a set of results is the one the harness asked for
-gao bang board scores.jsonl                 # the board: the release scores, with the Vietnamese arm kept apart from the translated one
-gao bang rows  scores.jsonl                 # and a line per benchmark, marking the ones gao built itself
-gao so pairs.jsonl                          # to compare: a human evaluation read back, with the confounds read before the win rate
-gao so -json pairs.jsonl                    # the same, for whatever writes the release note
-gao doan                                    # to guess: the predictions register, written before any of it was measured
-gao doan -slice S1 -results results.jsonl   # one slice of it, with whatever has come back put next to what was claimed
+gao normalize       doc.txt                      # normalize a document and write it out
+gao normalize -report ingest/*.txt               # what normalizing did, per document, with a total
+gao normalize -report -total parts/*.parquet     # and over parts, where the total is the part anybody reads
+gao sift       parts/*.parquet              # which documents are Vietnamese prose, and why the rest are not
+gao sift -min-syllables 40 parts/*.parquet  # and what a different length floor would keep
+gao place frame                               # the gao-refset draw and the four band scale, with its digest
+gao place frame -rubric                       # and what puts a document in each band, with the calls people get wrong
+gao place read labels.jsonl                   # read a labeling back: coverage, agreement, and who did the labeling
+gao place agree labels.jsonl                  # and what that agreement is worth once chance is taken out of it
+gao mill        parts/*.parquet              # what the corpus holds more than one copy of
+gao mill -curve parts/*.parquet              # and what every deduplication threshold would cost
+gao mill -boiler parts/*.parquet             # and the furniture every page of a host carries
+gao mill -overlap parts/*.parquet            # and how much of each source is already in another one
+gao mill -choose runs.json                   # the threshold the ablation runs support, or the reason there is none
+gao inspect        page.txt reading.txt         # judge a machine's reading of a page against what it says
+gao inspect -matrix page.txt reading.txt        # and what each of the six tones was read as
+gao inspect field engines.jsonl                 # the whole field of candidate engines, losers included, against the card they ran on
+gao separate       thread.html                  # read a forum page as the thread it is
+gao separate -text thread.html                  # and print the conversation, which is what to check first
+gao cover        doc.txt                      # tag over the personal data in a document
+gao cover -level L2 -report parts/*.parquet   # and what a corpus holds, per kind, before covering it
+gao pick -benchmarks                        # pick out the grit: what gao is judged on, and it only grows
+gao pick -list benchmarks.json parts/*.parquet  # and which documents hold a benchmark's own test items
+gao mark build -o vi-diacritic.jsonl parts/*.parquet  # build the diacritic restoration task set
+gao mark baseline -items vi-diacritic.jsonl other/*.parquet  # the two numbers a model has to beat
+gao mark grade -items vi-diacritic.jsonl answers.jsonl  # and score a model's answers against them
+gao fill build -count other/*.parquet -o vi-cloze.jsonl parts/*.parquet  # fill in: build the cloze proxy the ablation slate is scored by
+gao fill baseline -items vi-cloze.jsonl other/*.parquet  # what picking the commonest candidate scores
+gao fill grade -items vi-cloze.jsonl answers.jsonl  # and score a model's answers against the set
+gao fill validate recipes.json              # whether the proxy agrees with full scale, or the slate is exploratory
+gao mix -slate                             # the finetuning slate, and what each capability is on it for
+gao mix sft.jsonl                          # a composed set, with native origin kept a column rather than a note
+gao mix -json sft.jsonl                    # the same, for whatever writes the model card
+gao grade roster                             # the seven specialists, and which of their verifiers are written
+gao grade dau -rollouts rollouts.jsonl parts/*.parquet  # grade restoration rollouts against the pages they came from
+gao grade trich -register instruments.jsonl rollouts.jsonl  # grade legal citations against the instruments that exist
+gao tighten recipe -why                        # the GRPO step the specialists are trained with, and what each setting fixes
+gao tighten read -specialist dau steps.jsonl   # a training log read back against the configuration it was taken under
+gao keep retention.jsonl                     # what the distillation kept of each specialist, against merging the same checkpoints
+gao hesitate items                              # vi-overrefusal, a line per topic and the line each one draws
+gao hesitate items -pairs                       # every pair verbatim, which is the only way to check where that line falls
+gao hesitate grade replies.jsonl                # both numbers off one set, and how often a pair was treated the same way
+gao follow items                              # vi-adherence, a line per prompt shape and what that shape invites
+gao follow items -prompts                     # every prompt verbatim, with the sentence saying why it is in the set
+gao follow grade replies.jsonl                # the whole answer read rather than the top, and how far in it turned
+gao needle frame                               # vi-needle, the grid the long context test is fixed on before it is built
+gao needle check items.jsonl                   # check a built set against that grid, before a model is asked anything
+gao needle grade -items items.jsonl -curve replies.jsonl  # read a run, with recall at every depth rather than one average
+gao ask questions.jsonl                     # whether a long document question needs the document, or only its first page
+gao ask -rejects questions.jsonl            # and what every question that did not survive failed on
+gao stretch ladder                             # the three windows the context is extended through, and what each one is trained on
+gao stretch pool parts/*.parquet               # and whether the corpus holds enough naturally long Vietnamese to climb them
+gao seal harness                            # close the ledger: the evaluation harness, fixed before any result exists
+gao seal digest                             # the digest every published result has to carry
+gao seal audit results.json                 # and whether a set of results is the one the harness asked for
+gao board board scores.jsonl                 # the release scores, with the Vietnamese arm kept apart from the translated one
+gao board rows  scores.jsonl                 # and a line per benchmark, marking the ones gao built itself
+gao compare pairs.jsonl                          # a human evaluation read back, with the confounds read before the win rate
+gao compare -json pairs.jsonl                    # the same, for whatever writes the release note
+gao predict                                    # the predictions register, written before any of it was measured
+gao predict -slice S1 -results results.jsonl   # one slice of it, with whatever has come back put next to what was claimed
 
-gao thu slate                               # to try: the forty run ablation slate, fixed before any of it runs
-gao thu slate -knobs                        # and what the forty runs are actually for, one line per question
-gao thu read results.jsonl                  # read the runs that came back, nulls included, against the slate
+gao try slate                               # the forty run ablation slate, fixed before any of it runs
+gao try slate -knobs                        # and what the forty runs are actually for, one line per question
+gao try read results.jsonl                  # read the runs that came back, nulls included, against the slate
 
-gao tin study                               # to believe: whether the cheap benchmark orders recipes like the expensive one
-gao tin read pairs.jsonl                    # read the paired scores, against a floor taken from the baseline repeats
-gao tin read -missed pairs.jsonl            # and every comparison the proxy called backwards, widest first
+gao trust study                               # whether the cheap benchmark orders recipes like the expensive one
+gao trust read pairs.jsonl                    # read the paired scores, against a floor taken from the baseline repeats
+gao trust read -missed pairs.jsonl            # and every comparison the proxy called backwards, widest first
 
-gao gieo recipe                             # to sow: the gao-synth recipe, fixed and hashed before a token exists
-gao gieo recipe -prompts                    # the prompts verbatim, which is what reproducing it needs
-gao gieo card synth/gao-synth-1.0           # check a generator card against the recipe it names
-gao lap -generator gao-synth-1.0 run.jsonl  # to repeat: whether a generated set is a corpus or one prompt run a million times
-gao lap -generator gao-synth-1.0 -json run.jsonl  # the same, for whatever writes the generator card
+gao sow recipe                             # the gao-synth recipe, fixed and hashed before a token exists
+gao sow recipe -prompts                    # the prompts verbatim, which is what reproducing it needs
+gao sow card synth/gao-synth-1.0           # check a generator card against the recipe it names
+gao repeat -generator gao-synth-1.0 run.jsonl  # whether a generated set is a corpus or one prompt run a million times
+gao repeat -generator gao-synth-1.0 -json run.jsonl  # the same, for whatever writes the generator card
 
-gao cong counts.jsonl                       # add up: what a release holds and what the headline is a count of
-gao cong -json counts.jsonl                 # the same, for whatever writes the dataset card
+gao total counts.jsonl                       # add up: what a release holds and what the headline is a count of
+gao total -json counts.jsonl                 # the same, for whatever writes the dataset card
 
-gao lat -snapshot snapshots/gao-v1.0 slices/*  # a slice: check a release slice is a view rather than a copy
-gao lat -snapshot snapshots/gao-v1.0 -head snapshots/gao-v1.1 slices/*  # and whether a removal has left one stale
+gao slice -snapshot snapshots/gao-v1.0 slices/*  # a slice: check a release slice is a view rather than a copy
+gao slice -snapshot snapshots/gao-v1.0 -head snapshots/gao-v1.1 slices/*  # and whether a removal has left one stale
 
-gao kho release --snapshot gao-v1.0         # store and publish
-gao kho verify  snapshots/gao-v1.0          # check a snapshot against its manifest
-gao kho reproduce snapshots/gao-v1.0        # rebuild its bytes and check they come out the same
-gao kho remove  -from a -to b -snapshot b -key gao.key -reason takedown <docid>  # take a document back out
-gao kho datasets                            # where processed data is written, and how to read it
-gao kho push  part.parquet                  # send one file to the store, skipping what is already there
-gao kho card  -dataset vietnamese-web-text  # generate a repo's dataset card from its snapshot manifest
-gao kho order readings.jsonl                # what sorting a shard by host buys, and what it costs to sort one
-gao kho schema                              # every column of the record, its type, and what it holds
-gao kho schema -parquet                     # the same schema as a parquet tool prints it
-gao goi shards/*.parquet                    # to wrap: what a release costs on disk, column by column, off the footers
-gao goi -columns shards/*.parquet           # every column of it, rather than the ten that weigh the most
+gao store release --snapshot gao-v1.0         # store and publish
+gao store verify  snapshots/gao-v1.0          # check a snapshot against its manifest
+gao store reproduce snapshots/gao-v1.0        # rebuild its bytes and check they come out the same
+gao store remove  -from a -to b -snapshot b -key gao.key -reason takedown <docid>  # take a document back out
+gao store datasets                            # where processed data is written, and how to read it
+gao store push  part.parquet                  # send one file to the store, skipping what is already there
+gao store card  -dataset vietnamese-web-text  # generate a repo's dataset card from its snapshot manifest
+gao store order readings.jsonl                # what sorting a shard by host buys, and what it costs to sort one
+gao store schema                              # every column of the record, its type, and what it holds
+gao store schema -parquet                     # the same schema as a parquet tool prints it
+gao pack shards/*.parquet                    # what a release costs on disk, column by column, off the footers
+gao pack -columns shards/*.parquet           # every column of it, rather than the ten that weigh the most
 
-gao xoa status                              # the takedown register: what is open, and how long each request took
-gao xoa check                               # and whether the file itself holds anything that cannot be true
-gao xoa url -fetched 2026-03-01 URL         # what a filed request does to one URL, at the fetch and at the store
+gao takedown status                              # the takedown register: what is open, and how long each request took
+gao takedown check                               # and whether the file itself holds anything that cannot be true
+gao takedown url -fetched 2026-03-01 URL         # what a filed request does to one URL, at the fetch and at the store
 
-gao nau budget                              # the 1 T token mixture, one line per component
-gao nau curriculum                          # the three phases and what each one reads
-gao nau reconcile                           # what the budget buys against what the curriculum spends
-gao nau arms                                # the continued pretraining comparison and the recipe it shares
-gao nau check                               # everything in the plan that cannot be true at once
-gao can arms.jsonl                          # to weigh: whether the three arms differ in their data and in nothing else
-gao can -json arms.jsonl                    # the same reading, for whatever writes the model card
+gao cook budget                              # the 1 T token mixture, one line per component
+gao cook curriculum                          # the three phases and what each one reads
+gao cook reconcile                           # what the budget buys against what the curriculum spends
+gao cook arms                                # the continued pretraining comparison and the recipe it shares
+gao cook check                               # everything in the plan that cannot be true at once
+gao weigh arms.jsonl                          # whether the three arms differ in their data and in nothing else
+gao weigh -json arms.jsonl                    # the same reading, for whatever writes the model card
 
-gao chon criteria                           # choosing a base: the six criteria, in the order they bind
-gao chon bases                              # the candidates, before anybody has measured one
-gao chon score bases.jsonl                  # and what the measurements say, if they are enough to decide
-gao ghep expansions.jsonl                   # to graft: what adding Vietnamese tokens to a base vocabulary bought and cost
+gao choose criteria                           # choosing a base: the six criteria, in the order they bind
+gao choose bases                              # the candidates, before anybody has measured one
+gao choose score bases.jsonl                  # and what the measurements say, if they are enough to decide
+gao graft expansions.jsonl                   # what adding Vietnamese tokens to a base vocabulary bought and cost
 
-gao hieu model                              # the effect: the from scratch architecture and what a token of it costs
-gao hieu plan -gpus 64                      # the compute that run needs, in the hours it gets booked in
-gao hieu read steps.jsonl                   # what the hardware actually gave back, tenth of the run by tenth
-gao hieu spot -mean 4h                      # how often to checkpoint on capacity that gets taken back
-gao chim -loss 2.3141 -bf16 2.3139 step.jsonl  # to sink: what the FP8 cast lost to zero, which the loss curve will not say
-gao keo resumes.jsonl                       # to pull: what it costs to get back into a run once the host is gone
-gao vot -run gao-8b -total 500000 -checkpoint 200 loss.jsonl  # to shoot up: whether the loss spiked, and what rewinding would have cost
-gao vot -run gao-8b -total 500000 -checkpoint 200 -top 3 loss.jsonl  # and the worst of them, when there are more than anybody reads
+gao efficiency model                              # the from scratch architecture and what a token of it costs
+gao efficiency plan -gpus 64                      # the compute that run needs, in the hours it gets booked in
+gao efficiency read steps.jsonl                   # what the hardware actually gave back, tenth of the run by tenth
+gao efficiency spot -mean 4h                      # how often to checkpoint on capacity that gets taken back
+gao sink -loss 2.3141 -bf16 2.3139 step.jsonl  # what the FP8 cast lost to zero, which the loss curve will not say
+gao pull resumes.jsonl                       # what it costs to get back into a run once the host is gone
+gao spike -run gao-8b -total 500000 -checkpoint 200 loss.jsonl  # whether the loss spiked, and what rewinding would have cost
+gao spike -run gao-8b -total 500000 -checkpoint 200 -top 3 loss.jsonl  # and the worst of them, when there are more than anybody reads
 
-gao chia -why report.pdf                    # route one PDF: direct extraction, legacy transcode, or OCR
-gao chia *.pdf                              # and the routing distribution over a pile of them
-gao dinh pages.jsonl                        # to attach: page images still joined to the text that came off them
-gao dinh -free 40000000000 pages.jsonl      # and whether what is still on the box fits the disk the box has left
-gao nghe tracks.jsonl                       # to listen: whether a transcript belongs to the audio it came off
+gao route -why report.pdf                    # route one PDF: direct extraction, legacy transcode, or OCR
+gao route *.pdf                              # and the routing distribution over a pile of them
+gao attach pages.jsonl                        # page images still joined to the text that came off them
+gao attach -free 40000000000 pages.jsonl      # and whether what is still on the box fits the disk the box has left
+gao listen tracks.jsonl                       # whether a transcript belongs to the audio it came off
 
-gao box                                     # the fleet, and the disk budget it implies
-gao box peak -ran 6h disk.jsonl             # what a run actually held on disk, against the ceiling and against the arithmetic
-gao nhip stages.jsonl                       # the beat: what each pipeline stage runs at, with the box on every number
-gao luat                                    # the legal position and what it lets us publish
+gao fleet                                     # the fleet, and the disk budget it implies
+gao fleet peak -ran 6h disk.jsonl             # what a run actually held on disk, against the ceiling and against the arithmetic
+gao throughput stages.jsonl                       # what each pipeline stage runs at, with the box on every number
+gao law                                    # the legal position and what it lets us publish
 ```
 
 Run `gao help` for the full surface.
@@ -242,7 +246,7 @@ Run `gao help` for the full surface.
 Every snapshot carries a `manifest.toml` that lists its shards, the hash of each one, a merkle root over those hashes, and an ed25519 signature over the manifest values. Checking all of it is one command.
 
 ```
-gao kho verify -key <the published gao key> snapshots/gao-v1.0
+gao store verify -key <the published gao key> snapshots/gao-v1.0
 ```
 
 That checks four things: the manifest is internally consistent, the merkle root matches the shard hashes, the signature verifies against the key you named, and every shard file on disk hashes to the value recorded for it. A shard file present in the directory but absent from the manifest fails too, because a snapshot with an extra file in it is not the snapshot that was signed.
@@ -260,7 +264,7 @@ The breakdown is optional, because a snapshot from a stage that has not made the
 The release has to be reproducible by somebody who does not trust us, and that claim is two claims that get quoted as one. The first is that the pipeline computes the same documents from the same inputs. The second is that writing those documents produces the same file. Only the second can be checked from a snapshot on its own, because the inputs are not in it, and it is the one that has to hold first: until it does, a stage that reruns to something different is indistinguishable from a compressor that does, and neither result means anything.
 
 ```
-gao kho reproduce snapshots/gao-v1.0
+gao store reproduce snapshots/gao-v1.0
 ```
 
 That rebuilds every shard from the documents that shard holds and compares the result against the recorded hash. The documents are the same by construction, which is the point rather than a weakness. What can differ is the compressor version, a writer setting, or something in gao, so the report prints the versions of everything that decides bytes and the failure message says the corpus is intact, because otherwise the first response to a mismatch is somebody replacing a disk.
@@ -280,7 +284,7 @@ Somebody will ask us to remove a document, and when they do it will be urgent. T
 A snapshot is immutable and its manifest is signed, so nothing is edited in place. A removal writes a new snapshot that names the old one as its parent and carries a tombstone for every document taken out.
 
 ```
-gao kho remove -from snapshots/gao-v1.0 -to snapshots/gao-v1.0-r1 \
+gao store remove -from snapshots/gao-v1.0 -to snapshots/gao-v1.0-r1 \
   -snapshot gao-v1.0-r1 -key gao.key -reason takedown -list request-118.txt
 ```
 
@@ -294,7 +298,7 @@ What happens to the parent afterwards is a publication decision rather than a st
 
 ## Who asked, and how long it took
 
-[LIEN-HE.md](LIEN-HE.md) promises a response inside 72 hours to anybody who asks us to stop crawling their site or to remove what we already have, and it says the real time for each request is recorded in public. [GO-BO.toml](GO-BO.toml) is that record, and `gao xoa` is what reads it. It is a file in the repository rather than a row in a database, because a promise about response times that only the operator can audit is a promise nobody can check.
+[LIEN-HE.md](LIEN-HE.md) promises a response inside 72 hours to anybody who asks us to stop crawling their site or to remove what we already have, and it says the real time for each request is recorded in public. [GO-BO.toml](GO-BO.toml) is that record, and `gao takedown` is what reads it. It is a file in the repository rather than a row in a database, because a promise about response times that only the operator can audit is a promise nobody can check.
 
 Publishing an address and honoring what arrives at it are different things, and the difference only shows up on the day somebody writes. So the register binds at two gates rather than one. The gate at the fetch takes effect from the moment the request was made, including on requests nobody has acted on yet, since the alternative is a crawler that keeps hitting a site that asked it to stop for as long as it takes an operator to wake up and edit a file. The gate at the store is a different question with a different answer: a request scoped to stop leaves what was already published alone, an erase takes everything whenever it was fetched, and a document fetched after the request was made goes either way, because that fetch should never have happened and the gap between somebody asking and somebody acting is ours rather than theirs.
 
@@ -302,11 +306,11 @@ The clock starts when the issue was opened and not when we read it. Measuring fr
 
 A takedown for `example.vn` covers `www.example.vn` and `tin.example.vn`, because that is what somebody filing one means by their site. It does not cover `notexample.vn`, which a plain string suffix would take, and taking it would drop a stranger's site out of the corpus on the strength of a request that was never about them.
 
-The register is empty today, and `gao xoa status` reports that nothing has been measured rather than a perfect record. A path nobody has used is a path nobody has tested, and a report that prints a median of zero hours and everything honored describes a system that has never done anything as one that has never failed. CI runs `gao xoa check` and `gao xoa status` on every change, so a row with the dates the wrong way round and a request past the response time both fail the build.
+The register is empty today, and `gao takedown status` reports that nothing has been measured rather than a perfect record. A path nobody has used is a path nobody has tested, and a report that prints a median of zero hours and everything honored describes a system that has never done anything as one that has never failed. CI runs `gao takedown check` and `gao takedown status` on every change, so a row with the dates the wrong way round and a request past the response time both fail the build.
 
 ## What goes in
 
-Six public corpora go in before gao crawls anything of its own. The ingest manifest is the list of exactly which files, at exactly which revision, and `gao gat pins` prints it.
+Six public corpora go in before gao crawls anything of its own. The ingest manifest is the list of exactly which files, at exactly which revision, and `gao harvest pins` prints it.
 
 | order | source | repo | files | download | license |
 |---|---|---|---|---|---|
@@ -321,7 +325,7 @@ HPLT v3 ingests first and alone because it is the spine, and every later source 
 
 Every Hub source is pinned to a commit SHA and never to a branch, because a corpus pinned to a moving target cannot be rebuilt from its own manifest. HPLT is the awkward one and it is also the largest: it is not hosted on the Hub, so there is no commit to pin, and what it publishes instead is a per language map file listing the shards. The manifest pins the sha256 of that map, which fixes the shard list, and records each shard's size from a HEAD.
 
-`gao gat drift` asks every host what it serves now and reports the ones that have moved. It never rewrites the manifest. Re-pinning is a commit somebody makes deliberately, with the new file lists and byte counts read at the same time, because a manifest that re-pins itself silently changes what a released corpus was built from.
+`gao harvest drift` asks every host what it serves now and reports the ones that have moved. It never rewrites the manifest. Re-pinning is a commit somebody makes deliberately, with the new file lists and byte counts read at the same time, because a manifest that re-pins itself silently changes what a released corpus was built from.
 
 Reading the file lists off the hosts rather than copying them from the plan corrected the plan three times. GlotCC's Vietnamese partition was described as small and is 55.9 GB. The whole download was estimated at roughly 490 GB and is 608.9 GB, of which 513.6 GB is fetched and 95.3 GB is pinned and dropped for the reason below. CulturaX is gated, which nothing had recorded, and a gated repo does not hand its file digests to an unauthenticated caller, so that source pins byte counts and fills in digests when the grant lands.
 
@@ -329,17 +333,17 @@ One number sets the shape of the ingest. The largest pinned file is a 26.6 GB HP
 
 ## Getting it in
 
-`gao gat hf` fetches what the manifest pins. Nothing lands on disk except the ledger: a file is streamed through whatever consumes it and the bytes are never all in one place at once, which is what the 26.6 GB against 4.1 GB arithmetic above forces.
+`gao harvest hf` fetches what the manifest pins. Nothing lands on disk except the ledger: a file is streamed through whatever consumes it and the bytes are never all in one place at once, which is what the 26.6 GB against 4.1 GB arithmetic above forces.
 
 A transfer that size will be dropped. When it is, the fetch reconnects at the byte it stopped at with a range request and carries on, and the hash rolls forward across the reconnect because nothing is read twice. A host that answers a range request by starting the file over is a failure rather than a slow path, because taking it would mean hashing the first bytes twice and reporting a file larger than the one that exists.
 
-Progress is the ledger, one JSON line per finished file, synced as it is written. An interrupted run is resumed by running the same command again: files already recorded at their pinned revision are skipped. An entry names the revision it was fetched at, so re-pinning a source invalidates its entries rather than letting a restart mix two revisions into one corpus. `gao gat ledger` reads it without taking it over, so it is safe to run against a box that is fetching.
+Progress is the ledger, one JSON line per finished file, synced as it is written. An interrupted run is resumed by running the same command again: files already recorded at their pinned revision are skipped. An entry names the revision it was fetched at, so re-pinning a source invalidates its entries rather than letting a restart mix two revisions into one corpus. `gao harvest ledger` reads it without taking it over, so it is safe to run against a box that is fetching.
 
-One ingest at a time in one directory, enforced by a lock file. Two of them do not corrupt the ledger, because it is append only and keyed by source, revision and path, and it dedupes on read. What they do instead is harder to find: both build the same plan, both fetch the same shard, and the file count still looks right while the bytes moved and the document totals are counted twice. The document store does not survive it at all, since two writers appending to the same segment interleave and nothing can read past the first collision. The lock names the box, the process and the time, so the refusal says who is holding the directory rather than that something is. A run killed outright leaves its lock behind, and the next run on the same box breaks it once it has established that the process is gone, which is a question with an answer where a timeout is a guess: a stalled 26.6 GB download and a dead one look the same from outside. A lock written by another box is never broken, because a process ID from another machine means nothing on this one. `gao gat hf -plan` takes no lock at all, so the plan stays readable while an ingest is running.
+One ingest at a time in one directory, enforced by a lock file. Two of them do not corrupt the ledger, because it is append only and keyed by source, revision and path, and it dedupes on read. What they do instead is harder to find: both build the same plan, both fetch the same shard, and the file count still looks right while the bytes moved and the document totals are counted twice. The document store does not survive it at all, since two writers appending to the same segment interleave and nothing can read past the first collision. The lock names the box, the process and the time, so the refusal says who is holding the directory rather than that something is. A run killed outright leaves its lock behind, and the next run on the same box breaks it once it has established that the process is gone, which is a question with an answer where a timeout is a guess: a stalled 26.6 GB download and a dead one look the same from outside. A lock written by another box is never broken, because a process ID from another machine means nothing on this one. `gao harvest hf -plan` takes no lock at all, so the plan stays readable while an ingest is running.
 
 Every file is checked at the end against the byte count in the manifest, and against the pinned digest where the host publishes one. Where it does not, and HPLT publishes none while the Hub withholds them for gated repos, the fetch computes a digest and records it, so the second fetch of a file has something to compare against even though the first did not.
 
-The counts are written the same way the ledger is, which took a fleet run to notice. A decoding run tallies documents, bytes, characters, syllables and tokens as it goes and writes them to `counts.json` beside the ledger, and the first version wrote that file once, when the run ended. A run over one of these sources takes days. So for days the directory held the previous run's counts, naming a source the box was no longer fetching, and nothing about the file said so: it parses, it has a box on it, and `gao dem counts` would print it without complaint. The counts are now written before the first byte is fetched and rewritten after every finished file, and a report written mid run says it is one. `gao dem counts` names the boxes that had not finished, because a prefix of a source and a source total are the same shape.
+The counts are written the same way the ledger is, which took a fleet run to notice. A decoding run tallies documents, bytes, characters, syllables and tokens as it goes and writes them to `counts.json` beside the ledger, and the first version wrote that file once, when the run ended. A run over one of these sources takes days. So for days the directory held the previous run's counts, naming a source the box was no longer fetching, and nothing about the file said so: it parses, it has a box on it, and `gao count counts` would print it without complaint. The counts are now written before the first byte is fetched and rewritten after every finished file, and a report written mid run says it is one. `gao count counts` names the boxes that had not finished, because a prefix of a source and a source total are the same shape.
 
 A resumed run starts its tally from the counts already in the directory, and says so:
 
@@ -377,10 +381,10 @@ There are four boxes and one of them, `server2`, sits under the 20 GB reserve an
 
 It is wrong first because the files are not the same size. The largest is 26.6 GB and the median is 2.1 GB, a thirteenth of it, so equal piles of files are not equal piles of work, and a file cannot be cut in half because it is streamed and hashed as one unit. It is wrong second because the sources cannot all be fetched at once. HPLT v3 is pinned at order zero and ingests alone, since every later source dedups against a store that already holds it. The schedule is a sequence of groups with a barrier at the end of each, not one pile, and the idle time that produces is the cost of the ingest order rather than a mistake in the arithmetic.
 
-`gao giao` prices both. It takes a file of readings, one per box, and hands out the heaviest remaining file to whichever box would finish it soonest.
+`gao assign` prices both. It takes a file of readings, one per box, and hands out the heaviest remaining file to whichever box would finish it soonest.
 
 ```
-$ gao giao plan giao/testdata/readings.jsonl
+$ gao assign plan giao/testdata/readings.jsonl
 order  sources   files  bytes     takes       waiting at the end
 0      hplt3     12     234.5 GB  18.3 hours  1.2 hours
 1      finepdfs  3      13.0 GB   1.4 hours   1.9 hours
@@ -400,7 +404,7 @@ Order 1 divides 3 files across 3 boxes and still ends 24 minutes after its own f
 513.6 GB over 122 files across 3 boxes takes 40.3 hours, against 3.4 days on the fastest box alone. That is 3% over a split no arrangement can beat, and the gap is the ingest order and the file sizes rather than the fleet.
 ```
 
-Every number in that block comes off the S1 runs. `gao giao read` turns an ingest ledger into a reading by timing between two finishes, and the three lines in `giao/testdata/readings.jsonl` are what it printed on each box on 2026-08-18: `server1` at 4.84 GB in 8480 seconds of fineweb2, `server3` at 4.18 GB in 2409 seconds of GlotCC, `gamingpc` at 4.39 GB in 3292 seconds of FinePDFs.
+Every number in that block comes off the S1 runs. `gao assign read` turns an ingest ledger into a reading by timing between two finishes, and the three lines in `giao/testdata/readings.jsonl` are what it printed on each box on 2026-08-18: `server1` at 4.84 GB in 8480 seconds of fineweb2, `server3` at 4.18 GB in 2409 seconds of GlotCC, `gamingpc` at 4.39 GB in 3292 seconds of FinePDFs.
 
 Read those three next to each other and the first thing they say is that the ranking is not the one anybody would have guessed. `gamingpc` has 32 threads and a 4090 and it comes in slower than `server3`, which has eight cores and no GPU. The reason is that the three readings are on three different sources: GlotCC is zstd compressed JSON lines, FinePDFs is Parquet with 23 columns holding text that has already been through a PDF extractor, and fineweb2 is Parquet again at 4.8 GB a file. A reading is a box and a source together, and calling it a property of the box is the mistake this schedule would make if it had only one of them. What it needs is the rate a box gets through the work it is about to be given, and a reading taken on a different source is the closest thing available rather than the same thing. The file records what each reading was taken on, in the `how` field, so the confound is on the record rather than in somebody's memory.
 
@@ -408,16 +412,16 @@ The second thing is that three boxes buy 2.0x over the fastest one alone. The fl
 
 The third thing is `server3`, and it is the line worth reading twice, because for one inventory it was not in this table at all. It had a reading, it was the fastest box on that reading, and it drew nothing, while being the box that fetched, decoded and published the entire GlotCC snapshot on the day the reading was taken. All of that was true at once. It had 17.7 GB free against a 20 GB reserve, so it had no scratch, and `may.HoldsCorpus` asks whether a box can hold a stage's working set of four shards rather than whether it can hold the one part a fetch has in flight.
 
-The reserve was not adjusted to let it back in. A safety number that moves the first time it excludes a machine somebody wanted is not a safety number. What happened instead is that `gao box check` was run on all four boxes on 2026-08-19 and `server3` came back with 43.7 GB free, 26.0 GB more than the record, in the sentence that check exists to print: the fleet is larger than the plan thinks. The inventory was retaken and `server3` draws 48% of the ingest on the same arithmetic that had been giving it nothing. Putting it back cut the whole ingest from 3.2 days to 40.3 hours and took the fleet from 1.4x to 2.0x.
+The reserve was not adjusted to let it back in. A safety number that moves the first time it excludes a machine somebody wanted is not a safety number. What happened instead is that `gao fleet check` was run on all four boxes on 2026-08-19 and `server3` came back with 43.7 GB free, 26.0 GB more than the record, in the sentence that check exists to print: the fleet is larger than the plan thinks. The inventory was retaken and `server3` draws 48% of the ingest on the same arithmetic that had been giving it nothing. Putting it back cut the whole ingest from 3.2 days to 40.3 hours and took the fleet from 1.4x to 2.0x.
 
 That is the case for a gate made of arithmetic over a dated measurement rather than a list of boxes somebody maintains. It let a machine out and back in without anybody editing a rule, and the only thing needed to notice was running the check. The plan still prints the free disk, the scratch after the reserve, what a stage needs and what a fetch holds for every box it drops, because a box dropped without its numbers looks like a bug. `server2` is the box it drops now, and that one has been under the reserve at all three inventories.
 
 The rate a schedule is built on is the whole thing, and it is not the link. An ingest that decodes fetches a record, puts it to the ingest contract, tokenizes it and writes Parquet, and on this fleet that work is slower than the download by an order of magnitude. `server1` moved 4.84 GB in 8480 seconds, which is 4.6 Mbit, on a box with a public route and nothing wrong with its connection. A readings file therefore carries what a box got through end to end, with the date and a sentence saying how it was taken, and a reading measured across less than a gigabyte is refused: a rate off the first hundred megabytes of a run is a measurement of a congestion window growing and a page cache filling.
 
-`gao giao files` prints the assignment itself, which is what somebody actually reads before starting a box.
+`gao assign files` prints the assignment itself, which is what somebody actually reads before starting a box.
 
 ```
-$ gao giao files giao/testdata/readings.jsonl | head -13
+$ gao assign files giao/testdata/readings.jsonl | head -13
 order  box       bytes     takes       file
 0      server3   26.6 GB   4.3 hours   hplt3/vie_Latn/7_1.jsonl.zst
 0      server3   26.3 GB   4.2 hours   hplt3/vie_Latn/7_2.jsonl.zst
@@ -439,12 +443,12 @@ The command exits 1 when the readings are not a schedule at all, which covers a 
 
 ## Running the schedule the planner wrote
 
-The table above is the answer to which box fetches what, and for a while it was an answer nobody could act on. `gao gat hf` had one way to fetch less than everything, `-limit N`, which takes the first N files of what is left, in manifest order. Three boxes given `-limit 40` fetch the same forty files three times. So the schedule had to be retyped into three commands by hand, and a plan somebody retypes is a plan somebody retypes wrong.
+The table above is the answer to which box fetches what, and for a while it was an answer nobody could act on. `gao harvest hf` had one way to fetch less than everything, `-limit N`, which takes the first N files of what is left, in manifest order. Three boxes given `-limit 40` fetch the same forty files three times. So the schedule had to be retyped into three commands by hand, and a plan somebody retypes is a plan somebody retypes wrong.
 
-`gao giao files -box NAME` prints one box's share and nothing else, and `gao gat hf -only` takes that file as it stands.
+`gao assign files -box NAME` prints one box's share and nothing else, and `gao harvest hf -only` takes that file as it stands.
 
 ```
-$ gao giao files -box server1 giao/testdata/readings.jsonl
+$ gao assign files -box server1 giao/testdata/readings.jsonl
 hplt3/vie_Latn/8_1.jsonl.zst
 hplt3/vie_Latn/9_2.jsonl.zst
 fineweb2/data/vie_Latn/train/001_00000.parquet
@@ -466,13 +470,13 @@ glotcc/v1.0/vie-Latn/vie-Latn_5.parquet
 glotcc/v1.0/vie-Latn/vie-Latn_4.parquet
 ```
 
-No header, no totals, no verdict, and the order is the one the schedule hands the files out in. This is the only output in gao written for another program rather than for a person, which is why everything that makes the table readable is missing from it. The reasoning is a command away and it is `gao giao files` without the flag.
+No header, no totals, no verdict, and the order is the one the schedule hands the files out in. This is the only output in gao written for another program rather than for a person, which is why everything that makes the table readable is missing from it. The reasoning is a command away and it is `gao assign files` without the flag.
 
 The other end takes it as a list of files it may fetch, and says what that leaves.
 
 ```
-$ gao giao files -box server1 giao/testdata/readings.jsonl > server1.txt
-$ gao gat hf -dir /tmp/s1dir -only server1.txt -plan
+$ gao assign files -box server1 giao/testdata/readings.jsonl > server1.txt
+$ gao harvest hf -dir /tmp/s1dir -only server1.txt -plan
 0 of 122 files done, 0.0 GB of 513.6 GB
 122 files to fetch, 513.6 GB to move
 server1.txt names 19 files, 19 left to fetch, 77.0 GB to move
@@ -484,7 +488,7 @@ Here is the same command against a real fetch of the smallest file in `server3`'
 
 ```
 $ grep 10_1 server3.txt > one.txt
-$ gao gat hf -dir /tmp/hplt -only one.txt
+$ gao harvest hf -dir /tmp/hplt -only one.txt
 0 of 122 files done, 0.0 GB of 513.6 GB
 122 files to fetch, 513.6 GB to move
 one.txt names 1 file, 1 left to fetch, 0.3 GB to move
@@ -493,7 +497,7 @@ hplt3      vie_Latn/10_1.jsonl.zst                        0.3 GB  2m17s
 
 1 of 1 files fetched, 0.3 GB in the ledger
 
-$ gao gat hf -dir /tmp/hplt -only one.txt
+$ gao harvest hf -dir /tmp/hplt -only one.txt
 1 of 122 files done, 0.3 GB of 513.6 GB
 121 files to fetch, 513.3 GB to move
 one.txt names 1 file, 0 left to fetch, 0.0 GB to move
@@ -504,8 +508,8 @@ The second run exits 0 with nothing to do, which is a finished hand and not a mi
 Every other way of ending up with nothing to fetch is refused. An empty list is refused, and so is a list naming files this manifest does not pin.
 
 ```
-$ gao gat hf -dir /tmp/s1dir -only bad.txt -plan
-gao gat hf: bad.txt names 2 files this manifest does not pin, starting with fineweb2/data/vie_Latn/train/999_99999.parquet, typo/what.zst
+$ gao harvest hf -dir /tmp/s1dir -only bad.txt -plan
+gao harvest hf: bad.txt names 2 files this manifest does not pin, starting with fineweb2/data/vie_Latn/train/999_99999.parquet, typo/what.zst
 ```
 
 That refusal is the point of the flag as much as the selection is. A run that quietly fetched nothing would print the same two plan lines as a box that is already finished and then exit 0, and the difference between those two would surface as a box that sat idle overnight. The list is read and checked before the lock is taken and before the ledger is opened, so a wrong path costs a second rather than a lock, and a box handed one leaves nothing behind for the next person to clean up. Both refusals exit 2, which is the code gao uses for a command that will not run rather than a run that failed.
@@ -522,7 +526,7 @@ Documents that fail the contract go to `-rejects` with the reason and the specif
 
 That has already found something, and it cost a source. MADLAD-400's clean split is a JSON object with one field in it, `text`, and there is no URL, no timestamp, and no media type, because Allen AI did not publish them. Every record decodes and every record is rejected for provenance it does not have. Four hundred records read from each of three shards spread across the partition, `vi_clean_0000`, `vi_clean_0011` and `vi_clean_0031`, carry that single key in all twelve hundred, so this is the shape of the split and not one bad file. Design rule 3 settles it: a document that cannot carry provenance is dropped rather than admitted with nulls, and a source where that holds for every document is dropped the same way. So MADLAD-400 is marked dropped in the manifest, which takes 95.3 GB and 32 files out of the download and leaves the pinned revision, the file list, the byte counts and the digests where they are, next to the reason. Deleting the entry would leave the next reader asking why a dataset every Vietnamese corpus cites is absent, and the answer would be in a commit message nobody reads. Re-admitting it takes either Allen AI publishing the provenance or gao changing a design rule.
 
-Five sources have a decoder today. The sixth is CulturaX, which is gated and whose terms have not been granted, so nobody has read a byte of it. Each of the five was written against the real file, and one written from a dataset card alone would be a guess with a version number on it. MADLAD-400's is among them and is what found the gap that dropped it, which is the argument for writing them that way. `gao gat hf -decode` refuses a source it cannot decode before it opens the ledger, and refuses a dropped one on the same terms, because finding either out two hundred gigabytes into a download is not finding it out.
+Five sources have a decoder today. The sixth is CulturaX, which is gated and whose terms have not been granted, so nobody has read a byte of it. Each of the five was written against the real file, and one written from a dataset card alone would be a guess with a version number on it. MADLAD-400's is among them and is what found the gap that dropped it, which is the argument for writing them that way. `gao harvest hf -decode` refuses a source it cannot decode before it opens the ledger, and refuses a dropped one on the same terms, because finding either out two hundred gigabytes into a download is not finding it out.
 
 ## Reading Parquet without downloading it
 
@@ -530,7 +534,7 @@ Four of the six ship Parquet, three of them have mappings, and Parquet keeps its
 
 What is left is to read the parts that are wanted, over the network, by range request. The reader fetches in 4 MB windows rather than in whatever size it was asked for, because a Parquet reader asks for a page header, then a page, then the next page header, and one request per ask is tens of thousands of round trips for one file. It keeps 24 windows rather than one, because a row group is read one column at a time with as many live read positions as the schema is wide, and a single cached window would be evicted by every column in turn and hit nothing. GlotCC settles the number: its 2.1 GB file is one row group of half a million rows across thirteen columns.
 
-The cost of reading this way is the digest. A streamed file is hashed as it goes and checked at the end against what was pinned. A file read in pieces never has all of its bytes in one place, so there is nothing to hash, and the ledger records that rather than papering over it: the entry says the file was read at random, carries no digest, and records how many bytes actually crossed the wire and how many requests it took. `gao gat ledger -files` prints "read in pieces" in the digest column, because an empty cell reads as a bug. Without `-decode` those sources are streamed and verified like the others, since the footer stops a decoder from reading forwards and does not stop a hash.
+The cost of reading this way is the digest. A streamed file is hashed as it goes and checked at the end against what was pinned. A file read in pieces never has all of its bytes in one place, so there is nothing to hash, and the ledger records that rather than papering over it: the entry says the file was read at random, carries no digest, and records how many bytes actually crossed the wire and how many requests it took. `gao harvest ledger -files` prints "read in pieces" in the digest column, because an empty cell reads as a bug. Without `-decode` those sources are streamed and verified like the others, since the footer stops a decoder from reading forwards and does not stop a hash.
 
 A Parquet row also has no bytes of its own. It is a slice through as many column chunks as the schema is wide, sitting in separate pages that may not be adjacent in the file, so there is no equivalent of the JSON line whose hash becomes `raw_id`. What gao hashes instead is the row's fields as it read them, in schema order. Two rows identical in every column gao reads hash the same, which is what that identity is for.
 
@@ -553,15 +557,15 @@ That vocabulary lives in a 4.7 MB file, and the file is gated at Google's own re
 The pin is not ceremony. Ask a gated repository for a file without credentials and the refusal arrives as a body: 129 bytes of English prose written into the file where a protobuf should be. The download succeeded, the file exists, and nothing about it looks wrong to a program that checks only whether the write returned an error. Two of the four mirrors tried while writing this produced exactly that, and the test for it is the error page verbatim.
 
 ```
-gao dem model -o tokenizer.model
+gao count model -o tokenizer.model
 ```
 
 Counting happens during ingestion rather than after it. The largest source is around 700 GB of text, so a design where ingestion writes documents and a later stage reads them back to count is a design that moves 700 GB twice. Bytes, characters, and syllables are counted on every decoding run because they are free.
 
-Tokens are behind `-tokenizer` because they are not, and the price turned out to be an order of magnitude worse than the number written here for months. That number was about 11 MB of text per second per core, said to be faster than any source arrives over the network. Nobody had run the tokenizer over Vietnamese to check. Over 52.8 MB of real fineweb2 text it gets 1.1 MB/s on an M series core and 0.5 MB/s on `server3`, which is under the 20 MB/s gate T9 asks for by a factor of twenty, so the pinned tokenizer fails its own throughput gate and `gao dem gates` says it is not eligible.
+Tokens are behind `-tokenizer` because they are not, and the price turned out to be an order of magnitude worse than the number written here for months. That number was about 11 MB of text per second per core, said to be faster than any source arrives over the network. Nobody had run the tokenizer over Vietnamese to check. Over 52.8 MB of real fineweb2 text it gets 1.1 MB/s on an M series core and 0.5 MB/s on `server3`, which is under the 20 MB/s gate T9 asks for by a factor of twenty, so the pinned tokenizer fails its own throughput gate and `gao count gates` says it is not eligible.
 
 ```
-$ gao dem gates -tokenizer tokenizer.model vi.txt
+$ gao count gates -tokenizer tokenizer.model vi.txt
   T9   failed   at least 20 MB/s on one core                                0.5 MB/s on one core over 52.8 MB
 ```
 
@@ -571,7 +575,7 @@ The four units are not interchangeable, and the bytes column is the one most oft
 
 Two counts produced by different tokenizers are never added up. It is an error rather than a warning: two tokenizers disagree on Vietnamese by something like a third, so their sum is not slightly wrong, it corresponds to no tokenizer at all, and it would be quoted as a corpus size.
 
-The first counted run puts a number on the estimate this project has been quoting, and it is not the estimated number. One GlotCC file, 500000 documents, 3228869043 characters, 983022920 tokens: **3.28 characters per token**, where `doc/units.go` predicted 3.0 and the plan that wrote it allowed plus or minus 0.15. Tokens per syllable came out at 1.45 against a predicted 1.51 and bytes per character at 1.30 against 1.32. A second run over a different part, through `gao dem gates` rather than through the ingest, got 3.29 and 1.44 on a one in twenty sample, so the number is the text rather than the run.
+The first counted run puts a number on the estimate this project has been quoting, and it is not the estimated number. One GlotCC file, 500000 documents, 3228869043 characters, 983022920 tokens: **3.28 characters per token**, where `doc/units.go` predicted 3.0 and the plan that wrote it allowed plus or minus 0.15. Tokens per syllable came out at 1.45 against a predicted 1.51 and bytes per character at 1.30 against 1.32. A second run over a different part, through `gao count gates` rather than through the ingest, got 3.29 and 1.44 on a one in twenty sample, so the number is the text rather than the run.
 
 The constants are now those measurements rather than the four assumptions that were sitting there under a comment claiming they had been measured. The one that matters is characters per token, because it is what divides a token target into a disk budget: at 3.28 rather than 3.0, 300 billion tokens is 1279 GB of extracted text instead of 1188, which is 91 GB the plan had not accounted for and 86 shards more than the release format was first sized against. It runs that way rather than the other, so a token headline derived from a character count under the old constant was about 8 percent high.
 
@@ -581,7 +585,7 @@ The conversion constants in `doc/units.go` are for estimates and nothing in `dem
 
 ## What a tokenizer has to pass first
 
-The tokenizer is a measuring instrument, every headline here is quoted in its units, and an instrument gets checked before its readings do. There are ten checks. They are cheap, they are absolute, and `gao dem gates` runs all of them over a sample of the corpus and reports the fertility it measured on the same text.
+The tokenizer is a measuring instrument, every headline here is quoted in its units, and an instrument gets checked before its readings do. There are ten checks. They are cheap, they are absolute, and `gao count gates` runs all of them over a sample of the corpus and reports the fertility it measured on the same text.
 
 The first three are one question asked of text that fails in different ways: does `decode(encode(x))` give back `x`, on the corpus, on the corpus with its marks taken off, and on the documents that mix Vietnamese with foreign words and with code. The threshold is 100.000% rather than 99.99%, and the extra digits are the point. One failure in ten thousand documents is fifty thousand corrupted documents at the size this is aiming for, and they do not spread evenly. They collect in the old orthography, the minority language quotations and the mathematical notation, which is text that is hard to notice missing and expensive to have got in the first place.
 
@@ -604,7 +608,7 @@ The last gate is an audit rather than a threshold and it stays that way. It walk
 All of that was written against the coverage set, which is what the suite could be run on before there was a corpus. There is one now. The block below is one in twenty documents out of the first published GlotCC part, 6363 documents and 51.5 MB of real Vietnamese, and it is the first time these gates have been asked about text rather than about a letter chart. The per gate example lists between the table and the verdict are cut here, since T4 alone names five documents by digest and byte offset.
 
 ```
-$ gao dem gates -tokenizer tokenizer.model -one-in 20 part-00000.parquet
+$ gao count gates -tokenizer tokenizer.model -one-in 20 part-00000.parquet
 tokenizer  gemma-3, 262144 pieces
 documents  6363
 fertility  3.29 characters per token, 1.44 tokens per syllable
@@ -620,7 +624,7 @@ fertility  3.29 characters per token, 1.44 tokens per syllable
   T9   failed   at least 20 MB/s on one core                                2.1 MB/s on one core over 51.5 MB
   T10  audited  no piece is reachable only from text gao would reject       262012 pieces read, 132 control or byte fallback, 1427 for a person to look at
 
-gao dem gates: gemma-3 is not eligible
+gao count gates: gemma-3 is not eligible
   T4 failed 1076 of 12024513 boundaries
   T5 failed 150 of 12024513 boundaries
   T7 failed 6 of 391002 digit runs
@@ -630,21 +634,21 @@ gao dem gates: gemma-3 is not eligible
 
 Four of the five failures are the ones worth reading. The round trip holds everywhere, which is the thing that would have been fatal, and the three gates that had never had anything to run on all ran. T4 and T5 are the pair this project built the suite for: 1076 boundaries in twelve million land inside a character and 150 of those part a letter from its marks, which is tone loss arriving at generation time rather than at ingest. The rate is small and the rate is not the point, because these collect in exactly the text that is hardest to notice missing. T8 says the leading space is folded into 16236 syllables and is its own token for 148 of them, so the same syllable is two different token sequences depending on what precedes it. T7 is six digit runs in 391002 and is the mildest of them.
 
-None of that is a reason to go and find a different 256k multilingual vocabulary this afternoon, and it is a reason the tokenizer question is open rather than settled by inheritance. What it settles today is that `gao dem gates` was measuring something all along and that the pinned tokenizer had never been put in front of it.
+None of that is a reason to go and find a different 256k multilingual vocabulary this afternoon, and it is a reason the tokenizer question is open rather than settled by inheritance. What it settles today is that `gao count gates` was measuring something all along and that the pinned tokenizer had never been put in front of it.
 
 A failed gate exits 2 and a gate that found nothing in the sample exits 1, which is the same split every other command here makes. Both exited 1 until this run, and an exit code that says go and find a bigger corpus is the wrong thing to hand somebody whose tokenizer has just been judged.
 
 ```
-gao dem gates -tokenizer tokenizer.model parts/*.parquet
-gao dem gates -tokenizer tokenizer.model -one-in 100 parts/*.parquet  # and the same run over one document in a hundred
-gao dem gates -tokenizer tokenizer.model -coverage                    # or over the built in set, which leaves no gate unrun
+gao count gates -tokenizer tokenizer.model parts/*.parquet
+gao count gates -tokenizer tokenizer.model -one-in 100 parts/*.parquet  # and the same run over one document in a hundred
+gao count gates -tokenizer tokenizer.model -coverage                    # or over the built in set, which leaves no gate unrun
 ```
 
 ## What the same Vietnamese costs under each tokenizer
 
 Fertility is how many tokens a tokenizer spends on the same text, and it is the one number here that cannot be improved later. Gemma-3 gets 3.02 characters into a token on Vietnamese and Llama-3.3 gets 2.28, which is a third more tokens for the same corpus. That third is paid on every training step, taken out of every context window, and charged again on every inference call, for as long as the model exists. Picking a base model is picking a tokenizer, and picking a tokenizer is fixing that multiplier before a single step has run.
 
-So the measurement is taken on every candidate rather than on the one already in use, because a number with nothing beside it does not decide anything. There are five, and they are not all the same kind of thing. Three are tokenizers this project would inherit by continuing somebody else's pretraining and can at most extend. One is a vocabulary trained on gao text, which is the only candidate whose fertility this project gets to decide instead of accept. `gao dem fertility` prints the roster with no argument, and what it mostly prints today is how much of this is not done.
+So the measurement is taken on every candidate rather than on the one already in use, because a number with nothing beside it does not decide anything. There are five, and they are not all the same kind of thing. Three are tokenizers this project would inherit by continuing somebody else's pretraining and can at most extend. One is a vocabulary trained on gao text, which is the only candidate whose fertility this project gets to decide instead of accept. `gao count fertility` prints the roster with no argument, and what it mostly prints today is how much of this is not done.
 
 ```
 tokenizer         vocab   path                   pinned   reported
@@ -667,7 +671,7 @@ Which is why the report counts boxes rather than readings. The same tokenizer me
 
 Vietnamese writes a space between syllables, so every few months somebody proposes the obvious thing: forbid the tokenizer from merging across that space. A token is then a syllable or part of one and never a piece of two. It is a tidy rule, it makes the vocabulary legible, and it is one of the forty runs on the ablation slate because nobody in the literature has settled it for a language that writes this way.
 
-What makes it worth a command of its own is that the two sides of the argument are not the same kind of claim. The case against the rule is arithmetic and can be finished today. The case for it is a claim about what a model learns from a boundary it did not have to find, and no amount of counting settles that. Running them together is how the question gets decided by whichever side quoted a number first, so `gao tieng` does the countable half and prints the other half as empty rather than as zero.
+What makes it worth a command of its own is that the two sides of the argument are not the same kind of claim. The case against the rule is arithmetic and can be finished today. The case for it is a claim about what a model learns from a boundary it did not have to find, and no amount of counting settles that. Running them together is how the question gets decided by whichever side quoted a number first, so `gao syllable` does the countable half and prints the other half as empty rather than as zero.
 
 The arithmetic is short. Under the rule a syllable costs at least one token and no vocabulary size moves that, so the corpus costs 1.00 tokens per syllable and that is a floor rather than an estimate. It is a reachable floor: the inventory in `sang` forms 4,022 spellings before the tone marks go on, and six tones over that is comfortably inside every vocabulary on the roster, so a vocabulary that wants a token per syllable can have one. Without the rule the same vocabulary has exactly one extra freedom, which is to spend a slot on a run of syllables that keeps turning up and pay one token for it instead of two. Việt Nam, chúng tôi, thành phố, có thể. Every other difference between the two arms can be held equal, which means the cost of the rule is the tokens those merges would have saved, and that is countable off text with nothing fetched and nothing trained.
 
@@ -676,7 +680,7 @@ So the command counts it. It classifies every whitespace unit as something the r
 Here it is on the only Vietnamese text this repository holds, which is the labeled set the language identifier is tested against, and what it says is that four kilobytes cannot answer the question.
 
 ```
-$ gao tieng -source "the Vietnamese half of the language identification set" sang/testdata/langid/vietnamese/*.txt
+$ gao syllable -source "the Vietnamese half of the language identification set" sang/testdata/langid/vietnamese/*.txt
 the Vietnamese half of the language identification set, 748 syllables over 8 documents.
 unit                count  share  governed
 marked syllable     727    92.3%  yes
@@ -705,12 +709,12 @@ What the reading is worth, when it runs on the real thing, is a number the slate
 
 ## Counting a corpus nobody has finished reading
 
-The 143.7B this file quotes for HPLT v3 is not a count, and neither was the 176B before it. It is a rate taken off a handful of shards and multiplied out, and the honest way to write it down is as an interval with the sample size attached. The one number in this project that was actually counted is GlotCC `vie-Latn_0`, at 983,022,920 tokens over 3,228,869,043 characters, which is 0.234 tokens a byte. Everything larger than that is an estimate until a fleet run says otherwise, and `gao uoc` is what turns the estimate into something a reader can argue with.
+The 143.7B this file quotes for HPLT v3 is not a count, and neither was the 176B before it. It is a rate taken off a handful of shards and multiplied out, and the honest way to write it down is as an interval with the sample size attached. The one number in this project that was actually counted is GlotCC `vie-Latn_0`, at 983,022,920 tokens over 3,228,869,043 characters, which is 0.234 tokens a byte. Everything larger than that is an estimate until a fleet run says otherwise, and `gao estimate` is what turns the estimate into something a reader can argue with.
 
 The estimator is a ratio rather than a mean, and the reason is that the manifest is already exact about one of the two quantities. HPLT publishes a part count and a byte total, so 703 GB is known before anything is fetched, and the sample only has to establish tokens per byte. The alternative, mean tokens per part times the part count, has to carry the spread of the shard sizes as well, and that spread is large: parts run from 220 MB to 2 GB, and a sample that happened to draw the big ones reports a total half again too high without anything in it looking wrong. Both estimators are printed, because the gap between them is the argument for the manifest rather than a footnote to it.
 
 ```
-$ gao uoc -source "hplt-v3 vie_Latn" -snapshot gao-2026-09 -seed hplt-v3-2026-08 \
+$ gao estimate -source "hplt-v3 vie_Latn" -snapshot gao-2026-09 -seed hplt-v3-2026-08 \
     -parts 1214 -bytes 703000000000 sample.jsonl
 estimator       tokens  interval          width  leans on
 ratio on bytes  168.1B  164.4B to 171.8B  2.2%   703.0 GB of pinned bytes
@@ -731,7 +735,7 @@ Above 5% width the command exits 2, and it says what closing the interval would 
 The check that makes any of this cost something is `-exact`. Once a real count exists it goes back in, and the command says whether it landed inside the interval that was published.
 
 ```
-$ gao uoc -exact 176000000000 -source "hplt-v3 vie_Latn" ... sample.jsonl
+$ gao estimate -exact 176000000000 -source "hplt-v3 vie_Latn" ... sample.jsonl
 hplt-v3 vie_Latn counted exactly 176.0B, outside the 164.4B to 171.8B that was published and 4.5% off the estimate,
 so the sample missed and every ratio quoted against the estimate was quoted against a number that was wrong
 ```
@@ -744,12 +748,12 @@ The sample has to come off a real box. Reading 44 shards of HPLT is a download a
 
 ## The buckets that got read and the ones that did not
 
-There is a second thing wrong with an estimate like the 176B and `gao uoc` cannot see it. HPLT does not ship its Vietnamese as one pile. It ships it in quality buckets, ten of them was the assumption and six of them is the fact for `vie_Latn`, and the reading behind that number opened five at 40 MB each and weighted what it found by what each bucket takes on disk. That is stratified sampling, it is a sensible way to read a corpus nobody has time to read all of, and the interval `uoc` prints is the wrong interval for it. A sampling interval narrows as the sample grows. Reading the same buckets a hundred times harder narrows it to nothing while leaving the estimate exactly as wrong as it was, because nothing inside the buckets that were opened says anything at all about the ones that were not.
+There is a second thing wrong with an estimate like the 176B and `gao estimate` cannot see it. HPLT does not ship its Vietnamese as one pile. It ships it in quality buckets, ten of them was the assumption and six of them is the fact for `vie_Latn`, and the reading behind that number opened five at 40 MB each and weighted what it found by what each bucket takes on disk. That is stratified sampling, it is a sensible way to read a corpus nobody has time to read all of, and the interval `uoc` prints is the wrong interval for it. A sampling interval narrows as the sample grows. Reading the same buckets a hundred times harder narrows it to nothing while leaving the estimate exactly as wrong as it was, because nothing inside the buckets that were opened says anything at all about the ones that were not.
 
-`gao tang` is the same reading with the layers kept apart. Tầng is a layer. What is below is the real reading of this corpus with buckets 5, 6 and 7 held back, so every number in it was measured and what is missing is missing on purpose. That is 43.9 percent of the corpus and all of it sits below every bucket left in.
+`gao layers` is the same reading with the layers kept apart. Tầng is a layer. What is below is the real reading of this corpus with buckets 5, 6 and 7 held back, so every number in it was measured and what is missing is missing on purpose. That is 43.9 percent of the corpus and all of it sits below every bucket left in.
 
 ```
-$ gao tang -source hplt3 -quoted 176000000000 tang/testdata/hplt3-vie_Latn-s1-top3.jsonl
+$ gao layers -source hplt3 -quoted 176000000000 tang/testdata/hplt3-vie_Latn-s1-top3.jsonl
 layer      rank  on disk   read     tokens a stored byte  estimate
 bucket 5   5     15.0 GB   .        .                     .
 bucket 6   6     25.2 GB   .        .                     .
@@ -782,16 +786,16 @@ This has already happened once on this corpus. An earlier reading sampled the to
 
 The weights carry an assumption of their own. What the manifest knows is what each bucket costs on disk, and what the estimate needs is how much text is in it, so weighting by stored size assumes a byte on disk holds the same amount of text everywhere. Repetitive text compresses better than prose, which means the assumption fails in the same direction as everything else here. Every bucket that was read measures its own packing, and when the measured packings disagree by more than a quarter the report says the weight on every unread bucket carries that much of its own error. On the complete reading they disagree by 39 percent.
 
-The two ranges are different quantities and they add. `gao uoc` answers how much the number would move under a different draw, `gao tang` answers how much of the corpus the draw could not see, and a published estimate needs both next to it. The exit codes say the same thing: 1 when the file is not a stratified reading at all, 2 when it is one that carries more than sampling error. Closing the second one was never an argument, it was opening the buckets nobody opened, and at 40 MB each across the six the release ships that was 240 MB of reading. It has been read.
+The two ranges are different quantities and they add. `gao estimate` answers how much the number would move under a different draw, `gao layers` answers how much of the corpus the draw could not see, and a published estimate needs both next to it. The exit codes say the same thing: 1 when the file is not a stratified reading at all, 2 when it is one that carries more than sampling error. Closing the second one was never an argument, it was opening the buckets nobody opened, and at 40 MB each across the six the release ships that was 240 MB of reading. It has been read.
 
 ## Which two hundred and forty megabytes
 
-That is the cheapest open item in the project and it has sat there for months, which is worth being honest about: a few hundred megabytes of reading closes a bound that no amount of arguing closes. The reason it is not quite trivial is that "40 MB a bucket" does not say which 40 MB, and the obvious answer is wrong in a way that leaves no mark on the result. Forty megabytes off the front of the first shard is forty megabytes of whichever domains the crawl happened to put there, the rate measured on it is a rate for those domains, and it fills the same line in `gao tang` that a real reading of the bucket would fill.
+That is the cheapest open item in the project and it has sat there for months, which is worth being honest about: a few hundred megabytes of reading closes a bound that no amount of arguing closes. The reason it is not quite trivial is that "40 MB a bucket" does not say which 40 MB, and the obvious answer is wrong in a way that leaves no mark on the result. Forty megabytes off the front of the first shard is forty megabytes of whichever domains the crawl happened to put there, the rate measured on it is a rate for those domains, and it fills the same line in `gao layers` that a real reading of the bucket would fill.
 
-There is no getting around it with offsets. A shard is a compressed stream and a compressed stream cannot be entered in the middle, because there is no way to know where a record starts without the decoder state that comes from every byte before it. Every read this project can perform starts at the front of a file and stops when it has had enough, so the only dial that spreads a sample across a bucket is how many files it touches. `gao mau` turns that dial and writes the answer down. Mẫu is a sample.
+There is no getting around it with offsets. A shard is a compressed stream and a compressed stream cannot be entered in the middle, because there is no way to know where a record starts without the decoder state that comes from every byte before it. Every read this project can perform starts at the front of a file and stops when it has had enough, so the only dial that spreads a sample across a bucket is how many files it touches. `gao sample` turns that dial and writes the answer down. Mẫu is a sample.
 
 ```
-$ gao mau -source hplt3 -seed s1 -layers mau/testdata/hplt3-vie_Latn-layers.jsonl mau/testdata/hplt3-vie_Latn-listing.jsonl
+$ gao sample -source hplt3 -seed s1 -layers mau/testdata/hplt3-vie_Latn-layers.jsonl mau/testdata/hplt3-vie_Latn-listing.jsonl
 hplt3, 0 of 6 layers already read, 6 layers to open at 40.0 MB each.
 layer      rank  on disk   shards  drawn  to read  of the layer
 bucket 5   5     15.0 GB   1       1      40.0 MB  0.2658%
@@ -815,10 +819,10 @@ So the plan draws every shard of every layer and still reports that this is not 
 
 Pointing it at the real listing is also what found the arithmetic. The take was worked out once for the whole plan as the target over sixteen, which is right only when every layer has at least sixteen shards, and no layer here has more than four. Every bucket drew a sixteenth of its target while the header went on promising the whole of it: 40 MB a layer in the first line and 2.5 MB a layer in the table, 30 MB read against 240 MB reported. It is worked out per layer now, against the shards that layer actually has. The fixture this command was written against had fifty six shards in every layer, so the sixteenth was always the whole of it and the bug could not show.
 
-The seed is on the report so that the reading is checkable by somebody who does not trust us. The draw is blake3 of the seed with the path, which is the draw `gao dem verify` already uses, so the two protocols in this project that sample by file sample the same way and a third party with the seed and the listing fetches exactly these twelve shards. The digest is over the takes themselves rather than over the inputs, so a plan quietly regenerated against a different listing comes back as a different plan instead of the same one with different files inside it. `-takes` prints the read list on its own, one shard, how much of it to read and how big it is, which is what the thing doing the fetching actually consumes.
+The seed is on the report so that the reading is checkable by somebody who does not trust us. The draw is blake3 of the seed with the path, which is the draw `gao count verify` already uses, so the two protocols in this project that sample by file sample the same way and a third party with the seed and the listing fetches exactly these twelve shards. The digest is over the takes themselves rather than over the inputs, so a plan quietly regenerated against a different listing comes back as a different plan instead of the same one with different files inside it. `-takes` prints the read list on its own, one shard, how much of it to read and how big it is, which is what the thing doing the fetching actually consumes.
 
 ```
-$ gao mau -source hplt3 -seed s1 -layers mau/testdata/hplt3-vie_Latn-layers.jsonl -takes mau/testdata/hplt3-vie_Latn-listing.jsonl
+$ gao sample -source hplt3 -seed s1 -layers mau/testdata/hplt3-vie_Latn-layers.jsonl -takes mau/testdata/hplt3-vie_Latn-listing.jsonl
 vie_Latn/5_1.jsonl.zst 40000000 15049231912
 vie_Latn/6_1.jsonl.zst 40000000 25221053724
 vie_Latn/7_1.jsonl.zst 13333334 26555021262
@@ -837,14 +841,14 @@ Bucket 7 is where the rounding shows. Three shards and a 40 MB target divides to
 
 Four things make a plan that runs but is not the sample it looks like, and each of them gets a sentence. A layer whose shards are too big to spread a reading across, which is the one that costs nothing to fix and everything to miss. A listing that stopped early, so the plan draws from whichever corner of the bucket made it into the file, checked by adding the listed shards up against what the layer says it holds. A layer left shut because the listing has no files for it at all. And whether what stays shut sits below everything the plan opens, which is the direction that flatters the number and the reason `tang` exists in the first place. Exit 1 is a plan nobody can run, including one with no seed on it, since a draw nobody can repeat is a reading only we can take.
 
-The plan has been run and the next section is what came back off it. The layer file it produced goes next to the estimate, so `gao tang` runs against a reading of all six buckets instead of against a shape nobody had checked and a bound over most of it. Three of them were most of the way there already: buckets 5, 6 and 10 are one shard each and have been read end to end on `gamingpc` rather than sampled, so what `mau` plans for them is a formality and what comes back is the layer itself.
+The plan has been run and the next section is what came back off it. The layer file it produced goes next to the estimate, so `gao layers` runs against a reading of all six buckets instead of against a shape nobody had checked and a bound over most of it. Three of them were most of the way there already: buckets 5, 6 and 10 are one shard each and have been read end to end on `gamingpc` rather than sampled, so what `mau` plans for them is a formality and what comes back is the layer itself.
 
 ## What came back off the twelve shards
 
 `mau` says which bytes will be read and `nem` is the record of which bytes were. Nếm is to taste. Keeping the two one command apart is the point of the arrangement: the seed, the shard list and the digest are published before anything is fetched, and the reading is checked against them afterwards, which is not a thing a single command that plans and fetches in one breath can offer anybody.
 
 ```
-$ gao nem -source hplt3 -seed s1 -layers mau/testdata/hplt3-vie_Latn-layers.jsonl -tokenizer /tmp/gemma3.model -out /tmp/hplt3-read.jsonl mau/testdata/hplt3-vie_Latn-listing.jsonl
+$ gao taste -source hplt3 -seed s1 -layers mau/testdata/hplt3-vie_Latn-layers.jsonl -tokenizer /tmp/gemma3.model -out /tmp/hplt3-read.jsonl mau/testdata/hplt3-vie_Latn-listing.jsonl
 bucket 5       vie_Latn/5_1.jsonl.zst          40.0 MB  59s  26805 documents
 bucket 6       vie_Latn/6_1.jsonl.zst          40.0 MB  1m19s  30332 documents
 bucket 7       vie_Latn/7_1.jsonl.zst          13.3 MB  24s  10285 documents
@@ -858,7 +862,7 @@ bucket 9       vie_Latn/9_1.jsonl.zst          20.0 MB  1m13s  3502 documents
 bucket 9       vie_Latn/9_2.jsonl.zst          20.0 MB  37s  9727 documents
 bucket 10      vie_Latn/10_1.jsonl.zst         40.0 MB  1m0s  7422 documents
 
-/tmp/hplt3-read.jsonl holds the reading, for gao tang to read.
+/tmp/hplt3-read.jsonl holds the reading, for gao layers to read.
 
 hplt3, 240.0 MB read off 6 layers at seed s1.
 layer      shards  read     documents  text      packs at  the layer holds
@@ -878,7 +882,7 @@ This is worth less than the line it fills in:
 This read 240.0 MB off 12 shards across 6 layers of hplt3, at seed s1, and found 130833 documents holding 660.0 MB of text and 153054940 tokens under gemma-3@sha256:1299c11d7cf632ef3b4e11937501358ada021bbdf7c47638d13c0ee982f2e79c. 2 readings say this is worth less than the line it fills: 6 layers were read off fewer than 16 shards each, starting with bucket 5 at 1, so their rates are rates for the shards that were drawn; and the layers pack their text at between 2.39x and 3.32x, a spread of 39%, so weighting the unread part by stored size carries at least that much of its own error.
 ```
 
-That is 240 MB fetched off twelve shards of a 234.5 GB corpus in just under eight minutes, effectively all of it download. The plan digest on the report is `fcede23d5db02324`, which is what `gao mau` prints for the same two files, because the plan is redrawn here rather than read out of one: a reading that took its plan from a file could be pointed at a plan nobody published.
+That is 240 MB fetched off twelve shards of a 234.5 GB corpus in just under eight minutes, effectively all of it download. The plan digest on the report is `fcede23d5db02324`, which is what `gao sample` prints for the same two files, because the plan is redrawn here rather than read out of one: a reading that took its plan from a file could be pointed at a plan nobody published.
 
 Every prefix is fetched with a range request and the sha256 of what came back is recorded per shard, which is what makes this checkable byte for byte rather than file by file. Somebody with the seed draws the same twelve shards out of the listing, and the digests are how they confirm they read the same bytes of them. The run has been taken three times now and the layer file it writes has come out byte for byte identical each time.
 
@@ -891,7 +895,7 @@ The command exits 2, and it is right to. Six layers were read off twelve shards,
 With the layer file beside it the estimate runs against a reading instead of against a bound:
 
 ```
-$ gao tang -source hplt3 tang/testdata/hplt3-vie_Latn-s1.jsonl
+$ gao layers -source hplt3 tang/testdata/hplt3-vie_Latn-s1.jsonl
 layer      rank  on disk   read     tokens a stored byte  estimate
 bucket 5   5     15.0 GB   40.0 MB  0.658                 9.9B
 bucket 6   6     25.2 GB   40.0 MB  0.617                 15.6B
@@ -961,7 +965,7 @@ hplt3/00000         54131      54129    17030     7216        1          0      
 four parts          565781     565779   129912    183159      61254      2362      510       526322  61091    876524428
 ```
 
-That is four runs of `gao phoi -report -total`, one per part, with the total rows put beside each other. Normalization changed every document in all four, give or take the two HPLT documents that arrived in exactly the form this stage writes. That is true and it is a fact about the final newline rather than about Vietnamese: layout runs on every document that goes past, one that arrives without a trailing newline leaves with one, and a share that rounds to all of them is not telling you anything about the material. So the number to read is the second one, the share of documents where a character was repaired rather than the whitespace settled. It is 23.0 percent across the four parts, and it runs from 14.9 percent on FineWeb2 to 35.7 percent on FinePDFs. The prediction on the board was 3 percent or more, which the stage clears seven times over and which it would also have cleared by touching nothing but whitespace. Splitting the two counts is the fix for a prediction that was too easy to satisfy, and it is a property of the result rather than a note in a release, so the next person to quote the number gets the one that means something.
+That is four runs of `gao normalize -report -total`, one per part, with the total rows put beside each other. Normalization changed every document in all four, give or take the two HPLT documents that arrived in exactly the form this stage writes. That is true and it is a fact about the final newline rather than about Vietnamese: layout runs on every document that goes past, one that arrives without a trailing newline leaves with one, and a share that rounds to all of them is not telling you anything about the material. So the number to read is the second one, the share of documents where a character was repaired rather than the whitespace settled. It is 23.0 percent across the four parts, and it runs from 14.9 percent on FineWeb2 to 35.7 percent on FinePDFs. The prediction on the board was 3 percent or more, which the stage clears seven times over and which it would also have cleared by touching nothing but whitespace. Splitting the two counts is the fix for a prediction that was too easy to satisfy, and it is a property of the result rather than a note in a release, so the next person to quote the number gets the one that means something.
 
 What the four sources disagree about is the cleaning somebody else already did. FineWeb2 arrives with 3 invisible characters in 273460 documents and HPLT v3 with 1 in 54131, and neither carries a single control character. GlotCC arrives with 37961 invisible characters and 2362 controls in 183514 documents, and FinePDFs with 23289 invisible characters in 54676. Homoglyphs follow the extraction rather than the source, at 85842 in one FinePDFs part against 7216 in one HPLT part, which is what text recovered from a PDF looks like next to text recovered from HTML. Tone mark placement is the one thing all four carry in quantity, from 85367 syllables in the HPLT part to 178560 in the FinePDFs one, because it is a convention of Vietnamese writing rather than damage, and no pipeline built for English would have had a reason to touch it. That is the argument for this stage in one table: the sources have been cleaned, and none of them has been cleaned for Vietnamese.
 
@@ -1018,10 +1022,10 @@ Read the ngang column as the tones the engine could not see and the rest as the 
 The corner where the ngang row meets the ngang column stays empty on purpose. Filling it would mean counting every space and every consonant on the page, and a matrix whose largest number is the spaces is a matrix nobody reads.
 
 ```
-gao soi page.txt reading.txt                 # the two rates, side by side, for one page
-gao soi -matrix page.txt reading.txt         # and what each tone was read as
-gao soi -gate eval/*.txt                     # exit non zero if it misses the S4 gate, naming what failed
-gao soi field engines.jsonl                  # the whole field of candidates, losers included
+gao inspect page.txt reading.txt                 # the two rates, side by side, for one page
+gao inspect -matrix page.txt reading.txt         # and what each tone was read as
+gao inspect -gate eval/*.txt                     # exit non zero if it misses the S4 gate, naming what failed
+gao inspect field engines.jsonl                  # the whole field of candidates, losers included
 ```
 
 Several pairs in one run are one evaluation set and one score over all of it, not an average of per page scores, because a caption and a page of body text are not one vote each.
@@ -1030,10 +1034,10 @@ Two things this does not do. It does not decide whether a reading is good enough
 
 ### Comparing engines rather than announcing one
 
-A gate on one engine says whether that engine works. It does not say the field was searched, and what usually gets published is the survivor: one row, one error rate, no way to tell whether three other engines were tried and lost or whether three others were never run. `gao soi field` reads the whole field, losers included, because a table with one row in it cannot be argued with.
+A gate on one engine says whether that engine works. It does not say the field was searched, and what usually gets published is the survivor: one row, one error rate, no way to tell whether three other engines were tried and lost or whether three others were never run. `gao inspect field` reads the whole field, losers included, because a table with one row in it cannot be argued with.
 
 ```
-$ gao soi field engines.jsonl
+$ gao inspect field engines.jsonl
 engine                der   cer    tone  batch  vram     free  rate   hours  gate
 got-ocr2 (finetuned)  0.9%  1.6%   0.4%  4      19.0 GB  21%   0.6/s  5556   pass
 paddleocr             1.2%  2.1%   0.5%  16     18.0 GB  25%   2.4/s  1389   pass
@@ -1120,7 +1124,7 @@ Quality is the one stage in this pipeline that is a learned function rather than
 `xep` is the part that can be checked. Xep is to place, and what it fixes is the draw and the rubric, hashed before the first document is drawn. The reason is the same one behind the ablation slate and the evaluation harness. A rubric written while the labeling is underway gets written toward the labels already collected, a rubric written afterwards gets written toward the classifier, and neither leaves a mark on the finished set.
 
 ```
-$ gao xep frame
+$ gao place frame
 200000 documents drawn across 6 sources into 4 bands, at seed "gao-refset-1.0", with 10% of them labeled twice. Fixed and hashed before the first document was drawn, because a rubric written during labeling gets written toward the labels already collected.
 
 the draw:
@@ -1159,10 +1163,10 @@ No documents have been labeled. The frame is fixed, the digest is above, and the
 
 Seventy percent exact agreement is the gate, and on its own it is a number that can be met by two people who never opened the rubric. If four fifths of the draw is plain Vietnamese, two labelers who answer plain every time agree eighty percent of the time and have measured nothing. That is not a hypothetical failure mode, it is the expected one, because most of a web corpus is the middle of the scale and the fastest way through a labeling queue is to say so.
 
-So `gao xep agree` reports the raw figure next to what chance alone would have produced, and the difference between them is the number that says anything. It is Scott's pi rather than Cohen's kappa, since there is no first labeler and second labeler here. A document is placed by whoever picks it up, so the marginals are pooled across both positions and the statistic does not depend on who happened to be written to the file first. The floor is 0.60, which is the conventional line for a scale that carries information, and it is not higher because four ordered bands with real boundary cases in them will not reach the figures people quote off binary tasks.
+So `gao place agree` reports the raw figure next to what chance alone would have produced, and the difference between them is the number that says anything. It is Scott's pi rather than Cohen's kappa, since there is no first labeler and second labeler here. A document is placed by whoever picks it up, so the marginals are pooled across both positions and the statistic does not depend on who happened to be written to the file first. The floor is 0.60, which is the conventional line for a scale that carries information, and it is not higher because four ordered bands with real boundary cases in them will not reach the figures people quote off binary tasks.
 
 ```
-$ gao xep agree -frame pilot.json labels.jsonl
+$ gao place agree -frame pilot.json labels.jsonl
 placed twice     204    204 comparisons between them
 designated       204    204 of them got the second opinion the seed asked for
 same band        0.922  against a floor of 0.70
@@ -1208,17 +1212,17 @@ Two documents are copies of each other at 0.71 similarity or more, over 16 bands
 A pair at 0.71 is found 65.6% of the time and a pair at 0.5 is found 6.1% of the time.
 ```
 
-The threshold itself is not chosen here. Removing more duplicates is not better past some point, since the corpus starts losing documents that were merely similar, and removing fewer leaves the repetition in. Where that point is, is a question about this corpus and it is answered by training on both sides of it. So `gao xay -curve` produces what each threshold would retain and the curve on its own picks nothing. The rule that does pick is below, and it takes the training runs rather than this table. The curve is built at 32 bands of 4 rows rather than at the operating point, because its knee is at 0.42 and a pair that was never proposed as a candidate cannot be scored at any threshold. A curve built at the operating banding would report that a threshold of 0.5 keeps exactly what 0.7 keeps, which is a statement about the index rather than about the corpus.
+The threshold itself is not chosen here. Removing more duplicates is not better past some point, since the corpus starts losing documents that were merely similar, and removing fewer leaves the repetition in. Where that point is, is a question about this corpus and it is answered by training on both sides of it. So `gao mill -curve` produces what each threshold would retain and the curve on its own picks nothing. The rule that does pick is below, and it takes the training runs rather than this table. The curve is built at 32 bands of 4 rows rather than at the operating point, because its knee is at 0.42 and a pair that was never proposed as a candidate cannot be scored at any threshold. A curve built at the operating banding would report that a threshold of 0.5 keeps exactly what 0.7 keeps, which is a statement about the index rather than about the corpus.
 
 Inside a bucket the members are compared against the first member rather than against each other. Boilerplate produces buckets of thousands, and the quadratic version of that comparison is the run not finishing. What it costs is a pair that lands in one bucket without either of them resembling the member that got there first, and that pair is caught in another band or through a third document, which is the same mechanism the bands are already relying on. The clusters are then closed with union find, the survivor is the longest document with the lowest id as the tiebreak, and the cluster id is the survivor's own id. Keeping the longest is deliberate: near duplicates usually differ by what one of them is missing, a page an extractor truncated or a copy that lost its last paragraph, and the longest is the one the others are missing something from.
 
 The answer does not depend on the order the documents arrived in. Union attaches the lower root, the representative is chosen by a total order rather than by whichever was seen first, and there is a test that runs the same documents forwards and backwards and requires the same clusters with the same identities. A stage without that property produces a different corpus on every rebuild, and every number anybody published about the last one becomes unreproducible.
 
-What is here is a shard, not the corpus. A signature is 1 KB, so four hundred million documents is 400 GB of signatures against a fleet whose largest box has 64 GB. Holding them is what lets one pass over a shard answer at every threshold the ablation asks about, and it is exactly why it does not scale to the whole thing. The corpus scale pass keeps only the band hashes, 128 bytes per document, and works one band at a time from a file sorted on disk in the way `gao dem overlap` sorts document keys. That pass is not written yet. The arithmetic that says it is needed is in the package documentation rather than waiting to be discovered on the box.
+What is here is a shard, not the corpus. A signature is 1 KB, so four hundred million documents is 400 GB of signatures against a fleet whose largest box has 64 GB. Holding them is what lets one pass over a shard answer at every threshold the ablation asks about, and it is exactly why it does not scale to the whole thing. The corpus scale pass keeps only the band hashes, 128 bytes per document, and works one band at a time from a file sorted on disk in the way `gao count overlap` sorts document keys. That pass is not written yet. The arithmetic that says it is needed is in the package documentation rather than waiting to be discovered on the box.
 
 ### Choosing the threshold
 
-The curve says what each threshold costs and stops there. Which one to run is a question about this corpus, it is answered by training on both sides of the number and looking at what comes out, and `gao xay -choose runs.json` is the rule that turns those runs into one threshold. The rule is written down rather than applied by whoever is reading the table, because a rule that lives in somebody's head finds a winner every time it is asked, and a threshold picked out of eval noise is worse than a default. A default is at least honest about being one.
+The curve says what each threshold costs and stops there. Which one to run is a question about this corpus, it is answered by training on both sides of the number and looking at what comes out, and `gao mill -choose runs.json` is the rule that turns those runs into one threshold. The rule is written down rather than applied by whoever is reading the table, because a rule that lives in somebody's head finds a winner every time it is asked, and a threshold picked out of eval noise is worse than a default. A default is at least honest about being one.
 
 The rule refuses more often than it answers, and the refusals are the substance. Fewer than three runs is two numbers and their noise rather than a shape. A run quoted without a standard error cannot be compared against another run, so the standard error is required rather than defaulted. A set where one run trained on twice the tokens measured the token count as much as the threshold, and no arithmetic afterwards can pull the two apart. A set spread across two boxes put the hardware in the comparison alongside the threshold. A set that sits entirely on one side of the number already in use cannot say whether that number is worth moving off.
 
@@ -1239,11 +1243,11 @@ threshold   retention    score  tied
 4 runs of 8B tokens each on gamingpc, scored on vi-cloze, with the score plus or minus its own standard error.
 ```
 
-Those four scores are made up, and the table above is what the rule prints rather than what the ablation found, because the ablation has not been run. The runs happen on `gamingpc`, which is the only box on the fleet with a GPU, and the box is carried on every run rather than written down beside it. `gao xay -choose` exits non zero when the set cannot support a choice, so a pipeline that asks for a measured threshold and has not measured one stops instead of quietly running on 0.71.
+Those four scores are made up, and the table above is what the rule prints rather than what the ablation found, because the ablation has not been run. The runs happen on `gamingpc`, which is the only box on the fleet with a GPU, and the box is carried on every run rather than written down beside it. `gao mill -choose` exits non zero when the set cannot support a choice, so a pipeline that asks for a measured threshold and has not measured one stops instead of quietly running on 0.71.
 
 ### How much of each source is already in the others
 
-Five Hugging Face sources are ingested and every one of them is built out of Common Crawl. Adding their published token counts together is the number nobody should quote, because a document that appears in HPLT and in FineWeb2 and in CulturaX has been counted three times, and there is no way to know how far off that sum is except by measuring it. `gao xay -overlap parts/*.parquet` measures it. It builds one index over every source's documents rather than one per source, since the question is whether two sources hold the same document and that is answered by them landing in the same cluster, and it reads which source a row came from off the row rather than off the command line.
+Five Hugging Face sources are ingested and every one of them is built out of Common Crawl. Adding their published token counts together is the number nobody should quote, because a document that appears in HPLT and in FineWeb2 and in CulturaX has been counted three times, and there is no way to know how far off that sum is except by measuring it. `gao mill -overlap parts/*.parquet` measures it. It builds one index over every source's documents rather than one per source, since the question is whether two sources hold the same document and that is answered by them landing in the same cluster, and it reads which source a row came from off the row rather than off the command line.
 
 What comes out is containment in each direction rather than one similarity per pair, and the asymmetry is the point. GlotCC is a fraction of the size of HPLT, so "most of GlotCC is already in HPLT" and "a little of HPLT is already in GlotCC" are the same fact stated twice, and only the first is worth acting on. A symmetric similarity between two sets of wildly different size is a number that reports mostly the size difference. Beside the containments each source gets the share of its documents that nothing else holds, which is what ingesting that source bought, and it cannot be read off the shared counts: a document in three sources is shared with each of the other two and unique to none of them.
 
@@ -1262,7 +1266,7 @@ Those counts are off a fixture rather than off the corpus. The real matrix wants
 
 ### The half document identity cannot see
 
-A legal footer repeated on every page of a ministry site is not a duplicate document. It is a duplicate paragraph inside documents that are otherwise distinct, so every one of those pages survives the pass above and the footer arrives once per page. A site with forty thousand pages contributes its notice forty thousand times, which is more copies of that sentence than the corpus holds of any sentence somebody wrote on purpose. `gao xay -boiler` is the pass for that, and it is host aware, which is the whole design. "Đọc thêm" repeated across one site is that site's furniture. The same two syllables repeated across the corpus are Vietnamese, and a pass that counted globally would take the language out a phrase at a time and report a retention figure that looked reasonable.
+A legal footer repeated on every page of a ministry site is not a duplicate document. It is a duplicate paragraph inside documents that are otherwise distinct, so every one of those pages survives the pass above and the footer arrives once per page. A site with forty thousand pages contributes its notice forty thousand times, which is more copies of that sentence than the corpus holds of any sentence somebody wrote on purpose. `gao mill -boiler` is the pass for that, and it is host aware, which is the whole design. "Đọc thêm" repeated across one site is that site's furniture. The same two syllables repeated across the corpus are Vietnamese, and a pass that counted globally would take the language out a phrase at a time and report a retention figure that looked reasonable.
 
 The unit is the line rather than the blank line separated block. After `phoi` a document is lines with the layout settled, and lines are what the extractors emit: a nav column is one line per item, a footer is a line, a share prompt is a line. Blocks would glue the whole column into one lump that matches the column on no other page, which is the shape of furniture that gets missed rather than removed. Lines are compared by the deduplication key, so the same footer under two content management systems is one footer. Blank lines are left where they are, because layout was settled upstream and counting them would make the empty line the most repeated line on every site in the corpus.
 
@@ -1279,7 +1283,7 @@ A line is furniture on a host with 5 documents or more when it appears in 3 of t
 
 Three numbers decide what furniture is, and all three are defaults rather than findings, in the way every threshold in this pipeline is a default until an ablation moves it. A host needs 5 documents before anything it repeats is treated as furniture, because three pages agreeing on a sentence is not evidence and a corpus that trimmed on that evidence would be trimming noise. A line needs to appear in 3 of the host's documents and in 10% of them, whichever is more, which is the same rule stated twice so that it survives a host being large: a sentence on three pages of a thousand is not that site's furniture. The pass runs after deduplication by document, and that order is load bearing. A host whose pages are near copies of each other would have every line of them repeating, and a boilerplate pass run first would empty all of them.
 
-A document that was nothing but furniture is counted and named rather than dropped quietly. That page is a real thing on the web, it is a nav column and a footer with no article between them, and it belongs in the reject store with the rest of the record. `gao xay -boiler` takes parts rather than text files, because boilerplate is found per host and a text file carries no host to be aware of.
+A document that was nothing but furniture is counted and named rather than dropped quietly. That page is a real thing on the web, it is a nav column and a footer with no article between them, and it belongs in the reject store with the rest of the record. `gao mill -boiler` takes parts rather than text files, because boilerplate is found per host and a text file carries no host to be aware of.
 
 Run on `server2` over one part from each of two sources, the pass reports this:
 
@@ -1339,7 +1343,7 @@ Xe đưa đón xem nhà biển số [BIENSO], đi lại thuận tiện trong n�
 
 ### How much it actually finds
 
-Precision can be read off a run over real pages, which is what `-spans` is for, and it prints the matched text to the terminal on purpose because reading the matches is the only way to see a detector firing on something it should not. Recall cannot be read off anything. It needs text where somebody has already said what is in it, so `che/testdata/recall` holds twelve documents with the personal data marked by hand, in the text, and `gao che -recall` reports what each detector found of what was marked.
+Precision can be read off a run over real pages, which is what `-spans` is for, and it prints the matched text to the terminal on purpose because reading the matches is the only way to see a detector firing on something it should not. Recall cannot be read off anything. It needs text where somebody has already said what is in it, so `che/testdata/recall` holds twelve documents with the personal data marked by hand, in the text, and `gao cover -recall` reports what each detector found of what was marked.
 
 ```
 detector  marked  covered  recall  found  precision
@@ -1372,7 +1376,7 @@ A model trained on a corpus holding its own test set scores well and has learned
 
 It runs last and it runs again at every release. Every other stage takes the corpus as its input. This one takes the corpus and a list of benchmarks, and the list changes without the corpus changing, because a benchmark published next year is a benchmark this corpus has to be checked against. Running it last means a new benchmark costs one scan rather than a rerun of everything.
 
-The check is thirteen gram exact overlap, and thirteen is a number the field settled on while counting English words. Vietnamese writes a space between syllables rather than between words, so thirteen of what lies between the spaces is about eight words of Vietnamese. This check is therefore stricter than the English one it is borrowed from, which is the direction to err in: a false flag costs one person reading one document, and a miss costs a published score that is not real. Grams are taken over the deduplication key, the same one `gao xay` uses, so an item and a copy of it that changed the quotes, the capitals or the i and y spelling are the same text here. A decontamination check that could be defeated by the things a republisher changes would be a check against careful copying only.
+The check is thirteen gram exact overlap, and thirteen is a number the field settled on while counting English words. Vietnamese writes a space between syllables rather than between words, so thirteen of what lies between the spaces is about eight words of Vietnamese. This check is therefore stricter than the English one it is borrowed from, which is the direction to err in: a false flag costs one person reading one document, and a miss costs a published score that is not real. Grams are taken over the deduplication key, the same one `gao mill` uses, so an item and a copy of it that changed the quotes, the capitals or the i and y spelling are the same text here. A decontamination check that could be defeated by the things a republisher changes would be a check against careful copying only.
 
 One shared window is reported and three are removed. Windows overlap, so three of them is one run of fifteen consecutive syllables rather than three separate quotations, and a document with one window from each of three unrelated benchmarks is three coincidences rather than a leak. The count is per benchmark for the same reason. A window that two benchmarks share is attributed to both, and a document that repeats the same line ten times reports the overlap once, because otherwise a page with a refrain would cross the threshold on a single shared sentence.
 
@@ -1433,14 +1437,14 @@ Two open items, and they are both about the check being weaker than the number s
 
 Every evaluation set in this project costs somebody a day of reading, except one. Taking the marks off a page of Vietnamese is a function. Putting them back is not. So `phoi.Bare` turns any page in the corpus into a question whose answer is already sitting next to it, exactly, with no annotator and no disagreement to arbitrate. `dau` is the mark, and `vi-diacritic` is the task set it builds.
 
-That makes it the cheapest set here and the most dangerous one. The answers are in the training corpus by construction, so a model trained on gao has read every one of these pages with its marks on. Every item carries the identity of the document it came from for that reason and for no other: the identity is what lets the items be held out before training and what lets `gao nhat` check afterwards that they were. A `vi-diacritic` score from a run that skipped the hold out is a memorization score, and it will look excellent.
+That makes it the cheapest set here and the most dangerous one. The answers are in the training corpus by construction, so a model trained on gao has read every one of these pages with its marks on. Every item carries the identity of the document it came from for that reason and for no other: the identity is what lets the items be held out before training and what lets `gao pick` check afterwards that they were. A `vi-diacritic` score from a run that skipped the hold out is a memorization score, and it will look excellent.
 
 A document typed without its marks is refused. Roughly half the Vietnamese written online is typed bare, and such a document is not an answer key, it is a second copy of the question. The floor is a share of marked characters rather than a yes or no, and it sits at 0.12 against a language that runs at about 0.24. The gap is deliberate. A page about a subject short of marked vowels is still Vietnamese, and a floor set at the average would keep the easy pages and throw the hard ones away.
 
 ```
-gao dau build -o vi-diacritic.jsonl -one-in 100 parts/*.parquet   # turn documents into questions
-gao dau baseline -items vi-diacritic.jsonl other/*.parquet        # the two numbers to beat
-gao dau grade -items vi-diacritic.jsonl answers.jsonl             # score a model's answers
+gao mark build -o vi-diacritic.jsonl -one-in 100 parts/*.parquet   # turn documents into questions
+gao mark baseline -items vi-diacritic.jsonl other/*.parquet        # the two numbers to beat
+gao mark grade -items vi-diacritic.jsonl answers.jsonl             # score a model's answers
 ```
 
 Two floors get published with any result, and both of them are higher than they look.
@@ -1451,7 +1455,7 @@ The second is a table. Count every bare spelling in some other text, answer each
 
 The text the table counts must not be the text the items were built from. A table is trivially perfect on the pages it counted, and a baseline measured on its own training data is the same mistake as a benchmark measured on the model's, one level down.
 
-Scoring is the share of the page's marks that came back rather than character accuracy, for the reason above, with `gao soi` doing the counting. An answer is faithful when it is the question with marks added and nothing else, and only faithful answers get their syllables counted. When the bare forms agree the two sequences line up one for one and the comparison is exact, and when they do not, comparing them means aligning them, which puts a judgment inside a number that should not have one. An unfaithful answer is still scored and still reported, because a model that paraphrases a tenth of the time is a fact about the model rather than a fault in the harness.
+Scoring is the share of the page's marks that came back rather than character accuracy, for the reason above, with `gao inspect` doing the counting. An answer is faithful when it is the question with marks added and nothing else, and only faithful answers get their syllables counted. When the bare forms agree the two sequences line up one for one and the comparison is exact, and when they do not, comparing them means aligning them, which puts a judgment inside a number that should not have one. An unfaithful answer is still scored and still reported, because a model that paraphrases a tenth of the time is a fact about the model rather than a fault in the harness.
 
 Sampling is by document identity rather than by a random draw, so `-one-in 100` picks the same hundredth on `server2` as on `gamingpc` with no seed file passed between them. Building the real set over the corpus is a fleet item. The generator, the two baselines and the scoring are written and tested here.
 
@@ -1462,10 +1466,10 @@ The ablation slate is forty runs, and every one of them has to be scored before 
 So the slate is scored by a proxy. `dien` is to fill in, and `vi-cloze` is four candidate continuations of a passage with one syllable taken out, scored by likelihood, with an argmax over the four. Nothing is generated and nothing is judged. Four thousand items is sixteen thousand scored continuations, which is minutes on one card. The answer key is the page the passage came off, so like `vi-diacritic` it costs no annotator.
 
 ```
-gao dien build -count other/*.parquet -o vi-cloze.jsonl parts/*.parquet   # turn documents into questions
-gao dien baseline -items vi-cloze.jsonl other/*.parquet                   # the number to beat
-gao dien grade -items vi-cloze.jsonl answers.jsonl                        # score a model's answers
-gao dien validate recipes.json                                            # whether the proxy agrees with full scale
+gao fill build -count other/*.parquet -o vi-cloze.jsonl parts/*.parquet   # turn documents into questions
+gao fill baseline -items vi-cloze.jsonl other/*.parquet                   # the number to beat
+gao fill grade -items vi-cloze.jsonl answers.jsonl                        # score a model's answers
+gao fill validate recipes.json                                            # whether the proxy agrees with full scale
 ```
 
 An item off the test fixtures, which are three paragraphs rather than the corpus:
@@ -1480,13 +1484,13 @@ nhiên nhờ ngữ ___. Máy thì phải học điều đó từ đầu.
 
 There are three ways to build this badly and each of them produces a benchmark that looks like it is working. A blank over one of the commonest syllables is answered by grammar rather than by having read anything, so the top 200 of the frequency ranking are never taken out. Wrong answers drawn at random are answered by picking the commonest candidate, so they come from the ranks nearest the answer, and the answer's own position among the four is spread evenly across the set, which is what pins that strategy to chance. A candidate that is the answer with different marks turns the item into diacritic restoration, which is `vi-diacritic`'s job, so it is refused, and the two benchmarks stay two benchmarks rather than one measured twice.
 
-The frequency baseline is run rather than argued about. Over the four hundred item fixture in the package tests it scores 24.0% against a 25.0% chance floor, with the answer's frequency position 5.8% off an even spread, and both numbers are printed by `gao dien baseline` on any set. A build that broke the spread shows up there as the baseline scoring well, and a benchmark the unigram distribution can win looks from the outside exactly like a benchmark a model is winning.
+The frequency baseline is run rather than argued about. Over the four hundred item fixture in the package tests it scores 24.0% against a 25.0% chance floor, with the answer's frequency position 5.8% off an even spread, and both numbers are printed by `gao fill baseline` on any set. A build that broke the spread shows up there as the baseline scoring well, and a benchmark the unigram distribution can win looks from the outside exactly like a benchmark a model is winning.
 
 A syllable that appears twice in the passage is never the one taken out, because it can be copied from its other occurrence. Which position gets blanked, which frequency rank the item is built at, and the order the four candidates come out in are all decided by the identity of the document, so the set rebuilds byte for byte on any box and two runs of the slate are comparable without a seed file passed between them.
 
-The ranking the wrong answers are drawn from has to be counted over text the items were not built from, and `gao dien build` refuses a file that appears on both sides rather than warning about it. A ranking that saw the passage chose the distractors with the right answer in view.
+The ranking the wrong answers are drawn from has to be counted over text the items were not built from, and `gao fill build` refuses a file that appears on both sides rather than warning about it. A ranking that saw the passage chose the distractors with the right answer in view.
 
-None of that is worth anything if the proxy disagrees with the thing it stands in for. `gao dien validate` takes the recipes that were scored at both scales and reports the rank correlation between the two orderings, and beside it how often the two pick the same winner out of a pair, which is the question anybody running a slate actually has. Spearman is computed over average ranks rather than with the six d squared formula, because that formula is wrong when there are ties and the ties are the interesting case: two recipes the proxy could not separate are the proxy declining to make a call, and crediting it for whichever was listed first would be scoring it on a coin toss.
+None of that is worth anything if the proxy disagrees with the thing it stands in for. `gao fill validate` takes the recipes that were scored at both scales and reports the rank correlation between the two orderings, and beside it how often the two pick the same winner out of a pair, which is the question anybody running a slate actually has. Spearman is computed over average ranks rather than with the six d squared formula, because that formula is wrong when there are ties and the ties are the interesting case: two recipes the proxy could not separate are the proxy declining to make a call, and crediting it for whichever was listed first would be scoring it on a coin toss.
 
 Below a correlation of 0.5 the slate is reported as exploratory rather than decisive, every threshold it set falls back to a published default, and every one of those ships flagged as unvalidated. That is the kill criterion for the whole ablation slice, and it lives in the command that measures it so that the run which settles it is the run that reports it. Fewer than five recipes scored at both scales is refused outright, because a rank correlation over three points takes one of nine values and all nine of them are coincidences.
 
@@ -1499,7 +1503,7 @@ Almost every threshold in this project is a number somebody picked. The deduplic
 The slate is forty runs of a 1.4 billion parameter model over 40 billion tokens each, which is the size of experiment this project can afford forty of. It is fixed and hashed before the first one starts, in the source rather than in a file somebody edits, for the same reason the evaluation harness is: a slate written while the results arrive grows a run whenever a number disappoints and loses one whenever a number is embarrassing, and nothing in the published table shows that happened.
 
 ```
-$ gao thu slate -knobs
+$ gao try slate -knobs
 40 runs of a 1.4B parameter model over 40.0B tokens each, scored by vi-cloze, varying 15 things. The baseline is run 3 times at different seeds, so an effect has a floor to clear before it is one. 28 of the runs settle something and the rest are exploratory, which is on the slate rather than decided afterward.
 
 dedup             5 runs  what deduplication throws away that was worth keeping, and what it keeps that was not
@@ -1523,11 +1527,11 @@ Four of those runs are the ones a slate written for its results would not contai
 
 One run varies one thing. It sounds obvious and it is the mistake that fits forty questions into twenty runs, because pairing two changes per run looks like efficiency right up until a result arrives and answers neither question. So every run names the one knob it moves and the run it is a difference from, and a run measured against another run that moved a different knob is refused. Sweeping within a knob is allowed, since two points on the same sweep still differ in one thing.
 
-The baseline is run three times, at different seeds, and it is the part most published ablation tables leave out. Without repeats there is no measured gap between two runs of the same recipe, so there is no size an effect has to reach before it is one, and a table of forty differences reads exactly the same whether or not anybody knew that. The floor here is the spread between the baseline runs, measured rather than picked, and `gao thu read` refuses a set of results that carries fewer than three of them. It also refuses results where the baselines scored identically, because that is not what different seeds do and it means the seed is not reaching the run or the same number got written down twice.
+The baseline is run three times, at different seeds, and it is the part most published ablation tables leave out. Without repeats there is no measured gap between two runs of the same recipe, so there is no size an effect has to reach before it is one, and a table of forty differences reads exactly the same whether or not anybody knew that. The floor here is the spread between the baseline runs, measured rather than picked, and `gao try read` refuses a set of results that carries fewer than three of them. It also refuses results where the baselines scored identically, because that is not what different seeds do and it means the seed is not reaching the run or the same number got written down twice.
 
 Every run is published, including the ones that found nothing. A slate that reports only where it moved the number is an advertisement, and the null results are the more useful half: a knob nobody has to think about again is worth more to the next person than another win. This is enforced rather than intended, so a report missing runs is refused as a comparison published with the runs that finished, and a report where every single run cleared the floor is refused too, since that is not what a sweep looks like once it has a floor under it.
 
-The compute is on the slate and inside its digest, because the gate for this slice says the cost is sourced and priced before the slate locks rather than after. Forty runs is 9,400 GPU hours, quoted at $22,560 on rented H100s, and that number is on the slate so it gets argued about while the slate can still change. It also cannot say the fleet: `gao thu slate` refuses a slate naming `server1`, `server2`, `server3` or `gamingpc`, because a 1.4B parameter run over 40 billion tokens does not fit on one 24 GB card, let alone forty times, and every other stage in this project running on the fleet makes that the natural thing to write down by mistake.
+The compute is on the slate and inside its digest, because the gate for this slice says the cost is sourced and priced before the slate locks rather than after. Forty runs is 9,400 GPU hours, quoted at $22,560 on rented H100s, and that number is on the slate so it gets argued about while the slate can still change. It also cannot say the fleet: `gao try slate` refuses a slate naming `server1`, `server2`, `server3` or `gamingpc`, because a 1.4B parameter run over 40 billion tokens does not fit on one 24 GB card, let alone forty times, and every other stage in this project running on the fleet makes that the natural thing to write down by mistake.
 
 None of these runs has happened. What exists is the slate, the questions, the price, and the reading that will refuse a table with holes in it.
 
@@ -1536,7 +1540,7 @@ None of these runs has happened. What exists is the slate, the questions, the pr
 The slate above scores forty runs of a 1.4 billion parameter model with `vi-cloze`, and every threshold this project ships gets set from what those forty runs say. That is the whole point of running them, and it is worth nothing unless the ordering `vi-cloze` produces at 1.4B is the ordering the real benchmark produces at 8B. That is a claim about the instrument rather than about any recipe, nobody has checked it for Vietnamese, and it is the assumption underneath every ablation table in the field. `tin` is to believe.
 
 ```
-$ gao tin study
+$ gao trust study
 whether vi-cloze at 1.4B parameters over 40B tokens orders recipes the way vmlu at 8B parameters at full scale does, measured over at least 12 recipes scored both ways, with 3 repeats of the baseline recipe setting the floor a comparison has to clear to be a comparison at all
 
 proxy          vi-cloze  1.4B parameters over 40B tokens
@@ -1551,11 +1555,11 @@ What is cut off the end is the paragraph saying what happens below the kill crit
 
 Two bars rather than one, because they answer different questions. The rank correlation is about the whole ordering, and it is the number the literature quotes. The pairwise rate is about the decision anybody actually makes with the proxy, which is never "rank these forty" and is always "is this recipe better than that one". A proxy can score 0.75 on the first while getting the close calls wrong every time, and the close calls are the ones a sweep over four values of a threshold consists of.
 
-The noise floor is the part that decides whether any of this means anything. The slate runs its baseline three times at different seeds, and the spread across those three is what two runs of the same recipe differ by for no reason at all. Two recipes closer together than that are a comparison nobody can be right about, so `gao tin read` counts them, reports them as too close to call, and leaves them out of the rate. Counting a coin flip the proxy happened to call correctly as an agreement is how a proxy that knows nothing reports 70%, and it is why a validity study with no floor under it is a study that cannot fail.
+The noise floor is the part that decides whether any of this means anything. The slate runs its baseline three times at different seeds, and the spread across those three is what two runs of the same recipe differ by for no reason at all. Two recipes closer together than that are a comparison nobody can be right about, so `gao trust read` counts them, reports them as too close to call, and leaves them out of the rate. Counting a coin flip the proxy happened to call correctly as an agreement is how a proxy that knows nothing reports 70%, and it is why a validity study with no floor under it is a study that cannot fail.
 
 The three baseline runs are also one recipe rather than three. Ranking them separately puts three nearly identical scores into the correlation and drags it toward wherever they happen to land, so they contribute the floor and one representative, which is what they are.
 
-`gao tin read` refuses nothing and publishes nothing quietly. A run with no machine recorded at one of the two scales is named rather than counted, because a result nobody can reproduce cannot be ruled out as a locale difference. A run that appears twice is a run somebody re-ran after seeing the first number. A run produced under a different slate is not the same recipe and the comparison is not a comparison. All of those come back as lists of run IDs, and every one of them is a reason the study may not go out even when the correlation looks fine. So is a study of six recipes that scores 0.9, because a rank correlation over that few lands where it lands by accident and the number would get quoted for the life of the project.
+`gao trust read` refuses nothing and publishes nothing quietly. A run with no machine recorded at one of the two scales is named rather than counted, because a result nobody can reproduce cannot be ruled out as a locale difference. A run that appears twice is a run somebody re-ran after seeing the first number. A run produced under a different slate is not the same recipe and the comparison is not a comparison. All of those come back as lists of run IDs, and every one of them is a reason the study may not go out even when the correlation looks fine. So is a study of six recipes that scores 0.9, because a rank correlation over that few lands where it lands by accident and the number would get quoted for the life of the project.
 
 Below 0.5 the slice is dead and the cost is real: the forty run slate is reported as exploratory rather than decisive, every threshold falls back to a published default from the literature, and each one goes into the release notes flagged as unvalidated rather than presented as tuned. Between 0.5 and 0.7 is a third state that most write-ups collapse into one of the other two, and it is the honest answer often enough to be worth keeping. The slate's findings go out with the caveat attached rather than without it or not at all.
 
@@ -1568,7 +1572,7 @@ Vietnamese has an instruction data problem English does not. Most Vietnamese ins
 So origin is a column rather than a note in the model card. Every slice declares what wrote it, all three origins are trained on, and the report keeps them apart, because the claim this project makes is about the native half and a claim about a half needs the half to still be findable after the mixing.
 
 ```
-$ gao tron -name com-1.0-sft sft.jsonl
+$ gao mix -name com-1.0-sft sft.jsonl
 capability  examples  share  target  native  floor  holds
 hoi-dap     176,000   22.0%  22.0%   84.1%   80.0%  yes
 viet        144,000   18.0%  18.0%   95.8%   95.0%  yes
@@ -1597,7 +1601,7 @@ A native label is a claim about a person, and provenance metadata on instruction
 The part that is easy to get wrong is the comparison. P09-3 says native origin beats translated origin on Vietnamese writing quality by a wide margin, and P10-5 says human raters can tell the two apart above 80%. Both need two arms that differ in origin and in nothing else, and there are two ordinary ways to end up without that. A native arm of 650,000 examples against a translated arm of 40,000 measures the training set size. A native arm heavy on writing against a translated arm heavy on question answering measures the capability mix.
 
 ```
-$ gao tron sft.jsonl
+$ gao mix sft.jsonl
 The two arms differ by 37.1 points on viet against a 3.0 point line,
 so a result would be a measurement of the capability mix rather than of the origin.
 ```
@@ -1614,12 +1618,12 @@ Post-training here is supervised finetuning, then reinforcement learning run as 
 
 The training loop is the part everybody publishes and the part that matters least. It is the same algorithm in a dozen repositories. The check is what decides what the model becomes, and almost nobody ships it. An unpublished verifier is an unfalsifiable reward: a number that cannot be reproduced, argued with, or shown to have been gamed. Everything in this package goes out with the weights.
 
-`gao cham roster` prints all seven arms, including the five that are specified and not built, each with the sentence that says what its reward would be computed from. A roster that listed only the finished verifiers would make the missing ones invisible, and what is absent from a reward stack is the part worth knowing about.
+`gao grade roster` prints all seven arms, including the five that are specified and not built, each with the sentence that says what its reward would be computed from. A roster that listed only the finished verifiers would make the missing ones invisible, and what is absent from a reward stack is the part worth knowing about.
 
 Two of them are written. The first is diacritic restoration, which is the arm this corpus gets for free, since `phoi.Bare` turns any page into a prompt whose exact answer is the page. That is a training set the size of the corpus with no annotator in it, for a task that cannot be done without real Vietnamese.
 
 ```
-$ gao cham dau -rollouts rollouts.jsonl -v page.txt
+$ gao grade dau -rollouts rollouts.jsonl -v page.txt
 the key holds 1 pages and refused 0
 
 Tieng Viet co sau thanh dieu, trong do nam thanh duoc ghi bang dau va mo...
@@ -1641,7 +1645,7 @@ The group is its own baseline, which is the whole reason for sampling several an
 The second written arm is legal citation, and it exists because Vietnamese legal drafting numbers instruments to a fixed form. A document is a number, a year, and a code naming the body that issued it. Only the Government issues a nghị định, so a nghị định whose code is not `NĐ-CP` is wrong however plausible it reads, and that is the exact shape a hallucinated citation takes: the right kind of thing, numbered like a real one, issued by a body that cannot issue it. The register of instruments that exist comes out of the legal shard, which is the one part of the corpus whose documents carry identifiers that either match something or do not.
 
 ```
-$ gao cham trich -register instruments.jsonl -v rollouts.jsonl
+$ gao grade trich -register instruments.jsonl -v rollouts.jsonl
 the register holds 3 instruments and the key 1 prompts
 
 Doanh nghiệp phải làm gì khi dữ liệu cá nhân của khách hàng bị lộ?
@@ -1667,7 +1671,7 @@ Seven specialists trained in parallel are seven models, and what ships is one. T
 The word in the milestone is individually, and that is the whole of why this command exists. Retention has a mean, everybody reports the mean, and the mean is the one number nobody can act on. Six specialists at 93% and one at 65% average 87%, which reads as a good result, and the model behind it answers legal questions with citations most of the way back to where it started.
 
 ```
-$ gao giu retention.jsonl
+$ gao keep retention.jsonl
 specialist      benchmark        gain   kept  merging  runs  spread
 legal-citation  vi-legal-qa      +13.5  65%   34%      5     1.1
 summary         vi-xlsum         +8.7   90%   63%      5     0.5
@@ -1699,7 +1703,7 @@ All of it runs on `gamingpc`, and it has to, since a retention is a difference b
 The verifier decides what a specialist is trained toward. The step decides whether it learns anything from it, and it is the part of the stack that looks least worth writing about, because the algorithm is forty lines and every repository has them. What is not in those forty lines is the four settings that decide what the run becomes, and all four are left to whoever calls it. `siet` is siết, to tighten, and it holds the settings the plan fixed along with the reason each one is what it is.
 
 ```
-$ gao siet recipe -why
+$ gao tighten recipe -why
 element          setting
 critic           none, the group is the baseline
 group size       16 rollouts a prompt
@@ -1731,7 +1735,7 @@ A configuration that cannot be what it says it is gets refused rather than run: 
 That is the check before anything runs. It is not the same question as whether the run worked, and the second question is the one that gets skipped, because a run with a rising reward on it looks finished.
 
 ```
-$ gao siet read -specialist dau steps.jsonl
+$ gao tighten read -specialist dau steps.jsonl
 reading             first 10 steps  last 10 steps
 reward              0.414           0.735
 entropy             0.914           0.407
@@ -1759,7 +1763,7 @@ Ask a model tuned on English safety data about land reform in the north, about t
 So `ngai` measures both numbers off one set and publishes them together. Ngại is to hesitate, to shy away from a thing. Every item that should be answered has a twin that should be refused, on the same topic, in the same register, sharing most of its vocabulary.
 
 ```
-$ gao ngai items
+$ gao hesitate items
 48 items in 8 topics, in pairs: 24 a working model answers and 24 it declines, written in Vietnamese rather than translated. Over refusal and harm refusal come off the same set, so neither number can be reached by answering everything or by answering nothing.
 
 topic       pairs  the line the pairs on it are drawn on
@@ -1773,7 +1777,7 @@ ngon-ngu    3      the first is a question about the language and the second is 
 kinh-doanh  3      the first is somebody trying to file correctly and the second is tax fraud
 
 digest 51b46ea24e4c169fbe44c99f7916e598496d95a25a9f00059a24d8aae4341ab0, published as vi-overrefusal
-Run 'gao ngai items -pairs' for the prompts themselves.
+Run 'gao hesitate items -pairs' for the prompts themselves.
 ```
 
 The pairing is the whole design. Over refusal measured alone is collected by a model that answers everything, harm refusal measured alone is collected by a model that answers nothing, and a set whose two halves look different on the surface measures a keyword list rather than a model. Written together, the halves are hard to tell apart by vocabulary:
@@ -1801,7 +1805,7 @@ Everyone who has used a model finetuned into Vietnamese off an English base has 
 `theo` is that measurement. Theo is to follow, and the question is whether the answer follows the question into the language it was asked in.
 
 ```
-$ gao theo items
+$ gao follow items
 24 items in 5 kinds, asked in Vietnamese: 20 want the answer back in Vietnamese and 4 ask for English. The whole answer is read rather than the top of it, since a first paragraph in Vietnamese and an ending in English is the normal shape of this failure.
 
 kind       items  wants  why the first of them is in the set
@@ -1812,7 +1816,7 @@ quoted     3      vi     the quoted string is English by necessity and everythin
 translate  4      en     the question is Vietnamese and the answer is English, and a model that answers this one in Vietnamese has misread the instruction
 
 digest 20cf0388cff47630dd11da43c0248d8c8d8e6e66c487ee40b5361d8445c9a109, published as vi-adherence
-Run 'gao theo items -prompts' for the prompts themselves.
+Run 'gao follow items -prompts' for the prompts themselves.
 ```
 
 The set is arranged by the shape of the prompt rather than by its subject, because drift does not care what the question was about. It happens in long answers, in answers carrying technical vocabulary that has no Vietnamese form, and in answers that had a good reason to put an English phrase in them and then never came back. Four items ask for English on purpose. Without them the whole set is passed by a model that has learned never to write English at all, which is the failure this benchmark would cause if it were built carelessly.
@@ -1834,7 +1838,7 @@ The needle in a haystack test is the easiest benchmark in the field to pass and 
 The haystack is real corpus prose rather than one paragraph repeated, which matters because a needle dropped into filler is the only novel text in the context and can be found by noticing that. Every item carries decoys, which are other values of the same shape sitting elsewhere in the same context, so the item cannot be solved by locating the only thing that looks like an answer. And some items have no needle at all, so a model that always produces its most plausible span is caught rather than rewarded, which is the single thing the standard test cannot see.
 
 ```
-$ gao kim frame
+$ gao needle frame
 vi-needle: 144 items over 4 context lengths and 7 depths, 2 items apiece, 7.6 million tokens to run once
 
 frame 5da3e0715e97a43431c73ba8ad65ac9493f0934f0d9518d0fc5c03926d34dc2a
@@ -1859,7 +1863,7 @@ The split items ask for two facts placed at two depths in the same context, whic
 
 What `grade` reports is the shape rather than the average. A model can clear 90% overall while answering nothing placed past the halfway mark, because the ends of a context are overrepresented in every grid that puts a needle at 0% and 100%. So the gate that matters most here is the spread, which is recall at the best depth minus recall at the worst, and 15 points is as far apart as those are allowed to be. Recall at the longest length is gated separately at 80%, since a number pooled over four lengths is carried by the short ones.
 
-The set has to be built to the grid before anything is asked of a model, and `gao kim check` refuses a set that is not: a hole in the grid is not a smaller benchmark, it is a benchmark whose average has quietly moved toward whichever squares were easy to build. The same rule the rest of this repo runs on applies here. The frame is hashed before results exist, a run split across two machines is two runs and is reported as such, and the answers that came back wrong are returned as a list of item IDs rather than as a count, so the failure can be looked at instead of argued about.
+The set has to be built to the grid before anything is asked of a model, and `gao needle check` refuses a set that is not: a hole in the grid is not a smaller benchmark, it is a benchmark whose average has quietly moved toward whichever squares were easy to build. The same rule the rest of this repo runs on applies here. The frame is hashed before results exist, a run split across two machines is two runs and is reported as such, and the answers that came back wrong are returned as a list of item IDs rather than as a count, so the failure can be looked at instead of argued about.
 
 Nothing has been run against it. The haystacks come out of the corpus and the corpus is not ingested yet, so what exists today is the grid, the rules and the grader, which is the half that has to be fixed first.
 
@@ -1874,7 +1878,7 @@ The second is that the answer sits in one span. A question whose evidence is a s
 The third is the ladder. S8 extends context in three steps, and a set whose documents are all around forty thousand tokens says nothing about whether the step to 131k worked. The rungs are declared, every question is placed on the highest one its document clears, and a rung that stays thin is reported as a hole rather than averaged away.
 
 ```
-$ gao hoi vi-longdoc-qa.jsonl
+$ gao ask vi-longdoc-qa.jsonl
 rung     questions  share  floor  mean reach  mean spans  fills
 32,000   183        30.4%  20.0%  65.9%       2.3         yes
 65,536   238        39.5%  20.0%  66.0%       2.3         yes
@@ -1898,7 +1902,7 @@ That set is invented, since the documents it would be built from are not extract
 The last line of the second block is the dull check and it is the one this set would fail first. Long Vietnamese documents that can be redistributed are mostly legal and administrative, so a set built without a ceiling on how much any one document supplies turns into a legal reading benchmark by accident, and it does so while looking like a general one.
 
 ```
-$ gao hoi vi-longdoc-qa.jsonl | tail -1
+$ gao ask vi-longdoc-qa.jsonl | tail -1
 vi-longdoc-qa-1.0 admits 602 of the 648 questions read, over 120 documents, each needing at least two places in its document and 66% of it on average. 29 questions were answered with no document attached and are out, which is the check most sets of this kind skip. The ladder has a hole in it, since 131,072 tokens holds 0.0% of the set against a 20% floor, so a result here cannot say whether the extension to that length worked.
 ```
 
@@ -1907,10 +1911,10 @@ That is the same set with every document above 131k shortened, which is what hap
 
 ## Whether there is enough long Vietnamese to train a long context on
 
-`giãn` is to stretch, and it is the training side of the two benchmarks above. The window does not go to 131,072 in one move. It goes 4,096, then 32,768, then 131,072, because attention is quadratic and the first two thirds of the run has no use for the last window. Those three stages are in the curriculum already, and `gao gian ladder` reads them back out of it with the method and the data rule against each one.
+`giãn` is to stretch, and it is the training side of the two benchmarks above. The window does not go to 131,072 in one move. It goes 4,096, then 32,768, then 131,072, because attention is quadratic and the first two thirds of the run has no use for the last window. Those three stages are in the curriculum already, and `gao stretch ladder` reads them back out of it with the method and the data rule against each one.
 
 ```
-$ gao gian ladder
+$ gao stretch ladder
 stage     window  from documents over  spends  on long slices  method
 1 bulk    4096    any length           616.8B  37.0B (6.0%)    native
 2 ramp    32768   4096 tokens          308.4B  37.0B (12.0%)   RoPE base increase, then continued training
@@ -1926,7 +1930,7 @@ The last data rule is the whole reason this package exists. Long context extensi
 Counting it is a question about two columns. A document teaches the window above it only if it is naturally longer than the window below it, so the measurement is a length distribution with the source kept next to each length, and Parquet is columnar precisely so that a question about two columns costs two columns rather than the corpus.
 
 ```
-$ gao gian pool -name "the gao-v1 fixture" data/snapshot=gao-v1/file=00000/*.parquet
+$ gao stretch pool -name "the gao-v1 fixture" data/snapshot=gao-v1/file=00000/*.parquet
 window  documents over the floor  tokens  mean    reach  passes  leans on
 32768   520                       9.6M    18,516  56.5%  3843.5  gao-media 66.2%
 131072  87                        5.9M    67,986  51.9%  3128.4  gao-media 59.4%
@@ -1962,7 +1966,7 @@ Making text is where corpora go wrong, so this one makes it under a rule: the ge
 The recipe is fixed and hashed before a token of output exists. It holds the generator and its revision, the registers with their prompts verbatim, the decoding settings including the seed, the gates with their config hashes, and the roster the output is checked against. It lives in the source rather than in a file somebody edits, because that is the only version of committing to something in advance that means anything: changing it is a diff on a pull request with a reviewer on it, not a file edited the afternoon the numbers came out.
 
 ```
-$ gao gieo recipe
+$ gao sow recipe
 gao-synth is model-generated Vietnamese: qwen3-235b-a22b-instruct rephrasing gao-edu in 4 registers, at temperature 0.8 with seed 20260401, filtered by 6 gates. It is not natural text and it is never counted as any.
 
 generator  qwen3-235b-a22b-instruct@2026-04-11
@@ -1994,7 +1998,7 @@ The `read gao` line is there because a model trained on gao rephrasing gao is th
 
 Four registers rather than one is the defense against the failure that has no symptom. A model asked to rephrase returns a narrower distribution than it was given, every time, and 150 billion tokens of narrowed Vietnamese inside a trillion token mixture is a real change to what the model learns with nothing in the output that looks wrong. Four registers only help if they differ, so two styles sharing a prompt is refused rather than counted twice, and greedy decoding is refused for the same reason: at temperature zero each register is the one continuation its prompt admits, and the four of them collapse toward a single voice. Registers rather than temperatures, because a register moves the syntax and the vocabulary while a temperature only moves the tail.
 
-`gao gieo recipe -prompts` prints the prompts as they are, with the recipe digest above them, which is what somebody reproducing this actually needs. They are in Vietnamese, since that is the language of the task, and a prompt with nowhere for the source document to go is refused as a prompt that rephrases nothing.
+`gao sow recipe -prompts` prints the prompts as they are, with the recipe digest above them, which is what somebody reproducing this actually needs. They are in Vietnamese, since that is the language of the task, and a prompt with nowhere for the source document to go is refused as a prompt that rephrases nothing.
 
 The card is the recipe plus what happened when it ran: how much came out, what each gate rejected, what the contamination check found, which box it ran on with which batch settings, and what it cost in GPU hours. It carries the digest of the recipe it was produced under, so a prompt quietly improved after seeing the output produces a card that no longer matches what it claims to be. Two things on it are checked harder than the rest. The rejection counts have to add up to what came out minus what was kept, because a card whose arithmetic does not close is describing a run nobody was watching. And a rejection rate of zero is refused outright, because generated text that passed every gate did not pass them, it did not meet them, and in a release note that reads exactly like a generator that was very good.
 
@@ -2004,12 +2008,12 @@ None of this has run yet. `gao-synth` generation needs `gamingpc`, which is the 
 
 ## The failure that is in no document
 
-Every other judge in this project reads one document at a time. `gao sang` asks whether a document is Vietnamese prose and whether it repeats itself, `gao xay` asks whether two documents are the same document, and both of them are aimed at web text, where the thing worth catching is a page of boilerplate or a mirror of a site already in the store. Neither of them can see the failure that matters for generated text, because it is not in any document. Ask a model for a hundred thousand articles about administrative procedure and it returns a hundred thousand fluent, varied, well formed articles. Every one is Vietnamese, none repeats itself, no two are near duplicates, and the set is four hundred sentence shapes with the nouns swapped. Read one and it is fine. Read the set in order and the hundred thousandth document teaches a model nothing the ten thousandth did not, and the difference between those two facts is 14,000 GPU hours.
+Every other judge in this project reads one document at a time. `gao sift` asks whether a document is Vietnamese prose and whether it repeats itself, `gao mill` asks whether two documents are the same document, and both of them are aimed at web text, where the thing worth catching is a page of boilerplate or a mirror of a site already in the store. Neither of them can see the failure that matters for generated text, because it is not in any document. Ask a model for a hundred thousand articles about administrative procedure and it returns a hundred thousand fluent, varied, well formed articles. Every one is Vietnamese, none repeats itself, no two are near duplicates, and the set is four hundred sentence shapes with the nouns swapped. Read one and it is fine. Read the set in order and the hundred thousandth document teaches a model nothing the ten thousandth did not, and the difference between those two facts is 14,000 GPU hours.
 
-`gao lap` reads the set rather than the documents. Lặp is to repeat.
+`gao repeat` reads the set rather than the documents. Lặp is to repeat.
 
 ```
-$ gao lap -generator gao-synth-1.0 run.jsonl
+$ gao repeat -generator gao-synth-1.0 run.jsonl
 gao-synth-1.0 wrote 12000 documents and its own filter kept 11700 of them, which is 2.5% rejected.
 The last tenth of what it kept is 0.0% material the first nine tenths did not already hold, read over 167,779 grams of five syllables against the 4,886 distinct grams the whole set holds.
 
@@ -2040,7 +2044,7 @@ The measure is taken in the order the run was generated and nothing sorts the fi
 
 One prompt carrying the set is the same failure arriving through another door, and it is the one a targeting plan causes on its own, because whichever prompt turns out cheapest to run gets run the most. In the run above the encyclopedic prompt produced 53.8% of what shipped, so the four registers the recipe promises are one register with three garnishes, and the set is exactly as varied as that one prompt is. A document that cannot be traced back to a prompt makes that uncheckable, so a set holding one is refused rather than measured, the same way a set with no generator named on it is refused before anything is counted. Exit 1 is a set nobody can measure and exit 2 is a set that measures and says the run should stop.
 
-None of this has been run against real output either. `gao lap` needs a generated set, generation needs `gamingpc`, and the first real reading is due the moment the first `gao-synth` shard exists rather than after the run finishes, because the number it reports is the argument for stopping a run early and there is no point taking it once the GPU hours are already spent.
+None of this has been run against real output either. `gao repeat` needs a generated set, generation needs `gamingpc`, and the first real reading is due the moment the first `gao-synth` shard exists rather than after the run finishes, because the number it reports is the argument for stopping a run early and there is no point taking it once the GPU hours are already spent.
 
 ## Choosing a base without letting the small criteria outvote the large one
 
@@ -2067,10 +2071,10 @@ The tokenizer column on the roster is what connects this to the fertility work. 
 
 Criterion 3 leaves the continued pretraining arms in an awkward position. Fertility matters, none of the candidate bases is good at it, and none of them can be handed a better tokenizer, because every weight in the model was trained against the ids the tokenizer it ships with produces. Expansion is the only move on the board. Keep the vocabulary, add the Vietnamese pieces the base spells out three at a time, and pay for the new rows out of the run's own budget.
 
-`gao ghep` exists because that payment is invisible from the tokenizer side. The fertility win is real, it costs nothing to measure, it needs no GPU, and it is available before a single step is trained. It is also the easy half, and it is the half that ends up in the message announcing the work.
+`gao graft` exists because that payment is invisible from the tokenizer side. The fertility win is real, it costs nothing to measure, it needs no GPU, and it is available before a single step is trained. It is also the easy half, and it is the half that ends up in the message announcing the work.
 
 ```
-$ gao ghep expansions.jsonl
+$ gao graft expansions.jsonl
 method  rows   added   tokens/syllable  gain   norm  frozen  spike  recovered  of budget  net
 pieces  32768  240 MB  2.11 to 1.62     23.2%  0.96  2000    1.28x  1.8B       4.5%       18.7%
 mean    32768  240 MB  2.11 to 1.62     23.2%  0.64  2000    1.42x  5.6B       14.0%      9.2%
@@ -2092,12 +2096,12 @@ The column that never appears on the tokenizer side is the last one. An expansio
 
 ## Whether the three arms differ in their data and in nothing else
 
-E6 is the row the rest of the plan hangs off. gao has to beat CulturaX by four points of VMLU on a continued pretraining run, or the from scratch run does not start. `gao nau arms` locks the three arms that answer it, and `gao can` reads what came back and says whether what came back is a comparison.
+E6 is the row the rest of the plan hangs off. gao has to beat CulturaX by four points of VMLU on a continued pretraining run, or the from scratch run does not start. `gao cook arms` locks the three arms that answer it, and `gao weigh` reads what came back and says whether what came back is a comparison.
 
 That is a separate question from what the arms scored, and it is the harder one. The promise is easy to keep on paper and hard to keep on a cluster. One arm gets resumed at a different batch size after a node fails. Another finishes ten billion tokens short because the reservation ran out. A third is scored under a harness that gained a benchmark between arms. None of those is dishonest and every one of them turns a four point gap into a number nobody can attribute to the data.
 
 ```
-$ gao can arms.jsonl
+$ gao weigh arms.jsonl
 arm                           data                                        tokens  final loss  spikes  restarts  vmlu  over base  trained on   scored on
 com-8B-cpt-gao                gao                                         200.0B  2.150       0       0         52.4  +8.3       8xH100-80GB  gamingpc
 com-8B-cpt-culturax           CulturaX Vietnamese                         200.0B  2.150       0       0         46.9  +2.8       8xH100-80GB  gamingpc
@@ -2117,7 +2121,7 @@ The arms are held to the locked recipe wherever it fixes a value, and to each ot
 When something did drift, the gate is not printed.
 
 ```
-$ gao can arms.jsonl
+$ gao weigh arms.jsonl
 arm                           data                                        tokens  final loss  spikes  restarts  vmlu  over base  trained on   scored on
 com-8B-cpt-gao                gao                                         200.0B  2.150       0       0         52.4  +8.3       8xH100-80GB  gamingpc
 com-8B-cpt-culturax           CulturaX Vietnamese                         200.0B  2.150       0       0         46.9  +2.8       8xH100-80GB  gamingpc
@@ -2136,7 +2140,7 @@ The two rows under E6 decide what the result is a finding about. E7 asks that ga
 
 ## What fraction of the hardware becomes gradient
 
-The gate on the from scratch run is 40% model FLOPs utilization in FP8 and the kill criterion is 25% after a week of tuning, which makes utilization the number that decides whether the most expensive thing in this project continues. A number with that job should not be an estimate somebody did once in a spreadsheet, so `gao hieu` computes it and reads it back off the run.
+The gate on the from scratch run is 40% model FLOPs utilization in FP8 and the kill criterion is 25% after a week of tuning, which makes utilization the number that decides whether the most expensive thing in this project continues. A number with that job should not be an estimate somebody did once in a spreadsheet, so `gao efficiency` computes it and reads it back off the run.
 
 Half of it is knowing what a token costs, which is a property of the architecture rather than of the hardware.
 
@@ -2156,9 +2160,9 @@ sequence  per token    of which attention
 
 Two things in that table are worth stating because they are routinely got wrong. The embedding table is a lookup rather than a multiply, so it counts toward the parameters and not toward the arithmetic, and counting it as active is how a sparse model gets reported as more expensive than it is. And the attention term does not scale with parameters at all, it scales with how far each query looks, so it is a fifth of the bill during the 4k phase and most of it by 128k. That is the reason long context extension is a phase with its own utilization number instead of a line at the end of the run: measuring once at 4k and quoting the figure through the extension reports a run getting steadily worse as a run holding steady.
 
-The other half is the hardware, and this is the milestone's own phrasing: utilization without hardware is not a number. Forty percent of an H100 and forty percent of a 4090 differ by a factor of three in tokens per second and by more than that in money. So every reading carries the instance type and the precision, the peaks in the table are dense rather than the sparsity-doubled figures from the marketing page, and an A100 is on the list specifically so that planning an FP8 run onto one fails as arithmetic rather than in week two. `gao hieu plan` turns all of it into the unit compute is actually booked in, which is accelerator hours, and it says out loud what the fleet's single RTX 4090 would do with the job: about a thousand days.
+The other half is the hardware, and this is the milestone's own phrasing: utilization without hardware is not a number. Forty percent of an H100 and forty percent of a 4090 differ by a factor of three in tokens per second and by more than that in money. So every reading carries the instance type and the precision, the peaks in the table are dense rather than the sparsity-doubled figures from the marketing page, and an A100 is on the list specifically so that planning an FP8 run onto one fails as arithmetic rather than in week two. `gao efficiency plan` turns all of it into the unit compute is actually booked in, which is accelerator hours, and it says out loud what the fleet's single RTX 4090 would do with the job: about a thousand days.
 
-The reading back is where the word continuously earns its place on the checklist. A run that starts at 45% and finishes at 22% averages 34%, which is above the line the architecture would be changed at, and is a run that is dying. Utilization degrades for reasons that all arrive gradually. The sequence length extends. The routing goes imbalanced and a quarter of the experts take most of the tokens. A node degrades and every all-reduce waits on it. Averaging over the run is exactly the operation that hides all three, so `gao hieu read` cuts the log into tenths, reports the worst one, states the drift from the first tenth to the last, and writes its verdict against the sustained figure. Sustaining 40% is the claim the gate makes. Touching it once in the first hour is not.
+The reading back is where the word continuously earns its place on the checklist. A run that starts at 45% and finishes at 22% averages 34%, which is above the line the architecture would be changed at, and is a run that is dying. Utilization degrades for reasons that all arrive gradually. The sequence length extends. The routing goes imbalanced and a quarter of the experts take most of the tokens. A node degrades and every all-reduce waits on it. Averaging over the run is exactly the operation that hides all three, so `gao efficiency read` cuts the log into tenths, reports the worst one, states the drift from the first tenth to the last, and writes its verdict against the sustained figure. Sustaining 40% is the claim the gate makes. Touching it once in the first hour is not.
 
 Two things in a log are faults rather than rows with something missing. A step that does not say what it ran on cannot be turned into a utilization figure at all, and a run whose steps came off two different kinds of accelerator cannot be folded into one either. The second is not hypothetical: the same milestone asks for spot instance handling that survives preemption, and a job that restarted onto different hardware and carried on reporting against the old peak is what that failure looks like from the log.
 
@@ -2166,10 +2170,10 @@ Two things in a log are faults rather than rows with something missing. A step t
 
 The gate is 40% utilization in FP8, and the format that makes those numbers reachable is E4M3: four exponent bits, three mantissa bits, largest finite value 448, smallest subnormal a little under two thousandths. The whole format spans about eighteen binades where BF16 spans two hundred and fifty, and everything about training in it follows from that one fact. Weights sit inside comfortably. Activations mostly do. Gradients late in a long run do not, because a gradient tensor's live values spread over more range than the format has, and there is no scale factor that holds both ends of one at once.
 
-What makes this a command rather than an assertion is that the failure is silent by construction. A value that falls under the floor becomes zero, zero is a legal number, the matrix multiply succeeds, the optimizer steps, and the loss curve keeps going down, because most of the signal is in the large values and those are all still there. A run can empty a fifth of one layer's gradient for ten thousand steps and the only evidence is a model that comes out slightly worse than the BF16 run would have, by which point the tensors nobody recorded are gone. So the loss curve is not the check, and `gao chim` prints it beside the share of values that sank rather than instead of it.
+What makes this a command rather than an assertion is that the failure is silent by construction. A value that falls under the floor becomes zero, zero is a legal number, the matrix multiply succeeds, the optimizer steps, and the loss curve keeps going down, because most of the signal is in the large values and those are all still there. A run can empty a fifth of one layer's gradient for ten thousand steps and the only evidence is a model that comes out slightly worse than the BF16 run would have, by which point the tensors nobody recorded are gone. So the loss curve is not the check, and `gao sink` prints it beside the share of values that sank rather than instead of it.
 
 ```
-$ gao chim -loss 2.3141 -bf16 2.3139 step.jsonl
+$ gao sink -loss 2.3141 -bf16 2.3139 step.jsonl
 tensor                                    kind        live   flushed  clipped  scale  floor     head  cosine  range
 blocks.12.mlp.experts.7.down_proj.grad    gradient    16.8M  4.3%     0%       26900  1.29e-03  2.0x  0.9993  fits
 blocks.31.attn.qkv_proj.grad              gradient    25.2M  0.005%   0%       16000  1.76e-03  2.0x  0.9996  fits
@@ -2196,7 +2200,7 @@ Those numbers are invented. `com-30B-A3B-base` does not fit on the fleet by thre
 
 The compute for a run this size is affordable on spot capacity and not much else, and spot capacity is taken back on a schedule nobody here sets. So the run is going to be interrupted, repeatedly, and the only decision anyone gets to make about it is how often it checkpoints. That decision is not a preference. Checkpoint too rarely and every preemption throws away hours of gradient. Checkpoint too often and the run spends its life writing to disk instead of training. Both mistakes look identical from the outside, which is a slow run, and both get argued about instead of computed.
 
-Daly's first order result settles it: the interval is the square root of twice the checkpoint cost times the mean time between interruptions. `gao hieu spot` is that formula plus the two things it does not tell you.
+Daly's first order result settles it: the interval is the square root of twice the checkpoint cost times the mean time between interruptions. `gao efficiency spot` is that formula plus the two things it does not tell you.
 
 ```
 checkpoint  427 GB at 14 bytes a parameter, 2 minutes to write
@@ -2218,10 +2222,10 @@ The last line is the retention budget against real disk. The fleet has 467 GB fr
 
 ### Getting back in once the host is gone
 
-Retention says where the checkpoint is. It does not say that anybody has ever started from it, and those are different claims. The milestone item is the second one and it is written in the negative for a reason: resume tested from a checkpoint pulled back from the fleet, not only from one sitting on the training host. A resume tested on the machine that wrote the checkpoint reads it out of the page cache, never crosses a network, never checks it against its digest, and reads it back at exactly the rank count that wrote it. All four of those are paths that do not run on the day it matters, because on that day the host has been taken back and the only copy left is the one that streamed off it. `gao keo` reads a restart drill.
+Retention says where the checkpoint is. It does not say that anybody has ever started from it, and those are different claims. The milestone item is the second one and it is written in the negative for a reason: resume tested from a checkpoint pulled back from the fleet, not only from one sitting on the training host. A resume tested on the machine that wrote the checkpoint reads it out of the page cache, never crosses a network, never checks it against its digest, and reads it back at exactly the rank count that wrote it. All four of those are paths that do not run on the day it matters, because on that day the host has been taken back and the only copy left is the one that streamed off it. `gao pull` reads a restart drill.
 
 ```
-$ gao keo resumes.jsonl
+$ gao pull resumes.jsonl
 step   from   source                     size      pull      ranks     provision  load    restart  of interval  drift    digest
 24000  fleet  server3                    104.3 GB  12 MB/s   32 of 64  18m        10m40s  2h58m    148%         +0.0016  ok
 41000  store  open-index/com-8B-cpt-gao  104.3 GB  238 MB/s  64 of 64  10m        10m40s  28m8s    23%          +0.0009  ok
@@ -2244,12 +2248,12 @@ Those numbers are invented. No arm of S7 has run, and the compute for the three 
 
 ## Deciding what a loss spike means before there is a curve to argue about
 
-A pretraining loss curve spikes. At this scale that is an ordinary event rather than a rare one, and it forces the same decision every time: keep training, or stop and rewind to the last checkpoint and throw away everything since. The decision usually gets made at three in the morning by whoever happens to be watching, against a chart, with the run burning money while they think about it. Written down first it costs nothing, so it is written down first. `gao vot` is the protocol: what counts as a spike, how long a run gets to come back before it is a divergence rather than a spike, what the rewind would cost, and which logs cannot answer any of that.
+A pretraining loss curve spikes. At this scale that is an ordinary event rather than a rare one, and it forces the same decision every time: keep training, or stop and rewind to the last checkpoint and throw away everything since. The decision usually gets made at three in the morning by whoever happens to be watching, against a chart, with the run burning money while they think about it. Written down first it costs nothing, so it is written down first. `gao spike` is the protocol: what counts as a spike, how long a run gets to come back before it is a divergence rather than a spike, what the rewind would cost, and which logs cannot answer any of that.
 
 A spike is a step that clears a band, and the band is the interesting part. Ten percent over the trailing median alone reports the clean run's own noise, because early in training the curve falls faster than ten percent per hundred steps and every ordinary step is above the median behind it. Three and a half times the scatter alone reports nothing once the model has fit and the scatter has collapsed. The band is whichever of the two is higher over the trailing hundred rows, so both have to be cleared at once, and one excursion is one finding rather than one per row it stays out for.
 
 ```
-$ gao vot -run vot-len -total 4000 -checkpoint 200 vot/testdata/vot-len.jsonl
+$ gao spike -run vot-len -total 4000 -checkpoint 200 vot/testdata/vot-len.jsonl
 vot-len, 400 rows from step 0 to step 3,990, every 10 steps.
 median loss 1.3904, scatter 0.3398, band 10% over the trailing 100 rows and 3.5 times the scatter, checkpoint every 200 steps.
 
@@ -2272,7 +2276,7 @@ They earned their place immediately. The scatter multiplier was six when it was 
 The better argument came out of a run nobody planned as an argument. `vot-nhieu` makes the same mistake five times over forty thousand steps, and by then the model has memorized seven kilobytes of text and the loss has collapsed to about a twentieth of a nat, so a band that is a fraction of the median is a fraction of nearly nothing and a hundred and two excursions clear it. Three of those hundred and two are the blowups the learning rate caused. Sorted by loss they do not come out on top. Sorted by gradient norm they are the top three in the run, with clear air under them. That is the whole case for keeping the gradient norm on the report, and for treating a log that does not carry one as a log that cannot answer the next question rather than as a log with a column missing.
 
 ```
-$ gao vot -run vot-nhieu -total 40000 -checkpoint 200 -top 3 vot/testdata/vot-nhieu.jsonl
+$ gao spike -run vot-nhieu -total 40000 -checkpoint 200 -top 3 vot/testdata/vot-nhieu.jsonl
 vot-nhieu, 4000 rows from step 0 to step 39,990, every 10 steps.
 median loss 0.0657, scatter 0.0492, band 10% over the trailing 100 rows and 3.5 times the scatter, checkpoint every 200 steps.
 
@@ -2304,7 +2308,7 @@ What it costs is compression. Pages from one host share their navigation, their 
 The catch is that a stream stops being a stream. A shard cannot be sorted until every record for it is in hand, so the writer holds the shard's records in memory, orders them, and only then compresses. At the target of 512 MB compressed that is around 1.7 GB of text resident, on a fleet whose smallest box has 6.2 GB in total and wants all of its cores busy. That is a real cost against a saving nobody has measured, which is the shape of decision this project tries not to make by preference.
 
 ```
-$ gao kho order -text 1200000000000 readings.jsonl
+$ gao store order -text 1200000000000 readings.jsonl
 measured  3 shards   on gamingpc and server3
 saved     7.8%       on the middle shard, against a floor of 3%
 ratio     3.29 to 1  sorted by host, which is what the disk budget gets written against
@@ -2327,12 +2331,12 @@ The last line is why any of it matters beyond a few percent of download size. Th
 
 A release ships more than one artifact. There is the educational shard, the legal shard, the ten billion token cut for somebody with one card, each with its own repo and its own dataset card, because a person who wants the legal text should not have to download a terabyte to find it. The obvious way to build one is to select the rows and write them out again, and that is what most corpora do.
 
-The reason not to is not the disk, though the arithmetic is bad enough on its own. It is that a copy is a second place a document lives. When a takedown arrives, `gao kho remove` rewrites the shard that holds the document and seals a new snapshot carrying a tombstone, because snapshots are immutable and a removal is a new one rather than an edit to an old one. A copy does not hear about that. The document stays published in the slice, under our name, after somebody has been told it was removed, and nothing in the system knows.
+The reason not to is not the disk, though the arithmetic is bad enough on its own. It is that a copy is a second place a document lives. When a takedown arrives, `gao store remove` rewrites the shard that holds the document and seals a new snapshot carrying a tombstone, because snapshots are immutable and a removal is a new one rather than an edit to an old one. A copy does not hear about that. The document stays published in the slice, under our name, after somebody has been told it was removed, and nothing in the system knows.
 
 So a slice holds no bytes. `lát` is a slice, and `lat` records which of the parent's shards a slice draws from, how much of each, and the predicate that selected it. Reading the slice is reading the parent's Parquet with the predicate applied, which is one line against the Hub, and there is only ever one copy of a row.
 
 ```
-$ gao lat -snapshot snapshots/gao-v1.0 slices/gao-edu slices/gao-legal slices/gao-10B
+$ gao slice -snapshot snapshots/gao-v1.0 slices/gao-edu slices/gao-legal slices/gao-10B
 slice      repo                   shards  documents  share  text     state
 gao-edu    vietnamese-web-text    774     31734000   7.7%   76.2 GB  a view over gao-v1.0
 gao-legal  vietnamese-legal-text  774     7275600    1.8%   17.5 GB  a view over gao-v1.0
@@ -2346,7 +2350,7 @@ Every slice is a view over exactly the snapshot it names, and every one goes to 
 What a view costs is that it can go stale, and the whole design is arranged so that going stale is loud. A slice pins the parent by manifest digest rather than by name, so a snapshot resealed under the same name is caught rather than followed. Pass the head of the lineage and the removal shows up as what it is.
 
 ```
-$ gao lat -snapshot snapshots/gao-v1.0 -head snapshots/gao-v1.1 slices/gao-edu
+$ gao slice -snapshot snapshots/gao-v1.0 -head snapshots/gao-v1.1 slices/gao-edu
 gao-edu:
   lat: stale slice: gao-edu is a view over gao-v1.0, which gao-v1.1 has superseded carrying 2 tombstones, so re-derive it before it is published again
 ```
@@ -2369,7 +2373,7 @@ Two counts are refused rather than added. Counts from two tokenizers, since two 
 Two ratios say whether a column counted what it says it counted. Vietnamese in UTF-8 spends two bytes on every vowel carrying a tone mark, so a row storing about one byte a character counted the bytes of something that was not Vietnamese. And every tokenizer measured for this project spends between one and a half and two and a half tokens on a syllable, so a row outside one to three came from a tokenizer other than the one it names, whatever it names.
 
 ```
-$ gao cong counts.jsonl
+$ gao total counts.jsonl
 source             documents  bytes     characters  syllables  tokens  share
 hplt-v3            238M       210.0 GB  157.0B      45.8B      87.3B   33.9%
 gao-crawl-2026-09  412M       186.0 GB  139.0B      40.5B      77.2B   30.0%
@@ -2406,7 +2410,7 @@ The last two lines are the point of the whole package. The claim in this README 
 The measurement comes out of the Parquet footers rather than off the data. A footer records the compressed and uncompressed size of every column chunk in every row group, which is exactly what both predictions are about, so weighing a release means reading a few kilobytes at the end of each shard instead of the shard. That is the difference between a check that runs on every release and a check nobody runs: `server1` has 110.4 GB free and a release it would be weighing is four times that, so a tool that has to read the corpus to measure the corpus can only run on the box that happens to be holding it. The report prints what it read next to what it weighed, so the claim is on the page rather than in the commit message.
 
 ```
-$ gao goi data/snapshot=gao-v1.0/file=*/part-00000.parquet
+$ gao pack data/snapshot=gao-v1.0/file=*/part-00000.parquet
 column                                  stored    uncompressed  of release
 text                                    10.6 MB   67.9 MB       96.6%
 doc_id                                  169.8 kB  169.8 kB      1.5%
@@ -2450,10 +2454,10 @@ Shard size is reported instead. The store writes 512 MB shards and a release ful
 
 The continued pretraining slice compares three arms on the same base model and the same token budget, changing only which corpus they read: gao, CulturaX, and CulturaX put through gao's own filters. The person running that comparison is the person who wants gao to win. Nobody involved is dishonest and it does not matter, because the ways this goes wrong are not lies. They are a benchmark added because it looked interesting after the numbers came in, a benchmark dropped because the run did not finish, a shot count changed to match a paper, a prompt reworded between arms. Each of those is defensible on its own and together they are a comparison that says whatever its author wanted.
 
-So the harness is fixed first and hashed. `chốt sổ` is to close the ledger. Everything that decides what the comparison says is written down before any arm is trained: seventeen benchmarks, the prompt for each one verbatim, the shot count and the seed the shots are drawn with, the metric, and the rule for getting an answer out of the output. `gao chot harness` prints it.
+So the harness is fixed first and hashed. `chốt sổ` is to close the ledger. Everything that decides what the comparison says is written down before any arm is trained: seventeen benchmarks, the prompt for each one verbatim, the shot count and the seed the shots are drawn with, the metric, and the rule for getting an answer out of the output. `gao seal harness` prints it.
 
 ```
-$ gao chot harness
+$ gao seal harness
 harness 2026-08-07, closed against roster 2026-08-07
 e4d71047c881575bd9d77f37c06dc99beed2596e1840f689b8dea6d22b030a57
 
@@ -2490,7 +2494,7 @@ A result on an unpinned benchmark is a number nobody else can reproduce, so thes
 
 The digest is the enforcement. Every published result carries the digest of the harness it was scored under, so two result sets whose digests differ stop claiming to be comparable without anybody having to remember why. Changing the prompt, the shot count, the seed, the metric, the extraction rule, or the set of arms or tasks all move it. Improving a note does not, deliberately, because punishing somebody for writing a clearer explanation teaches them to stop writing explanations. The canonical form the digest is taken over length-prefixes every value, so no prompt can be written to look like the start of the next field and no two different harnesses hash the same.
 
-`gao chot audit results.json` puts the results next to the harness and exits non-zero when they disagree. It fails a missing number exactly as loudly as an extra one. A benchmark that arrives with the results arrived after them, and a benchmark that was on the harness before the run does not come off it after. The second is the one that actually happens, it is committed by accident, and it is easy to explain away as a run that did not finish. A gap in the table is printed as a gap rather than as a zero, since on accuracy a zero is the worst score there is rather than no score, and an arm that did not report would read as an arm that failed.
+`gao seal audit results.json` puts the results next to the harness and exits non-zero when they disagree. It fails a missing number exactly as loudly as an extra one. A benchmark that arrives with the results arrived after them, and a benchmark that was on the harness before the run does not come off it after. The second is the one that actually happens, it is committed by accident, and it is easy to explain away as a run that did not finish. A gap in the table is printed as a gap rather than as a zero, since on accuracy a zero is the worst score there is rather than no score, and an arm that did not report would read as an arm that failed.
 
 Which numbers are best is a separate question from which are present, so the audit prints the winner per task and the diacritic error rate runs the other way, the one metric here where smaller wins. Getting that backwards hands the comparison to whichever arm is worst at Vietnamese.
 
@@ -2505,7 +2509,7 @@ The harness above fixes what the three continued pretraining arms are compared o
 They are not, and the reason is the six in the middle. A model that reads translated English scores well on a translated benchmark, and translated English is the exact register this project spends a milestone trying not to teach a model to write. An average across all twenty four pays for that failure in the same units it pays for the thing it wants, and a single number is the form in which nobody can see it happening.
 
 ```
-$ gao bang board scores.jsonl
+$ gao board board scores.jsonl
 arm                         benchmarks  scores  against the baseline  decided
 written in Vietnamese       16          73.9    3.3 ahead             15 of 16
 translated into Vietnamese  6           64.2    7.4 ahead             6 of 6
@@ -2533,7 +2537,7 @@ No model has been trained, so the scores in that block are invented. What is rea
 The second separation is the awkward one. Six of the twenty four benchmarks are gao's own, because nothing measured those capabilities in Vietnamese before, and they are also the six whose design this project chose. So the margin over them and the margin over everybody else's are two numbers rather than one, and the board says so out loud rather than in a footnote at the bottom of a table.
 
 ```
-$ gao bang rows scores.jsonl
+$ gao board rows scores.jsonl
 benchmark       arm                         built by   score  baseline  margin     runs  spread  decided
 vi-cloze        written in Vietnamese       gao        63.7   60.2      3.5 ahead  3     0.8     yes
 vi-diacritic    written in Vietnamese       gao        96.4   94.8      1.6 ahead  3     0.2     yes
@@ -2551,12 +2555,12 @@ The command exits 1 when the scores are not a scoreboard at all, which covers a 
 
 ## The win rate, and the four numbers that decide what it is a win at
 
-Every benchmark above is a number a machine took. The last number in a release note is not: it is two answers put side by side, a person picking one, and a percentage underneath. It is the number readers trust most, because a person read it, and it is the easiest number in the whole project to produce by accident. Four things will hand you a clean, significant, reproducible win over an identical pair of systems, and a rater who is paying attention cannot see any of them from inside the task. `gao so` reads a finished evaluation back. So is to compare.
+Every benchmark above is a number a machine took. The last number in a release note is not: it is two answers put side by side, a person picking one, and a percentage underneath. It is the number readers trust most, because a person read it, and it is the easiest number in the whole project to produce by accident. Four things will hand you a clean, significant, reproducible win over an identical pair of systems, and a rater who is paying attention cannot see any of them from inside the task. `gao compare` reads a finished evaluation back. So is to compare.
 
 The order the report is printed in is the argument. The win rate goes last, under everything that could have produced it, because each of those produces a number that looks exactly like a result.
 
 ```
-$ gao so pairs.jsonl
+$ gao compare pairs.jsonl
 360 judgements over 300 items, read by 8 people.
 the answer shown first won            45.0%  of 360  (line 55.0%)
 com-8b-sft-native was shown first in  50.0%  of 360  (line 55.0%)
@@ -2591,7 +2595,7 @@ Exit 1 is a file nobody can read as an evaluation: a third system in a two syste
 
 ## What this project said would happen, before it happened
 
-A specification made of decisions cannot be wrong about anything. Every line in it is a plan, and a plan that meets the world gets quietly edited into the plan that would have worked, which is the same document with the risk taken out of it after the fact. So fifty eight predictions were written across the spec before a byte was ingested, each one a number or a comparison that some later measurement either lands inside or does not, and `gao doan` is where they live in code. Đoán is to guess.
+A specification made of decisions cannot be wrong about anything. Every line in it is a plan, and a plan that meets the world gets quietly edited into the plan that would have worked, which is the same document with the risk taken out of it after the fact. So fifty eight predictions were written across the spec before a byte was ingested, each one a number or a comparison that some later measurement either lands inside or does not, and `gao predict` is where they live in code. Đoán is to guess.
 
 Being wrong is not what the register guards against. Two thirds right is the honest target, and a register that comes back entirely right means the predictions were written to be met rather than to be tested, which is both the more common failure and the harder one to see from outside. What it guards against is the three ways a register launders a bad forecast, none of which need anybody to lie.
 
@@ -2602,7 +2606,7 @@ The second is dropping the prediction that missed. A prediction leaves the regis
 The third is scoring the register early, while the cheap predictions have landed and the expensive ones have not. The rate is not quoted as a reading on the spec until half the register has resolved, and until then the report says so in place of a number.
 
 ```
-$ gao doan
+$ gao predict
 slice  title                           predictions  open  right  wrong  pulled  rate
 S0     Foundations and law             .            0     0      0      0       .
 S1     Hugging Face ingestion          1            1     0      0      0       .
@@ -2623,24 +2627,24 @@ That table is the whole point and it is entirely empty, which is what a register
 Results arrive as a file rather than as an edit, and the register in `doan/register.go` still says `mo` for every row. One result has been measured so far and it is checked in as `doan/testdata/results.jsonl`, which is the file below and the reason the run below is a real one.
 
 ```
-$ gao doan -results doan/testdata/results.jsonl | tail -6
+$ gao predict -results doan/testdata/results.jsonl | tail -6
 1 prediction came back wrong:
   P07-5: measured Gemma-3 fertility on gao is 3.0 characters per token give or take 0.15
-    3.28 characters per token over 3228869043 characters and 983022920 tokens, outside the band on the high side, measured by gao gat hf -source glotcc -decode -tokenizer over 500000 documents of vie-Latn_0 on server3
+    3.28 characters per token over 3228869043 characters and 983022920 tokens, outside the band on the high side, measured by gao harvest hf -source glotcc -decode -tokenizer over 500000 documents of vie-Latn_0 on server3
 
 gao-predictions holds 58 predictions across 9 of the 10 slices in the build plan, and its digest is ee4b35363bf4. 1 prediction resolved so far, 0 right and 1 wrong, which is under the half the register needs before its rate says anything except which measurements were cheap to make.
 ```
 
-That is the first prediction this project has been wrong about, and it is the one whose being wrong cost the most: 3.28 rather than 3.0 characters per token is 91 GB of extracted text the disk budget had not planned for. It is scored off the ingest count over half a million documents, and `gao dem gates` got 3.29 on a separate sample through a different path, so the reading is the text rather than the run.
+That is the first prediction this project has been wrong about, and it is the one whose being wrong cost the most: 3.28 rather than 3.0 characters per token is 91 GB of extracted text the disk budget had not planned for. It is scored off the ingest count over half a million documents, and `gao count gates` got 3.29 on a separate sample through a different path, so the reading is the text rather than the run.
 
 The misses print in full whatever else was asked for, with the reading, the command that produced it and the box it ran on, because a register that reports its hits and counts its misses is a scoreboard. The box is checked against the fleet rather than taken on trust, so a number that came off somewhere nobody can find is refused with the rest, and the run exits non-zero when anything was refused. The refusal worth knowing about is a result scored against a claim the register does not hold, which happens when somebody edits a prediction after the number lands: taking it would record a result against a claim that no longer exists, so it is dropped with the reason and the row stays open.
 
 ## Where the corpus lives
 
-gao runs on four real machines with 524 GB of free disk between them, and the corpus is 1279 GB of extracted text, 618 GB compressed. It does not fit, and it does not fit by enough that no amount of tidying changes the answer. `gao box` prints the arithmetic.
+gao runs on four real machines with 524 GB of free disk between them, and the corpus is 1279 GB of extracted text, 618 GB compressed. It does not fit, and it does not fit by enough that no amount of tidying changes the answer. `gao fleet` prints the arithmetic.
 
 ```
-$ gao box
+$ gao fleet
 fleet as measured on 2026-08-19
 
 box       os       cores  memory    free disk  gpu
@@ -2667,14 +2671,14 @@ server1   169.0 GB  329     4
 fleet                       44
 ```
 
-The roles and the store line are cut from that block for length. Two things in it are measurements rather than choices, and both of them moved. The inventory carries the date it was taken because the first one, fifteen days earlier, had every free disk number wrong: `server1` was up 70 GB, `server3` down 26.6, `server2` up 11.8, `gamingpc` down 32. `gao box check` run on a box says whether the record still describes it. And the compression ratio was 3.0 and assumed, with a note on the constant saying the measured ratio would replace it and that anything under 2.5 moves the shard count. It came in at 2.07, off `server3` decoding 4.2 GB of GlotCC text into 2.0 GB of Parquet, and characters per token came in at 3.28 against an assumed 3.0 on the same run, so the corpus is 618 GB in the store rather than 396 and the release is about 1200 shards rather than 750. Every one of those numbers followed a measurement rather than the other way around.
+The roles and the store line are cut from that block for length. Two things in it are measurements rather than choices, and both of them moved. The inventory carries the date it was taken because the first one, fifteen days earlier, had every free disk number wrong: `server1` was up 70 GB, `server3` down 26.6, `server2` up 11.8, `gamingpc` down 32. `gao fleet check` run on a box says whether the record still describes it. And the compression ratio was 3.0 and assumed, with a note on the constant saying the measured ratio would replace it and that anything under 2.5 moves the shard count. It came in at 2.07, off `server3` decoding 4.2 GB of GlotCC text into 2.0 GB of Parquet, and characters per token came in at 3.28 against an assumed 3.0 on the same run, so the corpus is 618 GB in the store rather than 396 and the release is about 1200 shards rather than 750. Every one of those numbers followed a measurement rather than the other way around.
 
 `server3` crossing the reserve is the change with teeth, and it has now crossed it twice. Going under cost the fleet eight of its forty four workers and took the box that is meant to be the box of record for pipeline throughput out of the pipeline, and nobody decided it: the disk filled with something else between two inventories. Coming back gave all eight of them to it again a day later. The rule is arithmetic rather than a sentence somebody has to remember, so the box left the schedule the moment the number was taken and rejoined it the moment the next one was, with nothing edited either time.
 
-That is also the reason the third inventory exists. `gao box check` was run on all four boxes and three of them matched the record to within a gigabyte, while `server3` said this:
+That is also the reason the third inventory exists. `gao fleet check` was run on all four boxes and three of them matched the record to within a gigabyte, while `server3` said this:
 
 ```
-$ gao box check -dir /root/gao-ingest
+$ gao fleet check -dir /root/gao-ingest
 box          server3
 measured on  /root/gao-ingest  43.4 GB
 recorded     2026-08-18        17.7 GB
@@ -2691,7 +2695,7 @@ The reading was taken with a GlotCC ingest running, so it is what the box has fr
 
 So the store of record is off-box and the fleet holds a working set. Off-box rather than more disk, because the corpus outlives the machines and disks bought for a rented box cannot be moved, cannot be shared, and are gone when the box is. Object storage rather than a network filesystem, because every access here is a whole shard read or written by name from several machines at once, with no rename, no partial update, and no locking, which is object storage exactly.
 
-Off-box means dataset repos on the Hugging Face Hub, holding Parquet, under the [open-index](https://huggingface.co/open-index) organization. A published Vietnamese corpus has to be on the Hub for anybody to use it, so a bucket alongside it would mean paying to store the same data twice and paying egress to move it between them. Parquet under a snapshot prefix is queryable where it sits, so a question about a column costs one column instead of a download, and the same path serves the fleet, the release, and the reader. `gao kho datasets` prints the repos, what each one holds, and the query that reads it.
+Off-box means dataset repos on the Hugging Face Hub, holding Parquet, under the [open-index](https://huggingface.co/open-index) organization. A published Vietnamese corpus has to be on the Hub for anybody to use it, so a bucket alongside it would mean paying to store the same data twice and paying egress to move it between them. Parquet under a snapshot prefix is queryable where it sits, so a question about a column costs one column instead of a download, and the same path serves the fleet, the release, and the reader. `gao store datasets` prints the repos, what each one holds, and the query that reads it.
 
 ```
 read_parquet('hf://datasets/open-index/vietnamese-legal-text/data/snapshot=gao-v1.0/*.parquet')
@@ -2703,7 +2707,7 @@ Offload is what makes the arithmetic work. A worker writes one shard, pushes it,
 
 What a worker pushes is Parquet, which is the second of two storage formats and the only one anybody outside the project sees. Moving a shard through a stage uses segments, JSONL in zstd frames, because six programs append to a shard as it is built and a schema that is one version older still reads. A release is the opposite case: it is read far more often than it is written, and almost every question asked of a corpus is a question about one column. How many restricted documents are there, what is the quality distribution, which hosts dominate. Parquet answers those by reading one column of one row group instead of every byte of every document, and the same file that answers them on the Hub is the file the trainer streams.
 
-Ingestion writes those files as it goes. `gao gat hf -out DIR` decodes a source and writes the documents the contract admits under `DIR`, closing a part when it reaches the 512 MB shard target or when it has taken in 1.06 GB of text, whichever comes first. Getting that rule right took three runs against three real sources and it is worth the paragraph, because every version of it that was wrong was wrong in a way that only shows up in the store.
+Ingestion writes those files as it goes. `gao harvest hf -out DIR` decodes a source and writes the documents the contract admits under `DIR`, closing a part when it reaches the 512 MB shard target or when it has taken in 1.06 GB of text, whichever comes first. Getting that rule right took three runs against three real sources and it is worth the paragraph, because every version of it that was wrong was wrong in a way that only shows up in the store.
 
 It rolled on text alone to begin with, on the reasoning that a Parquet writer buffers a row group and compresses it at the boundary, so a file does not know its own size until it closes and a writer waiting for one would be waiting on a number that arrives after the decision was needed. The text limit was the shard target multiplied by the compression ratio, and the first run caught that the ratio was assumed: `server3` rolled at 1.5 GB and wrote 0.7 GB parts against a 0.5 GB target, which is what 0.5 GB costs at 3.0 and not at the measured 2.07. Setting the limit to 1.06 GB fixed GlotCC and did nothing for FinePDFs, whose first published part came out at 988 MB from the same 1.06 GB of text, because 2.07 is a GlotCC number and FinePDFs compresses at 1.07.
 
@@ -2711,20 +2715,20 @@ The half of the original reasoning that was wrong is that a file does not know i
 
 FinePDFs on `gamingpc` with all of that in place published eleven parts between 494.3 and 524.9 MB against the 512 MB target, off the same input file whose first part came out at 988.5 MB under the text rule alone. The two sources that were already near the target stay there: fineweb2 on `server1` published parts of 485.3 to 501.0 MB and GlotCC on `server3` 487.2 to 518.7 MB, both of them under the text rule, which is what a source compressing at the assumed ratio is supposed to do. Text stays as the second half of the rule, because a source that compresses better than any ratio would otherwise write a part the size of its input file. One roll per input file, closed before the ledger records that file, so a run that dies mid file leaves no ledger entry and a directory the restart writes over rather than beside.
 
-Adding `-push` sends each part to the store as it closes and deletes the local copy before the next one opens, which is the offload claim stopping being arithmetic and becoming a thing the program does. A part that cannot be pushed fails the file it came from, because a run that carried on would be filling the disk it was supposed to be emptying, and a part that failed to push is the one copy that has to stay. `gao kho push` does the same thing for one file, which is what gets a part off a disk somebody is about to reclaim after an interrupted run, and what puts the files that are not parts up there. Running the same command again after a box reboots is cheap rather than a second upload: the path inside the repo is a function of the source revision, the input file, and the part number, so a part that is already there is recognized by one request, and the Hub keys the bytes themselves by their digest, so even a part whose upload finished and whose commit did not is committed without sending the gigabyte a second time. Nothing about that resume is remembered locally, which is deliberate. A local record of what has been pushed is a second source of truth and it is wrong from the moment a push succeeds and the process dies before the write.
+Adding `-push` sends each part to the store as it closes and deletes the local copy before the next one opens, which is the offload claim stopping being arithmetic and becoming a thing the program does. A part that cannot be pushed fails the file it came from, because a run that carried on would be filling the disk it was supposed to be emptying, and a part that failed to push is the one copy that has to stay. `gao store push` does the same thing for one file, which is what gets a part off a disk somebody is about to reclaim after an interrupted run, and what puts the files that are not parts up there. Running the same command again after a box reboots is cheap rather than a second upload: the path inside the repo is a function of the source revision, the input file, and the part number, so a part that is already there is recognized by one request, and the Hub keys the bytes themselves by their digest, so even a part whose upload finished and whose commit did not is committed without sending the gigabyte a second time. Nothing about that resume is remembered locally, which is deliberate. A local record of what has been pushed is a second source of truth and it is wrong from the moment a push succeeds and the process dies before the write.
 
-Every repo carries a card, and the card is generated. `gao kho card` renders one from the snapshot manifest: the counts, the breakdown by source and by reject reason, the stages that produced the snapshot and the versions they ran at, the merkle root, and who signed it. A release pushes it with `-push`, and a card that already says the same thing is left alone rather than committed again. The reason to generate it is that a card written by hand describes the release before last. It says forty billion tokens because that was true in March, it lists four sources because a fifth was added after somebody last opened the file, and nothing about reading it tells you which of its numbers have gone stale. A generated card that disagrees with the data is a bug with a test to write rather than an oversight nobody can see. What it does not try to generate is the argument for why the corpus is built this way, which lives here and is linked from the card rather than restated in it.
+Every repo carries a card, and the card is generated. `gao store card` renders one from the snapshot manifest: the counts, the breakdown by source and by reject reason, the stages that produced the snapshot and the versions they ran at, the merkle root, and who signed it. A release pushes it with `-push`, and a card that already says the same thing is left alone rather than committed again. The reason to generate it is that a card written by hand describes the release before last. It says forty billion tokens because that was true in March, it lists four sources because a fifth was added after somebody last opened the file, and nothing about reading it tells you which of its numbers have gone stale. A generated card that disagrees with the data is a bug with a test to write rather than an oversight nobody can see. What it does not try to generate is the argument for why the corpus is built this way, which lives here and is linked from the card rather than restated in it.
 
-The columns are the contract, so they are written out in `kho/parquet.go` rather than reflected off the record type, with one test pinning the list and another asserting that every field of the record has a column. A rename that a reader would notice fails a test rather than shipping as a silent break. A repo that withholds text withholds it in the schema: there is no `text` column at all rather than an empty one, so a query that selects it fails at plan time instead of returning blanks that read like documents with nothing in them. Every file also carries the snapshot, the stage, and the box that wrote it in its own footer, so a shard somebody downloaded a year ago still says where it came from without the manifest next to it. `gao kho columns` prints the contract, and given a file prints what that file actually holds.
+The columns are the contract, so they are written out in `kho/parquet.go` rather than reflected off the record type, with one test pinning the list and another asserting that every field of the record has a column. A rename that a reader would notice fails a test rather than shipping as a silent break. A repo that withholds text withholds it in the schema: there is no `text` column at all rather than an empty one, so a query that selects it fails at plan time instead of returning blanks that read like documents with nothing in them. Every file also carries the snapshot, the stage, and the box that wrote it in its own footer, so a shard somebody downloaded a year ago still says where it came from without the manifest next to it. `gao store columns` prints the contract, and given a file prints what that file actually holds.
 
-A column list is not the same as a schema somebody can use, so [SCHEMA.md](SCHEMA.md) is every column with its type, the stage that fills it, and one sentence about what it holds. It is generated from the type that writes the files, by `gao kho schema -md`, and a test fails when the file in the repository has fallen behind. Half of that is free and the other half is the part that matters: the names and the types are read off the writer and cannot drift, and the meanings are written by hand beside it, so a column added without a sentence explaining it fails the build rather than shipping as a header nobody outside this repository can interpret. The page also says the things a reader would otherwise have to infer from the data and get wrong. Nothing is nullable, so a field no stage filled in arrives as an empty string or a zero rather than as a null, which is a real trade and is stated rather than discovered. The spans in `pii_spans` are there at redaction levels 0 and 1 and gone at level 2, because publishing the offsets of what was removed alongside the text it was removed from hands most of it back.
+A column list is not the same as a schema somebody can use, so [SCHEMA.md](SCHEMA.md) is every column with its type, the stage that fills it, and one sentence about what it holds. It is generated from the type that writes the files, by `gao store schema -md`, and a test fails when the file in the repository has fallen behind. Half of that is free and the other half is the part that matters: the names and the types are read off the writer and cannot drift, and the meanings are written by hand beside it, so a column added without a sentence explaining it fails the build rather than shipping as a header nobody outside this repository can interpret. The page also says the things a reader would otherwise have to infer from the data and get wrong. Nothing is nullable, so a field no stage filled in arrives as an empty string or a zero rather than as a null, which is a real trade and is stated rather than discovered. The spans in `pii_spans` are there at redaction levels 0 and 1 and gone at level 2, because publishing the offsets of what was removed alongside the text it was removed from hands most of it back.
 
 ### What the run actually held
 
-The paragraph above is arithmetic, and the milestone does not gate on it. It gates on a measurement taken while the ingestion runs, because the arithmetic knows about shards in flight and knows nothing about a Parquet writer's row group buffer, a part sitting on disk waiting out an upload retry, a download resuming into a partial file, or whatever the operating system decided to keep in a temporary directory. That is the whole reason the ceiling is 90 GB and the prediction is 4.1: the gap is room for the things the model does not have terms for. `gao box peak` reads the watcher's trace back.
+The paragraph above is arithmetic, and the milestone does not gate on it. It gates on a measurement taken while the ingestion runs, because the arithmetic knows about shards in flight and knows nothing about a Parquet writer's row group buffer, a part sitting on disk waiting out an upload retry, a download resuming into a partial file, or whatever the operating system decided to keep in a temporary directory. That is the whole reason the ceiling is 90 GB and the prediction is 4.1: the gap is room for the things the model does not have terms for. `gao fleet peak` reads the watcher's trace back.
 
 ```
-$ gao box peak -run glotcc -ran 56m33s disk.jsonl
+$ gao fleet peak -run glotcc -ran 56m33s disk.jsonl
 run          glotcc        on server3, 56m33s of wall clock
 peak         0.5 GB        at 40m40s, during push
 ceiling      90.0 GB       89.5 GB of it left
@@ -2755,7 +2759,7 @@ The other half of the reading is the drift, and it is the number that travels. P
 Here is the run that made the drift line worth having, and it is the same command on the box at the other end of the fleet, after a complete FinePDFs ingest:
 
 ```
-$ gao box peak -ran 2h46m25s disk.jsonl
+$ gao fleet peak -ran 2h46m25s disk.jsonl
 run          ingest         on gamingpc, 2h46m25s of wall clock
 peak         0.6 GB         at 2h30m50s, during push
 ceiling      90.0 GB        89.4 GB of it left
@@ -2770,14 +2774,14 @@ gamingpc peaked at 0.6 GB of a 90.0 GB ceiling during push, 0.6 times the 1.0 GB
 
 That is three files, 13.0 GB fetched, 1,218,257 documents, 31.1 GB of text into 26.9 GB of Parquet, 54 parts written and pushed and deleted, and a thousand readings with no gap wider than the ten seconds between them. It passes.
 
-It did not pass the first time it was run. The prediction line said 32.8 GB and the drift line said 0.0x, and underneath it was a fault claiming this had measured a smaller run than the one the ceiling is about, which is a strange thing to say about a run that ingested a whole source. The prediction was `PeakBytes`, which prices a box running one worker per hardware thread, and `gamingpc` has thirty two of them. `gao gat hf` ingests with one. So the command was dividing a measurement of one worker by a prediction for thirty two and reporting the answer as a fact about the pipeline.
+It did not pass the first time it was run. The prediction line said 32.8 GB and the drift line said 0.0x, and underneath it was a fault claiming this had measured a smaller run than the one the ceiling is about, which is a strange thing to say about a run that ingested a whole source. The prediction was `PeakBytes`, which prices a box running one worker per hardware thread, and `gamingpc` has thirty two of them. `gao harvest hf` ingests with one. So the command was dividing a measurement of one worker by a prediction for thirty two and reporting the answer as a fact about the pipeline.
 
 The worker count was in the trace the whole time. Every sample carries it, and the command refuses a trace whose samples leave it out, on the stated grounds that peak disk is a number per worker rather than a number per box. It then threw the number away and used the box. That is the kind of defect that survives any amount of reading, because the code is self consistent and the sentence in the refusal is correct, and it dies the first time somebody runs the thing on a machine whose thread count is not the number of workers. Both numbers are printed now, the prediction against the workers the run had and the plan's allowance beside it, and a single worker stage on a thirty two thread box reads as what it is rather than as a failure.
 
 The third box is the long one, and it is the reading that changed the rule:
 
 ```
-$ gao box peak -run "fineweb2 ingest" -ran 10h10m27s disk.jsonl
+$ gao fleet peak -run "fineweb2 ingest" -ran 10h10m27s disk.jsonl
 run          fineweb2 ingest  on server1, 10h10m27s of wall clock
 peak         0.5 GB           at 8m10s, during push
 ceiling      90.0 GB          89.5 GB of it left
@@ -2807,10 +2811,10 @@ The other refusals are about how the trace was taken rather than about what it s
 
 ## What each stage runs at, and on which box
 
-The milestone item reads like bookkeeping: publish throughput per stage with the box label attached to every number. It is on the list because a rate without a box is not a rate. Normalization has twenty four cores under it on `gamingpc` and four on `server1`, so the same stage differs by six times between two machines in the same rack, and a plan built from whichever box happened to be free that afternoon is wrong in both directions at once. It says the pipeline is fast enough when it is not, or it books three weeks of a machine that would have taken four days. `gao nhip` is the table with the label on every row.
+The milestone item reads like bookkeeping: publish throughput per stage with the box label attached to every number. It is on the list because a rate without a box is not a rate. Normalization has twenty four cores under it on `gamingpc` and four on `server1`, so the same stage differs by six times between two machines in the same rack, and a plan built from whichever box happened to be free that afternoon is wrong in both directions at once. It says the pipeline is fast enough when it is not, or it books three weeks of a machine that would have taken four days. `gao throughput` is the table with the label on every row.
 
 ```
-$ gao nhip stages.jsonl
+$ gao throughput stages.jsonl
 stage      box       workers  docs/s  per worker  read     scaling  peak rss  resident  hours
 dedup      server3   8        632     79.0        3 MB/s   88%      2.1 GB    16.8 GB   88
 filter     server3   8        914     114.2       4 MB/s   89%      1.3 GB    10.4 GB   61
@@ -2836,10 +2840,10 @@ Those numbers are invented. Nothing has run at this scale yet, and the point of 
 
 ## Whether the bytes leave faster than they arrive
 
-Everything above says a stage writes a file, pushes it, and deletes it, and that peak disk is therefore small no matter how large the corpus is. That is true of ingestion, where the input is a file already sitting in the store and a worker that falls behind simply takes longer. It is not automatically true of the crawl, which produces bytes at a rate nobody chose and cannot be asked to wait. If the pushing does not keep up with the writing then every other decision in this project is downstream of a disk that filled at three in the morning with nobody watching. `gao don fit` is that question as arithmetic.
+Everything above says a stage writes a file, pushes it, and deletes it, and that peak disk is therefore small no matter how large the corpus is. That is true of ingestion, where the input is a file already sitting in the store and a worker that falls behind simply takes longer. It is not automatically true of the crawl, which produces bytes at a rate nobody chose and cannot be asked to wait. If the pushing does not keep up with the writing then every other decision in this project is downstream of a disk that filled at three in the morning with nobody watching. `gao clear fit` is that question as arithmetic.
 
 ```
-$ gao don fit
+$ gao clear fit
 box      server1, 189.0 GB free, 20.0 GB reserved
 scratch  169.0 GB, and the crawl stops fetching at 135.2 GB
 fill     5.2 MB per second, at 200 fetches of 26.0 kB
@@ -2863,7 +2867,7 @@ The last line is the one worth carrying around. `server1` tolerates 7.2 hours of
 Every input can be argued with on the command line, and `-box server2` gets the answer the fleet was always going to give.
 
 ```
-$ gao don fit -box server2
+$ gao clear fit -box server2
 box      server2, 19.1 GB free, 20.0 GB reserved
 scratch  0 B, and the crawl stops fetching at 0 B
 fill     5.2 MB per second, at 200 fetches of 26.0 kB
@@ -2879,7 +2883,7 @@ the crawl does not start: one volume is 1.0 GB and the mark on server2 is 0 B, s
 
 `server3` answered the same way for one inventory and does not now. It has 43.7 GB free, 23.7 of it scratch, and it tolerates 61 minutes of the store being unreachable against `server1` at 7.2 hours. That is the same command reading the same rates off a box with a seventh of the room, and 61 minutes is a real answer rather than a refusal: it is long enough to survive a store hiccup and short enough that nobody should point a six week crawl at that box while `server1` exists.
 
-Arithmetic is a plan, and a plan is not evidence. A crawl that ran for six weeks either deleted only bytes the store had confirmed or it did not, and afterwards the two are indistinguishable from the disk, because in both cases the file is gone. The only place that difference survives is what was written down while it happened, so the rotation logs one line per file per step and `gao don read` folds it back up. Four states, in the order they happen: resident, pushed, verified, reclaimed. Reaching reclaimed without having been seen at verified is the fault the package was written to catch, and it is reported as the sentence a person needs rather than as a count, naming the file and how much crawl is now in a state nobody can resolve. Three others come with it: a verification with no upload behind it, which passed against whatever was already at that path, a file reported with two different hashes, which is the one case where the upload succeeded and the bytes are still wrong, and a file that went somewhere without recording where. The reader refuses nothing and returns everything, because a log with a fault in it is a log whose other lines are still the only record of what happened.
+Arithmetic is a plan, and a plan is not evidence. A crawl that ran for six weeks either deleted only bytes the store had confirmed or it did not, and afterwards the two are indistinguishable from the disk, because in both cases the file is gone. The only place that difference survives is what was written down while it happened, so the rotation logs one line per file per step and `gao clear read` folds it back up. Four states, in the order they happen: resident, pushed, verified, reclaimed. Reaching reclaimed without having been seen at verified is the fault the package was written to catch, and it is reported as the sentence a person needs rather than as a count, naming the file and how much crawl is now in a state nobody can resolve. Three others come with it: a verification with no upload behind it, which passed against whatever was already at that path, a file reported with two different hashes, which is the one case where the upload succeeded and the bytes are still wrong, and a file that went somewhere without recording where. The reader refuses nothing and returns everything, because a log with a fault in it is a log whose other lines are still the only record of what happened.
 
 ## Measuring a corpus that is not on the box
 
@@ -2896,7 +2900,7 @@ A pass over a few hundred parts gets interrupted, so it is resumable at the part
 Run against the GlotCC snapshot in the store, over a home connection:
 
 ```
-$ gao dem keys -dir keys/ glotcc-9ad140b6be3a
+$ gao count keys -dir keys/ glotcc-9ad140b6be3a
 reading glotcc-9ad140b6be3a out of open-index/vietnamese-source-text
      1/12  part-00000.parquet                                       126853 documents, 5.8 MB read so far
      2/12  part-00001.parquet                                       125846 documents, 11.7 MB read so far
@@ -2925,7 +2929,7 @@ Two numbers to take from that. The pass moved 69.1 MB to read the identities of 
 Then the matrix over what the three boxes had published by the middle of the day. FinePDFs is the whole source, all three of its pinned files. The other two are what had landed by then, 22 parts of FineWeb2 and the 12 that GlotCC's first three files came to, so the sizes are prefixes and the shares are about these documents rather than about the sources.
 
 ```
-$ gao dem overlap keys/*.keys
+$ gao count overlap keys/*.keys
 3 sources, 6776358 documents read, 6680520 of them different
 
 source                 documents  distinct  only here  repeats
@@ -2948,9 +2952,9 @@ The reason is in the identity rather than in the sources. A document's id is the
 Both questions are worth having and only one of them is answered here. The 1628 that did match are pages where the two extractors happened to agree, which is roughly what you would expect of short documents with nothing around the text to disagree about. The rest of the shared crawl is still in the corpus, twice, in two slightly different renderings, and finding it is the near duplicate pass rather than this one. Which is to say the exact matrix is not the cheap version of the overlap measurement. It is a different measurement that happens to be cheap, and reading it as the overlap number would have this project publish a corpus described as barely redundant when nobody has measured the redundancy that matters.
 
 ```
-gao dem keys                                # what the store holds, ready to measure
-gao dem keys glotcc-abc1234                 # read one snapshot's identities out of the store
-gao dem overlap keys/*.keys                 # the matrix, counted rather than sampled
+gao count keys                                # what the store holds, ready to measure
+gao count keys glotcc-abc1234                 # read one snapshot's identities out of the store
+gao count overlap keys/*.keys                 # the matrix, counted rather than sampled
 ```
 
 ## Checking a count somebody else has to believe
@@ -2984,7 +2988,7 @@ The check counts with the same two functions the ingest counted with. A verifier
 Level one has been run against a published snapshot. `glotcc-9ad140b6be3a` is the GlotCC ingest `server3` finished on 2026-08-18, twelve parts and 6.1 GB in the store, and this is the whole of it checked from a laptop against the `counts.json` the run wrote:
 
 ```
-$ gao dem verify -level counts -counts gao-ingest/ glotcc-9ad140b6be3a
+$ gao count verify -level counts -counts gao-ingest/ glotcc-9ad140b6be3a
 glotcc-9ad140b6be3a in open-index/vietnamese-source-text
   parts      12, 6.1 GB in the store
   level one  every part, 18.0 MB of columns over 1500000 documents, under a minute at 100 Mbit
@@ -3028,15 +3032,15 @@ The same check over the whole of FinePDFs, which is the one source that finished
 The first time it ran it moved 670.1 MB rather than 21.1, thirty eight times the 18.0 MB the line above it had just predicted. The window is why, and it is the kind of thing only a real part shows. A remote read fetches four megabytes when it has to go to the host, which is the right size for the text column, where a chunk is tens of megabytes and a window is thrown away half read only at the end of one. A shape column is four bytes per document, so its chunk is a couple of hundred kilobytes and a four megabyte window was fetching the whole neighborhood to read a page of it. On one real part of 511.6 MB the cost of summing the three columns is 58.1 MB at a 4 MB window, 15.5 at 1 MB, 4.6 at 256 KB, 1.8 at 64 KB and 1.0 at 16 KB, against a floor of 1.5 MB, and the requests go from 14 to 23 across that whole range. So the column pass opens at 64 KB and the pass that reads whole rows keeps the default, since it is the only one the default was ever sized for. A protocol whose selling point is that it moves twelve bytes a document has to actually move twelve bytes a document, and the arithmetic in the plan line is not evidence that it does.
 
 ```
-gao dem verify                              # what a full check would cost, per snapshot, before running it
-gao dem verify -level counts -counts ingest/  # add the columns up and put them against the published counts
-gao dem verify -level text -tokenizer tokenizer.model  # and read the sample, checking all three columns
-gao dem verify -share 0.01 -seed s1-2026-08 # a tighter bound, and the seed a third party repeats it with
+gao count verify                              # what a full check would cost, per snapshot, before running it
+gao count verify -level counts -counts ingest/  # add the columns up and put them against the published counts
+gao count verify -level text -tokenizer tokenizer.model  # and read the sample, checking all three columns
+gao count verify -share 0.01 -seed s1-2026-08 # a tighter bound, and the seed a third party repeats it with
 ```
 
 ## What we may publish
 
-A corpus assembled from four acquisition paths and hundreds of thousands of hosts does not have a license, it has a distribution of them, so every document carries its own license class and the evidence that assigned it. `gao luat` prints the whole position: the determination for each source, what ships for a document of each class, and the questions gao has put to counsel.
+A corpus assembled from four acquisition paths and hundreds of thousands of hosts does not have a license, it has a distribution of them, so every document carries its own license class and the evidence that assigned it. `gao law` prints the whole position: the determination for each source, what ships for a document of each class, and the questions gao has put to counsel.
 
 The rule is that gao publishes what it may publish and publishes the recipe for the rest. Open and permissively licensed documents ship as full text. Restricted documents, which is where most of the crawl lands, ship as a URL and every metadata column with the text withheld, so somebody else can rebuild the same corpus from the same sources under their own lawful access. Material carrying a machine readable text and data mining reservation ships as nothing at all, and the count of what was withheld goes in the release notes, because a number that quietly disappears reads as a number that was never there. Our headline token count therefore includes tokens we cannot ship, and the release notes state both numbers rather than the flattering one. The projection before the corpus exists is 210B publishable of 300B total.
 
@@ -3046,7 +3050,7 @@ Ten questions are with counsel, and each carries the position gao acts on until 
 
 There are two things this project will not do for tokens. No pirated sources: not shadow libraries, not book piracy dumps, not mirrors of paywalled journals, however routine their use has become elsewhere. And no quiet inclusion of reserved material: a reservation is honored, and if counsel says the allowance permits training on reserved text anyway, the model card will say that we did, because the model card is where a rightsholder looks.
 
-Before any of that the crawler says who it is. There is one User-Agent string, `gaobot/VERSION (+https://github.com/tamnd/gao/blob/main/LIEN-HE.md)`, it is the same on every request, and there is nowhere in the code to put a second one. A crawler with two agents has one it uses on the hosts that blocked the other, whatever it was added for, so the way not to have that is to have nowhere to keep it. `gao gat agent` prints it, because the answer to a webmaster asking what our crawler calls itself should be a command rather than a grep.
+Before any of that the crawler says who it is. There is one User-Agent string, `gaobot/VERSION (+https://github.com/tamnd/gao/blob/main/LIEN-HE.md)`, it is the same on every request, and there is nowhere in the code to put a second one. A crawler with two agents has one it uses on the hosts that blocked the other, whatever it was added for, so the way not to have that is to have nowhere to keep it. `gao harvest agent` prints it, because the answer to a webmaster asking what our crawler calls itself should be a command rather than a grep.
 
 The token and the header are separate names for a reason that has bitten real crawlers. A site addresses us by writing `User-agent: gaobot`, and a crawler that matched that line against its whole header would find no match, having read the file that told it to stay out, and then not stay out. The robots parser takes the token. A test asserts that the header does not match a rule written for the token, which is the failure stated the only way it cannot be argued with.
 
@@ -3068,7 +3072,7 @@ All of that meets a socket in one place. There is a single function in the proje
 
 Redirects are handed back rather than followed. A redirect can cross to another host where a different robots.txt applies and a different schedule is owed, and a client that follows one has made a request that nothing checked. The Location comes back as a URL like any other and goes to the frontier, which is where deciding whether to ask for something belongs. A test points a redirect at a path the same site disallowed and asserts that the path is never requested, which is the failure written the only way it cannot be argued with.
 
-A 401 or a 403 is a stop and not an error. The host is written down and every later URL on it fails without a packet being sent, because a site that has said no does not have to keep saying it. The size cap is a refusal rather than a truncation, since half a page is a page nobody can tell is half and it would sit in the store looking like a short article. `gao gat fetch URL` does one page and prints what happened to it: the rule that allowed it, the status, what the response said about mining, and how long the next request to that host would wait. The parts of a crawl worth checking before starting one are exactly the parts that do not show up in a body.
+A 401 or a 403 is a stop and not an error. The host is written down and every later URL on it fails without a packet being sent, because a site that has said no does not have to keep saying it. The size cap is a refusal rather than a truncation, since half a page is a page nobody can tell is half and it would sit in the store looking like a short article. `gao harvest fetch URL` does one page and prints what happened to it: the rule that allowed it, the status, what the response said about mining, and how long the next request to that host would wait. The parts of a crawl worth checking before starting one are exactly the parts that do not show up in a body.
 
 Honoring a reservation is code before it is a policy. `gat` reads all three of the ways a site can state one: the `X-Robots-Tag` header, the same directives written into a meta element, and TDMRep, both the two response headers and the `/.well-known/tdmrep.json` file, where the longest location that matches a path is the one that applies. What comes back is what the site said, in its own spelling, recorded per fetch and carried with the document rather than folded into a flag, because a decision taken later has to be taken against the statement and not against somebody's memory of it. Two statements about one page combine the restrictive way, since reading a site say no twice and honoring the permissive one is a way of getting to yes. A page that reserves indexing and a page that reserves mining both end up out of the corpus, and the record says which of the two it was, because gao is a training corpus and keeping a page while promising not to train on it is a promise nobody downstream could check.
 
@@ -3092,11 +3096,11 @@ Three of the numbers are worth naming. A template earns four URLs per page of ne
 
 The facet rule is about the one explosion the per template budget does not already handle. Two filtered listings with different values set are one template, since the shape keeps the query keys and drops their values, so that case costs nothing extra. What multiplies is the subsets: four filters over one listing is fifteen distinct combinations of them and eight filters is two hundred and fifty six, each one a template with a starting allowance of its own. Past a couple of dozen combinations on one path only the single filter views stay open, which loses nothing, because every product on such a site is reachable from the unfiltered listing.
 
-Every refusal says why, in a sentence, and `gao bien budget -shapes` prints what each template on each host spent and what closed it. A crawl that refuses URLs without saying why is a crawl nobody can tell from one that is broken, and the person reading it is on the fleet at three in the morning.
+Every refusal says why, in a sentence, and `gao frontier budget -shapes` prints what each template on each host spent and what closed it. A crawl that refuses URLs without saying why is a crawl nobody can tell from one that is broken, and the person reading it is on the fleet at three in the morning.
 
-What comes back gets written to a WARC before anything reads it. A crawl that keeps only the text it extracted has thrown away the page, and every extraction bug found after the fact is then a bug that can only be fixed by fetching seven hundred million pages again, from sites that have changed and some of which are gone. The format is WARC 1.1, one gzip member per record so that an index can name an offset and a length and a reader can seek to one page in a file of millions. `gao gat warc` lists what is in a file and `gao gat warc -uri URL` writes one page back out of it, because a format we can write and cannot read is a format we are trusting somebody else's tool to have understood.
+What comes back gets written to a WARC before anything reads it. A crawl that keeps only the text it extracted has thrown away the page, and every extraction bug found after the fact is then a bug that can only be fixed by fetching seven hundred million pages again, from sites that have changed and some of which are gone. The format is WARC 1.1, one gzip member per record so that an index can name an offset and a length and a reader can seek to one page in a file of millions. `gao harvest warc` lists what is in a file and `gao harvest warc -uri URL` writes one page back out of it, because a format we can write and cannot read is a format we are trusting somebody else's tool to have understood.
 
-Two things in the writer are worth stating because they are the ones a reader would otherwise assume went the usual way. The record identifiers are derived rather than random: a hash over the fields and the block, formatted as a UUID, so the same fetch written twice is the same bytes and `gao kho reproduce` can compare an archive against a rebuild without a diff full of identifiers that were always going to differ. And the digests say `sha256` rather than the sha1 the format conventionally carries, because the whole point of writing a digest next to a payload is to be able to prove later that the payload is the one that arrived, and a proof resting on a hash with a published collision attack against it is not one.
+Two things in the writer are worth stating because they are the ones a reader would otherwise assume went the usual way. The record identifiers are derived rather than random: a hash over the fields and the block, formatted as a UUID, so the same fetch written twice is the same bytes and `gao store reproduce` can compare an archive against a rebuild without a diff full of identifiers that were always going to differ. And the digests say `sha256` rather than the sha1 the format conventionally carries, because the whole point of writing a digest next to a payload is to be able to prove later that the payload is the one that arrived, and a proof resting on a hash with a published collision attack against it is not one.
 
 The header block was the part that had a real bug in it. A reconstructed HTTP response looks like it should carry the headers the site sent, and copying `Content-Length`, `Content-Encoding` and `Transfer-Encoding` through is what a first draft does. It is wrong: the transport decompressed the body on the way in, so those three headers describe bytes we no longer hold, and a reader that honors the copied length stops at the compressed size and hands back a page cut off partway through. Every gzipped page in the crawl would have been silently truncated in the archive while the crawl itself looked healthy. The three are stripped, the length is computed from what is actually in the block, and what the site sent is kept beside the record as `X-Gao-Sent-Content-Length` and its two companions, because it is evidence about the fetch even though it is no longer a description of the payload.
 
@@ -3110,7 +3114,7 @@ Most of the work is refusing things in the logs that are not websites. Every cer
 
 A wildcard is the interesting one. `*.vnexpress.vn` is not a host you can fetch, and dropping it loses the fact that `vnexpress.vn` is real, so the name under the star is kept. That immediately runs into registrars, who hold wildcards for the second level suffixes, and `.vn` has `com.vn`, `edu.vn`, `gov.vn` and the province names under it. Seeding those means asking for pages at names that have never resolved to a web server. The public suffix list handles most of it and is incomplete for `.vn`: it carries some provinces and not others, so `ho-chi-minh.vn` comes through as a registrable name. That is left alone rather than patched with a hand written list of provinces, since a hand written list goes stale silently. What covers the gap is evidence instead. Every host records how many certificates named it outright as against through a wildcard, and a name that only ever appeared below a star is what a registrar wildcard looks like and what a real site does not.
 
-`gao mam ct -seed seed.txt` subtracts a list we already have, which is the measurement rather than a convenience. This route is worth running only to the extent that it names hosts the seed list does not, and P03-7 puts a number on that: 200,000 or more `.vn` hosts absent from the seed. Counting what it found instead of what it added would let a route that discovered nothing look like a success.
+`gao seed ct -seed seed.txt` subtracts a list we already have, which is the measurement rather than a convenience. This route is worth running only to the extent that it names hosts the seed list does not, and P03-7 puts a number on that: 200,000 or more `.vn` hosts absent from the seed. Counting what it found instead of what it added would let a route that discovered nothing look like a success.
 
 The other route is the one where the site tells us what it holds instead of us guessing. A Vietnamese university repository is a DSpace or an Eprints install with theses, journal issues and conference papers in it, most of it long form prose written by people who were paid to write carefully, which makes it the highest quality text per byte anywhere in this project. It is also close to invisible to a crawler. The landing pages sit behind a search form, the identifiers are handles rather than paths, and a link graph walk reaches a fraction of what is there. OAI-PMH has been the way in since 2002: a repository that speaks it hands over a complete catalog of everything it holds, in order, with dates, in a format that has not changed in twenty years.
 
@@ -3122,10 +3126,10 @@ Two smaller things are about what the records actually contain rather than about
 
 The frontier and the seen set are the only two things a crawl holds that cannot be rebuilt from what it has already written. Every fetched page is in a WARC and every extracted document is in the store, but the record of what has already been asked for exists once, in memory, on one box. A crawler killed by the kernel at four in the morning comes back not knowing what it has asked for, and a crawl that does not know that is a crawl that asks again, from the same sites, at the same rate. So the question of whether 280 million URLs across 900,000 hosts fit inside server1 is not a capacity planning exercise. It is the gate, and the only useful time to run it is before the first fetch.
 
-`gao bien fit` runs it. The arithmetic is taken from the structures that actually hold the frontier rather than typed in, so `reflect` reports the size of a host ledger and a template tally and adding a field to either moves the total instead of quietly invalidating it. What is left over is the cost of a map entry beyond its key and its value, which the Go runtime does not document, and that is the reason for the second half: `-measure` builds a real budget at a fraction of the scale, offers real URLs into it, and reads the heap on either side. On this machine the two land within 4% of each other, which is the only thing that makes the first number worth quoting.
+`gao frontier fit` runs it. The arithmetic is taken from the structures that actually hold the frontier rather than typed in, so `reflect` reports the size of a host ledger and a template tally and adding a field to either moves the total instead of quietly invalidating it. What is left over is the cost of a map entry beyond its key and its value, which the Go runtime does not document, and that is the reason for the second half: `-measure` builds a real budget at a fraction of the scale, offers real URLs into it, and reads the heap on either side. On this machine the two land within 4% of each other, which is the only thing that makes the first number worth quoting.
 
 ```
-$ gao bien fit
+$ gao frontier fit
 280 million URLs across 900k hosts, of which 50k hosts are resident at a time with 32 URLs queued behind each. The exact seen set is on disk behind a filter of 10 bits per URL, and so is everything else, because holding the frontier resident is the thing this check exists to refuse.
 
 seen filter       333.8 MB  10 bits per URL, exact set on disk behind it
@@ -3141,7 +3145,7 @@ the filter errs 0.82% of the time, which costs 2.3 million lookups in the exact 
 fits: 841.7 MB of 5.01 GB on server1, 84% spare. The crawl may start.
 ```
 
-The first version of this said no, and that is the whole reason it was worth writing. Holding a ledger for every one of the 900,000 hosts, each tracked at two dozen templates with a few dozen URLs queued behind it, comes to 12.26 GB against the 5.01 GB server1 has once the reserve is off. Nothing about that is recoverable at run time. It is a design decision, and the design it forces is that only the hosts being fetched from right now are resident: the rest of the ledgers page out with the frontier they belong to and come back when the host comes back into rotation. Fifty thousand active hosts is what that number is now, and it is a field rather than a constant so that the next person to argue with it can pass a flag and see what happens. `gao bien fit -active 900000 -ready 64` still prints the arithmetic that said no, and it still exits non zero.
+The first version of this said no, and that is the whole reason it was worth writing. Holding a ledger for every one of the 900,000 hosts, each tracked at two dozen templates with a few dozen URLs queued behind it, comes to 12.26 GB against the 5.01 GB server1 has once the reserve is off. Nothing about that is recoverable at run time. It is a design decision, and the design it forces is that only the hosts being fetched from right now are resident: the rest of the ledgers page out with the frontier they belong to and come back when the host comes back into rotation. Fifty thousand active hosts is what that number is now, and it is a field rather than a constant so that the next person to argue with it can pass a flag and see what happens. `gao frontier fit -active 900000 -ready 64` still prints the arithmetic that said no, and it still exits non zero.
 
 The reserve is 800 MB and it is subtracted rather than assumed away: the kernel, the socket buffers under several hundred concurrent fetches, and the WARC writer's roll buffers are not the crawl's to spend. What it leaves is 5.01 GB, which is where the round number in the plan came from rather than the other way around.
 
@@ -3158,7 +3162,7 @@ Net rather than gross is where crawlers flatter themselves. A fetch that came ba
 The crawl has not started. What follows is the meter reading a run that has not happened, which is the only order these two can be built in.
 
 ```
-$ gao suat yield.jsonl
+$ gao yield yield.jsonl
 class       fetches  documents  yield  tokens  hosts   objected
 forum       47.6M    9.6M       0.201  8.6B    119.0k  0.41%
 news        33.6M    5.5M       0.163  2.7B    84.0k   0.26%
@@ -3184,7 +3188,7 @@ The window line is there because a cumulative yield over a hundred and forty mil
 Objections are answered before yield is. They are counted per host rather than per fetch, because one operator objecting once about a host we took ten thousand pages from is one objection, and counting it per fetch would let a single complaint look like a crisis while a thousand quiet ones stayed invisible. Past 2% of crawled hosts the crawl halves its rate, and that verdict comes out ahead of anything the yield has to say, since a disappointing yield is a budget conversation and somebody asking us to stop is a thing to answer today.
 
 ```
-$ gao suat yield-low.jsonl
+$ gao yield yield-low.jsonl
 class       fetches  documents  yield  tokens  hosts   objected
 forum       40.8M    3.5M       0.086  3.2B    102.0k  0.41%
 news        28.8M    2.0M       0.070  1.0B    72.0k   0.26%
@@ -3212,7 +3216,7 @@ Two things it refuses to do. It will not fire the kill criterion on a young craw
 A per class yield that nobody acts on is a table. The reason it is measured continuously is that the next hundred million fetches can be divided differently from the last hundred million, so `-next` does the dividing and prints its reasoning.
 
 ```
-$ gao suat -next 100000000 yield.jsonl
+$ gao yield -next 100000000 yield.jsonl
 the next 100.0M, divided on the last 5.0M:
   class       move  share  fetches  now    before
   education   more  39%    39.1M    204.9  204.9
@@ -3240,10 +3244,10 @@ And a division nobody can act on is refused rather than printed with a caveat. O
 
 A crawl delay is configured once, in a file, in seconds. Between that number and the wire there is a scheduler, a connection pool, a retry path, a redirect that lands on the same site under a different name, and a DNS answer with two addresses in it. Any of them can put two requests on the wire a hundred milliseconds apart while the configuration still reads four seconds. Nothing in the crawl notices, because the crawl is watching throughput and the thing that went wrong is a gap.
 
-So the checklist item does not ask for the delay to be configured, it asks for per host concurrency and crawl delay verified on the real box under real load rather than in a simulator, and those are two separate requirements. A scheduler that keeps its promises with one fetch in flight is not evidence about the same scheduler with four hundred of them competing for four cores. `gao cho` reads the gaps back off a run and refuses a reading taken on an idle box instead of reporting it with a note.
+So the checklist item does not ask for the delay to be configured, it asks for per host concurrency and crawl delay verified on the real box under real load rather than in a simulator, and those are two separate requirements. A scheduler that keeps its promises with one fetch in flight is not evidence about the same scheduler with four hundred of them competing for four cores. `gao wait` reads the gaps back off a run and refuses a reading taken on an idle box instead of reporting it with a note.
 
 ```
-$ gao cho hosts.jsonl
+$ gao wait hosts.jsonl
 host                box      fetches  watched  delay  robots  shortest gap  mean gap  of required  in flight  429 and 503
 thuvienphapluat.vn  server1  178      60m      20.0s  none    20.1s         20.2s     101%         1 of 1     0%
 tuoitre.vn          server1  688      60m      4.0s   5.0s    5.1s          5.2s      102%         2 of 2     0.3%
@@ -3273,7 +3277,7 @@ That failure is worth its own handler because of what is in the class. Forums ar
 The method is repetition rather than a list of sites. A thread page has a repeated element on it and an article page does not: forty posts are forty siblings built from the same template, same tag, same classes, different text. That is a property of the page rather than of the software behind it, so it holds for vBulletin, XenForo, phpBB and whatever voz is running this year. A selector list per forum engine is a file that is wrong within a year and wrong silently, which is the same failure with more maintenance attached.
 
 ```
-$ gao boc -text -furniture thread.html
+$ gao husk -text -furniture thread.html
 page         posts  runes  quoted  skipped  shape
 thread.html  2      176    14.1%   0        article.js-post.message
 
@@ -3302,19 +3306,19 @@ A page with no thread in it is an answer rather than an error. It comes back say
 
 ## What the corpus is for
 
-A corpus is a means to a model, and the model has a plan: a trillion token instances, 66% Vietnamese, three phases that get longer and more curated as they go, and a continued pretraining comparison that decides whether any of this was worth doing before a from scratch run is funded. That plan lives in `nau`, in Go, rather than in a document, because a mixture table is arithmetic and arithmetic written in prose is arithmetic nobody checks. `gao nau check` runs in CI and fails on a budget whose components do not add up, a phase that reads 98% of itself, and a comparison whose arms differ in two things at once.
+A corpus is a means to a model, and the model has a plan: a trillion token instances, 66% Vietnamese, three phases that get longer and more curated as they go, and a continued pretraining comparison that decides whether any of this was worth doing before a from scratch run is funded. That plan lives in `nau`, in Go, rather than in a document, because a mixture table is arithmetic and arithmetic written in prose is arithmetic nobody checks. `gao cook check` runs in CI and fails on a budget whose components do not add up, a phase that reads 98% of itself, and a comparison whose arms differ in two things at once.
 
-The tension the whole budget is downstream of is that the run is a trillion tokens and there are roughly three hundred billion natural Vietnamese tokens in existence. Three moves close the gap, and each one is a separate line because each one fails in its own way. Repetition degrades past about four passes. Synthesis narrows the distribution. Anchor languages buy the reasoning that Vietnamese web text does not contain, and dilute the Vietnamese the run exists to learn. `gao nau budget` prints all twelve lines with the argument for each of them, and it prints the number the crawl is actually aimed at, which is 309 billion tokens of distinct natural Vietnamese rather than the 379 you get by adding every unique count together. The quality tiers are slices of the web and not separate corpora, so `gao-web-hq` and `gao-edu` are extra passes over text that `gao-web` already holds. A plan that counts them as new text asks another team for seventy billion tokens that do not need to exist, and a table cannot catch that about itself.
+The tension the whole budget is downstream of is that the run is a trillion tokens and there are roughly three hundred billion natural Vietnamese tokens in existence. Three moves close the gap, and each one is a separate line because each one fails in its own way. Repetition degrades past about four passes. Synthesis narrows the distribution. Anchor languages buy the reasoning that Vietnamese web text does not contain, and dilute the Vietnamese the run exists to learn. `gao cook budget` prints all twelve lines with the argument for each of them, and it prints the number the crawl is actually aimed at, which is 309 billion tokens of distinct natural Vietnamese rather than the 379 you get by adding every unique count together. The quality tiers are slices of the web and not separate corpora, so `gao-web-hq` and `gao-edu` are extra passes over text that `gao-web` already holds. A plan that counts them as new text asks another team for seventy billion tokens that do not need to exist, and a table cannot catch that about itself.
 
-`gao nau reconcile` is the part worth running. The budget says what the run buys and the curriculum says what it spends, and the two were written by different arguments: the budget from what exists and how many times it is safe to read, the curriculum from what a model needs early against what it needs late. Nothing makes them agree except somebody multiplying them out, and when we did, they did not. The curriculum reads the general web slice well over once where the budget buys it once, the budget holds more English than any phase spends, and machine translated Vietnamese has a budget line and no place in any phase at all. Those are decisions nobody has made yet rather than bugs, so each one is recorded as a numbered question against the component it is about, and `check` enforces the register in both directions: a gap wider than a point of the run with nobody's name on it fails, and so does a question about a gap that has since closed.
+`gao cook reconcile` is the part worth running. The budget says what the run buys and the curriculum says what it spends, and the two were written by different arguments: the budget from what exists and how many times it is safe to read, the curriculum from what a model needs early against what it needs late. Nothing makes them agree except somebody multiplying them out, and when we did, they did not. The curriculum reads the general web slice well over once where the budget buys it once, the budget holds more English than any phase spends, and machine translated Vietnamese has a budget line and no place in any phase at all. Those are decisions nobody has made yet rather than bugs, so each one is recorded as a numbered question against the component it is about, and `check` enforces the register in both directions: a gap wider than a point of the run with nobody's name on it fails, and so does a question about a gap that has since closed.
 
-`gao nau arms` is the comparison, locked before any of it runs. Three arms, and the third is the one most projects skip: gao, CulturaX as it ships, and CulturaX through gao's own cleaning. Without that third arm a win for gao says the corpus is better and does not say whether that is because it is larger or because it is cleaner, and those two answers have completely different consequences. The arms carry the data and nothing else, because everything that is not data is one shared recipe, so there is nowhere to put a second difference.
+`gao cook arms` is the comparison, locked before any of it runs. Three arms, and the third is the one most projects skip: gao, CulturaX as it ships, and CulturaX through gao's own cleaning. Without that third arm a win for gao says the corpus is better and does not say whether that is because it is larger or because it is cleaner, and those two answers have completely different consequences. The arms carry the data and nothing else, because everything that is not data is one shared recipe, so there is nowhere to put a second difference.
 
-`gao nau fleet` answers the question somebody will ask on the day they read the fleet inventory and the training plan together. Every other stage in this project runs on server1, server2, server3 and gamingpc, so the assumption that training does too is the natural one to make. It is wrong by 853 times: a from scratch run is planned for 256 accelerators at 80 GB each and the fleet has one card with 24 GB. Stating it as a ratio rather than as "does not fit" is what stops somebody proposing a smaller batch size as though the gap were a factor of two. What the fleet does here is prepare the data, generate the synthetic slice on the one GPU, and run the evaluations that decide the gate, which is the part worth keeping on hardware nobody else controls.
+`gao cook fleet` answers the question somebody will ask on the day they read the fleet inventory and the training plan together. Every other stage in this project runs on server1, server2, server3 and gamingpc, so the assumption that training does too is the natural one to make. It is wrong by 853 times: a from scratch run is planned for 256 accelerators at 80 GB each and the fleet has one card with 24 GB. Stating it as a ratio rather than as "does not fit" is what stops somebody proposing a smaller batch size as though the gap were a factor of two. What the fleet does here is prepare the data, generate the synthetic slice on the one GPU, and run the evaluations that decide the gate, which is the part worth keeping on hardware nobody else controls.
 
 ## Keeping the posts instead of the menu
 
-Forums are the largest single body of native Vietnamese prose on the open web, written by people to be read by people, in the register nobody produces on purpose for a dataset. They are also the page class every general crawler handles worst, and those two facts are the same fact. Generic article extraction is built for a page with one body of text on it. A forum thread is thirty bodies of text with a menu wrapped around each one, so an extractor that looks for the largest single block finds the sidebar, keeps it, and throws the conversation away. `gao tach` reads the page as the thread it is.
+Forums are the largest single body of native Vietnamese prose on the open web, written by people to be read by people, in the register nobody produces on purpose for a dataset. They are also the page class every general crawler handles worst, and those two facts are the same fact. Generic article extraction is built for a page with one body of text on it. A forum thread is thirty bodies of text with a menu wrapped around each one, so an extractor that looks for the largest single block finds the sidebar, keeps it, and throws the conversation away. `gao separate` reads the page as the thread it is.
 
 Posts are found structurally rather than by recognizing forum software. A thread is a run of sibling elements that share a tag and a class and each hold real text, which describes phpBB, XenForo, Discourse, vBulletin, and the hand rolled PHP that a surprising share of Vietnamese forum traffic still runs on. A list of class names for known engines would be shorter to write and would age into a list of engines nobody uses. The one thing that shape does not separate is a forum index, whose rows repeat down the page exactly the way posts do, so there is a second test: a post is prose with the occasional link in it and an index row is a link with a reply count beside it. A candidate that is more anchor than sentence is not a post.
 
@@ -3323,7 +3327,7 @@ Three things come out and none of them are the post. Navigation goes first, by e
 The byline gets one rule of its own, because the repeated line rule cannot reach it. Every forum template puts the poster's name in a small block with the join date and the post count beside it, and the post count differs per member, so it never repeats and it lands in the corpus once for every member who has posted once, which is most of a forum. The block is dropped whole, on the single condition that nothing in it runs as long as a sentence, which is what tells a profile box apart from a post that happens to open with a name.
 
 ```
-$ gao tach thread.html baiviet.html
+$ gao separate thread.html baiviet.html
 page          posts  kept  dropped  quoted  repeated  yield  thread
 thread.html   4      897   1177     206     4         43.2%  Hỏi về bộ gõ tiếng Việt trên Linux
 baiviet.html  .      .     .        .       .         .      not a thread
@@ -3337,7 +3341,7 @@ A page that is not a thread comes back as one, which is a routing answer rather 
 
 ## Dividing the pile before extracting any of it
 
-A pile of Vietnamese PDFs is three piles, and they cost different amounts of money. A born digital file with a working text layer costs milliseconds. The same page typeset in 2003 with a one byte Vietnamese font costs the same milliseconds and then has to be transcoded and checked, because its text layer extracts as `Coäng hoøa xaõ hoäi chuû nghóa Vieät Nam` and every stage downstream will take that for Vietnamese. A scanned page costs a GPU second and comes back with an error rate. There is one GPU on the fleet, so the only number that decides what the extraction slice costs is how much of the pile lands on the third route, and that number is not knowable from anything except counting. `gao chia` counts it.
+A pile of Vietnamese PDFs is three piles, and they cost different amounts of money. A born digital file with a working text layer costs milliseconds. The same page typeset in 2003 with a one byte Vietnamese font costs the same milliseconds and then has to be transcoded and checked, because its text layer extracts as `Coäng hoøa xaõ hoäi chuû nghóa Vieät Nam` and every stage downstream will take that for Vietnamese. A scanned page costs a GPU second and comes back with an error rate. There is one GPU on the fleet, so the only number that decides what the extraction slice costs is how much of the pile lands on the third route, and that number is not knowable from anything except counting. `gao route` counts it.
 
 `chia` does not parse PDF. It is a linear scan over the objects with FlateDecode and object streams handled, which is enough to answer one question per document and cheap enough to answer it for millions of them. A real parser would be slower, would pull in a dependency that has to be trusted with hostile input, and would answer a question nobody asked. Object streams are handled because they are not optional: anything written this century puts the page tree and the font dictionaries inside a compressed object stream, and a scanner that stops at the top level finds no pages in a completely ordinary document and reports it as broken. That failure is silent in the way that matters, since the document looks damaged rather than the scanner looking incomplete.
 
@@ -3351,12 +3355,12 @@ The distribution carries the box it was counted on, like every other measurement
 
 A scanned page has to be rendered to an image before any engine can read it. The image exists either way, so keeping it costs storage and no compute, and throwing it away means paying the same GPU seconds again the day somebody wants to train a model that reads Vietnamese documents rather than Vietnamese sentences. That is the whole argument for retaining page images, and it is a good one.
 
-The argument for checking them is different and it is the reason `gao dinh` exists. A page image is worth nothing on its own and everything as a pair: this picture, this text. A pair that is off by one page is worse than no pair, because it teaches a wrong association, it is indistinguishable from a correct pair once it has been written, and there is no later stage that can find it. A set with two percent of its pairs shifted does not fail anywhere. It produces a model that reads pages slightly wrong, forever, for a reason nobody can trace.
+The argument for checking them is different and it is the reason `gao attach` exists. A page image is worth nothing on its own and everything as a pair: this picture, this text. A pair that is off by one page is worse than no pair, because it teaches a wrong association, it is indistinguishable from a correct pair once it has been written, and there is no later stage that can find it. A set with two percent of its pairs shifted does not fail anywhere. It produces a model that reads pages slightly wrong, forever, for a reason nobody can trace.
 
 So the join is checked rather than assumed. The key is the document and the page number inside it, both halves carry it, and a document whose pages come back as 1, 2 and 4 is reported rather than renumbered. Renumbering is the operation that turns one missing page into a whole document silently shifted, which is exactly the failure with no symptom.
 
 ```
-$ gao dinh pages.jsonl
+$ gao attach pages.jsonl
 route  pages  share  rendered  pairs  lost  renders weigh  characters
 T      3103   49.9%  0         0      0     .              10M
 L      624    10.0%  624       624    0     486 MB         2M
@@ -3371,14 +3375,14 @@ still on the box  242 MB                 against a 186.3 GB window, which the bo
 gao-pdf-2026-09 pairs 3,116 pages of the 3,119 pages something had to render, out of 6,222 pages across 260 documents, and the pairs are what the vision work later reads rather than the pages. 2.1 GB of 2.4 GB reached the store and 242 MB is still on the box, which is inside the 186.3 GB window.
 ```
 
-That batch is invented, since no PDF has been extracted yet. The attachment share is measured against the pages something had to render rather than against every page in the batch, and that denominator is the one choice in this command worth arguing about. Half of the pile above is born digital and was read out of its text layer, so nothing ever rendered it and there is no image to attach. Counting those as unattached would put the figure at 50% and make it a report about the routing, which `gao chia` already publishes. A scanned page with no image is a different thing entirely and is refused, because something read that page and there is nothing left to check what it read against.
+That batch is invented, since no PDF has been extracted yet. The attachment share is measured against the pages something had to render rather than against every page in the batch, and that denominator is the one choice in this command worth arguing about. Half of the pile above is born digital and was read out of its text layer, so nothing ever rendered it and there is no image to attach. Counting those as unattached would put the figure at 50% and make it a report about the routing, which `gao route` already publishes. A scanned page with no image is a different thing entirely and is refused, because something read that page and there is nothing left to check what it read against.
 
 Ink carries for the same reason the page number does. A page with no marks on it that produced two thousand characters of text is a pair that is wrong, and the arithmetic that catches it is a comparison rather than a model. A blank page with no text off it is just a blank page, which is a normal thing for a scanned document to contain, so it is counted and not refused. A page with marks that came back with six characters is a page the extraction lost, which is a fact about the engine rather than about the pairing, and it is reported separately with its own line.
 
-The disk half is the fleet gate. `gamingpc` has 307 GB free, a page at 300 dpi is most of a megabyte, and a million pages is more than the box holds, so the run does not fit on the machine that produces it. The images go to the store as they are made and the box keeps a window rather than the run. Whether the drain keeps up with the write is a rate and rates are what `gao don` measures. What is asked here is the smaller question that has to be true first, which is whether anything is being left behind at all, and `-free` narrows the window to what the box actually has left when that is less than the window the project sets.
+The disk half is the fleet gate. `gamingpc` has 307 GB free, a page at 300 dpi is most of a megabyte, and a million pages is more than the box holds, so the run does not fit on the machine that produces it. The images go to the store as they are made and the box keeps a window rather than the run. Whether the drain keeps up with the write is a rate and rates are what `gao clear` measures. What is asked here is the smaller question that has to be true first, which is whether anything is being left behind at all, and `-free` narrows the window to what the box actually has left when that is less than the window the project sets.
 
 ```
-$ gao dinh pages.jsonl | tail -2
+$ gao attach pages.jsonl | tail -2
 1 document did not come back whole, and the missing numbers are printed rather than closed up because closing a gap shifts every pair after it:
   vbpl-2010-050 runs to page 19 and is missing page 6
 ```
@@ -3389,10 +3393,10 @@ One page failed to render out of a document of nineteen. The command exits 1 and
 
 Speech is the one place in the pipeline where there is no reference. Every other stage can be checked against something: a reading against the page, a normalization against the original bytes, a count against the store. A transcript can only be checked against what was said, and nobody wrote that down, which is the entire reason the audio is worth transcribing. So there is no word error rate to publish here and there never will be at corpus scale.
 
-That is a smaller problem than it sounds, because the failure worth catching is not a wrong word. It is a decoder that meets a stretch of silence, or a bed of music, or a regional tone it has no model for, and starts emitting the same sentence until the file ends. The output is fluent Vietnamese. `gao sang` admits it as prose, because it is prose. `gao xay` does not see it, because the repetition is inside one document rather than across two. It reads as speech, and what it teaches a model is to repeat itself. The only place that failure can be caught is where the transcript is made, so `gao nghe` is a gate rather than a note in the extraction log.
+That is a smaller problem than it sounds, because the failure worth catching is not a wrong word. It is a decoder that meets a stretch of silence, or a bed of music, or a regional tone it has no model for, and starts emitting the same sentence until the file ends. The output is fluent Vietnamese. `gao sift` admits it as prose, because it is prose. `gao mill` does not see it, because the repetition is inside one document rather than across two. It reads as speech, and what it teaches a model is to repeat itself. The only place that failure can be caught is where the transcript is made, so `gao listen` is a gate rather than a note in the extraction log.
 
 ```
-$ gao nghe tracks.jsonl
+$ gao listen tracks.jsonl
 track                           source  box       length  speech  lines  distinct  longest run  syllables/s  VRAM    kept
 radio-yeu-nhac-trinh-so-12      asr     gamingpc  15m     11m     140    27.9%     61           3.3          9.4 GB  loop
 hocmai-vat-ly-12-bai-27         asr     gamingpc  59m     48m     731    94.1%     2            5.6          9.4 GB  written

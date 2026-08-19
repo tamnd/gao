@@ -20,7 +20,7 @@ import (
 )
 
 func runSach(stdout, stderr io.Writer, args []string) int {
-	fs := flag.NewFlagSet("sach", flag.ContinueOnError)
+	fs := flag.NewFlagSet("clean", flag.ContinueOnError)
 	fs.SetOutput(stderr)
 	dir := fs.String("dir", "", "where a part is built before it is pushed")
 	source := fs.String("source", "", "clean one source rather than all of them, by name")
@@ -32,7 +32,7 @@ func runSach(stdout, stderr io.Writer, args []string) int {
 	report := fs.String("report", "", "write the run report to this file as JSON")
 	asJSON := fs.Bool("json", false, "print the report as JSON")
 	fs.Usage = func() {
-		fmt.Fprint(stderr, `usage: gao sach -dir DIR [-source NAME] [-limit N] [-workers N] [-keys N] [-push] [-plan] [-report FILE] [-json]
+		fmt.Fprint(stderr, `usage: gao clean -dir DIR [-source NAME] [-limit N] [-workers N] [-keys N] [-push] [-plan] [-report FILE] [-json]
 
 Runs the cleaning line over the raw corpus and publishes what comes out.
 
@@ -87,14 +87,14 @@ flags:
 		return 2
 	}
 	if *dir == "" && !*plan {
-		fmt.Fprint(stderr, "gao sach: -dir is required, because a run that picks its own directory writes parts somewhere nobody looks\n")
+		fmt.Fprint(stderr, "gao clean: -dir is required, because a run that picks its own directory writes parts somewhere nobody looks\n")
 		return 2
 	}
 
 	raw, clean := kho.Staging(), sach.Clean()
 	token := may.Token()
 	if token == "" {
-		fmt.Fprintf(stderr, "gao sach: %s is not set, and both repos need it\n", may.TokenEnv)
+		fmt.Fprintf(stderr, "gao clean: %s is not set, and both repos need it\n", may.TokenEnv)
 		return 2
 	}
 
@@ -106,11 +106,11 @@ flags:
 
 	parts, err := rawParts(ctx, from, *source)
 	if err != nil {
-		fmt.Fprintf(stderr, "gao sach: %v\n", err)
+		fmt.Fprintf(stderr, "gao clean: %v\n", err)
 		return 1
 	}
 	if len(parts) == 0 {
-		fmt.Fprintf(stderr, "gao sach: %s holds no parts%s\n", raw.Repo(), ofSource(*source))
+		fmt.Fprintf(stderr, "gao clean: %s holds no parts%s\n", raw.Repo(), ofSource(*source))
 		return 1
 	}
 	if *limit > 0 && *limit < len(parts) {
@@ -133,7 +133,7 @@ flags:
 	// than the time it takes to clean the first part.
 	if *push {
 		if err := to.EnsureRepo(ctx, clean); err != nil {
-			fmt.Fprintf(stderr, "gao sach: %v\n", err)
+			fmt.Fprintf(stderr, "gao clean: %v\n", err)
 			return 1
 		}
 	}
@@ -157,7 +157,7 @@ flags:
 	rep, runErr := pass.Run(ctx, parts, note)
 	if *report != "" {
 		if err := writeReport(*report, rep); err != nil {
-			fmt.Fprintf(stderr, "gao sach: %v\n", err)
+			fmt.Fprintf(stderr, "gao clean: %v\n", err)
 			return 1
 		}
 	}
@@ -169,7 +169,7 @@ flags:
 		printSach(stdout, rep)
 	}
 	if runErr != nil {
-		fmt.Fprintf(stderr, "gao sach: %v\n", runErr)
+		fmt.Fprintf(stderr, "gao clean: %v\n", runErr)
 		return 1
 	}
 	return 0

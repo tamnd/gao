@@ -26,14 +26,14 @@ func runKim(stdout, stderr io.Writer, args []string) int {
 		kimUsage(stdout)
 		return 0
 	default:
-		fmt.Fprintf(stderr, "gao kim: no subcommand named %s\n", args[0])
+		fmt.Fprintf(stderr, "gao needle: no subcommand named %s\n", args[0])
 		kimUsage(stderr)
 		return 2
 	}
 }
 
 func kimUsage(w io.Writer) {
-	fmt.Fprint(w, `usage: gao kim <subcommand> [flags] [file]
+	fmt.Fprint(w, `usage: gao needle <subcommand> [flags] [file]
 
 subcommands:
   frame  print the grid vi-needle is built on, and what running it costs
@@ -80,7 +80,7 @@ type kimGradeReport struct {
 }
 
 func runKimFrame(stdout, stderr io.Writer, args []string) int {
-	fs := flag.NewFlagSet("kim frame", flag.ContinueOnError)
+	fs := flag.NewFlagSet("needle frame", flag.ContinueOnError)
 	fs.SetOutput(stderr)
 	asJSON := fs.Bool("json", false, "print the frame as JSON")
 	cells := fs.Bool("cells", false, "print every square of the grid")
@@ -162,7 +162,7 @@ func kimWhy(k kim.Kind) string {
 }
 
 func runKimCheck(stdout, stderr io.Writer, args []string) int {
-	fs := flag.NewFlagSet("kim check", flag.ContinueOnError)
+	fs := flag.NewFlagSet("needle check", flag.ContinueOnError)
 	fs.SetOutput(stderr)
 	if err := fs.Parse(args); err != nil {
 		return 2
@@ -174,7 +174,7 @@ func runKimCheck(stdout, stderr io.Writer, args []string) int {
 
 	items, err := kim.ReadItems(fs.Arg(0))
 	if err != nil {
-		fmt.Fprintf(stderr, "gao kim: %v\n", err)
+		fmt.Fprintf(stderr, "gao needle: %v\n", err)
 		return 1
 	}
 	faults := kim.Check(items)
@@ -190,7 +190,7 @@ func runKimCheck(stdout, stderr io.Writer, args []string) int {
 }
 
 func runKimGrade(stdout, stderr io.Writer, args []string) int {
-	fs := flag.NewFlagSet("kim grade", flag.ContinueOnError)
+	fs := flag.NewFlagSet("needle grade", flag.ContinueOnError)
 	fs.SetOutput(stderr)
 	items := fs.String("items", "", "the built set the answers were produced from")
 	asJSON := fs.Bool("json", false, "print the whole score as JSON")
@@ -205,12 +205,12 @@ func runKimGrade(stdout, stderr io.Writer, args []string) int {
 
 	set, err := kim.ReadItems(*items)
 	if err != nil {
-		fmt.Fprintf(stderr, "gao kim: %v\n", err)
+		fmt.Fprintf(stderr, "gao needle: %v\n", err)
 		return 1
 	}
 	replies, err := kim.ReadReplies(fs.Arg(0))
 	if err != nil {
-		fmt.Fprintf(stderr, "gao kim: %v\n", err)
+		fmt.Fprintf(stderr, "gao needle: %v\n", err)
 		return 1
 	}
 

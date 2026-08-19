@@ -11,13 +11,13 @@ import (
 )
 
 func runLuat(stdout, stderr io.Writer, args []string) int {
-	fs := flag.NewFlagSet("luat", flag.ContinueOnError)
+	fs := flag.NewFlagSet("law", flag.ContinueOnError)
 	fs.SetOutput(stderr)
 	question := fs.String("q", "", "print one question in full, by id, such as Q5")
 	source := fs.String("source", "", "print the license determinations for one acquisition path")
 	verbose := fs.Bool("v", false, "include the evidence behind each determination and what each answer changes")
 	fs.Usage = func() {
-		fmt.Fprint(stderr, "usage: gao luat [-q ID] [-source NAME] [-v]\n\nPrints the legal position: the questions filed with counsel and the position gao\nacts on until each is answered, the license determination for every source, and\nwhat actually ships for a document of each class.\n\nNarrowing to one question or one path always prints in full, so -v is for the\nwhole listing.\n\nNone of it is legal advice and none of it is counsel's answer.\n\nflags:\n")
+		fmt.Fprint(stderr, "usage: gao law [-q ID] [-source NAME] [-v]\n\nPrints the legal position: the questions filed with counsel and the position gao\nacts on until each is answered, the license determination for every source, and\nwhat actually ships for a document of each class.\n\nNarrowing to one question or one path always prints in full, so -v is for the\nwhole listing.\n\nNone of it is legal advice and none of it is counsel's answer.\n\nflags:\n")
 		fs.PrintDefaults()
 	}
 	if err := fs.Parse(args); err != nil {
@@ -27,7 +27,7 @@ func runLuat(stdout, stderr io.Writer, args []string) int {
 	if *question != "" {
 		q, ok := luat.Ask(*question)
 		if !ok {
-			fmt.Fprintf(stderr, "gao luat: %s is not on the agenda\n", *question)
+			fmt.Fprintf(stderr, "gao law: %s is not on the agenda\n", *question)
 			fmt.Fprint(stderr, "the questions are")
 			for _, q := range luat.Questions() {
 				fmt.Fprintf(stderr, " %s", q.ID)
@@ -42,7 +42,7 @@ func runLuat(stdout, stderr io.Writer, args []string) int {
 	if *source != "" {
 		s := doc.Source(*source)
 		if !s.Valid() {
-			fmt.Fprintf(stderr, "gao luat: %q is not an acquisition path\n", *source)
+			fmt.Fprintf(stderr, "gao law: %q is not an acquisition path\n", *source)
 			fmt.Fprint(stderr, "the paths are")
 			for _, have := range doc.Sources() {
 				fmt.Fprintf(stderr, " %s", have)

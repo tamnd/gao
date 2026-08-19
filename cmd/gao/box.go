@@ -17,12 +17,12 @@ func runBox(stdout, stderr io.Writer, args []string) int {
 	if len(args) > 0 && args[0] == "check" {
 		return runBoxCheck(stdout, stderr, args[1:])
 	}
-	fs := flag.NewFlagSet("box", flag.ContinueOnError)
+	fs := flag.NewFlagSet("fleet", flag.ContinueOnError)
 	fs.SetOutput(stderr)
 	label := fs.Bool("label", false, "print only the provenance label for this machine")
 	tokens := fs.Int64("tokens", may.TargetTokens, "token count to compute the disk budget for")
 	fs.Usage = func() {
-		fmt.Fprint(stderr, "usage: gao box [-label] [-tokens N]\n       gao box peak [-ran duration] disk.jsonl\n       gao box check [-dir DIR] [-json]\n\nPrints the fleet inventory and the disk budget a corpus of the given size needs.\nThe inventory is measured, not specified, and it carries the date it was taken.\n\nThe peak subcommand reads a watcher's disk trace from a run and grades it\nagainst the ceiling, and against the arithmetic the ceiling was written over.\n\nThe check subcommand measures this box and says how far the record has drifted\nfrom it, which is the thing nobody notices until a plan is built on it.\n\nflags:\n")
+		fmt.Fprint(stderr, "usage: gao fleet [-label] [-tokens N]\n       gao fleet peak [-ran duration] disk.jsonl\n       gao fleet check [-dir DIR] [-json]\n\nPrints the fleet inventory and the disk budget a corpus of the given size needs.\nThe inventory is measured, not specified, and it carries the date it was taken.\n\nThe peak subcommand reads a watcher's disk trace from a run and grades it\nagainst the ceiling, and against the arithmetic the ceiling was written over.\n\nThe check subcommand measures this box and says how far the record has drifted\nfrom it, which is the thing nobody notices until a plan is built on it.\n\nflags:\n")
 		fs.PrintDefaults()
 	}
 	if err := fs.Parse(args); err != nil {
@@ -106,14 +106,14 @@ func runBox(stdout, stderr io.Writer, args []string) int {
 }
 
 func runBoxPeak(stdout, stderr io.Writer, args []string) int {
-	fs := flag.NewFlagSet("box peak", flag.ContinueOnError)
+	fs := flag.NewFlagSet("fleet peak", flag.ContinueOnError)
 	fs.SetOutput(stderr)
 	asJSON := fs.Bool("json", false, "print JSON")
 	name := fs.String("run", "ingest", "what the run was")
 	ran := fs.Duration("ran", 0, "how long the run lasted, which is not how long the watcher watched")
 	ceiling := fs.Int64("ceiling", may.Ceiling, "the most disk the run may hold, in bytes")
 	fs.Usage = func() {
-		fmt.Fprint(stderr, `usage: gao box peak [-run name] [-ran duration] [-ceiling bytes] [-json] disk.jsonl
+		fmt.Fprint(stderr, `usage: gao fleet peak [-run name] [-ran duration] [-ceiling bytes] [-json] disk.jsonl
 
 Read what a run actually held on disk, against what it was allowed to hold and
 against what the design predicted.
@@ -159,7 +159,7 @@ flags:
 
 	samples, err := may.ReadTrace(fs.Arg(0))
 	if err != nil {
-		fmt.Fprintf(stderr, "gao box peak: %v\n", err)
+		fmt.Fprintf(stderr, "gao fleet peak: %v\n", err)
 		return 1
 	}
 	p := may.Measure(*name, *ran, *ceiling, samples)
@@ -253,12 +253,12 @@ type boxCheck struct {
 // date on it goes stale silently. Every other measurement in gao is refused
 // when it cannot be trusted. This one was simply read.
 func runBoxCheck(stdout, stderr io.Writer, args []string) int {
-	fs := flag.NewFlagSet("box check", flag.ContinueOnError)
+	fs := flag.NewFlagSet("fleet check", flag.ContinueOnError)
 	fs.SetOutput(stderr)
 	dir := fs.String("dir", ".", "the directory to measure free disk on, which is the one the work would run in")
 	asJSON := fs.Bool("json", false, "print JSON")
 	fs.Usage = func() {
-		fmt.Fprint(stderr, `usage: gao box check [-dir DIR] [-json]
+		fmt.Fprint(stderr, `usage: gao fleet check [-dir DIR] [-json]
 
 Measures this box and reports how far the recorded inventory has drifted from
 it. Free disk and hardware threads are measured, because those are the numbers
@@ -286,7 +286,7 @@ flags:
 
 	live, err := may.Now(*dir)
 	if err != nil {
-		fmt.Fprintf(stderr, "gao box check: %v\n", err)
+		fmt.Fprintf(stderr, "gao fleet check: %v\n", err)
 		return 1
 	}
 	recorded := int64(0)

@@ -192,7 +192,7 @@ func TestALogThatIsNotThereIsAFailure(t *testing.T) {
 	if code != 1 {
 		t.Fatalf("exit %d, want 1: %s", code, errOut)
 	}
-	if !strings.Contains(errOut, "gao don:") {
+	if !strings.Contains(errOut, "gao clear:") {
 		t.Errorf("the failure was not attributed: %s", errOut)
 	}
 }
@@ -202,7 +202,7 @@ func TestDonWithoutASubcommandPrintsUsage(t *testing.T) {
 	if code != 2 {
 		t.Fatalf("exit %d, want 2: %s", code, errOut)
 	}
-	if !strings.Contains(errOut, "usage: gao don") {
+	if !strings.Contains(errOut, "usage: gao clear") {
 		t.Errorf("no usage printed: %s", errOut)
 	}
 }
@@ -222,7 +222,7 @@ func TestDonHelpGoesToStdout(t *testing.T) {
 	if code != 0 {
 		t.Fatalf("exit %d", code)
 	}
-	if !strings.Contains(out, "usage: gao don") {
+	if !strings.Contains(out, "usage: gao clear") {
 		t.Errorf("help did not go to stdout: %s", out)
 	}
 }
