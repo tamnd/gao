@@ -140,8 +140,8 @@ type Slice struct {
 
 // Errors a slice can fail with.
 var (
-	ErrBadSlice = errors.New("lat: slice is incomplete")
-	ErrStale    = errors.New("lat: stale slice")
+	ErrBadSlice = errors.New("slice: slice is incomplete")
+	ErrStale    = errors.New("slice: stale")
 )
 
 // Documents is how many rows the slice selects.

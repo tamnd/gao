@@ -106,7 +106,7 @@ func cardSources(b *strings.Builder, x []Indexed) {
 	}
 
 	b.WriteString("Two more are pinned in the ingest manifest and are not in the repo yet. CulturaX is gated on the Hub, which is an access control formality rather than a redistribution term, and it waits on the terms being accepted. MADLAD-400 ships as gzipped JSONL rather than Parquet, so it costs a rewrite that the Parquet sources do not, and it is queued behind them.\n\n")
-	fmt.Fprintf(b, "The manifest with every pinned revision, every input file and its byte count is at %s/blob/main/gat/manifest.json.\n\n", Repository)
+	fmt.Fprintf(b, "The manifest with every pinned revision, every input file and its byte count is at %s/blob/main/harvest/manifest.json.\n\n", Repository)
 }
 
 // cardUses is the section the user of a corpus this size actually needs, which

@@ -120,7 +120,7 @@ func (p *Pusher) MoveTo(ctx context.Context, dst *Pusher, prefix string, rename 
 			continue
 		}
 		if !s.LFS {
-			return report, fmt.Errorf("kho: %s in %s is a git blob rather than an lfs object, so there is no digest to point %s at and it would have to be uploaded", s.Path, p.Repo, path)
+			return report, fmt.Errorf("store: %s in %s is a git blob rather than an lfs object, so there is no digest to point %s at and it would have to be uploaded", s.Path, p.Repo, path)
 		}
 		m := Move{From: s.Path, To: path, OID: s.OID, Bytes: s.Bytes}
 		if have, ok := already[path]; ok && have == s.OID {

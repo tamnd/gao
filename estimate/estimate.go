@@ -363,7 +363,7 @@ func total(parts []Part, of func(Part) int64) int64 {
 func ReadSource(source, snapshot, seed string, parts, bytes int64, path string) (Source, error) {
 	b, err := os.ReadFile(path)
 	if err != nil {
-		return Source{}, fmt.Errorf("uoc: %w", err)
+		return Source{}, fmt.Errorf("estimate: %w", err)
 	}
 	s := Source{Source: source, Snapshot: snapshot, Seed: seed, Parts: parts, Bytes: bytes}
 	for i, line := range strings.Split(strings.TrimSpace(string(b)), "\n") {
@@ -374,12 +374,12 @@ func ReadSource(source, snapshot, seed string, parts, bytes int64, path string) 
 		dec.DisallowUnknownFields()
 		var p Part
 		if err := dec.Decode(&p); err != nil {
-			return Source{}, fmt.Errorf("uoc: %s line %d: %w", path, i+1, err)
+			return Source{}, fmt.Errorf("estimate: %s line %d: %w", path, i+1, err)
 		}
 		s.Sample = append(s.Sample, p)
 	}
 	if len(s.Sample) == 0 {
-		return Source{}, fmt.Errorf("uoc: %s holds no readings", path)
+		return Source{}, fmt.Errorf("estimate: %s holds no readings", path)
 	}
 	return s, nil
 }

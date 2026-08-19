@@ -59,7 +59,7 @@ func (p *Pusher) List(ctx context.Context, prefix string) ([]Stored, error) {
 	for url != "" {
 		page, next, err := p.listPage(ctx, url)
 		if err != nil {
-			return nil, fmt.Errorf("kho: listing %s in %s: %w", prefix, p.Repo, err)
+			return nil, fmt.Errorf("store: listing %s in %s: %w", prefix, p.Repo, err)
 		}
 		all = append(all, page...)
 		url = next

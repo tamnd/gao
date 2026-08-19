@@ -71,7 +71,7 @@ const PipelineVersion = "0.1.0"
 const maxRowBytes = 64 << 20
 
 // ErrNoDecoder is returned for a source whose layout nothing here reads yet.
-var ErrNoDecoder = errors.New("gat: no decoder for this source")
+var ErrNoDecoder = errors.New("harvest: no decoder for this source")
 
 // ErrBadRow is returned for an upstream record that does not parse. It names the
 // file and the line.
@@ -80,7 +80,7 @@ var ErrNoDecoder = errors.New("gat: no decoder for this source")
 // twenty gigabyte shard is either a fault in this mapping or a fault in what the
 // host published, and both are worth stopping for. Skipping is how a corpus
 // loses three percent of a source without anybody finding out.
-var ErrBadRow = errors.New("gat: the file has a record that does not parse")
+var ErrBadRow = errors.New("harvest: the file has a record that does not parse")
 
 // Decoder turns the bytes of one pinned file into documents.
 //
@@ -205,7 +205,7 @@ func (j jsonRows) Decode(p Pinned, f File, r io.Reader, emit func(*doc.Document)
 			// written line are the same bytes, so the run named the one of the two
 			// it had no way to check.
 			if rErr := lines.Err(); rErr != nil {
-				return fmt.Errorf("gat: reading %s: the stream stopped inside line %d: %w", f.Path, n, rErr)
+				return fmt.Errorf("harvest: reading %s: the stream stopped inside line %d: %w", f.Path, n, rErr)
 			}
 			return fmt.Errorf("%w: %s line %d: %w", ErrBadRow, f.Path, n, err)
 		}
@@ -214,7 +214,7 @@ func (j jsonRows) Decode(p Pinned, f File, r io.Reader, emit func(*doc.Document)
 		}
 	}
 	if err := lines.Err(); err != nil {
-		return fmt.Errorf("gat: reading %s: %w", f.Path, err)
+		return fmt.Errorf("harvest: reading %s: %w", f.Path, err)
 	}
 	return nil
 }
@@ -243,19 +243,19 @@ func decompress(name string, r io.Reader) (io.Reader, func(), error) {
 	case ".zst":
 		z, err := zstd.NewReader(r)
 		if err != nil {
-			return nil, nil, fmt.Errorf("gat: opening %s: %w", name, err)
+			return nil, nil, fmt.Errorf("harvest: opening %s: %w", name, err)
 		}
 		return z, z.Close, nil
 	case ".gz":
 		g, err := gzip.NewReader(r)
 		if err != nil {
-			return nil, nil, fmt.Errorf("gat: opening %s: %w", name, err)
+			return nil, nil, fmt.Errorf("harvest: opening %s: %w", name, err)
 		}
 		return g, func() { _ = g.Close() }, nil
 	case ".jsonl", ".json":
 		return r, func() {}, nil
 	}
-	return nil, nil, fmt.Errorf("gat: %s is compressed in a way this does not read", name)
+	return nil, nil, fmt.Errorf("harvest: %s is compressed in a way this does not read", name)
 }
 
 // build fills in every column that does not depend on which source the row came

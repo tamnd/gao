@@ -121,7 +121,7 @@ type Rotation struct {
 func Target() Rotation {
 	server1, ok := fleet.Lookup("server1")
 	if !ok {
-		panic("don: server1 is not on the fleet inventory")
+		panic("clear: server1 is not on the fleet inventory")
 	}
 	return Rotation{
 		Box:     server1,

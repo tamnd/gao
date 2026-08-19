@@ -313,7 +313,7 @@ func (p Panel) Verdict() string {
 func ReadPanel(model, path string) (Panel, error) {
 	b, err := os.ReadFile(path)
 	if err != nil {
-		return Panel{}, fmt.Errorf("giu: %w", err)
+		return Panel{}, fmt.Errorf("keep: %w", err)
 	}
 	p := Panel{Model: model}
 	for i, line := range strings.Split(strings.TrimSpace(string(b)), "\n") {
@@ -324,12 +324,12 @@ func ReadPanel(model, path string) (Panel, error) {
 		dec.DisallowUnknownFields()
 		var s Specialist
 		if err := dec.Decode(&s); err != nil {
-			return Panel{}, fmt.Errorf("giu: %s line %d: %w", path, i+1, err)
+			return Panel{}, fmt.Errorf("keep: %s line %d: %w", path, i+1, err)
 		}
 		p.Specialists = append(p.Specialists, s)
 	}
 	if len(p.Specialists) == 0 {
-		return Panel{}, fmt.Errorf("giu: %s holds no specialists", path)
+		return Panel{}, fmt.Errorf("keep: %s holds no specialists", path)
 	}
 	return p, nil
 }

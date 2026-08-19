@@ -38,7 +38,7 @@ const valueBatch = 1024
 
 // ErrNoColumn is returned when a part does not carry the column being read,
 // which for doc_id means it was not written by gao.
-var ErrNoColumn = errors.New("dem: that part has no such column")
+var ErrNoColumn = errors.New("count: that part has no such column")
 
 // DocIDs calls yield with the identity of every document in a part, reading only
 // the column the identities are in.
@@ -49,7 +49,7 @@ var ErrNoColumn = errors.New("dem: that part has no such column")
 func DocIDs(r io.ReaderAt, size int64, yield func(doc.Hash) error) error {
 	f, err := parquet.OpenFile(r, size)
 	if err != nil {
-		return fmt.Errorf("dem: opening a part of %d bytes: %w", size, err)
+		return fmt.Errorf("count: opening a part of %d bytes: %w", size, err)
 	}
 	return EachDocID(f, yield)
 }
@@ -60,7 +60,7 @@ func EachDocID(f *parquet.File, yield func(doc.Hash) error) error {
 	return eachValue(f, store.DocIDColumn, func(v parquet.Value) error {
 		b := v.ByteArray()
 		if len(b) != doc.HashSize {
-			return fmt.Errorf("dem: a doc_id in this part is %d bytes rather than %d", len(b), doc.HashSize)
+			return fmt.Errorf("count: a doc_id in this part is %d bytes rather than %d", len(b), doc.HashSize)
 		}
 		return yield(doc.Hash(b))
 	})
@@ -118,7 +118,7 @@ func readColumn(chunk parquet.ColumnChunk, buf []parquet.Value, name string, yie
 			return nil
 		}
 		if err != nil {
-			return fmt.Errorf("dem: reading a page of %s: %w", name, err)
+			return fmt.Errorf("count: reading a page of %s: %w", name, err)
 		}
 		err = readPage(page, buf, name, yield)
 		// Released rather than left to the collector because these are pooled,
@@ -144,7 +144,7 @@ func readPage(page parquet.Page, buf []parquet.Value, name string, yield func(pa
 			return nil
 		}
 		if err != nil {
-			return fmt.Errorf("dem: reading %s values: %w", name, err)
+			return fmt.Errorf("count: reading %s values: %w", name, err)
 		}
 	}
 }

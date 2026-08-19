@@ -46,7 +46,7 @@ import (
 var TextPerPart = int64(math.Round(float64(fleet.ShardBytes) * fleet.Compression))
 
 // ErrRollClosed reports an append to a roll that has already been closed.
-var ErrRollClosed = errors.New("kho: that roll is closed")
+var ErrRollClosed = errors.New("store: that roll is closed")
 
 // Roll writes the documents of one input file as a sequence of parts.
 //
@@ -199,7 +199,7 @@ func (r *Roll) rotate() error {
 		return nil
 	}
 	if err := r.Finished(f); err != nil {
-		return fmt.Errorf("kho: %s: %w", f.Path, err)
+		return fmt.Errorf("store: %s: %w", f.Path, err)
 	}
 	return nil
 }

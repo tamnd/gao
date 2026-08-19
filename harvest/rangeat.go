@@ -88,12 +88,12 @@ const DefaultWindows = 24
 
 // ErrShortRange is returned when a host answers a Range request with fewer bytes
 // than were asked for, without the file having ended.
-var ErrShortRange = errors.New("gat: the host answered a range request with less than it was asked for")
+var ErrShortRange = errors.New("harvest: the host answered a range request with less than it was asked for")
 
 // ErrNoRange is returned when a host ignores a Range header and sends the whole
 // file. Taking that would mean downloading several gigabytes to satisfy a read of
 // four megabytes, once per window, so it is a failure rather than a slow path.
-var ErrNoRange = errors.New("gat: the host does not answer range requests")
+var ErrNoRange = errors.New("harvest: the host does not answer range requests")
 
 // Remote is a file somewhere else, described well enough to read it out of
 // order and to say what went wrong when that fails.
@@ -134,7 +134,7 @@ type Remote struct {
 // OpenAt returns a reader over a pinned file that can be read out of order.
 func (f *Fetcher) OpenAt(ctx context.Context, p Pinned, file File) (*RangeAt, error) {
 	if file.Bytes <= 0 {
-		return nil, fmt.Errorf("gat: %s from %s has no pinned size, so it cannot be read out of order", file.Path, p.Source)
+		return nil, fmt.Errorf("harvest: %s from %s has no pinned size, so it cannot be read out of order", file.Path, p.Source)
 	}
 	return f.OpenRemote(ctx, Remote{
 		Name:  file.Path,
@@ -156,7 +156,7 @@ func (f *Fetcher) OpenAt(ctx context.Context, p Pinned, file File) (*RangeAt, er
 // has not to download a source to read it.
 func (f *Fetcher) OpenRemote(ctx context.Context, r Remote) (*RangeAt, error) {
 	if r.Bytes <= 0 {
-		return nil, fmt.Errorf("gat: %s from %s has no known size, so it cannot be read out of order", r.Name, r.From)
+		return nil, fmt.Errorf("harvest: %s from %s has no known size, so it cannot be read out of order", r.Name, r.From)
 	}
 	window, keep := r.Window, r.Windows
 	if window <= 0 {
@@ -229,7 +229,7 @@ func (r *RangeAt) Bytes() int64 {
 func (r *RangeAt) ReadAt(p []byte, off int64) (int, error) {
 	switch {
 	case off < 0:
-		return 0, fmt.Errorf("gat: reading %s at %d: negative offset", r.remote.Name, off)
+		return 0, fmt.Errorf("harvest: reading %s at %d: negative offset", r.remote.Name, off)
 	case off >= r.size:
 		return 0, io.EOF
 	case len(p) == 0:
@@ -337,7 +337,7 @@ func (r *RangeAt) fetch(p []byte, off int64) (int, error) {
 		}
 		last = err
 		if try >= r.fetcher.retries() {
-			return 0, fmt.Errorf("gat: reading %s from %s at byte %d: gave up after %d attempts: %w",
+			return 0, fmt.Errorf("harvest: reading %s from %s at byte %d: gave up after %d attempts: %w",
 				r.remote.Name, r.remote.From, off, try+1, last)
 		}
 		if waitErr := sleep(r.ctx, time.Duration(try+1)*r.fetcher.retryWait()); waitErr != nil {
@@ -350,7 +350,7 @@ func (r *RangeAt) fetch(p []byte, off int64) (int, error) {
 func (r *RangeAt) once(p []byte, off int64) (int, error) {
 	req, err := http.NewRequestWithContext(r.ctx, http.MethodGet, r.remote.URL, nil)
 	if err != nil {
-		return 0, fmt.Errorf("gat: reading %s from %s: %w", r.remote.Name, r.remote.From, err)
+		return 0, fmt.Errorf("harvest: reading %s from %s: %w", r.remote.Name, r.remote.From, err)
 	}
 	req.Header.Set("Range", fmt.Sprintf("bytes=%d-%d", off, off+int64(len(p))-1))
 	if r.remote.Auth {
@@ -359,7 +359,7 @@ func (r *RangeAt) once(p []byte, off int64) (int, error) {
 
 	resp, err := r.fetcher.client().Do(req)
 	if err != nil {
-		return 0, fmt.Errorf("gat: reading %s from %s at byte %d: %w", r.remote.Name, r.remote.From, off, err)
+		return 0, fmt.Errorf("harvest: reading %s from %s at byte %d: %w", r.remote.Name, r.remote.From, off, err)
 	}
 	defer func() { _ = resp.Body.Close() }()
 
@@ -370,7 +370,7 @@ func (r *RangeAt) once(p []byte, off int64) (int, error) {
 			return 0, fmt.Errorf("%w: %s answered %s for %s, so accept the terms at %s and set %s",
 				ErrGated, r.remote.From, resp.Status, r.remote.Name, r.remote.Page, fleet.TokenEnv)
 		}
-		return 0, fmt.Errorf("gat: reading %s from %s: %s", r.remote.Name, r.remote.From, resp.Status)
+		return 0, fmt.Errorf("harvest: reading %s from %s: %s", r.remote.Name, r.remote.From, resp.Status)
 
 	case resp.StatusCode == http.StatusOK:
 		drain(resp)
@@ -379,7 +379,7 @@ func (r *RangeAt) once(p []byte, off int64) (int, error) {
 
 	case resp.StatusCode != http.StatusPartialContent:
 		drain(resp)
-		return 0, fmt.Errorf("gat: reading %s from %s at byte %d: %s", r.remote.Name, r.remote.From, off, resp.Status)
+		return 0, fmt.Errorf("harvest: reading %s from %s at byte %d: %s", r.remote.Name, r.remote.From, off, resp.Status)
 	}
 
 	n, err := io.ReadFull(resp.Body, p)
@@ -391,6 +391,6 @@ func (r *RangeAt) once(p []byte, off int64) (int, error) {
 		// the end of the file, and it is worth retrying.
 		return n, fmt.Errorf("%w: %s at byte %d, %d of %d bytes", ErrShortRange, r.remote.Name, off, n, len(p))
 	default:
-		return n, fmt.Errorf("gat: reading %s from %s at byte %d: %w", r.remote.Name, r.remote.From, off, err)
+		return n, fmt.Errorf("harvest: reading %s from %s at byte %d: %w", r.remote.Name, r.remote.From, off, err)
 	}
 }

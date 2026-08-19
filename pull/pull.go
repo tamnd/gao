@@ -391,7 +391,7 @@ func (d Drill) Verdict() string {
 func ReadDrill(run string, params int64, path string) (Drill, error) {
 	b, err := os.ReadFile(path)
 	if err != nil {
-		return Drill{}, fmt.Errorf("keo: %w", err)
+		return Drill{}, fmt.Errorf("pull: %w", err)
 	}
 	d := Drill{Run: run, Params: params}
 	for i, line := range strings.Split(strings.TrimSpace(string(b)), "\n") {
@@ -402,12 +402,12 @@ func ReadDrill(run string, params int64, path string) (Drill, error) {
 		dec.DisallowUnknownFields()
 		var r Resume
 		if err := dec.Decode(&r); err != nil {
-			return Drill{}, fmt.Errorf("keo: %s line %d: %w", path, i+1, err)
+			return Drill{}, fmt.Errorf("pull: %s line %d: %w", path, i+1, err)
 		}
 		d.Resumes = append(d.Resumes, r)
 	}
 	if len(d.Resumes) == 0 {
-		return Drill{}, fmt.Errorf("keo: %s holds no resumes", path)
+		return Drill{}, fmt.Errorf("pull: %s holds no resumes", path)
 	}
 	return d, nil
 }

@@ -211,7 +211,7 @@ func (r Reading) Ok() bool { return len(r.Blocking()) == 0 }
 func ReadReadings(path string) ([]Reading, error) {
 	b, err := os.ReadFile(path)
 	if err != nil {
-		return nil, fmt.Errorf("chon: %w", err)
+		return nil, fmt.Errorf("choose: %w", err)
 	}
 	var out []Reading
 	for i, line := range strings.Split(strings.TrimSpace(string(b)), "\n") {
@@ -222,7 +222,7 @@ func ReadReadings(path string) ([]Reading, error) {
 		dec.DisallowUnknownFields()
 		var r Reading
 		if err := dec.Decode(&r); err != nil {
-			return nil, fmt.Errorf("chon: %s line %d: %w", path, i+1, err)
+			return nil, fmt.Errorf("choose: %s line %d: %w", path, i+1, err)
 		}
 		out = append(out, r)
 	}

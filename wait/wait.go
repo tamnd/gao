@@ -329,7 +329,7 @@ func (r Run) filter(keep func(Host) bool) []Host {
 func ReadRun(crawl, path string) (Run, error) {
 	b, err := os.ReadFile(path)
 	if err != nil {
-		return Run{}, fmt.Errorf("cho: %w", err)
+		return Run{}, fmt.Errorf("wait: %w", err)
 	}
 	r := Run{Crawl: crawl}
 	for i, line := range strings.Split(strings.TrimSpace(string(b)), "\n") {
@@ -340,12 +340,12 @@ func ReadRun(crawl, path string) (Run, error) {
 		dec.DisallowUnknownFields()
 		var h Host
 		if err := dec.Decode(&h); err != nil {
-			return Run{}, fmt.Errorf("cho: %s line %d: %w", path, i+1, err)
+			return Run{}, fmt.Errorf("wait: %s line %d: %w", path, i+1, err)
 		}
 		r.Hosts = append(r.Hosts, h)
 	}
 	if len(r.Hosts) == 0 {
-		return Run{}, fmt.Errorf("cho: %s holds no readings", path)
+		return Run{}, fmt.Errorf("wait: %s holds no readings", path)
 	}
 	return r, nil
 }

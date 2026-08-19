@@ -173,7 +173,7 @@ func Reasons() []Reason {
 
 // ErrNotRejectable is returned when a rejection is missing the information that
 // would let somebody act on it later.
-var ErrNotRejectable = errors.New("vo: rejection is not recordable")
+var ErrNotRejectable = errors.New("reject: rejection is not recordable")
 
 // Reject is one rejected document. The document is embedded so that the JSON
 // stays flat and so that a reject that gets readmitted is already a document.

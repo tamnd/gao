@@ -21,7 +21,7 @@ make test
 
 **One binary.** Everything ships as subcommands of `gao`. New functionality is a new subcommand, not a new `cmd/` entry.
 
-**Errors carry the document.** A failure in a pipeline stage should say which document failed and at what offset. `fmt.Errorf("phoi: %s: %w", docID, err)` is the shape. Wrapped errors are checked with `errors.Is` and `errors.As`, and `errorlint` enforces that.
+**Errors carry the document.** A failure in a pipeline stage should say which document failed and at what offset. `fmt.Errorf("normalize: %s: %w", docID, err)` is the shape. Wrapped errors are checked with `errors.Is` and `errors.As`, and `errorlint` enforces that.
 
 **Tests are golden files where output is text.** Vietnamese text transformations are much easier to review as a diff than as a table of string literals. Put the input under `testdata/`, run `make golden` to regenerate, and read the diff before committing it. Never regenerate golden files to make a failing test pass without understanding what changed.
 

@@ -138,7 +138,7 @@ func (w *WARCWriter) Write(r *Record) (offset, length int64, err error) {
 			continue
 		}
 		if strings.ContainsAny(f.Value, "\r\n") {
-			return 0, 0, fmt.Errorf("gat: WARC field %s carries a newline, which would end the record early", f.Name)
+			return 0, 0, fmt.Errorf("harvest: WARC field %s carries a newline, which would end the record early", f.Name)
 		}
 		head.WriteString(f.Name + ": " + f.Value + "\r\n")
 	}
@@ -480,7 +480,7 @@ func NewWARCReader(r io.Reader) (*WARCReader, error) {
 }
 
 // ErrDone is returned by Next when the file is finished.
-var ErrDone = errors.New("gat: no more WARC records")
+var ErrDone = errors.New("harvest: no more WARC records")
 
 // Next reads the next record.
 func (w *WARCReader) Next() (*Record, error) {
@@ -498,7 +498,7 @@ func (w *WARCReader) Next() (*Record, error) {
 		return nil, err
 	}
 	if !strings.HasPrefix(version, "WARC/") {
-		return nil, fmt.Errorf("gat: expected a WARC record and found %q", clip(version))
+		return nil, fmt.Errorf("harvest: expected a WARC record and found %q", clip(version))
 	}
 
 	r := &Record{}
@@ -513,35 +513,35 @@ func (w *WARCReader) Next() (*Record, error) {
 		}
 		name, value, ok := strings.Cut(line, ":")
 		if !ok {
-			return nil, fmt.Errorf("gat: WARC field without a colon: %q", clip(line))
+			return nil, fmt.Errorf("harvest: WARC field without a colon: %q", clip(line))
 		}
 		name, value = strings.TrimSpace(name), strings.TrimSpace(value)
 		if strings.EqualFold(name, "Content-Length") {
 			length, err = strconv.Atoi(value)
 			if err != nil {
-				return nil, fmt.Errorf("gat: WARC Content-Length %q: %w", value, err)
+				return nil, fmt.Errorf("harvest: WARC Content-Length %q: %w", value, err)
 			}
 			continue
 		}
 		r.Fields = append(r.Fields, Field{name, value})
 	}
 	if length < 0 {
-		return nil, errors.New("gat: WARC record with no Content-Length")
+		return nil, errors.New("harvest: WARC record with no Content-Length")
 	}
 
 	r.Block = make([]byte, length)
 	if _, err := io.ReadFull(tp.R, r.Block); err != nil {
-		return nil, fmt.Errorf("gat: WARC block of %d bytes: %w", length, err)
+		return nil, fmt.Errorf("harvest: WARC block of %d bytes: %w", length, err)
 	}
 	// The two CRLFs after the block. A file that is short here is truncated, and
 	// saying so is better than handing back a record and failing on the next
 	// one for a reason that makes no sense.
 	var tail [4]byte
 	if _, err := io.ReadFull(tp.R, tail[:]); err != nil {
-		return nil, fmt.Errorf("gat: WARC record is not closed: %w", err)
+		return nil, fmt.Errorf("harvest: WARC record is not closed: %w", err)
 	}
 	if string(tail[:]) != "\r\n\r\n" {
-		return nil, fmt.Errorf("gat: WARC record ends with %q rather than two CRLFs", clip(string(tail[:])))
+		return nil, fmt.Errorf("harvest: WARC record ends with %q rather than two CRLFs", clip(string(tail[:])))
 	}
 	return r, nil
 }
@@ -583,11 +583,11 @@ func (w *WARCReader) member() (io.Reader, error) {
 // know that WARC exists.
 func (r *Record) Response() (*http.Response, error) {
 	if t := r.Type(); !strings.EqualFold(t, "response") {
-		return nil, fmt.Errorf("gat: a %s record does not hold a response", t)
+		return nil, fmt.Errorf("harvest: a %s record does not hold a response", t)
 	}
 	resp, err := http.ReadResponse(bufio.NewReader(bytes.NewReader(r.Block)), nil)
 	if err != nil {
-		return nil, fmt.Errorf("gat: %s: %w", r.URI(), err)
+		return nil, fmt.Errorf("harvest: %s: %w", r.URI(), err)
 	}
 	return resp, nil
 }

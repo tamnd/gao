@@ -86,19 +86,19 @@ func ParseMarked(name, annotated string) (Marked, error) {
 
 		close := strings.Index(annotated[open:], markClose)
 		if close < 0 {
-			return Marked{}, fmt.Errorf("che: %s: a mark opens at byte %d and never closes", name, open)
+			return Marked{}, fmt.Errorf("cover: %s: a mark opens at byte %d and never closes", name, open)
 		}
 		body := annotated[open+len(markOpen) : open+close]
 		colon := strings.Index(body, ":")
 		if colon < 0 {
-			return Marked{}, fmt.Errorf("che: %s: the mark %q does not say what kind it is, which is written {{kind:text}}", name, body)
+			return Marked{}, fmt.Errorf("cover: %s: the mark %q does not say what kind it is, which is written {{kind:text}}", name, body)
 		}
 		kind, text := Kind(strings.TrimSpace(body[:colon])), body[colon+1:]
 		if !kind.Valid() {
-			return Marked{}, fmt.Errorf("che: %s: %q is not a kind this package finds", name, kind)
+			return Marked{}, fmt.Errorf("cover: %s: %q is not a kind this package finds", name, kind)
 		}
 		if text == "" {
-			return Marked{}, fmt.Errorf("che: %s: the %s mark at byte %d has no text in it", name, kind, open)
+			return Marked{}, fmt.Errorf("cover: %s: the %s mark at byte %d has no text in it", name, kind, open)
 		}
 		start := b.Len()
 		b.WriteString(text)
@@ -137,7 +137,7 @@ func Labeled() ([]Marked, error) {
 		out = append(out, m)
 	}
 	if len(out) == 0 {
-		return nil, fmt.Errorf("che: the labeled set is empty, and a recall of nothing reads as a recall of one")
+		return nil, fmt.Errorf("cover: the labeled set is empty, and a recall of nothing reads as a recall of one")
 	}
 	return out, nil
 }

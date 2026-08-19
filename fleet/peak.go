@@ -360,7 +360,7 @@ func (p Peak) Verdict() string {
 func ReadTrace(path string) ([]Sample, error) {
 	b, err := os.ReadFile(path)
 	if err != nil {
-		return nil, fmt.Errorf("may: %w", err)
+		return nil, fmt.Errorf("fleet: %w", err)
 	}
 	var out []Sample
 	for i, line := range strings.Split(strings.TrimSpace(string(b)), "\n") {
@@ -371,12 +371,12 @@ func ReadTrace(path string) ([]Sample, error) {
 		dec.DisallowUnknownFields()
 		var s Sample
 		if err := dec.Decode(&s); err != nil {
-			return nil, fmt.Errorf("may: %s line %d: %w", path, i+1, err)
+			return nil, fmt.Errorf("fleet: %s line %d: %w", path, i+1, err)
 		}
 		out = append(out, s)
 	}
 	if len(out) == 0 {
-		return nil, fmt.Errorf("may: %s holds no readings", path)
+		return nil, fmt.Errorf("fleet: %s holds no readings", path)
 	}
 	return out, nil
 }

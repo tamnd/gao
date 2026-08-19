@@ -73,7 +73,7 @@ type parquetRows[T any] struct {
 func (j parquetRows[T]) DecodeAt(p Pinned, f File, r io.ReaderAt, size int64, emit func(*doc.Document) error) error {
 	file, err := parquet.OpenFile(r, size)
 	if err != nil {
-		return fmt.Errorf("gat: opening %s from %s: %w", f.Path, p.Source, err)
+		return fmt.Errorf("harvest: opening %s from %s: %w", f.Path, p.Source, err)
 	}
 
 	rows := parquet.NewGenericReader[T](file)
@@ -101,7 +101,7 @@ func (j parquetRows[T]) DecodeAt(p Pinned, f File, r io.ReaderAt, size int64, em
 			if errors.Is(err, io.EOF) {
 				return nil
 			}
-			return fmt.Errorf("gat: reading %s from %s at row %d: %w", f.Path, p.Source, n, err)
+			return fmt.Errorf("harvest: reading %s from %s at row %d: %w", f.Path, p.Source, n, err)
 		}
 	}
 }

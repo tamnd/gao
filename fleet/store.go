@@ -172,4 +172,4 @@ func Store() (string, bool) {
 }
 
 // ErrNoStore is what a command reports when the store of record is not set.
-var ErrNoStore = fmt.Errorf("may: the store of record is not set, so nothing knows where the corpus lives: set %s to a URI such as hf://open-index", StoreEnv)
+var ErrNoStore = fmt.Errorf("fleet: the store of record is not set, so nothing knows where the corpus lives: set %s to a URI such as hf://open-index", StoreEnv)

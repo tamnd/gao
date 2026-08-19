@@ -46,7 +46,7 @@ func Open[P Record[T], T any](path string) (*Segment[P, T], error) {
 	s, err := OpenReaderAt[P](f, info.Size())
 	if err != nil {
 		_ = f.Close()
-		return nil, fmt.Errorf("kho: %s: %w", path, err)
+		return nil, fmt.Errorf("store: %s: %w", path, err)
 	}
 	s.close = f.Close
 	return s, nil
@@ -61,7 +61,7 @@ func OpenReaderAt[P Record[T], T any](r io.ReaderAt, size int64) (*Segment[P, T]
 	}
 	dec, err := zstd.NewReader(nil)
 	if err != nil {
-		return nil, fmt.Errorf("kho: creating the zstd decoder: %w", err)
+		return nil, fmt.Errorf("store: creating the zstd decoder: %w", err)
 	}
 	return &Segment[P, T]{src: r, index: index, dec: dec, held: -1}, nil
 }
@@ -77,7 +77,7 @@ func readIndex(r io.ReaderAt, size int64) (Index, error) {
 
 	trailer := make([]byte, trailerSize)
 	if _, err := r.ReadAt(trailer, size-trailerSize); err != nil {
-		return index, fmt.Errorf("kho: reading the trailer: %w", err)
+		return index, fmt.Errorf("store: reading the trailer: %w", err)
 	}
 	n := int64(binary.LittleEndian.Uint64(trailer))
 	if n < 0 || n > size-trailerSize-skippableHeaderSize {
@@ -87,7 +87,7 @@ func readIndex(r io.ReaderAt, size int64) (Index, error) {
 	header := make([]byte, skippableHeaderSize)
 	headerAt := size - trailerSize - n - skippableHeaderSize
 	if _, err := r.ReadAt(header, headerAt); err != nil {
-		return index, fmt.Errorf("kho: reading the index frame header: %w", err)
+		return index, fmt.Errorf("store: reading the index frame header: %w", err)
 	}
 	if got := binary.LittleEndian.Uint32(header[0:4]); got != skippableMagic {
 		return index, fmt.Errorf("%w: index frame magic is %#x", ErrNotASegment, got)
@@ -98,13 +98,13 @@ func readIndex(r io.ReaderAt, size int64) (Index, error) {
 
 	body := make([]byte, n)
 	if _, err := r.ReadAt(body, headerAt+skippableHeaderSize); err != nil {
-		return index, fmt.Errorf("kho: reading the index: %w", err)
+		return index, fmt.Errorf("store: reading the index: %w", err)
 	}
 	if err := json.Unmarshal(body, &index); err != nil {
-		return index, fmt.Errorf("kho: decoding the index: %w", err)
+		return index, fmt.Errorf("store: decoding the index: %w", err)
 	}
 	if index.SchemaVersion > doc.SchemaVersion {
-		return index, fmt.Errorf("kho: segment is schema version %d, this build understands %d",
+		return index, fmt.Errorf("store: segment is schema version %d, this build understands %d",
 			index.SchemaVersion, doc.SchemaVersion)
 	}
 	return index, nil
@@ -119,7 +119,7 @@ func (s *Segment[P, T]) Index() Index { return s.index }
 // At returns the document at position i.
 func (s *Segment[P, T]) At(i int) (P, error) {
 	if i < 0 || i >= s.index.Documents {
-		return nil, fmt.Errorf("kho: document %d is outside the segment's %d documents", i, s.index.Documents)
+		return nil, fmt.Errorf("store: document %d is outside the segment's %d documents", i, s.index.Documents)
 	}
 	f := s.frameFor(i)
 	if err := s.load(f); err != nil {
@@ -128,7 +128,7 @@ func (s *Segment[P, T]) At(i int) (P, error) {
 	line := s.heldDocs[i-s.index.Frames[f].First]
 	var v T
 	if err := json.Unmarshal(line, &v); err != nil {
-		return nil, fmt.Errorf("kho: decoding document %d: %w", i, err)
+		return nil, fmt.Errorf("store: decoding document %d: %w", i, err)
 	}
 	return P(&v), nil
 }
@@ -156,15 +156,15 @@ func (s *Segment[P, T]) load(f int) error {
 	fr := s.index.Frames[f]
 	raw := make([]byte, fr.Bytes)
 	if _, err := s.src.ReadAt(raw, fr.Offset); err != nil {
-		return fmt.Errorf("kho: reading frame %d: %w", f, err)
+		return fmt.Errorf("store: reading frame %d: %w", f, err)
 	}
 	plain, err := s.dec.DecodeAll(raw, nil)
 	if err != nil {
-		return fmt.Errorf("kho: decompressing frame %d: %w", f, err)
+		return fmt.Errorf("store: decompressing frame %d: %w", f, err)
 	}
 	lines := splitLines(plain)
 	if len(lines) != fr.Count {
-		return fmt.Errorf("kho: frame %d holds %d documents, the index says %d", f, len(lines), fr.Count)
+		return fmt.Errorf("store: frame %d holds %d documents, the index says %d", f, len(lines), fr.Count)
 	}
 	s.held, s.heldDocs = f, lines
 	return nil

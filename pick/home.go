@@ -56,25 +56,25 @@ const (
 func ParseHome(s string) (Home, error) {
 	scheme, path, ok := strings.Cut(s, ":")
 	if !ok {
-		return Home{}, fmt.Errorf("nhat: %q is not an address, and an address is hf:owner/name or git:https://host/owner/name", s)
+		return Home{}, fmt.Errorf("pick: %q is not an address, and an address is hf:owner/name or git:https://host/owner/name", s)
 	}
 	h := Home{Scheme: scheme, Path: path}
 	switch scheme {
 	case HuggingFace:
 		owner, name, ok := strings.Cut(path, "/")
 		if !ok || owner == "" || name == "" || strings.Contains(name, "/") {
-			return Home{}, fmt.Errorf("nhat: %q is not a Hub repository, and a Hub repository is owner/name", s)
+			return Home{}, fmt.Errorf("pick: %q is not a Hub repository, and a Hub repository is owner/name", s)
 		}
 	case Git:
 		if !strings.HasPrefix(path, "https://") {
-			return Home{}, fmt.Errorf("nhat: %q is not a git repository, and a git repository is an https URL", s)
+			return Home{}, fmt.Errorf("pick: %q is not a git repository, and a git repository is an https URL", s)
 		}
 	case Built:
 		if !command(path) {
-			return Home{}, fmt.Errorf("nhat: %q is not a command, and a set built here is addressed by the command that prints its digest", s)
+			return Home{}, fmt.Errorf("pick: %q is not a command, and a set built here is addressed by the command that prints its digest", s)
 		}
 	default:
-		return Home{}, fmt.Errorf("nhat: %q has scheme %q, and an address is %s or %s", s, scheme, HuggingFace, Git)
+		return Home{}, fmt.Errorf("pick: %q has scheme %q, and an address is %s or %s", s, scheme, HuggingFace, Git)
 	}
 	return h, nil
 }
@@ -163,27 +163,27 @@ func (e Entry) checkPin() error {
 	switch {
 	case e.Pinned():
 		if e.Pending != "" {
-			return fmt.Errorf("nhat: %s is pinned at %s and still says it is waiting on %q", e.Name, e.Version, e.Pending)
+			return fmt.Errorf("pick: %s is pinned at %s and still says it is waiting on %q", e.Name, e.Version, e.Pending)
 		}
 		h, err := ParseHome(e.Home)
 		if err != nil {
-			return fmt.Errorf("nhat: %s: %w", e.Name, err)
+			return fmt.Errorf("pick: %s: %w", e.Name, err)
 		}
 		if err := h.fits(e.Name, e.Version); err != nil {
 			return err
 		}
 	case e.Home != "" && e.Version != Unpinned && e.Version != "":
-		return fmt.Errorf("nhat: %s is at revision %q, and a revision is the %d character object id its home answers with rather than a name that can be moved", e.Name, e.Version, revisionLen)
+		return fmt.Errorf("pick: %s is at revision %q, and a revision is the %d character object id its home answers with rather than a name that can be moved", e.Name, e.Version, revisionLen)
 	default:
 		if e.Version != Unpinned && e.Version != "" {
-			return fmt.Errorf("nhat: %s is at revision %q with no home to ask for it, so nobody can check what it was", e.Name, e.Version)
+			return fmt.Errorf("pick: %s is at revision %q with no home to ask for it, so nobody can check what it was", e.Name, e.Version)
 		}
 		if e.Pending == "" {
-			return fmt.Errorf("nhat: %s has no revision and no reason, and an unpinned benchmark has to say what it is waiting for", e.Name)
+			return fmt.Errorf("pick: %s has no revision and no reason, and an unpinned benchmark has to say what it is waiting for", e.Name)
 		}
 		if e.Home != "" {
 			if _, err := ParseHome(e.Home); err != nil {
-				return fmt.Errorf("nhat: %s: %w", e.Name, err)
+				return fmt.Errorf("pick: %s: %w", e.Name, err)
 			}
 		}
 	}
@@ -220,9 +220,9 @@ func (ros Roster) Blocking() []string {
 func (h Home) fits(name, version string) error {
 	switch {
 	case h.Scheme == Built && len(version) != digestLen:
-		return fmt.Errorf("nhat: %s is built here and pinned at a %d character revision, and a set built here is pinned at the %d character digest its command prints", name, len(version), digestLen)
+		return fmt.Errorf("pick: %s is built here and pinned at a %d character revision, and a set built here is pinned at the %d character digest its command prints", name, len(version), digestLen)
 	case h.Scheme != Built && len(version) != revisionLen:
-		return fmt.Errorf("nhat: %s lives at %s and is pinned at a %d character revision, and %s answers with a %d character object id", name, h, len(version), h.Scheme, revisionLen)
+		return fmt.Errorf("pick: %s lives at %s and is pinned at a %d character revision, and %s answers with a %d character object id", name, h, len(version), h.Scheme, revisionLen)
 	}
 	return nil
 }

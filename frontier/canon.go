@@ -49,17 +49,17 @@ func Canon(rawurl string) (string, error) {
 func Parse(rawurl string) (*url.URL, error) {
 	u, err := url.Parse(strings.TrimSpace(rawurl))
 	if err != nil {
-		return nil, fmt.Errorf("bien: %s: %w", rawurl, err)
+		return nil, fmt.Errorf("frontier: %s: %w", rawurl, err)
 	}
 
 	u.Scheme = strings.ToLower(u.Scheme)
 	if u.Scheme != "http" && u.Scheme != "https" {
-		return nil, fmt.Errorf("bien: %s: %q is not a scheme a crawl follows", rawurl, u.Scheme)
+		return nil, fmt.Errorf("frontier: %s: %q is not a scheme a crawl follows", rawurl, u.Scheme)
 	}
 
 	host, err := canonHost(u)
 	if err != nil {
-		return nil, fmt.Errorf("bien: %s: %w", rawurl, err)
+		return nil, fmt.Errorf("frontier: %s: %w", rawurl, err)
 	}
 	u.Host = host
 

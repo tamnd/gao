@@ -80,7 +80,7 @@ const DefaultKeys = 120_000_000
 func Clean() store.Dataset {
 	d, ok := store.Lookup("vitco-clean")
 	if !ok {
-		panic("sach: the hub has no vitco-clean")
+		panic("clean: the hub has no vitco-clean")
 	}
 	return d
 }

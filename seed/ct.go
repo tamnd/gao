@@ -85,7 +85,7 @@ type Entry struct {
 func Hosts(r io.Reader, suffix string) ([]Host, error) {
 	var entries []Entry
 	if err := json.NewDecoder(r).Decode(&entries); err != nil {
-		return nil, fmt.Errorf("mam: reading certificate transparency results: %w", err)
+		return nil, fmt.Errorf("seed: reading certificate transparency results: %w", err)
 	}
 	return collect(entries, suffix), nil
 }
@@ -250,17 +250,17 @@ func Search(ctx context.Context, c *http.Client, base, suffix string) ([]Host, e
 	q := url.Values{"q": {"%." + suffix}, "output": {"json"}}
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, base+"?"+q.Encode(), nil)
 	if err != nil {
-		return nil, fmt.Errorf("mam: %w", err)
+		return nil, fmt.Errorf("seed: %w", err)
 	}
 	req.Header.Set("Accept", "application/json")
 
 	resp, err := c.Do(req)
 	if err != nil {
-		return nil, fmt.Errorf("mam: asking %s: %w", base, err)
+		return nil, fmt.Errorf("seed: asking %s: %w", base, err)
 	}
 	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("mam: %s answered %s", base, resp.Status)
+		return nil, fmt.Errorf("seed: %s answered %s", base, resp.Status)
 	}
 	return Hosts(resp.Body, suffix)
 }

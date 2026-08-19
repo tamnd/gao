@@ -66,7 +66,7 @@ var Gemma3 = Model{
 }
 
 // ErrWrongModel reports a tokenizer file that is not the pinned one.
-var ErrWrongModel = errors.New("dem: the tokenizer file is not the pinned one")
+var ErrWrongModel = errors.New("count: the tokenizer file is not the pinned one")
 
 // Verify reads r to the end and reports whether it is the pinned model. It
 // returns the bytes it read, so a caller that has to hold the file in memory
@@ -79,7 +79,7 @@ func (m Model) Verify(r io.Reader) ([]byte, error) {
 	h := sha256.New()
 	b, err := io.ReadAll(io.TeeReader(r, h))
 	if err != nil {
-		return nil, fmt.Errorf("dem: reading the tokenizer: %w", err)
+		return nil, fmt.Errorf("count: reading the tokenizer: %w", err)
 	}
 	if int64(len(b)) != m.Bytes {
 		return nil, fmt.Errorf("%w: %s is %d bytes, expected %d", ErrWrongModel, m.Name, len(b), m.Bytes)
@@ -117,12 +117,12 @@ func (m Model) Fetch(ctx context.Context, c *http.Client) ([]byte, error) {
 	}
 	resp, err := c.Do(req)
 	if err != nil {
-		return nil, fmt.Errorf("dem: fetching %s: %w", m.Name, err)
+		return nil, fmt.Errorf("count: fetching %s: %w", m.Name, err)
 	}
 	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("dem: fetching %s: %s said %s", m.Name, m.From, resp.Status)
+		return nil, fmt.Errorf("count: fetching %s: %s said %s", m.Name, m.From, resp.Status)
 	}
 	return m.Verify(resp.Body)
 }

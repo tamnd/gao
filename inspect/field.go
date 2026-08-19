@@ -387,7 +387,7 @@ func (f Field) Verdict() string {
 func ReadField(card int64, pages int64, g Gate, path string) (Field, error) {
 	b, err := os.ReadFile(path)
 	if err != nil {
-		return Field{}, fmt.Errorf("soi: %w", err)
+		return Field{}, fmt.Errorf("inspect: %w", err)
 	}
 	f := Field{Card: card, Pages: pages, Gate: g}
 	for i, line := range strings.Split(strings.TrimSpace(string(b)), "\n") {
@@ -398,12 +398,12 @@ func ReadField(card int64, pages int64, g Gate, path string) (Field, error) {
 		dec.DisallowUnknownFields()
 		var c Candidate
 		if err := dec.Decode(&c); err != nil {
-			return Field{}, fmt.Errorf("soi: %s line %d: %w", path, i+1, err)
+			return Field{}, fmt.Errorf("inspect: %s line %d: %w", path, i+1, err)
 		}
 		f.Candidates = append(f.Candidates, c)
 	}
 	if len(f.Candidates) == 0 {
-		return Field{}, fmt.Errorf("soi: %s holds no engines", path)
+		return Field{}, fmt.Errorf("inspect: %s holds no engines", path)
 	}
 	return f, nil
 }

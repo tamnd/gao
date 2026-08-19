@@ -259,7 +259,7 @@ func (p Predicted) Holds(f Fertility) (holds, applies bool) {
 func ReadFertility(path string) ([]Fertility, error) {
 	b, err := os.ReadFile(path)
 	if err != nil {
-		return nil, fmt.Errorf("dem: %w", err)
+		return nil, fmt.Errorf("count: %w", err)
 	}
 	var out []Fertility
 	for i, line := range strings.Split(strings.TrimSpace(string(b)), "\n") {
@@ -270,7 +270,7 @@ func ReadFertility(path string) ([]Fertility, error) {
 		dec.DisallowUnknownFields()
 		var f Fertility
 		if err := dec.Decode(&f); err != nil {
-			return nil, fmt.Errorf("dem: %s line %d: %w", path, i+1, err)
+			return nil, fmt.Errorf("count: %s line %d: %w", path, i+1, err)
 		}
 		out = append(out, f)
 	}

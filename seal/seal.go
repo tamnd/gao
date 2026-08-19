@@ -170,7 +170,7 @@ func Decode(r io.Reader) (Harness, error) {
 	dec := json.NewDecoder(r)
 	dec.DisallowUnknownFields()
 	if err := dec.Decode(&h); err != nil {
-		return Harness{}, fmt.Errorf("chot: reading the harness: %w", err)
+		return Harness{}, fmt.Errorf("seal: reading the harness: %w", err)
 	}
 	if err := h.check(); err != nil {
 		return Harness{}, err
@@ -180,26 +180,26 @@ func Decode(r io.Reader) (Harness, error) {
 
 func (h Harness) check() error {
 	if h.Version == "" {
-		return fmt.Errorf("chot: the harness has no version, and an undated harness cannot be shown to predate anything")
+		return fmt.Errorf("seal: the harness has no version, and an undated harness cannot be shown to predate anything")
 	}
 	if h.Roster == "" {
-		return fmt.Errorf("chot: the harness names no roster version, so its benchmark names are checked against nothing")
+		return fmt.Errorf("seal: the harness names no roster version, so its benchmark names are checked against nothing")
 	}
 	if len(h.Arms) < 2 {
-		return fmt.Errorf("chot: %d arms, and a comparison needs at least two", len(h.Arms))
+		return fmt.Errorf("seal: %d arms, and a comparison needs at least two", len(h.Arms))
 	}
 	seen := map[string]bool{}
 	for _, a := range h.Arms {
 		if a == "" {
-			return fmt.Errorf("chot: an arm with no name")
+			return fmt.Errorf("seal: an arm with no name")
 		}
 		if seen[a] {
-			return fmt.Errorf("chot: %s is named twice in the arms", a)
+			return fmt.Errorf("seal: %s is named twice in the arms", a)
 		}
 		seen[a] = true
 	}
 	if len(h.Tasks) == 0 {
-		return fmt.Errorf("chot: the harness holds no tasks")
+		return fmt.Errorf("seal: the harness holds no tasks")
 	}
 	seen = map[string]bool{}
 	for _, t := range h.Tasks {
@@ -207,7 +207,7 @@ func (h Harness) check() error {
 			return err
 		}
 		if seen[t.Benchmark] {
-			return fmt.Errorf("chot: %s appears twice, and one benchmark scored two ways is two benchmarks with one name", t.Benchmark)
+			return fmt.Errorf("seal: %s appears twice, and one benchmark scored two ways is two benchmarks with one name", t.Benchmark)
 		}
 		seen[t.Benchmark] = true
 	}
@@ -216,32 +216,32 @@ func (h Harness) check() error {
 
 func (t Task) check() error {
 	if t.Benchmark == "" {
-		return fmt.Errorf("chot: a task with no benchmark")
+		return fmt.Errorf("seal: a task with no benchmark")
 	}
 	switch t.Metric {
 	case Accuracy, ExactMatch, F1, PassRate, ChrF, DER:
 	default:
-		return fmt.Errorf("chot: %s is scored by %q, which is not a metric this harness knows how to read", t.Benchmark, t.Metric)
+		return fmt.Errorf("seal: %s is scored by %q, which is not a metric this harness knows how to read", t.Benchmark, t.Metric)
 	}
 	switch t.Extract {
 	case FirstOption, Likelihood, FirstLine, Whole, CodeBlock:
 	default:
-		return fmt.Errorf("chot: %s takes its answer by %q, which is not a rule this harness knows", t.Benchmark, t.Extract)
+		return fmt.Errorf("seal: %s takes its answer by %q, which is not a rule this harness knows", t.Benchmark, t.Extract)
 	}
 	if t.Shots < 0 {
-		return fmt.Errorf("chot: %s asks for %d shots", t.Benchmark, t.Shots)
+		return fmt.Errorf("seal: %s asks for %d shots", t.Benchmark, t.Shots)
 	}
 	if t.Shots > 0 && t.Seed == 0 {
-		return fmt.Errorf("chot: %s draws %d shots with no seed, and shots drawn differently are a different benchmark", t.Benchmark, t.Shots)
+		return fmt.Errorf("seal: %s draws %d shots with no seed, and shots drawn differently are a different benchmark", t.Benchmark, t.Shots)
 	}
 	if strings.TrimSpace(t.Prompt) == "" {
-		return fmt.Errorf("chot: %s has no prompt, and a benchmark without its prompt is not pinned", t.Benchmark)
+		return fmt.Errorf("seal: %s has no prompt, and a benchmark without its prompt is not pinned", t.Benchmark)
 	}
 	if !strings.Contains(t.Prompt, "{{item}}") {
-		return fmt.Errorf("chot: the prompt for %s has nowhere to put the item", t.Benchmark)
+		return fmt.Errorf("seal: the prompt for %s has nowhere to put the item", t.Benchmark)
 	}
 	if t.Shots > 0 && !strings.Contains(t.Prompt, "{{shots}}") {
-		return fmt.Errorf("chot: the prompt for %s draws %d shots and has nowhere to put them", t.Benchmark, t.Shots)
+		return fmt.Errorf("seal: the prompt for %s draws %d shots and has nowhere to put them", t.Benchmark, t.Shots)
 	}
 	return nil
 }

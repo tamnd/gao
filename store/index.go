@@ -101,10 +101,10 @@ func ReadIndex(r io.Reader) ([]Indexed, error) {
 
 	head, err := c.Read()
 	if err != nil {
-		return nil, fmt.Errorf("kho: reading the %s header: %w", IndexName, err)
+		return nil, fmt.Errorf("store: reading the %s header: %w", IndexName, err)
 	}
 	if !slices.Equal(head, indexHeader) {
-		return nil, fmt.Errorf("kho: %s has the columns %v and this build writes %v", IndexName, head, indexHeader)
+		return nil, fmt.Errorf("store: %s has the columns %v and this build writes %v", IndexName, head, indexHeader)
 	}
 
 	var out []Indexed
@@ -114,7 +114,7 @@ func ReadIndex(r io.Reader) ([]Indexed, error) {
 			return out, nil
 		}
 		if err != nil {
-			return nil, fmt.Errorf("kho: reading %s: %w", IndexName, err)
+			return nil, fmt.Errorf("store: reading %s: %w", IndexName, err)
 		}
 		row := Indexed{Source: rec[0], Snapshot: rec[1], Path: rec[4]}
 		for _, f := range []struct {
@@ -129,7 +129,7 @@ func ReadIndex(r io.Reader) ([]Indexed, error) {
 		} {
 			n, err := strconv.ParseInt(f.text, 10, 64)
 			if err != nil {
-				return nil, fmt.Errorf("kho: %s line %d has %s = %q, which is not a number", IndexName, line, f.name, f.text)
+				return nil, fmt.Errorf("store: %s line %d has %s = %q, which is not a number", IndexName, line, f.name, f.text)
 			}
 			switch into := f.into.(type) {
 			case *int:

@@ -412,7 +412,7 @@ func hours(in []Track) float64 {
 func ReadSet(name, path string) (Set, error) {
 	b, err := os.ReadFile(path)
 	if err != nil {
-		return Set{}, fmt.Errorf("nghe: %w", err)
+		return Set{}, fmt.Errorf("listen: %w", err)
 	}
 	s := Set{Set: name}
 	for i, line := range strings.Split(strings.TrimSpace(string(b)), "\n") {
@@ -423,12 +423,12 @@ func ReadSet(name, path string) (Set, error) {
 		dec.DisallowUnknownFields()
 		var t Track
 		if err := dec.Decode(&t); err != nil {
-			return Set{}, fmt.Errorf("nghe: %s line %d: %w", path, i+1, err)
+			return Set{}, fmt.Errorf("listen: %s line %d: %w", path, i+1, err)
 		}
 		s.Tracks = append(s.Tracks, t)
 	}
 	if len(s.Tracks) == 0 {
-		return Set{}, fmt.Errorf("nghe: %s holds no tracks", path)
+		return Set{}, fmt.Errorf("listen: %s holds no tracks", path)
 	}
 	return s, nil
 }

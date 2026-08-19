@@ -84,7 +84,7 @@ func ParseState(s string) (State, bool) {
 // list, which the numbers do not.
 func (s State) MarshalJSON() ([]byte, error) {
 	if s > Reclaimed {
-		return nil, fmt.Errorf("don: %s is not a state a file can be in", s)
+		return nil, fmt.Errorf("clear: %s is not a state a file can be in", s)
 	}
 	return []byte(`"` + s.String() + `"`), nil
 }
@@ -93,11 +93,11 @@ func (s State) MarshalJSON() ([]byte, error) {
 func (s *State) UnmarshalJSON(b []byte) error {
 	var name string
 	if err := json.Unmarshal(b, &name); err != nil {
-		return fmt.Errorf("don: a state is one of resident, pushed, verified or reclaimed: %w", err)
+		return fmt.Errorf("clear: a state is one of resident, pushed, verified or reclaimed: %w", err)
 	}
 	got, ok := ParseState(name)
 	if !ok {
-		return fmt.Errorf("don: %q is not a state, and the states are resident, pushed, verified and reclaimed", name)
+		return fmt.Errorf("clear: %q is not a state, and the states are resident, pushed, verified and reclaimed", name)
 	}
 	*s = got
 	return nil
@@ -224,7 +224,7 @@ func Read(events []Event) Ledger {
 func ReadLog(path string) ([]Event, error) {
 	b, err := os.ReadFile(path)
 	if err != nil {
-		return nil, fmt.Errorf("don: %w", err)
+		return nil, fmt.Errorf("clear: %w", err)
 	}
 	var out []Event
 	for i, line := range strings.Split(strings.TrimSpace(string(b)), "\n") {
@@ -235,10 +235,10 @@ func ReadLog(path string) ([]Event, error) {
 		dec.DisallowUnknownFields()
 		var e Event
 		if err := dec.Decode(&e); err != nil {
-			return nil, fmt.Errorf("don: %s line %d: %w", path, i+1, err)
+			return nil, fmt.Errorf("clear: %s line %d: %w", path, i+1, err)
 		}
 		if e.Name == "" {
-			return nil, fmt.Errorf("don: %s line %d: an event with no file on it, and a rotation log is a record of files", path, i+1)
+			return nil, fmt.Errorf("clear: %s line %d: an event with no file on it, and a rotation log is a record of files", path, i+1)
 		}
 		out = append(out, e)
 	}

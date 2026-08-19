@@ -433,7 +433,7 @@ func sum(groups []Group) Total {
 func ReadSheet(release, path string) (Sheet, error) {
 	b, err := os.ReadFile(path)
 	if err != nil {
-		return Sheet{}, fmt.Errorf("cong: %w", err)
+		return Sheet{}, fmt.Errorf("total: %w", err)
 	}
 	s := Sheet{Release: release}
 	for i, line := range strings.Split(strings.TrimSpace(string(b)), "\n") {
@@ -444,12 +444,12 @@ func ReadSheet(release, path string) (Sheet, error) {
 		dec.DisallowUnknownFields()
 		var g Group
 		if err := dec.Decode(&g); err != nil {
-			return Sheet{}, fmt.Errorf("cong: %s line %d: %w", path, i+1, err)
+			return Sheet{}, fmt.Errorf("total: %s line %d: %w", path, i+1, err)
 		}
 		s.Groups = append(s.Groups, g)
 	}
 	if len(s.Groups) == 0 {
-		return Sheet{}, fmt.Errorf("cong: %s holds no counts", path)
+		return Sheet{}, fmt.Errorf("total: %s holds no counts", path)
 	}
 	return s, nil
 }

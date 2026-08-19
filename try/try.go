@@ -172,8 +172,8 @@ type Result struct {
 
 // Errors a slate or a set of results can fail with.
 var (
-	ErrBadSlate   = errors.New("thu: the slate is not a comparison")
-	ErrBadResults = errors.New("thu: the results do not belong to this slate")
+	ErrBadSlate   = errors.New("try: the slate is not a comparison")
+	ErrBadResults = errors.New("try: the results do not belong to this slate")
 )
 
 // Digest identifies the slate by the comparison it makes. Notes are outside it,

@@ -113,11 +113,11 @@ type Pair struct {
 
 var (
 	// ErrNoPairs is what a study with nothing in it comes back as.
-	ErrNoPairs = errors.New("tin: nothing has been scored at both scales")
+	ErrNoPairs = errors.New("trust: nothing has been scored at both scales")
 
 	// ErrNoFloor is a study that cannot say what two runs of one recipe differ
 	// by, which makes every comparison in it read against a floor of zero.
-	ErrNoFloor = errors.New("tin: the baseline was not repeated, so there is no noise floor")
+	ErrNoFloor = errors.New("trust: the baseline was not repeated, so there is no noise floor")
 )
 
 // A Miss is a comparison the proxy called backwards.

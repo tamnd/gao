@@ -45,7 +45,7 @@ import (
 const LockName = "ingest.lock"
 
 // ErrLocked is returned when another ingest holds the directory.
-var ErrLocked = errors.New("gat: another ingest is running in this directory")
+var ErrLocked = errors.New("harvest: another ingest is running in this directory")
 
 // Holder is what a lock file says about the ingest holding it.
 type Holder struct {
@@ -84,7 +84,7 @@ type Lock struct {
 // once it has established that the process named in it is gone.
 func LockDir(dir, command string) (*Lock, error) {
 	if err := os.MkdirAll(dir, 0o755); err != nil {
-		return nil, fmt.Errorf("gat: creating the ingest directory: %w", err)
+		return nil, fmt.Errorf("harvest: creating the ingest directory: %w", err)
 	}
 	path := filepath.Join(dir, LockName)
 	me := Holder{
@@ -95,7 +95,7 @@ func LockDir(dir, command string) (*Lock, error) {
 	}
 	b, err := json.Marshal(me)
 	if err != nil {
-		return nil, fmt.Errorf("gat: writing %s: %w", path, err)
+		return nil, fmt.Errorf("harvest: writing %s: %w", path, err)
 	}
 	b = append(b, '\n')
 
@@ -109,16 +109,16 @@ func LockDir(dir, command string) (*Lock, error) {
 			if _, err := f.Write(b); err != nil {
 				_ = f.Close()
 				_ = os.Remove(path)
-				return nil, fmt.Errorf("gat: writing %s: %w", path, err)
+				return nil, fmt.Errorf("harvest: writing %s: %w", path, err)
 			}
 			if err := f.Close(); err != nil {
 				_ = os.Remove(path)
-				return nil, fmt.Errorf("gat: writing %s: %w", path, err)
+				return nil, fmt.Errorf("harvest: writing %s: %w", path, err)
 			}
 			return &Lock{path: path, me: me}, nil
 		}
 		if !errors.Is(err, os.ErrExist) {
-			return nil, fmt.Errorf("gat: locking %s: %w", dir, err)
+			return nil, fmt.Errorf("harvest: locking %s: %w", dir, err)
 		}
 		if attempt > 0 {
 			break
@@ -136,7 +136,7 @@ func LockDir(dir, command string) (*Lock, error) {
 		// its box, and the worst case is that another process on this box broke
 		// the same lock first and took it, which the next attempt discovers.
 		if err := os.Remove(path); err != nil && !errors.Is(err, os.ErrNotExist) {
-			return nil, fmt.Errorf("gat: clearing the lock left by %s: %w", held, err)
+			return nil, fmt.Errorf("harvest: clearing the lock left by %s: %w", held, err)
 		}
 	}
 	held, err := ReadHolder(dir)
@@ -175,11 +175,11 @@ func (l *Lock) Release() error {
 	if err == nil {
 		var h Holder
 		if json.Unmarshal(b, &h) == nil && (h.PID != l.me.PID || h.Box != l.me.Box) {
-			return fmt.Errorf("gat: %s now belongs to %s, leaving it alone", path, h)
+			return fmt.Errorf("harvest: %s now belongs to %s, leaving it alone", path, h)
 		}
 	}
 	if err := os.Remove(path); err != nil && !errors.Is(err, os.ErrNotExist) {
-		return fmt.Errorf("gat: releasing %s: %w", path, err)
+		return fmt.Errorf("harvest: releasing %s: %w", path, err)
 	}
 	return nil
 }
@@ -193,7 +193,7 @@ func ReadHolder(dir string) (Holder, error) {
 		return Holder{}, nil
 	}
 	if err != nil {
-		return Holder{}, fmt.Errorf("gat: reading %s: %w", path, err)
+		return Holder{}, fmt.Errorf("harvest: reading %s: %w", path, err)
 	}
 	var h Holder
 	if err := json.Unmarshal(b, &h); err != nil {

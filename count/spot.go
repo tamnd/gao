@@ -57,7 +57,7 @@ const MaxMismatches = 8
 // publication pattern. It does mean the spot check has to be run against the
 // working repo the text is in, and saying that is better than reporting a part
 // with no disagreements in it.
-var ErrNoText = errors.New("dem: that part carries no text, so its columns cannot be checked against it")
+var ErrNoText = errors.New("count: that part carries no text, so its columns cannot be checked against it")
 
 // A Mismatch is one document whose stored shape does not describe its text.
 type Mismatch struct {
@@ -109,7 +109,7 @@ func (s Spot) Agrees() bool { return s.Wrong == 0 && s.Columns == s.Stored }
 func SpotOf(name string, r io.ReaderAt, size int64, tok *Tokenizer) (Spot, error) {
 	f, err := parquet.OpenFile(r, size)
 	if err != nil {
-		return Spot{}, fmt.Errorf("dem: opening %s: %w", name, err)
+		return Spot{}, fmt.Errorf("count: opening %s: %w", name, err)
 	}
 	if _, err := columnIndex(f.Schema(), store.TextColumn); err != nil {
 		return Spot{}, fmt.Errorf("%w: %s", ErrNoText, name)

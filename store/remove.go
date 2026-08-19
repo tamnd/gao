@@ -65,10 +65,10 @@ import (
 // parent is fixed before anything else happens, and a destination that already
 // exists means somebody else is midway through this.
 var (
-	ErrNoSuchDocument = errors.New("kho: no such document in the snapshot")
-	ErrNothingRemoved = errors.New("kho: the removal did not name a document that is in the snapshot")
-	ErrBadRemoval     = errors.New("kho: the removal is not well formed")
-	ErrDestExists     = errors.New("kho: the destination already holds a snapshot")
+	ErrNoSuchDocument = errors.New("store: no such document in the snapshot")
+	ErrNothingRemoved = errors.New("store: the removal did not name a document that is in the snapshot")
+	ErrBadRemoval     = errors.New("store: the removal is not well formed")
+	ErrDestExists     = errors.New("store: the destination already holds a snapshot")
 )
 
 // Reasons a document can be removed. It is a closed set for the same reason
@@ -181,7 +181,7 @@ func Remove(src, dst, snapshot string, key ed25519.PrivateKey, rs []Removal, opt
 		return nil, err
 	}
 	if _, err := Verify(src, TrustKey(nil)); err != nil {
-		return nil, fmt.Errorf("kho: the snapshot to remove from does not verify: %w", err)
+		return nil, fmt.Errorf("store: the snapshot to remove from does not verify: %w", err)
 	}
 	if err := agreesWithItsShards(parent); err != nil {
 		return nil, err
@@ -346,7 +346,7 @@ func rewriteShard(from, to string, wanted map[doc.Hash]bool, counts *Counts) (Sh
 	part := to + partExt
 	f, err := os.Create(part)
 	if err != nil {
-		return Shard{}, fmt.Errorf("kho: %w", err)
+		return Shard{}, fmt.Errorf("store: %w", err)
 	}
 	w, err := NewWriter[*doc.Document](f)
 	if err != nil {
@@ -373,10 +373,10 @@ func rewriteShard(from, to string, wanted map[doc.Hash]bool, counts *Counts) (Sh
 		return Shard{}, err
 	}
 	if err := f.Close(); err != nil {
-		return Shard{}, fmt.Errorf("kho: %w", err)
+		return Shard{}, fmt.Errorf("store: %w", err)
 	}
 	if err := os.Rename(part, to); err != nil {
-		return Shard{}, fmt.Errorf("kho: %w", err)
+		return Shard{}, fmt.Errorf("store: %w", err)
 	}
 
 	// The hash and the size come off the file rather than off the writer, which
@@ -464,7 +464,7 @@ func emptyDir(dst string) error {
 		return fmt.Errorf("%w: %s is not empty", ErrDestExists, dst)
 	}
 	if err := os.MkdirAll(dst, 0o755); err != nil {
-		return fmt.Errorf("kho: %w", err)
+		return fmt.Errorf("store: %w", err)
 	}
 	return nil
 }
@@ -472,20 +472,20 @@ func emptyDir(dst string) error {
 func copyFile(from, to string) error {
 	in, err := os.Open(from)
 	if err != nil {
-		return fmt.Errorf("kho: %w", err)
+		return fmt.Errorf("store: %w", err)
 	}
 	defer func() { _ = in.Close() }()
 
 	out, err := os.Create(to)
 	if err != nil {
-		return fmt.Errorf("kho: %w", err)
+		return fmt.Errorf("store: %w", err)
 	}
 	if _, err := io.Copy(out, in); err != nil {
 		_ = out.Close()
-		return fmt.Errorf("kho: %w", err)
+		return fmt.Errorf("store: %w", err)
 	}
 	if err := out.Close(); err != nil {
-		return fmt.Errorf("kho: %w", err)
+		return fmt.Errorf("store: %w", err)
 	}
 	return nil
 }

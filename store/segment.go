@@ -55,7 +55,7 @@ const (
 )
 
 // ErrNotASegment is returned when a file does not end in a gao segment index.
-var ErrNotASegment = errors.New("kho: not a gao segment")
+var ErrNotASegment = errors.New("store: not a gao segment")
 
 // Record is what a segment can hold. The type parameter is the value type and
 // the interface is satisfied by a pointer to it, which is the shape that lets a
@@ -160,7 +160,7 @@ func NewWriter[P Record[T], T any](w io.Writer, opts ...WriterOption) (*Writer[P
 	}
 	enc, err := zstd.NewWriter(&sw.buf, zstd.WithEncoderLevel(zstd.SpeedDefault))
 	if err != nil {
-		return nil, fmt.Errorf("kho: creating the zstd encoder: %w", err)
+		return nil, fmt.Errorf("store: creating the zstd encoder: %w", err)
 	}
 	sw.enc = enc
 	return sw, nil
@@ -171,7 +171,7 @@ func NewWriter[P Record[T], T any](w io.Writer, opts ...WriterOption) (*Writer[P
 // rejected here rather than admitted and discovered later.
 func (w *Writer[P, T]) Append(d P) error {
 	if w.closed {
-		return errors.New("kho: append to a closed segment")
+		return errors.New("store: append to a closed segment")
 	}
 	if w.validate {
 		if err := d.Admit(); err != nil {
@@ -180,11 +180,11 @@ func (w *Writer[P, T]) Append(d P) error {
 	}
 	line, err := json.Marshal(d)
 	if err != nil {
-		return fmt.Errorf("kho: encoding document %d: %w", w.Count(), err)
+		return fmt.Errorf("store: encoding document %d: %w", w.Count(), err)
 	}
 	line = append(line, '\n')
 	if _, err := w.enc.Write(line); err != nil {
-		return fmt.Errorf("kho: writing document %d: %w", w.Count(), err)
+		return fmt.Errorf("store: writing document %d: %w", w.Count(), err)
 	}
 	w.pending++
 	w.raw += len(line)
@@ -201,7 +201,7 @@ func (w *Writer[P, T]) flush() error {
 		return nil
 	}
 	if err := w.enc.Close(); err != nil {
-		return fmt.Errorf("kho: closing a frame: %w", err)
+		return fmt.Errorf("store: closing a frame: %w", err)
 	}
 	n, err := w.emit(w.buf.Bytes())
 	if err != nil {
@@ -227,7 +227,7 @@ func (w *Writer[P, T]) emit(b []byte) (int64, error) {
 	w.offset += int64(n)
 	_, _ = w.digest.Write(b[:n])
 	if err != nil {
-		return int64(n), fmt.Errorf("kho: writing segment: %w", err)
+		return int64(n), fmt.Errorf("store: writing segment: %w", err)
 	}
 	return int64(n), nil
 }
@@ -250,7 +250,7 @@ func (w *Writer[P, T]) Close() error {
 
 	body, err := json.Marshal(w.index)
 	if err != nil {
-		return fmt.Errorf("kho: encoding the index: %w", err)
+		return fmt.Errorf("store: encoding the index: %w", err)
 	}
 
 	// The index rides in a zstd skippable frame so that an ordinary zstd reader
@@ -265,7 +265,7 @@ func (w *Writer[P, T]) Close() error {
 	// so this is an error rather than a length that silently wraps and produces a
 	// file that reads as valid and is not.
 	if uint64(len(payload)) > math.MaxUint32 {
-		return fmt.Errorf("kho: the index is %d bytes, which does not fit in a skippable frame", len(payload))
+		return fmt.Errorf("store: the index is %d bytes, which does not fit in a skippable frame", len(payload))
 	}
 	payloadLen := uint32(len(payload))
 
@@ -312,7 +312,7 @@ const maxDocumentBytes = 64 << 20
 func NewReader[P Record[T], T any](r io.Reader) (*Reader[P, T], error) {
 	dec, err := zstd.NewReader(r)
 	if err != nil {
-		return nil, fmt.Errorf("kho: creating the zstd decoder: %w", err)
+		return nil, fmt.Errorf("store: creating the zstd decoder: %w", err)
 	}
 	scan := bufio.NewScanner(dec.IOReadCloser())
 	scan.Buffer(make([]byte, 0, 64<<10), maxDocumentBytes)
@@ -323,13 +323,13 @@ func NewReader[P Record[T], T any](r io.Reader) (*Reader[P, T], error) {
 func (r *Reader[P, T]) Next() (P, error) {
 	if !r.scan.Scan() {
 		if err := r.scan.Err(); err != nil {
-			return nil, fmt.Errorf("kho: reading segment at document %d: %w", r.n, err)
+			return nil, fmt.Errorf("store: reading segment at document %d: %w", r.n, err)
 		}
 		return nil, io.EOF
 	}
 	var v T
 	if err := json.Unmarshal(r.scan.Bytes(), &v); err != nil {
-		return nil, fmt.Errorf("kho: decoding document %d: %w", r.n, err)
+		return nil, fmt.Errorf("store: decoding document %d: %w", r.n, err)
 	}
 	r.n++
 	return P(&v), nil

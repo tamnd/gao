@@ -36,11 +36,11 @@ import (
 // Errors a rebuild can fail with.
 var (
 	// ErrNotReproducible is returned when a shard's bytes do not come back.
-	ErrNotReproducible = errors.New("kho: the snapshot did not rebuild to the same bytes")
+	ErrNotReproducible = errors.New("store: the snapshot did not rebuild to the same bytes")
 
 	// ErrStageDisagrees is returned when a registered stage check finds a
 	// document that is not what that stage would produce.
-	ErrStageDisagrees = errors.New("kho: a document is not what its stage produces")
+	ErrStageDisagrees = errors.New("store: a document is not what its stage produces")
 )
 
 // Encoders are the modules whose versions decide what bytes come out. They are

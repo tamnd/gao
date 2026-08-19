@@ -395,7 +395,7 @@ func (s Stamp) Metadata() map[string]string {
 
 // ErrNotAdmitted is returned when a document's license class is not one the
 // dataset carries.
-var ErrNotAdmitted = errors.New("kho: that dataset does not admit that license class")
+var ErrNotAdmitted = errors.New("store: that dataset does not admit that license class")
 
 // DefaultRowGroup is how many rows a row group holds.
 //
@@ -476,7 +476,7 @@ func NewParquetWriter(w io.Writer, d Dataset, s Stamp) *ParquetWriter {
 // reported on rather than vanishing without a number.
 func (p *ParquetWriter) Append(d *doc.Document) error {
 	if p.closed {
-		return errors.New("kho: append to a closed parquet file")
+		return errors.New("store: append to a closed parquet file")
 	}
 	if !p.dataset.Admits(d.LicenseClass) {
 		return fmt.Errorf("%w: %s does not carry %s", ErrNotAdmitted, p.dataset.Name, d.LicenseClass)
@@ -486,7 +486,7 @@ func (p *ParquetWriter) Append(d *doc.Document) error {
 	}
 	p.buf = append(p.buf[:0], RowOf(d))
 	if _, err := p.w.Write(p.buf); err != nil {
-		return fmt.Errorf("kho: writing row %d: %w", p.n, err)
+		return fmt.Errorf("store: writing row %d: %w", p.n, err)
 	}
 	p.n++
 	p.text += int64(len(d.Text))
@@ -500,7 +500,7 @@ func (p *ParquetWriter) Append(d *doc.Document) error {
 	// size. The option is still set, as the backstop for a row this never sees.
 	if p.group >= RowGroupText || p.groupRows >= DefaultRowGroup {
 		if err := p.w.Flush(); err != nil {
-			return fmt.Errorf("kho: closing the row group at row %d: %w", p.n, err)
+			return fmt.Errorf("store: closing the row group at row %d: %w", p.n, err)
 		}
 		p.group, p.groupRows = 0, 0
 	}
@@ -530,7 +530,7 @@ func (p *ParquetWriter) Close() error {
 	}
 	p.closed = true
 	if err := p.w.Close(); err != nil {
-		return fmt.Errorf("kho: closing the parquet file: %w", err)
+		return fmt.Errorf("store: closing the parquet file: %w", err)
 	}
 	return nil
 }
@@ -586,12 +586,12 @@ func (c *counter) Write(b []byte) (int, error) {
 func CreatePart(dir, rel string, d Dataset, s Stamp) (*Part, error) {
 	final := filepath.Join(dir, filepath.FromSlash(rel))
 	if err := os.MkdirAll(filepath.Dir(final), 0o755); err != nil {
-		return nil, fmt.Errorf("kho: creating the directory for %s: %w", rel, err)
+		return nil, fmt.Errorf("store: creating the directory for %s: %w", rel, err)
 	}
 	part := final + partExt
 	f, err := os.OpenFile(part, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0o644)
 	if err != nil {
-		return nil, fmt.Errorf("kho: opening %s: %w", rel, err)
+		return nil, fmt.Errorf("store: opening %s: %w", rel, err)
 	}
 	digest := blake3.New()
 	size := &counter{w: io.MultiWriter(f, digest)}
@@ -651,7 +651,7 @@ func (p *Part) Size() int64 {
 // Close finishes the file and moves it into place.
 func (p *Part) Close() (PartFile, error) {
 	if p.done {
-		return PartFile{}, errors.New("kho: closing a part that is already finished")
+		return PartFile{}, errors.New("store: closing a part that is already finished")
 	}
 	p.done = true
 	if err := p.w.Close(); err != nil {
@@ -663,13 +663,13 @@ func (p *Part) Close() (PartFile, error) {
 	// finished, and truncated.
 	if err := p.f.Sync(); err != nil {
 		_ = p.f.Close()
-		return PartFile{}, fmt.Errorf("kho: syncing %s: %w", p.rel, err)
+		return PartFile{}, fmt.Errorf("store: syncing %s: %w", p.rel, err)
 	}
 	if err := p.f.Close(); err != nil {
-		return PartFile{}, fmt.Errorf("kho: closing %s: %w", p.rel, err)
+		return PartFile{}, fmt.Errorf("store: closing %s: %w", p.rel, err)
 	}
 	if err := os.Rename(p.part, p.final); err != nil {
-		return PartFile{}, fmt.Errorf("kho: moving %s into place: %w", p.rel, err)
+		return PartFile{}, fmt.Errorf("store: moving %s into place: %w", p.rel, err)
 	}
 	return PartFile{
 		Path:      p.rel,
@@ -730,7 +730,7 @@ func ScanPart(path string, fn func(Row) error) error {
 	// Opened once so that a file that is not Parquet at all is reported as this
 	// file rather than as a read error somewhere inside the reader.
 	if _, err := parquet.OpenFile(f, stat.Size()); err != nil {
-		return fmt.Errorf("kho: opening %s: %w", path, err)
+		return fmt.Errorf("store: opening %s: %w", path, err)
 	}
 	return ScanRows(path, f, fn)
 }
@@ -762,7 +762,7 @@ func ScanRows(name string, r io.ReaderAt, fn func(Row) error) error {
 			return nil
 		}
 		if err != nil {
-			return fmt.Errorf("kho: reading %s: %w", name, err)
+			return fmt.Errorf("store: reading %s: %w", name, err)
 		}
 	}
 }
@@ -782,7 +782,7 @@ func PartMetadata(path string) (map[string]string, error) {
 	}
 	pf, err := parquet.OpenFile(f, stat.Size())
 	if err != nil {
-		return nil, fmt.Errorf("kho: opening %s: %w", path, err)
+		return nil, fmt.Errorf("store: opening %s: %w", path, err)
 	}
 	out := make(map[string]string)
 	for _, kv := range pf.Metadata().KeyValueMetadata {
@@ -807,7 +807,7 @@ func PartColumns(path string) ([]string, error) {
 	}
 	pf, err := parquet.OpenFile(f, stat.Size())
 	if err != nil {
-		return nil, fmt.Errorf("kho: opening %s: %w", path, err)
+		return nil, fmt.Errorf("store: opening %s: %w", path, err)
 	}
 	return slices.Clone(Columns(pf.Schema())), nil
 }

@@ -405,7 +405,7 @@ func worstWorker(p Pipeline) int64 {
 func ReadPipeline(docs int64, measured bool, path string) (Pipeline, error) {
 	b, err := os.ReadFile(path)
 	if err != nil {
-		return Pipeline{}, fmt.Errorf("nhip: %w", err)
+		return Pipeline{}, fmt.Errorf("throughput: %w", err)
 	}
 	p := Pipeline{Docs: docs, Measured: measured}
 	for i, line := range strings.Split(strings.TrimSpace(string(b)), "\n") {
@@ -416,12 +416,12 @@ func ReadPipeline(docs int64, measured bool, path string) (Pipeline, error) {
 		dec.DisallowUnknownFields()
 		var s Stage
 		if err := dec.Decode(&s); err != nil {
-			return Pipeline{}, fmt.Errorf("nhip: %s line %d: %w", path, i+1, err)
+			return Pipeline{}, fmt.Errorf("throughput: %s line %d: %w", path, i+1, err)
 		}
 		p.Stages = append(p.Stages, s)
 	}
 	if len(p.Stages) == 0 {
-		return Pipeline{}, fmt.Errorf("nhip: %s holds no stages", path)
+		return Pipeline{}, fmt.Errorf("throughput: %s holds no stages", path)
 	}
 	return p, nil
 }

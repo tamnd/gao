@@ -224,7 +224,7 @@ const StageRepo = "vitco"
 func Staging() Dataset {
 	d, ok := Lookup(StageRepo)
 	if !ok {
-		panic("kho: " + StageRepo + " is not in the dataset table")
+		panic("store: " + StageRepo + " is not in the dataset table")
 	}
 	return d
 }

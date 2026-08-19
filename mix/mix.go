@@ -582,7 +582,7 @@ func (s Set) filter(want func(Slice) bool) []Slice {
 func ReadSet(name, path string) (Set, error) {
 	b, err := os.ReadFile(path)
 	if err != nil {
-		return Set{}, fmt.Errorf("tron: %w", err)
+		return Set{}, fmt.Errorf("mix: %w", err)
 	}
 	s := Set{Name: name}
 	for i, line := range strings.Split(strings.TrimSpace(string(b)), "\n") {
@@ -593,12 +593,12 @@ func ReadSet(name, path string) (Set, error) {
 		dec.DisallowUnknownFields()
 		var sl Slice
 		if err := dec.Decode(&sl); err != nil {
-			return Set{}, fmt.Errorf("tron: %s line %d: %w", path, i+1, err)
+			return Set{}, fmt.Errorf("mix: %s line %d: %w", path, i+1, err)
 		}
 		s.Slices = append(s.Slices, sl)
 	}
 	if len(s.Slices) == 0 {
-		return Set{}, fmt.Errorf("tron: %s holds no slices", path)
+		return Set{}, fmt.Errorf("mix: %s holds no slices", path)
 	}
 	return s, nil
 }

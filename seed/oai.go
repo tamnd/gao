@@ -70,7 +70,7 @@ type Item struct {
 // Tuesday with noRecordsMatch, and a harvester that reads every error code the
 // same way marks that repository broken. That single confusion would be enough
 // to move P03-6 by more than the effect it is trying to measure.
-var ErrNoRecords = errors.New("mam: the repository has no records in that range")
+var ErrNoRecords = errors.New("seed: the repository has no records in that range")
 
 // Fault is an OAI-PMH error the repository reported, as against an error moving
 // bytes. The distinction matters: a fault means the protocol worked.
@@ -81,9 +81,9 @@ type Fault struct {
 
 func (f *Fault) Error() string {
 	if f.Message == "" {
-		return "mam: the repository answered " + f.Code
+		return "seed: the repository answered " + f.Code
 	}
-	return "mam: the repository answered " + f.Code + ": " + f.Message
+	return "seed: the repository answered " + f.Code + ": " + f.Message
 }
 
 // Stamp formats a time the way this repository will accept it.
@@ -126,13 +126,13 @@ func Identify(ctx context.Context, c *http.Client, base string) (Repository, err
 	}
 	var resp response
 	if err := xml.Unmarshal(body, &resp); err != nil {
-		return r, fmt.Errorf("mam: %s does not answer OAI-PMH: %w", base, err)
+		return r, fmt.Errorf("seed: %s does not answer OAI-PMH: %w", base, err)
 	}
 	if err := resp.fault(); err != nil {
 		return r, err
 	}
 	if resp.Identify == nil {
-		return r, fmt.Errorf("mam: %s answered without an Identify", base)
+		return r, fmt.Errorf("seed: %s answered without an Identify", base)
 	}
 
 	id := resp.Identify
@@ -166,7 +166,7 @@ func Formats(ctx context.Context, c *http.Client, base string) ([]string, error)
 	}
 	var resp response
 	if err := xml.Unmarshal(body, &resp); err != nil {
-		return nil, fmt.Errorf("mam: %s: %w", base, err)
+		return nil, fmt.Errorf("seed: %s: %w", base, err)
 	}
 	if err := resp.fault(); err != nil {
 		return nil, err
@@ -229,7 +229,7 @@ func Records(ctx context.Context, c *http.Client, r Repository, h Harvest) ([]It
 		}
 		var resp response
 		if err := xml.Unmarshal(body, &resp); err != nil {
-			return out, fmt.Errorf("mam: %s: %w", r.Base, err)
+			return out, fmt.Errorf("seed: %s: %w", r.Base, err)
 		}
 		if err := resp.fault(); err != nil {
 			// Nothing in the range is an answer, and on the first page it is
@@ -243,7 +243,7 @@ func Records(ctx context.Context, c *http.Client, r Repository, h Harvest) ([]It
 			return out, err
 		}
 		if resp.ListRecords == nil {
-			return out, fmt.Errorf("mam: %s answered without a ListRecords", r.Base)
+			return out, fmt.Errorf("seed: %s answered without a ListRecords", r.Base)
 		}
 
 		for _, rec := range resp.ListRecords.Records {
@@ -261,7 +261,7 @@ func Records(ctx context.Context, c *http.Client, r Repository, h Harvest) ([]It
 		// a loop against somebody else's server is not something to discover by
 		// watching a graph.
 		if seen[token] {
-			return out, fmt.Errorf("mam: %s returned the same resumption token twice after %d records", r.Base, len(out))
+			return out, fmt.Errorf("seed: %s returned the same resumption token twice after %d records", r.Base, len(out))
 		}
 		seen[token] = true
 		q = url.Values{"verb": {"ListRecords"}, "resumptionToken": {token}}
@@ -282,7 +282,7 @@ func Works(ctx context.Context, c *http.Client, base string) (Repository, error)
 		return r, err
 	}
 	if !r.Offers(DublinCore) {
-		return r, fmt.Errorf("mam: %s does not offer %s, which every repository is required to", base, DublinCore)
+		return r, fmt.Errorf("seed: %s does not offer %s, which every repository is required to", base, DublinCore)
 	}
 	if _, err := Records(ctx, c, r, Harvest{Max: 1}); err != nil && !errors.Is(err, ErrNoRecords) {
 		return r, err
@@ -355,17 +355,17 @@ func ask(ctx context.Context, c *http.Client, base string, q url.Values) ([]byte
 	}
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, base+sep+q.Encode(), nil)
 	if err != nil {
-		return nil, fmt.Errorf("mam: %w", err)
+		return nil, fmt.Errorf("seed: %w", err)
 	}
 	req.Header.Set("Accept", "text/xml, application/xml")
 
 	resp, err := c.Do(req)
 	if err != nil {
-		return nil, fmt.Errorf("mam: asking %s: %w", base, err)
+		return nil, fmt.Errorf("seed: asking %s: %w", base, err)
 	}
 	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("mam: %s answered %s", base, resp.Status)
+		return nil, fmt.Errorf("seed: %s answered %s", base, resp.Status)
 	}
 	// Repositories with a lot of records return large pages, and a repository
 	// serving something that is not XML at all can serve a great deal of it.

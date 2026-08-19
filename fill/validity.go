@@ -87,7 +87,7 @@ func (v Validity) Agreement() float64 {
 }
 
 // ErrTooFew is returned when there are not enough recipes to say anything.
-var ErrTooFew = errors.New("dien: too few recipes scored at both scales to measure whether the proxy agrees with anything")
+var ErrTooFew = errors.New("fill: too few recipes scored at both scales to measure whether the proxy agrees with anything")
 
 // Validate measures whether the proxy stands in for the full scale benchmark.
 //
@@ -98,7 +98,7 @@ var ErrTooFew = errors.New("dien: too few recipes scored at both scales to measu
 // about two.
 func Validate(recipes []Recipe) (Validity, error) {
 	if problems := CheckRecipes(recipes); len(problems) > 0 {
-		return Validity{}, errors.New("dien: " + problems[0])
+		return Validity{}, errors.New("fill: " + problems[0])
 	}
 	if len(recipes) < MinRecipes {
 		return Validity{}, ErrTooFew

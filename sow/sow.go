@@ -194,8 +194,8 @@ type Card struct {
 
 // Errors a recipe or a card can fail with.
 var (
-	ErrBadRecipe = errors.New("gieo: recipe is incomplete")
-	ErrBadCard   = errors.New("gieo: card is incomplete")
+	ErrBadRecipe = errors.New("sow: recipe is incomplete")
+	ErrBadCard   = errors.New("sow: card is incomplete")
 )
 
 // Digest identifies the recipe by what it will produce. The notes are outside

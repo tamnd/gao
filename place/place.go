@@ -177,8 +177,8 @@ type Label struct {
 
 // Errors a frame or a reading can fail with.
 var (
-	ErrBadFrame  = errors.New("xep: the frame does not draw what it says it draws")
-	ErrBadLabels = errors.New("xep: the labels do not cover the frame")
+	ErrBadFrame  = errors.New("place: the frame does not draw what it says it draws")
+	ErrBadLabels = errors.New("place: the labels do not cover the frame")
 )
 
 // Digest identifies the frame by the draw and the rubric. The Why and Apart
