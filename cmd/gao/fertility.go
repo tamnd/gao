@@ -7,10 +7,10 @@ import (
 	"strings"
 	"text/tabwriter"
 
-	"github.com/tamnd/gao/dem"
+	"github.com/tamnd/gao/count"
 )
 
-func runDemFertility(stdout, stderr io.Writer, args []string) int {
+func runCountFertility(stdout, stderr io.Writer, args []string) int {
 	fs := flag.NewFlagSet("count fertility", flag.ContinueOnError)
 	fs.SetOutput(stderr)
 	asJSON := fs.Bool("json", false, "print JSON")
@@ -51,15 +51,15 @@ flags:
 		return printCandidates(stdout, stderr, *asJSON)
 	}
 
-	readings, err := dem.ReadFertility(fs.Arg(0))
+	readings, err := count.ReadFertility(fs.Arg(0))
 	if err != nil {
 		fmt.Fprintf(stderr, "gao count: %v\n", err)
 		return 1
 	}
-	s := dem.Fold(readings)
+	s := count.Fold(readings)
 
 	report := fertilitySlateReport{
-		Candidates: len(dem.Candidates()),
+		Candidates: len(count.Candidates()),
 		Missing:    s.Missing,
 		Spread:     s.Spread(),
 		Complete:   s.Complete(),
@@ -124,7 +124,7 @@ type fertilitySlateReport struct {
 }
 
 func printCandidates(stdout, stderr io.Writer, asJSON bool) int {
-	got := dem.Candidates()
+	got := count.Candidates()
 	if asJSON {
 		report := make([]fertilityCandidate, 0, len(got))
 		for _, c := range got {
@@ -172,7 +172,7 @@ type fertilityCandidate struct {
 	Why       string  `json:"why"`
 }
 
-func printFertility(w io.Writer, s dem.Slate) {
+func printFertility(w io.Writer, s count.Slate) {
 	tw := tabwriter.NewWriter(w, 0, 0, 2, ' ', 0)
 	fmt.Fprint(tw, "tokenizer\tchars/token\ttokens/syllable\tcost\tboxes\n")
 	ranked := s.Ranked()

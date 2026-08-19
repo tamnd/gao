@@ -52,7 +52,7 @@ func everyCandidate() (map[string][]string, map[string]int64) {
 // and the list has to say that out loud rather than printing four rows and
 // looking complete.
 func TestTheRosterSaysWhichCandidatesCanBeMeasured(t *testing.T) {
-	out, errOut, code := exec(t, "dem", "fertility")
+	out, errOut, code := exec(t, "count", "fertility")
 	if code != 0 {
 		t.Fatalf("exit %d: %s\n%s", code, out, errOut)
 	}
@@ -71,7 +71,7 @@ func TestTheRosterSaysWhichCandidatesCanBeMeasured(t *testing.T) {
 // and the cost of the choice is printed next to it.
 func TestTheSlateRanksTheCandidatesAndPricesTheChoice(t *testing.T) {
 	on, tokens := everyCandidate()
-	out, errOut, code := exec(t, "dem", "fertility", fertilityLog(t, on, tokens))
+	out, errOut, code := exec(t, "count", "fertility", fertilityLog(t, on, tokens))
 	if code != 0 {
 		t.Fatalf("exit %d: %s\n%s", code, out, errOut)
 	}
@@ -96,7 +96,7 @@ func TestTheSlateRanksTheCandidatesAndPricesTheChoice(t *testing.T) {
 // bet into a fact after the fact.
 func TestThePredictionsAreCheckedAgainstWhatWasMeasured(t *testing.T) {
 	on, tokens := everyCandidate()
-	out, _, code := exec(t, "dem", "fertility", fertilityLog(t, on, tokens))
+	out, _, code := exec(t, "count", "fertility", fertilityLog(t, on, tokens))
 	if code != 0 {
 		t.Fatalf("exit %d:\n%s", code, out)
 	}
@@ -128,7 +128,7 @@ func TestTheSameTextCountedDifferentlyOnTwoBoxesFails(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	out, _, code := exec(t, "dem", "fertility", path)
+	out, _, code := exec(t, "count", "fertility", path)
 	if code != 1 {
 		t.Fatalf("exit %d, want 1:\n%s", code, out)
 	}
@@ -143,7 +143,7 @@ func TestTheSameTextCountedDifferentlyOnTwoBoxesFails(t *testing.T) {
 func TestACandidateNobodyMeasuredIsNamedAndIsNotDone(t *testing.T) {
 	on, tokens := everyCandidate()
 	delete(on, "gao-192k")
-	out, _, code := exec(t, "dem", "fertility", fertilityLog(t, on, tokens))
+	out, _, code := exec(t, "count", "fertility", fertilityLog(t, on, tokens))
 	if code != 1 {
 		t.Fatalf("exit %d, want 1:\n%s", code, out)
 	}
@@ -161,7 +161,7 @@ func TestACandidateNobodyMeasuredIsNamedAndIsNotDone(t *testing.T) {
 func TestOneBoxTwiceIsNotAReproduction(t *testing.T) {
 	on, tokens := everyCandidate()
 	on["qwen3"] = []string{"server1", "server1"}
-	out, _, code := exec(t, "dem", "fertility", fertilityLog(t, on, tokens))
+	out, _, code := exec(t, "count", "fertility", fertilityLog(t, on, tokens))
 	if code != 1 {
 		t.Fatalf("exit %d, want 1:\n%s", code, out)
 	}
@@ -172,7 +172,7 @@ func TestOneBoxTwiceIsNotAReproduction(t *testing.T) {
 
 func TestTheSlateIsAlsoMachineReadable(t *testing.T) {
 	on, tokens := everyCandidate()
-	out, _, code := exec(t, "dem", "fertility", "-json", fertilityLog(t, on, tokens))
+	out, _, code := exec(t, "count", "fertility", "-json", fertilityLog(t, on, tokens))
 	if code != 0 {
 		t.Fatalf("exit %d:\n%s", code, out)
 	}
@@ -211,7 +211,7 @@ func TestTheSlateIsAlsoMachineReadable(t *testing.T) {
 }
 
 func TestTheRosterIsAlsoMachineReadable(t *testing.T) {
-	out, _, code := exec(t, "dem", "fertility", "-roster", "-json")
+	out, _, code := exec(t, "count", "fertility", "-roster", "-json")
 	if code != 0 {
 		t.Fatalf("exit %d:\n%s", code, out)
 	}
@@ -241,7 +241,7 @@ func TestTheRosterIsAlsoMachineReadable(t *testing.T) {
 }
 
 func TestAFertilityLogThatIsNotThereIsAFailure(t *testing.T) {
-	_, errOut, code := exec(t, "dem", "fertility", filepath.Join(t.TempDir(), "nowhere.jsonl"))
+	_, errOut, code := exec(t, "count", "fertility", filepath.Join(t.TempDir(), "nowhere.jsonl"))
 	if code != 1 {
 		t.Fatalf("exit %d, want 1", code)
 	}
@@ -251,7 +251,7 @@ func TestAFertilityLogThatIsNotThereIsAFailure(t *testing.T) {
 }
 
 func TestFertilityRejectsAnExtraArgument(t *testing.T) {
-	if _, _, code := exec(t, "dem", "fertility", "one.jsonl", "two.jsonl"); code != 2 {
+	if _, _, code := exec(t, "count", "fertility", "one.jsonl", "two.jsonl"); code != 2 {
 		t.Errorf("exit %d, want 2", code)
 	}
 }

@@ -28,19 +28,19 @@ import (
 	"path/filepath"
 	"sync/atomic"
 
-	"github.com/tamnd/gao/dem"
+	"github.com/tamnd/gao/count"
 	"github.com/tamnd/gao/doc"
-	"github.com/tamnd/gao/gat"
-	"github.com/tamnd/gao/kho"
-	"github.com/tamnd/gao/may"
+	"github.com/tamnd/gao/fleet"
+	"github.com/tamnd/gao/harvest"
+	"github.com/tamnd/gao/store"
 )
 
-// parts is a [gat.Sink] that decodes like the ordinary one and writes what it
+// parts is a [harvest.Sink] that decodes like the ordinary one and writes what it
 // admits.
 type parts struct {
-	docs    *gat.Docs
+	docs    *harvest.Docs
 	dir     string
-	dataset kho.Dataset
+	dataset store.Dataset
 	box     string
 	out     io.Writer
 
@@ -52,7 +52,7 @@ type parts struct {
 
 	// push, when set, is where a part goes as it closes. The local copy is
 	// deleted once the store has it.
-	push *kho.Pusher
+	push *store.Pusher
 
 	// pushing is what the watcher reads to say which half of the work a disk
 	// reading was taken during. Writing a part and sending it hold the disk for
@@ -60,7 +60,7 @@ type parts struct {
 	// a peak.
 	pushing atomic.Bool
 
-	roll    *kho.Roll
+	roll    *store.Roll
 	written int
 	bytes   int64
 	sent    int
@@ -70,8 +70,8 @@ type parts struct {
 // newParts returns the sink and the emit function the decoder feeds. The two
 // are separate because the emit function has to be in place before the tally
 // wraps it, and the sink has to be in place before the ingest runs.
-func newParts(dir string, docs *gat.Docs, box string, out io.Writer) *parts {
-	return &parts{docs: docs, dir: dir, dataset: kho.Staging(), box: box, out: out}
+func newParts(dir string, docs *harvest.Docs, box string, out io.Writer) *parts {
+	return &parts{docs: docs, dir: dir, dataset: store.Staging(), box: box, out: out}
 }
 
 // write is what the decoder emits into.
@@ -82,8 +82,8 @@ func (p *parts) write(d *doc.Document) error {
 	return p.roll.Append(d)
 }
 
-// Consume implements [gat.Sink].
-func (p *parts) Consume(ctx context.Context, pin gat.Pinned, f gat.File, r io.Reader) (int64, error) {
+// Consume implements [harvest.Sink].
+func (p *parts) Consume(ctx context.Context, pin harvest.Pinned, f harvest.File, r io.Reader) (int64, error) {
 	if err := p.open(ctx, pin, f); err != nil {
 		return 0, err
 	}
@@ -91,8 +91,8 @@ func (p *parts) Consume(ctx context.Context, pin gat.Pinned, f gat.File, r io.Re
 	return n, p.close(err)
 }
 
-// ConsumeAt implements [gat.RandomSink], which the Parquet sources need.
-func (p *parts) ConsumeAt(ctx context.Context, pin gat.Pinned, f gat.File, r io.ReaderAt, size int64) (int64, error) {
+// ConsumeAt implements [harvest.RandomSink], which the Parquet sources need.
+func (p *parts) ConsumeAt(ctx context.Context, pin harvest.Pinned, f harvest.File, r io.ReaderAt, size int64) (int64, error) {
 	if err := p.open(ctx, pin, f); err != nil {
 		return 0, err
 	}
@@ -103,17 +103,17 @@ func (p *parts) ConsumeAt(ctx context.Context, pin gat.Pinned, f gat.File, r io.
 // open starts the roll for one input file. The file has to be one the source
 // pins, because its position in that list is half the path its parts are
 // written at, and a file from somewhere else has no position to write under.
-func (p *parts) open(ctx context.Context, pin gat.Pinned, f gat.File) error {
+func (p *parts) open(ctx context.Context, pin harvest.Pinned, f harvest.File) error {
 	i := pin.IndexOf(f)
 	if i < 0 {
 		return fmt.Errorf("gao harvest hf: %s is not a file %s pins, so there is nowhere to write what is in it", f.Path, pin.Source)
 	}
-	p.roll = &kho.Roll{
+	p.roll = &store.Roll{
 		Dir:     p.dir,
 		Dataset: p.dataset,
-		Stamp: kho.Stamp{
+		Stamp: store.Stamp{
 			Snapshot:  pin.Snapshot(),
-			Stage:     gat.Stage,
+			Stage:     harvest.Stage,
 			Box:       p.box,
 			Tokenizer: p.tokenizer,
 		},
@@ -121,7 +121,7 @@ func (p *parts) open(ctx context.Context, pin gat.Pinned, f gat.File) error {
 		// The context comes from the file being read rather than from the sink,
 		// so a run that is interrupted stops its upload too instead of holding
 		// the process open for the last part.
-		Finished: func(f kho.PartFile) error { return p.finished(ctx, f) },
+		Finished: func(f store.PartFile) error { return p.finished(ctx, f) },
 	}
 	return nil
 }
@@ -146,7 +146,7 @@ func (p *parts) close(err error) error {
 // finished is called as each part lands: it goes to the store, the local copy
 // goes, and the line that says so is what a person watching a multi day run
 // has to go on.
-func (p *parts) finished(ctx context.Context, f kho.PartFile) error {
+func (p *parts) finished(ctx context.Context, f store.PartFile) error {
 	p.written++
 	p.bytes += f.Bytes
 	verb, note := "wrote", ""
@@ -165,7 +165,7 @@ func (p *parts) finished(ctx context.Context, f kho.PartFile) error {
 	}
 	if p.out != nil {
 		fmt.Fprintf(p.out, "%-10s %-44s %8s  %d documents%s\n",
-			verb, f.Path, may.GB(f.Bytes), f.Documents, note)
+			verb, f.Path, fleet.GB(f.Bytes), f.Documents, note)
 	}
 	return nil
 }
@@ -175,7 +175,7 @@ func (p *parts) finished(ctx context.Context, f kho.PartFile) error {
 // The delete is not conditional on the push having transferred anything. A part
 // the store already had is a part this box no longer needs, and a resumed run
 // that kept its local copies would fill the disk doing nothing.
-func (p *parts) pushOne(ctx context.Context, f kho.PartFile) (kho.Pushed, error) {
+func (p *parts) pushOne(ctx context.Context, f store.PartFile) (store.Pushed, error) {
 	p.pushing.Store(true)
 	defer p.pushing.Store(false)
 
@@ -202,7 +202,7 @@ func (p *parts) pushOne(ctx context.Context, f kho.PartFile) (kho.Pushed, error)
 // and the file is the thing that decides a token. Two runs that both say
 // gemma-3 and disagree about a count disagree about which file they opened, and
 // the label is where that argument gets settled.
-func tokenizerLabel(t *dem.Tokenizer) string {
+func tokenizerLabel(t *count.Tokenizer) string {
 	if t == nil {
 		return ""
 	}
@@ -223,9 +223,9 @@ func (p *parts) summary(w io.Writer) {
 	if p.written == 0 {
 		return
 	}
-	fmt.Fprintf(w, "%d parts written, %s of parquet in %s\n", p.written, may.GB(p.bytes), p.dir)
+	fmt.Fprintf(w, "%d parts written, %s of parquet in %s\n", p.written, fleet.GB(p.bytes), p.dir)
 	if p.sent > 0 {
 		fmt.Fprintf(w, "%d of them pushed to %s and deleted here, %s given back to the disk\n",
-			p.sent, p.dataset.Repo(), may.GB(p.freed))
+			p.sent, p.dataset.Repo(), fleet.GB(p.freed))
 	}
 }

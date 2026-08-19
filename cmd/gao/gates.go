@@ -8,11 +8,11 @@ import (
 	"io"
 	"text/tabwriter"
 
-	"github.com/tamnd/gao/dem"
+	"github.com/tamnd/gao/count"
 	"github.com/tamnd/gao/doc"
 )
 
-func runDemGates(stdout, stderr io.Writer, args []string) int {
+func runCountGates(stdout, stderr io.Writer, args []string) int {
 	fs := flag.NewFlagSet("count gates", flag.ContinueOnError)
 	fs.SetOutput(stderr)
 	model := fs.String("tokenizer", "", "the pinned tokenizer to put through the gates")
@@ -73,15 +73,15 @@ flags:
 		return 2
 	}
 
-	tok, err := dem.Open(dem.Gemma3, *model)
+	tok, err := count.Open(count.Gemma3, *model)
 	if err != nil {
 		fmt.Fprintf(stderr, "gao count gates: %v\n", err)
 		return 1
 	}
 
-	g := dem.NewGates(tok, dem.GateOptions{OneIn: *oneIn, Limit: *limit, Sample: *sample})
+	g := count.NewGates(tok, count.GateOptions{OneIn: *oneIn, Limit: *limit, Sample: *sample})
 	if *coverage {
-		for _, c := range dem.Coverage() {
+		for _, c := range count.Coverage() {
 			g.Add(c.ID(), c.Text)
 		}
 		return printCoverage(stdout, stderr, g.Report())
@@ -108,7 +108,7 @@ flags:
 // four kilobytes is not a sample of the corpus and T9 needs more text than that
 // before the rate it computes is a measurement. A run here answers the question
 // that comes first, which is whether the suite is measuring anything.
-func printCoverage(stdout, stderr io.Writer, report dem.GateReport) int {
+func printCoverage(stdout, stderr io.Writer, report count.GateReport) int {
 	printReport(stdout, report)
 	if report.Correct() {
 		fmt.Fprintf(stdout, "\nok, every gate about what %s does to text ran and passed on the coverage set\n", report.Tokenizer)
@@ -116,7 +116,7 @@ func printCoverage(stdout, stderr io.Writer, report dem.GateReport) int {
 		return 0
 	}
 	fmt.Fprintf(stderr, "\ngao dem gates: %s does not pass the coverage set\n", report.Tokenizer)
-	printFailures(stderr, report, func(g dem.Gate) bool { return g.Name == dem.ThroughputGate })
+	printFailures(stderr, report, func(g count.Gate) bool { return g.Name == count.ThroughputGate })
 	return 1
 }
 
@@ -130,7 +130,7 @@ func printCoverage(stdout, stderr io.Writer, report dem.GateReport) int {
 // because the answer to it is more text rather than another tokenizer. Both
 // printed 1 until real documents were put through the suite and the failures
 // came back with an exit code that said go and find a bigger corpus.
-func printGates(stdout, stderr io.Writer, report dem.GateReport) int {
+func printGates(stdout, stderr io.Writer, report count.GateReport) int {
 	printReport(stdout, report)
 	if report.Eligible() {
 		fmt.Fprintf(stdout, "\nok, %s passed every gate on this sample\n", report.Tokenizer)
@@ -149,7 +149,7 @@ func printGates(stdout, stderr io.Writer, report dem.GateReport) int {
 
 // printReport writes the table and the examples, which read the same whether the
 // text came off a disk or out of the coverage set.
-func printReport(stdout io.Writer, report dem.GateReport) {
+func printReport(stdout io.Writer, report count.GateReport) {
 	fmt.Fprintf(stdout, "tokenizer  %s, %d pieces\n", report.Tokenizer, report.Vocab)
 	fmt.Fprintf(stdout, "documents  %d\n", report.Documents)
 	fmt.Fprintf(stdout, "fertility  %.2f characters per token, %.2f tokens per syllable\n",
@@ -180,7 +180,7 @@ func printReport(stdout io.Writer, report dem.GateReport) {
 // printFailures names what went wrong, in the order the gates are in. except is
 // the gates the caller did not judge the run by, which on the coverage set is
 // the throughput gate and nowhere else.
-func printFailures(stderr io.Writer, report dem.GateReport, except func(dem.Gate) bool) {
+func printFailures(stderr io.Writer, report count.GateReport, except func(count.Gate) bool) {
 	for _, gate := range report.Gates {
 		switch {
 		case gate.Audit || gate.Passed():
@@ -196,7 +196,7 @@ func printFailures(stderr io.Writer, report dem.GateReport, except func(dem.Gate
 // detail is the right hand column: whatever the gate has to say for itself,
 // which is a note when it has one, a count when the count is the finding, and
 // the reason when it did not run.
-func detail(g dem.Gate) string {
+func detail(g count.Gate) string {
 	switch {
 	case !g.Ran && g.Why != "":
 		return g.Why

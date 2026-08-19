@@ -10,9 +10,9 @@ import (
 	"text/tabwriter"
 
 	"github.com/tamnd/gao/doc"
-	"github.com/tamnd/gao/kho"
-	"github.com/tamnd/gao/phoi"
-	"github.com/tamnd/gao/sang"
+	"github.com/tamnd/gao/normalize"
+	"github.com/tamnd/gao/sift"
+	"github.com/tamnd/gao/store"
 )
 
 // registerStageChecks tells kho what the cleaning stages do.
@@ -23,26 +23,26 @@ import (
 // stage that is a function has to leave its own output alone, so a document that
 // moves under it was not produced by this version of it.
 func registerStageChecks() {
-	kho.RegisterStageCheck("phoi", func(d *doc.Document) error {
-		if r := phoi.Normalize(d.Text); r.Changed {
+	store.RegisterStageCheck("phoi", func(d *doc.Document) error {
+		if r := normalize.Normalize(d.Text); r.Changed {
 			return errors.New("normalizing it again changes it")
 		}
 		return nil
 	})
-	kho.RegisterStageCheck("sang", func(d *doc.Document) error {
-		if reason, why, rejected := sang.Default().Reject(sang.Measure(d.Text)); rejected {
+	store.RegisterStageCheck("sang", func(d *doc.Document) error {
+		if reason, why, rejected := sift.Default().Reject(sift.Measure(d.Text)); rejected {
 			return fmt.Errorf("it would be rejected now as %s: %s", reason, why)
 		}
 		return nil
 	})
 }
 
-func runKhoReproduce(stdout, stderr io.Writer, args []string) int {
+func runStoreReproduce(stdout, stderr io.Writer, args []string) int {
 	fs := flag.NewFlagSet("store reproduce", flag.ContinueOnError)
 	fs.SetOutput(stderr)
 	verbose := fs.Bool("v", false, "print a line per shard rather than only the ones that differ")
 	stop := fs.Bool("stop", false, "return after the first shard that does not rebuild")
-	frame := fs.Int("frame-bytes", kho.DefaultFrameBytes, "the frame size the snapshot was written at")
+	frame := fs.Int("frame-bytes", store.DefaultFrameBytes, "the frame size the snapshot was written at")
 	fs.Usage = func() {
 		fmt.Fprint(stderr, `usage: gao store reproduce [flags] <snapshot dir>
 
@@ -87,12 +87,12 @@ flags:
 
 	registerStageChecks()
 
-	opts := []kho.ReproduceOption{kho.ReproduceFrameBytes(*frame)}
+	opts := []store.ReproduceOption{store.ReproduceFrameBytes(*frame)}
 	if *stop {
-		opts = append(opts, kho.ReproduceStopEarly())
+		opts = append(opts, store.ReproduceStopEarly())
 	}
 	if *verbose {
-		opts = append(opts, kho.ReproduceProgress(func(rb kho.Rebuild) {
+		opts = append(opts, store.ReproduceProgress(func(rb store.Rebuild) {
 			mark := "same"
 			if !rb.Same {
 				mark = "differs"
@@ -101,7 +101,7 @@ flags:
 		}))
 	}
 
-	report, err := kho.Reproduce(fs.Arg(0), opts...)
+	report, err := store.Reproduce(fs.Arg(0), opts...)
 	if report == nil {
 		fmt.Fprintf(stderr, "gao store reproduce: %v\n", err)
 		return 1
@@ -164,7 +164,7 @@ flags:
 
 	if err != nil {
 		fmt.Fprintf(stderr, "\ngao kho reproduce: %v\n", err)
-		if errors.Is(err, kho.ErrNotReproducible) {
+		if errors.Is(err, store.ErrNotReproducible) {
 			fmt.Fprintln(stderr, "the documents are intact. what differs is how they were written, so compare the versions above against the box that wrote the snapshot")
 		}
 		return 1

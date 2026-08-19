@@ -62,7 +62,7 @@ golden:
 
 ## schema: regenerate SCHEMA.md from the type that writes the files
 schema:
-	$(GO) run ./cmd/gao kho schema -md > SCHEMA.md
+	$(GO) run ./cmd/gao store schema -md > SCHEMA.md
 
 ## takedown: check the takedown register and fail on anything past the promise
 takedown:

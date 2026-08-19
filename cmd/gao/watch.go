@@ -40,11 +40,11 @@ import (
 	"sync"
 	"time"
 
-	"github.com/tamnd/gao/may"
+	"github.com/tamnd/gao/fleet"
 )
 
 // watchEvery is the gap between samples.
-var watchEvery = may.Resolution / 3
+var watchEvery = fleet.Resolution / 3
 
 // watchHeld is how a sample measures what the run is holding. A test replaces
 // it before the watcher starts, to make a walk slow without a slow filesystem.
@@ -152,7 +152,7 @@ func (w *watcher) sample(at time.Time) {
 		w.fail(err)
 		return
 	}
-	s := may.Sample{
+	s := fleet.Sample{
 		Second:  int64(at.Sub(w.start) / time.Second),
 		Bytes:   held,
 		Box:     w.box,

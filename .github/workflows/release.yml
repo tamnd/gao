@@ -192,11 +192,11 @@ jobs:
           # release. Key generation is where the platforms differ, since the file
           # permission check that guards a private key means nothing on Windows,
           # so generate a real pair natively instead of assuming it works.
-          ./gao${ext} kho keygen -out smoke > /dev/null
+          ./gao${ext} store keygen -out smoke > /dev/null
           for f in smoke.key smoke.pub; do
             [ -s "$f" ] || { echo "::error::keygen did not write $f"; exit 1; }
           done
-          if ./gao${ext} kho keygen -out smoke > /dev/null 2>&1; then
+          if ./gao${ext} store keygen -out smoke > /dev/null 2>&1; then
             echo "::error::keygen overwrote an existing signing key"
             exit 1
           fi

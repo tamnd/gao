@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/tamnd/gao/dem"
+	"github.com/tamnd/gao/count"
 )
 
 // The suite itself is tested in dem, against tokenizers written to fail one
@@ -15,8 +15,8 @@ import (
 // which is the point: how a failure reads on a terminal is worth a test of its
 // own and should not be skipped on a box that has not downloaded a protobuf.
 
-func gateReport(gates ...dem.Gate) dem.GateReport {
-	return dem.GateReport{
+func gateReport(gates ...count.Gate) count.GateReport {
+	return count.GateReport{
 		Tokenizer:   "gemma-3",
 		Vocab:       262144,
 		Documents:   40,
@@ -28,18 +28,18 @@ func gateReport(gates ...dem.Gate) dem.GateReport {
 	}
 }
 
-func gatesRun(t *testing.T, report dem.GateReport) (string, string, int) {
+func gatesRun(t *testing.T, report count.GateReport) (string, string, int) {
 	t.Helper()
 	var stdout, stderr bytes.Buffer
 	code := printGates(&stdout, &stderr, report)
 	return stdout.String(), stderr.String(), code
 }
 
-func TestDemGatesPrintsEveryGateAndTheFertility(t *testing.T) {
+func TestCountGatesPrintsEveryGateAndTheFertility(t *testing.T) {
 	out, errOut, code := gatesRun(t, gateReport(
-		dem.Gate{Name: "T1", What: "decode(encode(x)) is x", Unit: "documents", Checked: 40, Ran: true},
-		dem.Gate{Name: "T9", What: "at least 20 MB/s on one core", Note: "31.5 MB/s on one core over 4.0 MB", Ran: true},
-		dem.Gate{Name: "T10", What: "no piece is reachable only from text gao would reject", Unit: "pieces", Checked: 261888, Failed: 12, Audit: true, Note: "261888 pieces read, 256 control or byte fallback, 12 for a person to look at"},
+		count.Gate{Name: "T1", What: "decode(encode(x)) is x", Unit: "documents", Checked: 40, Ran: true},
+		count.Gate{Name: "T9", What: "at least 20 MB/s on one core", Note: "31.5 MB/s on one core over 4.0 MB", Ran: true},
+		count.Gate{Name: "T10", What: "no piece is reachable only from text gao would reject", Unit: "pieces", Checked: 261888, Failed: 12, Audit: true, Note: "261888 pieces read, 256 control or byte fallback, 12 for a person to look at"},
 	))
 
 	if code != 0 {
@@ -57,10 +57,10 @@ func TestDemGatesPrintsEveryGateAndTheFertility(t *testing.T) {
 	}
 }
 
-func TestDemGatesSaysWhichGateFailedAndNamesTheDocuments(t *testing.T) {
+func TestCountGatesSaysWhichGateFailedAndNamesTheDocuments(t *testing.T) {
 	out, errOut, code := gatesRun(t, gateReport(
-		dem.Gate{Name: "T1", What: "decode(encode(x)) is x", Unit: "documents", Checked: 40, Ran: true},
-		dem.Gate{
+		count.Gate{Name: "T1", What: "decode(encode(x)) is x", Unit: "documents", Checked: 40, Ran: true},
+		count.Gate{
 			Name: "T5", What: "no token boundary separates a letter from its marks",
 			Unit: "boundaries", Checked: 92311, Failed: 4, Ran: true,
 			Sample: []string{"3f2a at byte 118, inside \"ế\"", "91bc at byte 44, between \"e\" and its mark"},
@@ -88,10 +88,10 @@ func TestDemGatesSaysWhichGateFailedAndNamesTheDocuments(t *testing.T) {
 // The failure this is most likely to have in practice: somebody points it at a
 // sample that holds nothing a gate applies to, and a run that called that a
 // pass would print ten green lines and mean nine things.
-func TestDemGatesTreatsAGateWithNothingToRunOnAsAFailure(t *testing.T) {
+func TestCountGatesTreatsAGateWithNothingToRunOnAsAFailure(t *testing.T) {
 	out, errOut, code := gatesRun(t, gateReport(
-		dem.Gate{Name: "T1", What: "decode(encode(x)) is x", Unit: "documents", Checked: 40, Ran: true},
-		dem.Gate{Name: "T3", What: "and on documents mixing Vietnamese, English and code", Unit: "documents", Why: "no document in the sample mixed Vietnamese, English and code"},
+		count.Gate{Name: "T1", What: "decode(encode(x)) is x", Unit: "documents", Checked: 40, Ran: true},
+		count.Gate{Name: "T3", What: "and on documents mixing Vietnamese, English and code", Unit: "documents", Why: "no document in the sample mixed Vietnamese, English and code"},
 	))
 
 	if code != 1 {
@@ -108,10 +108,10 @@ func TestDemGatesTreatsAGateWithNothingToRunOnAsAFailure(t *testing.T) {
 // A run that both failed a gate and could not run another is a run that judged
 // the tokenizer, so it exits the way a judgement does. The other order would
 // send somebody after a bigger sample to settle a question already settled.
-func TestDemGatesJudgesAFailureAheadOfAGateItCouldNotRun(t *testing.T) {
+func TestCountGatesJudgesAFailureAheadOfAGateItCouldNotRun(t *testing.T) {
 	_, _, code := gatesRun(t, gateReport(
-		dem.Gate{Name: "T3", What: "and on documents mixing Vietnamese, English and code", Unit: "documents", Why: "no document in the sample mixed Vietnamese, English and code"},
-		dem.Gate{Name: "T5", What: "no token boundary separates a letter from its marks", Unit: "boundaries", Checked: 92311, Failed: 4, Ran: true},
+		count.Gate{Name: "T3", What: "and on documents mixing Vietnamese, English and code", Unit: "documents", Why: "no document in the sample mixed Vietnamese, English and code"},
+		count.Gate{Name: "T5", What: "no token boundary separates a letter from its marks", Unit: "boundaries", Checked: 92311, Failed: 4, Ran: true},
 	))
 
 	if code != 2 {
@@ -121,9 +121,9 @@ func TestDemGatesJudgesAFailureAheadOfAGateItCouldNotRun(t *testing.T) {
 
 // A boundary gate says nothing about a document whose pieces do not add up to
 // the document. Declining quietly would leave a count that reads as coverage.
-func TestDemGatesReportsTheDocumentsAGateDeclinedToLookAt(t *testing.T) {
+func TestCountGatesReportsTheDocumentsAGateDeclinedToLookAt(t *testing.T) {
 	out, _, _ := gatesRun(t, gateReport(
-		dem.Gate{Name: "T4", What: "no token boundary lands inside a character", Unit: "boundaries", Checked: 800, Skipped: 3, Ran: true},
+		count.Gate{Name: "T4", What: "no token boundary lands inside a character", Unit: "boundaries", Checked: 800, Skipped: 3, Ran: true},
 	))
 
 	if !strings.Contains(out, "could not look at 3 documents") {
@@ -131,7 +131,7 @@ func TestDemGatesReportsTheDocumentsAGateDeclinedToLookAt(t *testing.T) {
 	}
 }
 
-func coverageRun(t *testing.T, report dem.GateReport) (string, string, int) {
+func coverageRun(t *testing.T, report count.GateReport) (string, string, int) {
 	t.Helper()
 	var stdout, stderr bytes.Buffer
 	code := printCoverage(&stdout, &stderr, report)
@@ -141,11 +141,11 @@ func coverageRun(t *testing.T, report dem.GateReport) (string, string, int) {
 // The coverage set is four kilobytes and T9 declines on it. A run that reported
 // that as a failed gate would be telling somebody their tokenizer is too slow
 // on the strength of a letter chart.
-func TestDemGatesOnTheCoverageSetDoesNotJudgeTheThroughput(t *testing.T) {
+func TestCountGatesOnTheCoverageSetDoesNotJudgeTheThroughput(t *testing.T) {
 	out, errOut, code := coverageRun(t, gateReport(
-		dem.Gate{Name: "T1", What: "decode(encode(x)) is x", Unit: "documents", Checked: 8, Ran: true},
-		dem.Gate{Name: "T9", What: "at least 20 MB/s on one core", Why: "4227 bytes went through Encode, and a rate over less than 1000000 is a reading of the clock rather than a measurement of the tokenizer"},
-		dem.Gate{Name: "T10", What: "no piece is reachable only from text gao would reject", Unit: "pieces", Checked: 261888, Failed: 12, Audit: true},
+		count.Gate{Name: "T1", What: "decode(encode(x)) is x", Unit: "documents", Checked: 8, Ran: true},
+		count.Gate{Name: "T9", What: "at least 20 MB/s on one core", Why: "4227 bytes went through Encode, and a rate over less than 1000000 is a reading of the clock rather than a measurement of the tokenizer"},
+		count.Gate{Name: "T10", What: "no piece is reachable only from text gao would reject", Unit: "pieces", Checked: 261888, Failed: 12, Audit: true},
 	))
 
 	if code != 0 {
@@ -164,10 +164,10 @@ func TestDemGatesOnTheCoverageSetDoesNotJudgeTheThroughput(t *testing.T) {
 
 // Everything else it does judge, and a correctness gate that did not run on the
 // set is the set failing rather than the tokenizer.
-func TestDemGatesOnTheCoverageSetStillJudgesTheRest(t *testing.T) {
+func TestCountGatesOnTheCoverageSetStillJudgesTheRest(t *testing.T) {
 	out, errOut, code := coverageRun(t, gateReport(
-		dem.Gate{Name: "T6", What: "NFD and NFC encode the same", Unit: "documents", Checked: 8, Failed: 1, Ran: true},
-		dem.Gate{Name: "T9", What: "at least 20 MB/s on one core", Why: "a rate computed from that is a reading of the clock"},
+		count.Gate{Name: "T6", What: "NFD and NFC encode the same", Unit: "documents", Checked: 8, Failed: 1, Ran: true},
+		count.Gate{Name: "T9", What: "at least 20 MB/s on one core", Why: "a rate computed from that is a reading of the clock"},
 	))
 
 	if code != 1 {
@@ -181,24 +181,24 @@ func TestDemGatesOnTheCoverageSetStillJudgesTheRest(t *testing.T) {
 	}
 }
 
-func TestDemGatesUsageErrors(t *testing.T) {
-	if _, _, code := exec(t, "dem", "gates"); code != 2 {
+func TestCountGatesUsageErrors(t *testing.T) {
+	if _, _, code := exec(t, "count", "gates"); code != 2 {
 		t.Errorf("no tokenizer and no files: exit %d, want 2", code)
 	}
-	if _, _, code := exec(t, "dem", "gates", "-tokenizer", "t.model"); code != 2 {
+	if _, _, code := exec(t, "count", "gates", "-tokenizer", "t.model"); code != 2 {
 		t.Errorf("a tokenizer and no files: exit %d, want 2", code)
 	}
-	if _, _, code := exec(t, "dem", "gates", "page.txt"); code != 2 {
+	if _, _, code := exec(t, "count", "gates", "page.txt"); code != 2 {
 		t.Errorf("files and no tokenizer: exit %d, want 2", code)
 	}
 	// The coverage set replaces the files rather than adding to them, so
 	// naming both is a question with two answers.
-	if _, _, code := exec(t, "dem", "gates", "-tokenizer", "t.model", "-coverage", "page.txt"); code != 2 {
+	if _, _, code := exec(t, "count", "gates", "-tokenizer", "t.model", "-coverage", "page.txt"); code != 2 {
 		t.Errorf("the coverage set and files: exit %d, want 2", code)
 	}
 
 	missing := filepath.Join(t.TempDir(), "nope.model")
-	_, errOut, code := exec(t, "dem", "gates", "-tokenizer", missing, "page.txt")
+	_, errOut, code := exec(t, "count", "gates", "-tokenizer", missing, "page.txt")
 	if code != 1 {
 		t.Errorf("a tokenizer that is not there: exit %d, want 1", code)
 	}
@@ -207,8 +207,8 @@ func TestDemGatesUsageErrors(t *testing.T) {
 	}
 }
 
-func TestDemGatesIsInTheSubcommandList(t *testing.T) {
-	out, _, code := exec(t, "dem", "help")
+func TestCountGatesIsInTheSubcommandList(t *testing.T) {
+	out, _, code := exec(t, "count", "help")
 	if code != 0 {
 		t.Fatalf("gao count help: exit %d", code)
 	}
@@ -216,7 +216,7 @@ func TestDemGatesIsInTheSubcommandList(t *testing.T) {
 		t.Errorf("gates is not in the dem subcommand list:\n%s", out)
 	}
 
-	_, errOut, code := exec(t, "dem", "gates", "-h")
+	_, errOut, code := exec(t, "count", "gates", "-h")
 	if code != 2 {
 		t.Errorf("gao count gates -h: exit %d, want 2", code)
 	}

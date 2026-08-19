@@ -9,7 +9,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/tamnd/gao/may"
+	"github.com/tamnd/gao/fleet"
 )
 
 // A trace is only worth having if the peak in it is the peak that happened, so
@@ -40,7 +40,7 @@ func TestWatchSeesThePeakAndThenTheDeletion(t *testing.T) {
 	if err := os.WriteFile(part, make([]byte, 64*1024), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	waitFor(t, trace, func(ss []may.Sample) bool {
+	waitFor(t, trace, func(ss []fleet.Sample) bool {
 		return len(ss) > 0 && ss[len(ss)-1].Bytes >= 64*1024
 	})
 
@@ -50,7 +50,7 @@ func TestWatchSeesThePeakAndThenTheDeletion(t *testing.T) {
 	if err := os.Remove(part); err != nil {
 		t.Fatal(err)
 	}
-	waitFor(t, trace, func(ss []may.Sample) bool {
+	waitFor(t, trace, func(ss []fleet.Sample) bool {
 		return ss[len(ss)-1].Bytes == 0 && ss[len(ss)-1].Stage == "push"
 	})
 
@@ -206,7 +206,7 @@ func TestHeldBytesTreatsAMissingDirectoryAsEmpty(t *testing.T) {
 	}
 }
 
-func waitFor(t *testing.T, path string, ok func([]may.Sample) bool) {
+func waitFor(t *testing.T, path string, ok func([]fleet.Sample) bool) {
 	t.Helper()
 	deadline := time.Now().Add(5 * time.Second)
 	for time.Now().Before(deadline) {
@@ -218,7 +218,7 @@ func waitFor(t *testing.T, path string, ok func([]may.Sample) bool) {
 	t.Fatalf("the trace never reached the state the test was waiting for: %s", path)
 }
 
-func readTrace(t *testing.T, path string) []may.Sample {
+func readTrace(t *testing.T, path string) []fleet.Sample {
 	t.Helper()
 	f, err := os.Open(path)
 	if err != nil {
@@ -226,14 +226,14 @@ func readTrace(t *testing.T, path string) []may.Sample {
 	}
 	defer func() { _ = f.Close() }()
 
-	var ss []may.Sample
+	var ss []fleet.Sample
 	sc := bufio.NewScanner(f)
 	for sc.Scan() {
 		line := sc.Bytes()
 		if len(line) == 0 {
 			continue
 		}
-		var s may.Sample
+		var s fleet.Sample
 		if err := json.Unmarshal(line, &s); err != nil {
 			// A half written line is what a reader gets when it reads the trace
 			// while the run is still going, and it is not the failure here.
