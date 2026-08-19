@@ -2774,9 +2774,36 @@ It did not pass the first time it was run. The prediction line said 32.8 GB and 
 
 The worker count was in the trace the whole time. Every sample carries it, and the command refuses a trace whose samples leave it out, on the stated grounds that peak disk is a number per worker rather than a number per box. It then threw the number away and used the box. That is the kind of defect that survives any amount of reading, because the code is self consistent and the sentence in the refusal is correct, and it dies the first time somebody runs the thing on a machine whose thread count is not the number of workers. Both numbers are printed now, the prediction against the workers the run had and the plan's allowance beside it, and a single worker stage on a thirty two thread box reads as what it is rather than as a failure.
 
-The two boxes agree, which is the part worth keeping. A GlotCC run on four threads and a FinePDFs run on thirty two both peaked at about half of what one worker may hold, on sources that compress differently and on machines eleven times apart in memory. Offload is doing what the design said it would.
+The third box is the long one, and it is the reading that changed the rule:
 
-The refusals are about how the trace was taken rather than about what it says. A peak sampled every five minutes is not a peak, because a worker can take a shard, write it, push it and delete it inside a five minute gap and the watcher will report the quiet either side of it. Thirty seconds is the resolution, and it comes from what allocates rather than from what looked reasonable. A watcher that started late or stopped early missed the start and the flush, which is exactly where a run allocates hardest, so the trace has to cover the run and the run's length is stated separately rather than inferred from the trace, since a trace cannot notice that it stopped. A sample that does not say how many workers were running cannot be read against a prediction that is per worker. And a peak is a fact about one machine, so a trace holding samples from two of them is refused rather than maximized over.
+```
+$ gao box peak -run "fineweb2 ingest" -ran 10h10m27s disk.jsonl
+run          fineweb2 ingest  on server1, 10h10m27s of wall clock
+peak         0.5 GB           at 8m10s, during push
+ceiling      90.0 GB          89.5 GB of it left
+predicted    1.0 GB           two shards each for the 1 worker this run had going
+drift        0.5x             the measurement over the arithmetic
+plan allows  4.1 GB           if a stage used every worker server1 has threads for
+watched      3649 readings    across 10h10m26s, widest gap 50s
+blind spot   0.6 GB           the most a 50s gap hides at the 12.8 MB a second this run was measured allocating
+free         189.0 GB         on server1
+
+server1 held at least 0.5 GB and at most 1.1 GB of a 90.0 GB ceiling during push, the second number being what the widest gap of 50s could have hidden at the 12.8 MB a second this run was measured allocating
+```
+
+Six FineWeb2 files, 13979000 documents admitted and none turned away, 78 parts written and pushed and deleted, 76.6 GB of text into 35.4 GB of Parquet, ten hours and ten minutes on a four core box. The per file times in the run log sum to 10h10m27s and the watcher covered 10h10m26s of it, which is how the run's length is known rather than guessed.
+
+It was refused the first time. The widest gap between two readings was 50s against a resolution of 30s, so the command threw away a reading of a run that never went within eighty nine gigabytes of its ceiling. Looking at the gaps is what settled it. Of 3648 of them, 3642 were exactly the ten seconds the watcher ticks at, and six were longer: one at 20s, two at 40s, two at 50s, and one at 6s where a tick came early. That is five dropped ticks in ten hours, or 0.16% of them, against the 1.19% the first six hour run on this box dropped before sampling moved onto its own goroutine. The fix worked and the gate did not care, because the gate was reading the worst gap and nothing else.
+
+Three of those readings also arrive out of order, which is the same fix showing up in the file: a sample stamped when it starts and written when it finishes can be overtaken by the one behind it. The reading sorts by second before it does anything, so the widest gap is 50s and not the 100s that file order suggests, and that was worth checking rather than assuming.
+
+What the gap is really worth is a question about disk. A worker can take a shard, write it, push it and delete it inside a wide enough window, and whether it could have done that here depends on how fast this run was allocating, which the trace measures. The fastest rise between two adjacent readings over the whole ten hours is 12.8 MB a second, so 50s of not looking hides at most 0.6 GB. The run held 0.5 GB, so it held at most 1.1 GB, and the ceiling is 90. The question the milestone asks is answered whatever happened in the gap.
+
+So the gap is priced in disk now instead of in seconds. A gap wider than the resolution refuses the reading when the run's own measured rate could have carried it over the ceiling inside that gap, and otherwise the peak comes back as a floor with a bound over it. Two things are worth being honest about. The rate is the fastest rise anybody sampled, so a burst shorter than the sampling interval beats it and the bound is worth what the sampling is. And a trace that never saw the disk grow has no rate at all, which keeps the old refusal, because reading a flat trace as proof that nothing happened while nobody was looking is exactly the mistake this is meant to avoid.
+
+The three boxes agree, which is the part worth keeping. A GlotCC run on four threads, a FinePDFs run on thirty two and a ten hour FineWeb2 run on four all peaked at about half of what one worker may hold, on three sources that compress differently and on machines eleven times apart in memory. Offload is doing what the design said it would.
+
+The other refusals are about how the trace was taken rather than about what it says. A watcher that started late or stopped early missed the start and the flush, which is exactly where a run allocates hardest, so the trace has to cover the run and the run's length is stated separately rather than inferred from the trace, since a trace cannot notice that it stopped. A sample that does not say how many workers were running cannot be read against a prediction that is per worker. And a peak is a fact about one machine, so a trace holding samples from two of them is refused rather than maximized over.
 
 ## What each stage runs at, and on which box
 

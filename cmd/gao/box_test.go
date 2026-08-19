@@ -148,7 +148,7 @@ func TestARunOverTheCeilingExitsTwo(t *testing.T) {
 // difference visible.
 func TestATraceThatCannotSupportAPeakExitsOne(t *testing.T) {
 	out, _, code := exec(t, "box", "peak", "-ran", "6h",
-		diskTrace(t, 21600, 300, 3_000_000_000, 11_200_000_000))
+		diskTrace(t, 21600, 300, 3_000_000_000, 80_000_000_000))
 	if code != 1 {
 		t.Fatalf("exit %d, want 1:\n%s", code, out)
 	}
@@ -157,16 +157,35 @@ func TestATraceThatCannotSupportAPeakExitsOne(t *testing.T) {
 	}
 }
 
-// A peak sampled every five minutes is not a peak, and the reading says so
-// rather than printing the largest number it happened to see.
-func TestAPeakTakenTooRarelyIsRefused(t *testing.T) {
+// A peak sampled every five minutes off a run that allocates a quarter of a
+// gigabyte a second is not a peak, because the ceiling is inside the gap.
+func TestAGapThatCouldHaveHiddenTheCeilingIsRefused(t *testing.T) {
 	out, _, code := exec(t, "box", "peak", "-ran", "6h",
-		diskTrace(t, 21600, 300, 3_000_000_000, 11_200_000_000))
+		diskTrace(t, 21600, 300, 3_000_000_000, 80_000_000_000))
 	if code != 1 {
 		t.Fatalf("exit %d, want 1:\n%s", code, out)
 	}
-	if !strings.Contains(out, "the disk at some moments rather than its peak") {
-		t.Errorf("a trace sampled every five minutes was accepted:\n%s", out)
+	if !strings.Contains(out, "could have taken it to") {
+		t.Errorf("a gap wide enough to hide the ceiling was accepted:\n%s", out)
+	}
+}
+
+// The same gap on a run that allocates slowly answers the question anyway. This
+// is the ten hour FineWeb2 ingest on server1: five dropped ticks out of 3648, a
+// widest gap of 50s, and a run whose fastest measured rise could not have put
+// more than a gigabyte behind it against a ceiling ninety times that. Refusing
+// it was a gate about seconds standing in for a gate about disk.
+func TestAGapTooNarrowToHideTheCeilingIsReadAsARange(t *testing.T) {
+	out, _, code := exec(t, "box", "peak", "-ran", "6h",
+		diskTrace(t, 21600, 300, 3_000_000_000, 11_200_000_000))
+	if code != 0 {
+		t.Fatalf("exit %d, want 0:\n%s", code, out)
+	}
+	if !strings.Contains(out, "held at least 11.2 GB and at most") {
+		t.Errorf("the reading does not give the peak as a range:\n%s", out)
+	}
+	if !strings.Contains(out, "blind spot") {
+		t.Errorf("the reading does not price the gap in disk:\n%s", out)
 	}
 }
 
