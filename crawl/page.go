@@ -46,7 +46,15 @@ const Extractor = "gao-crawl@" + ExtractorVersion
 // PipelineVersion is the value of the pipeline_version column for a crawled
 // document that has been extracted and nothing else. The leading zero says that
 // no cleaning stage has touched it, the same as it does for an ingest.
-const PipelineVersion = "0.1.0"
+//
+// It moved to 0.2.0 when fetched_at changed meaning. Rows written by 0.1.0 were
+// stamped when a worker picked the URL up, before the fetch waited for the
+// host's turn, so a pair of them can say two requests went to one site in the
+// same millisecond when the requests were a second apart. Rows written by 0.2.0
+// are stamped after the wait, when the request goes out. Both are published and
+// this column is how a reader tells them apart, which is better than a sentence
+// in the card that a query cannot see.
+const PipelineVersion = "0.2.0"
 
 // A Page is what one HTML document had in it.
 type Page struct {
