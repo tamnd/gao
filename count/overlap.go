@@ -23,9 +23,11 @@ package count
 // two projects that pulled the same URL out of the same crawl are the same
 // document here only if their extractors agreed on every byte, and extractors
 // disagree about nav bars, boilerplate and trailing newlines as a matter of
-// course. Run on 2026-08-18 over what three boxes had published, FineWeb2 and
-// GlotCC shared 1628 documents out of 4,058,101 and 1,500,000, and FinePDFs
-// shared none with either. Both of the first two are Common Crawl derivatives.
+// course. Run on 2026-08-19 over three complete sources, FineWeb2 and GlotCC
+// shared 75,807 documents out of 29,065,995 and 13,232,715, and FinePDFs shared
+// one with FineWeb2 and none with GlotCC. Both of the first two are Common Crawl
+// derivatives, and seven tenths of one percent of the smaller one is what that
+// buys under exact identity.
 //
 // So this is not the cheap version of the overlap measurement. It is a
 // different measurement that happens to be cheap, and it is the right one for
