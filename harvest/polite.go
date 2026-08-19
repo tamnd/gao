@@ -16,6 +16,7 @@ package harvest
 
 import (
 	"context"
+	"fmt"
 	"sync"
 	"time"
 )
@@ -40,6 +41,24 @@ const DefaultDelay = time.Second
 // politely is a host that does not get crawled.
 const MaxDelay = 5 * time.Minute
 
+// DefaultPatience is the longest a worker holds still for one host.
+//
+// The two rules above are about the host. This one is about the crawl, and the
+// first fleet run is what wrote it. A worker that queues for a host is a worker
+// that is not fetching anything else, and the third shard of that run spent an
+// afternoon proving what that costs. All twenty of its workers were on the same
+// host: nineteen waiting for the one in front to finish, and that one asleep on
+// a gap twenty seven minutes wide. Between two and a half hours and four and a
+// half hours in, the shard fetched one page. It had no sockets open and used no
+// CPU over a five second sample, and the other two shards were doing three and
+// three and a half pages a second on the same code and the same seeds.
+//
+// So a host that is not ready is not waited for. Thirty seconds is long enough
+// that the ordinary one second gap is never worth a trip back to the queue and
+// short enough that no host can hold a worker while there are a million URLs
+// queued behind it.
+const DefaultPatience = 30 * time.Second
+
 // PoliteOptions configures a [Polite]. The zero value is the defaults.
 type PoliteOptions struct {
 	// Delay is the gap between two requests to one host, before a site's own
@@ -49,6 +68,10 @@ type PoliteOptions struct {
 	// PerHost is how many requests may be in flight to one host. Zero means
 	// one, and one is the answer unless somebody has a reason.
 	PerHost int
+
+	// Patience is the longest a caller waits for a host before being told to
+	// come back with something else. Zero means [DefaultPatience].
+	Patience time.Duration
 
 	// Now and Sleep are the clock, injected so that a test of the schedule is
 	// a test of the schedule rather than a test of how long it takes to run.
@@ -64,10 +87,11 @@ type PoliteOptions struct {
 // a per worker instance would be a per worker idea of how hard one host is being
 // hit, which is no idea at all.
 type Polite struct {
-	delay   time.Duration
-	perHost int
-	now     func() time.Time
-	sleep   func(ctx context.Context, d time.Duration) error
+	delay    time.Duration
+	perHost  int
+	patience time.Duration
+	now      func() time.Time
+	sleep    func(ctx context.Context, d time.Duration) error
 
 	mu    sync.Mutex
 	hosts map[string]*politeHost
@@ -89,14 +113,18 @@ type politeHost struct {
 // NewPolite returns a scheduler with these options.
 func NewPolite(o PoliteOptions) *Polite {
 	p := &Polite{
-		delay:   o.Delay,
-		perHost: o.PerHost,
-		now:     o.Now,
-		sleep:   o.Sleep,
-		hosts:   map[string]*politeHost{},
+		delay:    o.Delay,
+		perHost:  o.PerHost,
+		patience: o.Patience,
+		now:      o.Now,
+		sleep:    o.Sleep,
+		hosts:    map[string]*politeHost{},
 	}
 	if p.delay <= 0 {
 		p.delay = DefaultDelay
+	}
+	if p.patience <= 0 {
+		p.patience = DefaultPatience
 	}
 	if p.perHost <= 0 {
 		p.perHost = 1
@@ -173,6 +201,13 @@ func (p *Polite) Delay(host string) time.Duration {
 // concurrency of one means the host is never fetched again, so the loss is
 // loud rather than quiet.
 //
+// It returns [ErrBusy] rather than waiting when the host already has a request
+// in flight, and when the host's next gap is further out than the caller's
+// patience. Both mean the same thing to a crawl, which is that this URL is not
+// this worker's next fetch and the queue has plenty that are. Neither is a
+// failure and neither costs the host anything: the URL goes back and the gap is
+// left exactly where it was, so nothing is spent by asking.
+//
 // A canceled context returns the context's error and no release function. The
 // slot comes back, so the host is usable afterwards, but a gap already reserved
 // stays reserved: another worker may have queued behind it by then, and moving
@@ -189,11 +224,18 @@ func (p *Polite) Wait(ctx context.Context, host string) (func(), error) {
 
 	select {
 	case h.slots <- struct{}{}:
-	case <-ctx.Done():
-		return nil, ctx.Err()
+	default:
+		return nil, fmt.Errorf("%w: %s already has a request in flight", ErrBusy, host)
 	}
 
-	wait := p.reserve(h)
+	wait, ok := p.reserve(h)
+	if !ok {
+		// The slot goes back untouched and so does the gap, since this worker
+		// never took a turn. The next one along finds the host exactly as it
+		// was.
+		p.release(h)
+		return nil, fmt.Errorf("%w: %s is not due for another %v", ErrBusy, host, wait.Round(time.Second))
+	}
 	if err := p.sleep(ctx, wait); err != nil {
 		// The slot goes back so the host stays usable. The gap does not: see
 		// the note above on why an abandoned reservation is left standing.
@@ -207,7 +249,14 @@ func (p *Polite) Wait(ctx context.Context, host string) (func(), error) {
 }
 
 // reserve takes the next start time for this host and moves it forward.
-func (p *Polite) reserve(h *politeHost) time.Duration {
+//
+// It reports false and takes nothing when the wait is longer than the patience,
+// and the duration it returns then is how long that would have been, so the
+// caller can say so. Reading the schedule has to be free: a worker that gave up
+// and still moved the host's next slot out would be paying for a request it
+// never made, and twenty workers doing that would push a busy host into next
+// week between them.
+func (p *Polite) reserve(h *politeHost) (time.Duration, bool) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 
@@ -216,8 +265,11 @@ func (p *Polite) reserve(h *politeHost) time.Duration {
 	if h.next.After(start) {
 		start = h.next
 	}
+	if wait := start.Sub(now); wait > p.patience {
+		return wait, false
+	}
 	h.next = start.Add(h.delay)
-	return start.Sub(now)
+	return start.Sub(now), true
 }
 
 // woke pushes the schedule out by however late this request is, so that the

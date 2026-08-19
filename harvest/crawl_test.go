@@ -361,19 +361,22 @@ func TestASiteAskingForTimeGetsTheTimeItNamed(t *testing.T) {
 		t.Errorf("the error does not carry the time the site asked for: %v", err)
 	}
 
-	// The next request to that host waits it out rather than coming back sooner
-	// because the queue is full. Where it lands does not matter here, only what
-	// it waited on the way.
+	// The next request to that host is turned away rather than waited out. The
+	// two minutes are kept, and they are kept in the schedule rather than in a
+	// worker: sitting on them would mean not fetching any of the million URLs
+	// queued behind this one.
 	before := len(clk.waits())
-	if _, err := get(t, c, s.URL+"/khac"); err != nil {
+	if _, err := get(t, c, s.URL+"/khac"); !errors.Is(err, harvest.ErrBusy) {
 		t.Fatalf("the request after a 429 gave %v", err)
 	}
-	waits := clk.waits()
-	if len(waits) <= before {
-		t.Fatal("the request after a 429 did not go through the schedule")
+	if waits := clk.waits(); len(waits) != before {
+		t.Errorf("the request after a 429 waited %v instead of coming back later", waits[before:])
 	}
-	if got := waits[before]; got < 2*time.Minute {
-		t.Errorf("the request after a 429 waited %v and the site asked for two minutes", got)
+
+	// And when the two minutes have gone by, the host is fetched.
+	clk.pass(2 * time.Minute)
+	if _, err := get(t, c, s.URL+"/khac"); err != nil {
+		t.Fatalf("the request after the two minutes were up gave %v", err)
 	}
 }
 
@@ -393,11 +396,20 @@ func TestASiteThatSaysItIsBusyAndNothingElseStillGetsLeftAlone(t *testing.T) {
 	if _, err := get(t, c, s.URL+"/nang"); !errors.Is(err, harvest.ErrBusy) {
 		t.Fatalf("a 503 with no Retry-After gave %v", err)
 	}
-	before := len(clk.waits())
-	_, _ = get(t, c, s.URL+"/nang")
-	waits := clk.waits()
-	if len(waits) <= before || waits[before] < harvest.DefaultBackoff {
-		t.Errorf("a 503 with no Retry-After left the host alone for %v", waits[before:])
+	// A minute short of the default and the host is still being left alone.
+	clk.pass(harvest.DefaultBackoff - time.Minute)
+	if _, err := get(t, c, s.URL+"/nang"); !errors.Is(err, harvest.ErrBusy) {
+		t.Errorf("a 503 with no Retry-After left the host alone for less than %v: %v", harvest.DefaultBackoff, err)
+	}
+
+	// Past it and the host is asked again, since the point was to give it room
+	// rather than to write it off.
+	clk.pass(2 * time.Minute)
+	if _, err := get(t, c, s.URL+"/nang"); !errors.Is(err, harvest.ErrBusy) {
+		t.Errorf("the host was not asked again after %v: %v", harvest.DefaultBackoff, err)
+	}
+	if n := s.askedFor("/nang"); n != 2 {
+		t.Errorf("the site was asked for the busy page %d times", n)
 	}
 }
 
@@ -614,6 +626,10 @@ func TestTheVisitIsStampedWhenTheRequestGoesOut(t *testing.T) {
 	}
 }
 
+// Twenty workers, one host, one connection. The nineteen that arrive while the
+// host is taken are told to come back rather than queued, so what this asserts
+// is that the site never saw two at once and that the file it publishes for
+// crawlers was still read exactly once.
 func TestManyWorkersOnOneHostDoNotOverlap(t *testing.T) {
 	var live, most int
 	var mu sync.Mutex
@@ -641,7 +657,7 @@ func TestManyWorkersOnOneHostDoNotOverlap(t *testing.T) {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			if _, err := c.Get(context.Background(), s.URL+"/bai-viet"); err != nil {
+			if _, err := c.Get(context.Background(), s.URL+"/bai-viet"); err != nil && !errors.Is(err, harvest.ErrBusy) {
 				t.Error(err)
 			}
 		}()
@@ -652,6 +668,9 @@ func TestManyWorkersOnOneHostDoNotOverlap(t *testing.T) {
 	defer mu.Unlock()
 	if most > 1 {
 		t.Errorf("%d requests were in flight to one host at once", most)
+	}
+	if live != 0 {
+		t.Errorf("%d requests were still counted as in flight after everybody finished", live)
 	}
 	if n := s.askedFor("/robots.txt"); n != 1 {
 		t.Errorf("twenty workers fetched robots.txt %d times", n)
