@@ -545,23 +545,28 @@ Four defects came out of running it against real Vietnamese sites, and none of t
 
 Two more came out of reading the published rows rather than the run. 2,010 URLs were turned away with reason `robots`, and 999 of them were robots.txt disallows. The rest were servers answering 403 or 401, mostly bot walls, and reporting those as Vietnamese publishers asking to be left alone would have overstated the number by four fifths. A 403 is a non-200 status and is now filed as one, with the host and the status kept in the detail so the walls are still countable.
 
-And once `fetched_at` meant what it says, the gaps could be measured, which is the point of publishing the column. Over 11,956 consecutive pairs of requests to one host at a one second delay, the median gap was 2.7 seconds and 24 pairs were closer than nine tenths of a second, the tightest at 0.764. The schedule was not wrong: it reserves absolute slots exactly a second apart. A timer fires at or after its deadline though, so a request that woke a fifth of a second late went out a fifth of a second into the gap belonging to the request behind it, and the site is the one that sees it. The schedule now moves forward by however late a request was and never back, since by then other workers may have queued behind that host.
+And once `fetched_at` meant what it says, the gaps could be measured, which is the point of publishing the column. Over 11,956 consecutive pairs of requests to one host at a one second delay, the median gap was 2.7 seconds and 24 pairs were closer than nine tenths of a second, the tightest at 0.764. The schedule was not wrong: it reserves absolute slots exactly a second apart. A timer fires at or after its deadline though, so a request that woke a fifth of a second late went out a fifth of a second into the gap belonging to the request behind it, and the site is the one that sees it. The schedule now moves forward by however late a request was and never back, since by then other workers may have queued behind that host. Measured again on the fixed build over 10,382 pairs, the median gap is 2.0 seconds and one pair is under nine tenths, at 0.864. That one is the wait returning on time and the request reaching the wire a tenth of a second later, which is jitter rather than a schedule that can be talked into going early.
 
 Each of those four changed something a reader can see, so `pipeline_version` moves with them. 0.1.0 rows carry the pickup time, 0.2.0 rows carry the request time with walls still filed under `robots`, and from 0.3.0 both columns mean what the card says they mean. The older rows stay published, because a version column nobody has to trust is worth more than a corpus with holes in it.
 
 ```
 $ duckdb -c "SELECT reject_stage, reject_reason, count(*) AS n
   FROM read_parquet('hf://datasets/open-index/vitweb-rejects/data/web/*.parquet')
+  WHERE pipeline_version = '0.3.0'
   GROUP BY 1,2 ORDER BY n DESC"
-crawl.sift     short         4029
-crawl.fetch    robots        1855
-crawl.sift     language      1579
-crawl.fetch    fetch         1569
-crawl.sift     repetition    1105
-crawl.extract  boilerplate    913
+crawl.fetch    robots        5778
+crawl.sift     short         5562
+crawl.sift     language      5426
+crawl.extract  boilerplate   5311
+crawl.fetch    fetch         4430
+crawl.sift     repetition     471
+crawl.reserve  robots         386
+crawl.sift     boilerplate    190
 ```
 
-Every one of those is a row somebody can re-cost. The repetition threshold is the one that matters most and it is the one that is wrong for Vietnamese: a third of what it removed on the first run was article prose rather than listing pages, because an official is named in full every time they are mentioned and `đồng chí Vũ Quyết Tiến, Phó Bí thư Tỉnh ủy, Chủ tịch Ủy ban MTTQ tỉnh` is three occurrences of one eight syllable gram in a nine hundred word article. The threshold is Gopher's, scaled from words to syllables, and a Vietnamese title is long in syllables and carries one fact. Because the rejects carry the measured rate for every page, the threshold can be moved and the corpus recomposed without fetching anything again.
+The same table says the crawl is not yet earning its politeness budget. 798 pages kept against 27,554 turned away is a net yield of 0.028, against the 0.15 this milestone is meant to hold, and the reason is in the hosts rather than in the filters. Of 22,022 requests in the last measured hour, 19,457 went to hosts outside `.vn` across 6,795 of them, and one in five of those pages came back in a language nobody asked for. The seed list is 137 Vietnamese sites and every one of them links outwards, so a frontier that admits whatever it is offered walks off the Vietnamese web inside an hour and spends its second per host on `books.google.com` and `ur.wikiquote.org`. The language check catches those pages after they have been fetched, which is the expensive half. Nothing here admits a host on evidence that it publishes Vietnamese, and until something does, the yield number is a measurement of that and not of the filters.
+
+Every one of the reject rows is something somebody can re-cost. The repetition threshold is the one that matters most and it is the one that is wrong for Vietnamese: a third of what it removed on the first run was article prose rather than listing pages, because an official is named in full every time they are mentioned and `đồng chí Vũ Quyết Tiến, Phó Bí thư Tỉnh ủy, Chủ tịch Ủy ban MTTQ tỉnh` is three occurrences of one eight syllable gram in a nine hundred word article. The threshold is Gopher's, scaled from words to syllables, and a Vietnamese title is long in syllables and carries one fact. Because the rejects carry the measured rate for every page, the threshold can be moved and the corpus recomposed without fetching anything again.
 
 ## Reading Parquet without downloading it
 
