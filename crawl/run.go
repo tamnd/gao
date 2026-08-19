@@ -255,9 +255,20 @@ func (r *loop) one(ctx context.Context, rawurl string) error {
 	at := time.Now()
 	v, err := r.o.Crawler.Get(ctx, rawurl)
 	if err != nil {
+		// Nothing went out, so the only time there is is the time this worker
+		// picked the URL up.
 		return r.missed(ctx, rawurl, at, err)
 	}
 	r.fetched.Add(1)
+	// The fetch waited for the host's turn before it asked, and the time worth
+	// recording is the time the site saw rather than the time this worker
+	// started queueing for it. Without this, two workers reaching for one host
+	// at the same instant produce two rows a millisecond apart describing two
+	// requests a second apart, and the column that is supposed to show the
+	// crawl's manners shows the opposite.
+	if !v.At.IsZero() {
+		at = v.At
+	}
 
 	locator, err := r.o.Sink.Archive(v, at)
 	if err != nil {

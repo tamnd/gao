@@ -560,6 +560,58 @@ func TestACanceledCrawlDoesNotMakeTheRequest(t *testing.T) {
 // Many workers on one host is the shape a real crawl has, and the thing that
 // must not happen is two of them arriving at once. Run under -race, this is also
 // the check that the robots file and the blocked list are shared safely.
+// The time on a visit is the time the site saw. It is the only column a reader
+// can measure the crawl's manners with, and a time taken before the wait would
+// say two requests went out together when one of them stood in line for the
+// other. This runs on the real clock because that is the thing under test.
+func TestTheVisitIsStampedWhenTheRequestGoesOut(t *testing.T) {
+	var mu sync.Mutex
+	var arrived []time.Time
+	s := newSite(t, map[string]http.HandlerFunc{
+		"/robots.txt": text("User-agent: *\nAllow: /\n"),
+		"/bai-viet": func(w http.ResponseWriter, r *http.Request) {
+			mu.Lock()
+			arrived = append(arrived, time.Now())
+			mu.Unlock()
+			_, _ = w.Write([]byte("<p>noi dung</p>"))
+		},
+	})
+	const delay = 80 * time.Millisecond
+	c := harvest.NewCrawler(harvest.CrawlOptions{
+		Polite: harvest.NewPolite(harvest.PoliteOptions{Delay: delay}),
+	})
+
+	first, err := get(t, c, s.URL+"/bai-viet")
+	if err != nil {
+		t.Fatalf("the first fetch: %v", err)
+	}
+	// Picked up now, sent one delay from now, and the visit has to say the
+	// second of those.
+	pickedUp := time.Now()
+	second, err := get(t, c, s.URL+"/bai-viet")
+	if err != nil {
+		t.Fatalf("the second fetch: %v", err)
+	}
+
+	if gap := second.At.Sub(first.At); gap < delay/2 {
+		t.Errorf("the two visits are stamped %v apart, and the schedule left %v between the requests", gap, delay)
+	}
+	if second.At.Sub(pickedUp) < delay/2 {
+		t.Errorf("the second visit is stamped %v after it was picked up, so it was stamped before it waited", second.At.Sub(pickedUp))
+	}
+
+	mu.Lock()
+	defer mu.Unlock()
+	if len(arrived) != 2 {
+		t.Fatalf("the site saw %d requests", len(arrived))
+	}
+	for i, v := range []*harvest.Visit{first, second} {
+		if d := v.At.Sub(arrived[i]); d > 200*time.Millisecond || d < -200*time.Millisecond {
+			t.Errorf("visit %d is stamped %v from when the site saw it", i, d)
+		}
+	}
+}
+
 func TestManyWorkersOnOneHostDoNotOverlap(t *testing.T) {
 	var live, most int
 	var mu sync.Mutex
