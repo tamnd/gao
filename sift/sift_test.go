@@ -252,7 +252,7 @@ func TestTheFunctionWordListIsStableAndNotEmpty(t *testing.T) {
 	}
 }
 
-// reasonOf keeps the table above readable. The reasons are vo's, and a typo in
+// reasonOf keeps the table above readable. The reasons are reject's, and a typo in
 // one of these strings would otherwise pass as a zero count.
 func reasonOf(name string) reject.Reason {
 	r := reject.Reason(name)

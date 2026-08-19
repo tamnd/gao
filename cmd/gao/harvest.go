@@ -464,7 +464,7 @@ func reportDrift(stdout, stderr io.Writer, results []driftResult) int {
 			moved, len(results))
 		return 1
 	case failed > 0:
-		fmt.Fprintf(stderr, "\ngao gat drift: %d of %d sources could not be reached\n", failed, len(results))
+		fmt.Fprintf(stderr, "\ngao harvest drift: %d of %d sources could not be reached\n", failed, len(results))
 		return 1
 	}
 	fmt.Fprintf(stdout, "\nall %d sources still serve the revision they were pinned at on %s\n", len(results), harvest.PinnedOn())

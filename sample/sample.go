@@ -374,7 +374,7 @@ func (p Plan) Faults() []string {
 
 	if p.Want < layers.MinRead {
 		out = append(out, fmt.Sprintf(
-			"the plan reads %s off each layer, under the %s a layer's rate needs before one long page stops moving it, so the readings it produces are not ones tang will scale anything by",
+			"the plan reads %s off each layer, under the %s a layer's rate needs before one long page stops moving it, so the readings it produces are not ones layers will scale anything by",
 			size(p.Want), size(layers.MinRead)))
 	}
 
@@ -415,7 +415,7 @@ func (p Plan) Faults() []string {
 	}
 	if p.ShutShare > layers.MaxDark {
 		out = append(out, fmt.Sprintf(
-			"the plan leaves %s of the source unread, over the %s tang allows before an estimate stops being an estimate of the source",
+			"the plan leaves %s of the source unread, over the %s layers allows before an estimate stops being an estimate of the source",
 			share(p.ShutShare), share(layers.MaxDark)))
 	}
 	if under := p.under(); len(under) > 0 {

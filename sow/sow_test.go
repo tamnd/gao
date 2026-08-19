@@ -213,7 +213,7 @@ func TestTheDigestMovesWithAnythingThatChangesTheText(t *testing.T) {
 		{"the token limit", func(r *Recipe) { r.Decoding.MaxTokens = 2048 }},
 		{"the source", func(r *Recipe) { r.SourceDigest = doc.SumString("another slice") }},
 		{"a filter's settings", func(r *Recipe) { r.Filters[0].ConfigHash = doc.SumString("looser") }},
-		{"the roster", func(r *Recipe) { r.Roster = "nhat-2026.09" }},
+		{"the roster", func(r *Recipe) { r.Roster = "pick-2026.09" }},
 	} {
 		t.Run(tc.what, func(t *testing.T) {
 			r := Fixed()

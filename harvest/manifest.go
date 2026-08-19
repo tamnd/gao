@@ -138,7 +138,7 @@ type Pinned struct {
 	Gated bool `json:"gated"`
 
 	// Class is the license class every document from this source is admitted
-	// with, which comes from the determination in luat and is repeated here so
+	// with, which comes from the determination in law and is repeated here so
 	// that the ingest does not have to reach across packages mid-stream.
 	Class doc.LicenseClass `json:"license_class"`
 

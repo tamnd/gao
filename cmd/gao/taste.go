@@ -55,7 +55,7 @@ pipeline where tokenizing is affordable. Run 'gao count model -o PATH' to fetch 
 
 With -out the layer file goes where gao layers reads it, carrying every layer of
 the plan whether it was read or not, since the layers nobody opened are what
-tang exists to bound.
+layers exists to bound.
 
 Exits 1 when this is not a reading anybody should publish, and 2 when it is one
 that is worth less than the line it fills in.

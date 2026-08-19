@@ -77,7 +77,7 @@ The identity is the point of the exercise as much as the text is. The answers
 are in the training corpus, so a model trained on gao has read every one of
 these pages with its marks on, and the set is worth nothing unless its items are
 held out first. The identity is what makes holding them out possible and what
-lets nhat check afterwards that it happened.
+lets pick check afterwards that it happened.
 
 A document typed without its marks is refused. Roughly half the Vietnamese
 online is written that way, and such a document is not an answer key, it is a

@@ -368,7 +368,7 @@ func (p Pool) Blocking() []string {
 		why = append(why, "the parts read hold no documents between them")
 	}
 	if p.Untokenized > 0 {
-		why = append(why, fmt.Sprintf("%d of %d documents carry no token count, and a length in characters cannot say which side of a %d token window a document falls on, so this is a run of dem away from being measurable rather than something to estimate", p.Untokenized, p.Documents, Top()))
+		why = append(why, fmt.Sprintf("%d of %d documents carry no token count, and a length in characters cannot say which side of a %d token window a document falls on, so this is a run of count away from being measurable rather than something to estimate", p.Untokenized, p.Documents, Top()))
 	}
 	return why
 }

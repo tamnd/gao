@@ -34,7 +34,7 @@ func boardUsage(w io.Writer) {
 	fmt.Fprint(w, `usage: gao board board [-json] [-roster path] scores.jsonl
        gao board rows  [-json] [-roster path] scores.jsonl
 
-The board: the release scores read against nhat's roster, with the benchmarks
+The board: the release scores read against pick's roster, with the benchmarks
 written in Vietnamese kept apart from the English ones translated into it.
 
 The two arms are never added together, because a model that reads translated

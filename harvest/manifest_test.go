@@ -93,7 +93,7 @@ func TestTheSpineIngestsFirst(t *testing.T) {
 	}
 }
 
-// The class in the manifest is a copy of a determination in luat, kept here so
+// The class in the manifest is a copy of a determination in law, kept here so
 // the ingest does not reach across packages mid-stream. A copy that can disagree
 // with its original is worse than no copy at all.
 func TestEveryPinAgreesWithItsLicenseDetermination(t *testing.T) {

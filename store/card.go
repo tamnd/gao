@@ -178,8 +178,8 @@ func cardBody(b *strings.Builder, d Dataset, m *Manifest, x []Indexed) {
 	cardFields(b, d)
 	cardShipping(b, d)
 	if m == nil && d.Tier == Working {
-		cardCaveats(b, x)
-		cardNotARelease(b)
+		cardCaveats(b, d, x)
+		cardNotARelease(b, d)
 	}
 	cardCitation(b, d, x)
 
@@ -332,10 +332,18 @@ func cardUnsealed(b *strings.Builder) {
 // cardNotARelease is the caveat a working repo has to carry, kept to its own
 // section rather than folded into the counts, because somebody who reads only
 // one section of this card should not be able to miss it.
-func cardNotARelease(b *strings.Builder) {
+func cardNotARelease(b *strings.Builder, d Dataset) {
 	b.WriteString("## What this is not\n\n")
-	b.WriteString("This is not a release. There is no signed manifest behind it, no merkle root over the files, and no promise that a part will still be there next week under the same name. An ingest pushes each part as it closes it and deletes the local copy, which is what lets a box with a terabyte of disk work through corpora that do not fit on it, and it means the file list is whatever the last run got through rather than a set anybody has fixed.\n\n")
+	b.WriteString("This is not a release. There is no signed manifest behind it, no merkle root over the files, and no promise that a part will still be there next week under the same name. A run pushes each part as it closes it and deletes the local copy, which is what lets a box with a terabyte of disk work through corpora that do not fit on it, and it means the file list is whatever the last run got through rather than a set anybody has fixed.\n\n")
 	b.WriteString("What that changes for a reader:\n\n")
+	if d.Cleaned {
+		b.WriteString("- Read it to train on, which is what the cleaning line is for, and read the raw repo instead if what you want is to make the filtering decisions yourself.\n")
+		b.WriteString("- Do not cite a document count off it in anything that has to still be true later. Cite a release.\n")
+		b.WriteString("- Re-pinning a source rewrites its parts under a new revision in the same directory, so a query that has to be stable should name a revision rather than a source.\n")
+		b.WriteString("- The deduplication here is per run rather than over the corpus, so a global pass is still owed. It is a group by on `dup_cluster` rather than a re-read, which is why that column is published.\n\n")
+		fmt.Fprintf(b, "The releases carry the signed manifest, the global dedup, and the quality filtering. They are the other repos in %s.\n\n", "[open-index](https://huggingface.co/open-index)")
+		return
+	}
 	b.WriteString("- Read it to see what the pipeline produces, and to build on the raw text under one schema without pulling four corpora in four formats.\n")
 	b.WriteString("- Do not cite a document count off it in anything that has to still be true later. Cite a release.\n")
 	b.WriteString("- Re-pinning a source rewrites its parts under a new revision in the same directory, so a query that has to be stable should name a revision rather than a source.\n")

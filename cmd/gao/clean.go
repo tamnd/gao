@@ -46,12 +46,12 @@ same page arrives from two projects as two documents, a page of navigation is a
 document, a document typed in a 2003 font encoding is mojibake, and a phone
 number in a forum post is a phone number in a forum post.
 
-The line is four stages in a fixed order and the order is the design. phoi
-normalizes, because every stage after it compares strings and two spellings of
-one word are two documents to a hash. sang measures and sifts, because there is
-no point asking whether a page is good before knowing it is Vietnamese prose.
-xay removes the documents this run has already seen, on a key that ignores what
-a republisher changes. che covers the personal identifiers, last of the four, so
+The line is four stages in a fixed order and the order is the design. normalize
+runs first, because every stage after it compares strings and two spellings of
+one word are two documents to a hash. sift measures, because there is no point
+asking whether a page is good before knowing it is Vietnamese prose. mill
+removes the documents this run has already seen, on a key that ignores what a
+republisher changes. cover covers the personal identifiers, last of the four, so
 that what is covered is covered in the document that ships.
 
 The stage that is missing from the middle is the quality classifier, and it is

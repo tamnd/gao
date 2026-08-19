@@ -89,7 +89,7 @@ func TestGradeMarkGradesRolloutsAgainstThePagesTheyCameFrom(t *testing.T) {
 		Answers: []string{page, strings.Join(half, " "), prompt, markPages[1]},
 	})
 
-	out, errOut, code := exec(t, append([]string{"grade", "dau", "-rollouts", rollouts, "-v"}, markCorpus(t, markPages)...)...)
+	out, errOut, code := exec(t, append([]string{"grade", "mark", "-rollouts", rollouts, "-v"}, markCorpus(t, markPages)...)...)
 	if code != 0 {
 		t.Fatalf("exit %d\n%s\n%s", code, out, errOut)
 	}
@@ -112,7 +112,7 @@ func TestGradeMarkScoresThePerfectAnswerAboveTheQuestionHandedBack(t *testing.T)
 		Answers: []string{page, prompt, prompt, prompt},
 	})
 
-	out, errOut, code := exec(t, append([]string{"grade", "dau", "-rollouts", rollouts, "-json"}, markCorpus(t, markPages)...)...)
+	out, errOut, code := exec(t, append([]string{"grade", "mark", "-rollouts", rollouts, "-json"}, markCorpus(t, markPages)...)...)
 	if code != 0 {
 		t.Fatalf("exit %d\n%s", code, errOut)
 	}
@@ -149,7 +149,7 @@ func TestGradeMarkDropsWhatTheSamplerCutOff(t *testing.T) {
 		Overlong: []bool{false, false, true, true},
 	})
 
-	out, errOut, code := exec(t, append([]string{"grade", "dau", "-rollouts", rollouts}, markCorpus(t, markPages)...)...)
+	out, errOut, code := exec(t, append([]string{"grade", "mark", "-rollouts", rollouts}, markCorpus(t, markPages)...)...)
 	if code == 0 {
 		t.Fatalf("a batch with nothing in it to learn from exited 0\n%s", out)
 	}
@@ -171,7 +171,7 @@ func TestGradeMarkRefusesACorpusTypedWithoutMarks(t *testing.T) {
 		Answers: []string{markPages[0]},
 	})
 
-	_, errOut, code := exec(t, append([]string{"grade", "dau", "-rollouts", rollouts}, markCorpus(t, bare)...)...)
+	_, errOut, code := exec(t, append([]string{"grade", "mark", "-rollouts", rollouts}, markCorpus(t, bare)...)...)
 	if code == 0 {
 		t.Fatal("a key built out of pages with no marks on them was accepted")
 	}
@@ -182,7 +182,7 @@ func TestGradeMarkRefusesACorpusTypedWithoutMarks(t *testing.T) {
 
 func TestGradeMarkSaysWhichFileItCouldNotRead(t *testing.T) {
 	missing := filepath.Join(t.TempDir(), "khong-co.jsonl")
-	_, errOut, code := exec(t, append([]string{"grade", "dau", "-rollouts", missing}, markCorpus(t, markPages)...)...)
+	_, errOut, code := exec(t, append([]string{"grade", "mark", "-rollouts", missing}, markCorpus(t, markPages)...)...)
 	if code != 1 {
 		t.Fatalf("exit %d, want 1", code)
 	}
@@ -221,7 +221,7 @@ func TestGradeQuoteGradesCitationsAgainstTheRegister(t *testing.T) {
 		},
 	})
 
-	out, errOut, code := exec(t, "grade", "trich", "-register", gradeRegister(t), "-json", rollouts)
+	out, errOut, code := exec(t, "grade", "quote", "-register", gradeRegister(t), "-json", rollouts)
 	if code != 0 {
 		t.Fatalf("exit %d\n%s", code, errOut)
 	}
@@ -256,7 +256,7 @@ func TestGradeQuoteRefusesAQuestionNoAnswerCouldWin(t *testing.T) {
 		Answers: []string{"Theo Nghị định số 99/2024/NĐ-CP."},
 	})
 
-	_, errOut, code := exec(t, "grade", "trich", "-register", gradeRegister(t), rollouts)
+	_, errOut, code := exec(t, "grade", "quote", "-register", gradeRegister(t), rollouts)
 	if code != 1 {
 		t.Fatalf("exit %d, want 1", code)
 	}
@@ -276,7 +276,7 @@ func TestGradeQuoteSaysWhichRegisterLineItCannotUse(t *testing.T) {
 		Answers: []string{"Theo Nghị định số 13/2023/NĐ-CP."},
 	})
 
-	_, errOut, code := exec(t, "grade", "trich", "-register", bad, rollouts)
+	_, errOut, code := exec(t, "grade", "quote", "-register", bad, rollouts)
 	if code != 1 {
 		t.Fatalf("exit %d, want 1", code)
 	}
@@ -297,7 +297,7 @@ func TestGradeQuotePrintsWhatTheRegisterAndTheKeyHold(t *testing.T) {
 		},
 	})
 
-	out, errOut, code := exec(t, "grade", "trich", "-register", gradeRegister(t), rollouts)
+	out, errOut, code := exec(t, "grade", "quote", "-register", gradeRegister(t), rollouts)
 	if code != 0 {
 		t.Fatalf("exit %d\n%s", code, errOut)
 	}
@@ -322,9 +322,24 @@ func TestGradeIsInTheHelp(t *testing.T) {
 	if code != 0 {
 		t.Fatalf("gao grade help: exit %d", code)
 	}
-	for _, sub := range []string{"roster", "dau", "trich"} {
+	for _, sub := range []string{"roster", "mark", "quote"} {
 		if !strings.Contains(out, sub) {
 			t.Errorf("gao grade help does not mention %q", sub)
+		}
+	}
+
+	// The two subcommands that were renamed still answer to the arm names the
+	// roster publishes, which is what anybody who read the roster first will
+	// type. Both are run with a flag that does not exist, because what is
+	// being checked is which subcommand the argument reached rather than what
+	// it did once it got there.
+	for old, want := range map[string]string{"dau": "grade mark", "trich": "grade quote"} {
+		_, errOut, code := exec(t, "grade", old, "-nosuchflag")
+		if code != 2 {
+			t.Errorf("gao grade %s exited %d, want 2", old, code)
+		}
+		if !strings.Contains(errOut, want) {
+			t.Errorf("gao grade %s did not reach %q:\n%s", old, want, errOut)
 		}
 	}
 

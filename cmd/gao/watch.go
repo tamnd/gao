@@ -2,7 +2,7 @@ package main
 
 // What the box was actually holding while the ingest ran.
 //
-// The disk budget in may is arithmetic: two shards per worker, and it does not
+// The disk budget in fleet is arithmetic: two shards per worker, and it does not
 // read the size of the corpus because a worker pushes a finished part and
 // deletes it before opening the next one. The milestone does not gate on that.
 // It gates on a measurement taken during a run, because the arithmetic knows

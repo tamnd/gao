@@ -242,7 +242,7 @@ func TestALayerTheListingDoesNotCoverStaysShutAndIsSaidSo(t *testing.T) {
 		t.Errorf("%d layers stay shut and %d get opened, want 1 and 4", p.Shut, p.Opens)
 	}
 	says(t, p.Faults(), "1 layer holding 13.7% of the source stay")
-	says(t, p.Faults(), "over the 10.0% tang allows")
+	says(t, p.Faults(), "over the 10.0% layers allows")
 	if read, of := p.Covers(); read != 9 || of != 10 {
 		t.Errorf("the plan covers %d of %d layers, want 9 of 10", read, of)
 	}
@@ -270,7 +270,7 @@ func TestTheLayerLeftShutUnderneathEverythingIsNamedAsTheLeaningKind(t *testing.
 	faults := sample.ReadPlan("hplt-v3", "s", sample.Want, ls, kept).Faults()
 	says(t, faults, "what stays shut sits below every layer this plan reads, 6.0% of it in 1 layer")
 	for _, f := range faults {
-		if strings.Contains(f, "tang allows") {
+		if strings.Contains(f, "layers allows") {
 			t.Errorf("6%% left shut was reported as too much of the source:\n  %s", f)
 		}
 	}

@@ -8,7 +8,7 @@ import (
 
 // settings hashes a filter's configuration, spelled out rather than referenced,
 // so that the hash in the recipe is derivable from the recipe.
-func settings(s string) doc.Hash { return doc.SumString("gieo filter " + s) }
+func settings(s string) doc.Hash { return doc.SumString("sow filter " + s) }
 
 // Fixed is the recipe for gao-synth, closed before a token of it exists.
 //
@@ -96,7 +96,7 @@ func Fixed() Recipe {
 			},
 		},
 
-		Roster: "nhat-2026.08",
+		Roster: "pick-2026.08",
 		Note:   "the source is the educational slice rather than the corpus, because a rephrase of poor text is poor text in a new voice",
 	}
 }

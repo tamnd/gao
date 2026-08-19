@@ -127,11 +127,11 @@ flags:
 
 	b, err := m.Fetch(ctx, nil)
 	if err != nil {
-		fmt.Fprintf(stderr, "\ngao dem model: %v\n", err)
+		fmt.Fprintf(stderr, "\ngao count model: %v\n", err)
 		return 1
 	}
 	if err := m.Save(*out, b); err != nil {
-		fmt.Fprintf(stderr, "\ngao dem model: %v\n", err)
+		fmt.Fprintf(stderr, "\ngao count model: %v\n", err)
 		return 1
 	}
 	fmt.Fprintf(stdout, "\nverified and written to %s\n", *out)
