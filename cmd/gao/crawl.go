@@ -20,6 +20,11 @@ import (
 	"github.com/tamnd/gao/store"
 )
 
+// pushGrace is how long a part still gets to reach the store after the run has
+// been told to stop. It is long enough for a full part on a slow uplink and
+// short enough that a stopped crawl is a stopped crawl.
+const pushGrace = 10 * time.Minute
+
 func runCrawl(stdout, stderr io.Writer, args []string) int {
 	fs := flag.NewFlagSet("crawl", flag.ContinueOnError)
 	fs.SetOutput(stderr)
@@ -182,7 +187,16 @@ flags:
 			if p == nil {
 				return fmt.Errorf("no pusher for %s", d.Repo())
 			}
-			_, err := p.Push(ctx, local, path)
+			// Not the run's context. A crawl is stopped by a signal and the last
+			// thing it does is close both rolls, which is where the part holding
+			// everything since the last one gets pushed. Under the run's context
+			// that push is already cancelled before it starts, so every stop
+			// leaves its final part on the disk and out of the dataset. The
+			// timeout is what keeps a stop from hanging on a store that is not
+			// answering.
+			up, cancel := context.WithTimeout(context.WithoutCancel(ctx), pushGrace)
+			defer cancel()
+			_, err := p.Push(up, local, path)
 			return err
 		}
 	}

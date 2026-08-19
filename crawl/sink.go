@@ -475,7 +475,11 @@ func (s *Sink) finished(d store.Dataset, f store.PartFile) error {
 	if s.o.Push != nil {
 		local := filepath.Join(s.o.Dir, d.Name, filepath.FromSlash(f.Path))
 		if err := s.o.Push(d, local, f.Path); err != nil {
-			return fmt.Errorf("crawl: %s: %w", f.Path, err)
+			// Named with the path it is still at, because the part number has
+			// already moved on and the next run will not write this file again.
+			// Somebody has to push it by hand and this is where they find out
+			// which file and where.
+			return fmt.Errorf("crawl: %s is written and still at %s: %w", f.Path, local, err)
 		}
 		if err := os.Remove(local); err != nil {
 			return fmt.Errorf("crawl: %s is in the store and still here: %w", f.Path, err)
