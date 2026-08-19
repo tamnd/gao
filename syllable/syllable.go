@@ -48,12 +48,12 @@
 // specified, is a different proposal, so the share is measured rather than
 // assumed.
 //
-// The syllable test is the inventory in sang, and it is used here in both
-// registers, which admits a little English: the and man and con are spellings a
-// Vietnamese syllable also has once the marks come off. sang says the same thing
-// about the same test. It costs a fraction of the governed share on marked text
-// and it is the safe direction, since counting an English word as governed makes
-// the rule look broader than it is rather than narrower.
+// The syllable test is the inventory in sift, and it is used here in both
+// registers, which admits a little English: the and man and con are spellings
+// a Vietnamese syllable also has once the marks come off. sift says the same
+// thing about the same test. It costs a fraction of the governed share on
+// marked text and it is the safe direction, since counting an English word as
+// governed makes the rule look broader than it is rather than narrower.
 package syllable
 
 import (
@@ -169,13 +169,13 @@ type Reading struct {
 	Widest      string  `json:"widest"`
 	WidestShare float64 `json:"widest_share"`
 
-	// Inventory is how many spellings the syllable inventory in sang forms
-	// before the tone marks go on, which times the six tones is the ceiling on
-	// what the floor costs a vocabulary. It is on the reading because it is what
-	// makes the 1.00 reachable rather than theoretical: a vocabulary that cannot
-	// hold every syllable does not get 1.00 tokens per syllable, it gets 1.00
-	// for the syllables it holds and worse for the rest, and every candidate
-	// here is several times larger than this number.
+	// Inventory is how many spellings the syllable inventory in sift forms before
+	// the tone marks go on, which times the six tones is the ceiling on what the
+	// floor costs a vocabulary. It is on the reading because it is what makes the
+	// 1.00 reachable rather than theoretical: a vocabulary that cannot hold every
+	// syllable does not get 1.00 tokens per syllable, it gets 1.00 for the
+	// syllables it holds and worse for the rest, and every candidate here is
+	// several times larger than this number.
 	Inventory int `json:"inventory"`
 
 	docs    []Doc
@@ -184,9 +184,9 @@ type Reading struct {
 
 // Read measures a sample.
 //
-// Documents the identifier in sang does not call Vietnamese are counted and left
-// out of everything else, because a run table built over an English page is a
-// table about English and the rule is not being proposed for English.
+// Documents the identifier in sift does not call Vietnamese are counted and
+// left out of everything else, because a run table built over an English page
+// is a table about English and the rule is not being proposed for English.
 func Read(source string, slots int, docs []Doc) Reading {
 	r := Reading{Source: source, Slots: slots, docs: docs, Inventory: len(sift.Syllables())}
 
@@ -528,9 +528,9 @@ func (r Reading) Verdict() string {
 	return b.String()
 }
 
-// trim cuts the punctuation off both ends of a unit and leaves the inside alone,
-// which is what sang does, so that a syllable in quotes and a syllable at the end
-// of a sentence are the same syllable.
+// trim cuts the punctuation off both ends of a unit and leaves the inside
+// alone, which is what sift does, so that a syllable in quotes and a syllable
+// at the end of a sentence are the same syllable.
 func trim(tok string) string {
 	return strings.TrimFunc(tok, func(c rune) bool {
 		return !unicode.IsLetter(c) && !unicode.IsDigit(c) && !unicode.Is(unicode.Mn, c)

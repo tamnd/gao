@@ -59,9 +59,9 @@
 //
 // The passages are in the training corpus. An item records its document
 // identity so the set can be held out before training and found again
-// afterwards with the machinery nhat uses on everybody else's benchmarks. A
-// proxy built from the corpus and not held out of it measures memory, and
-// it will produce a high number that somebody will quote.
+// afterwards with the machinery pick uses on everybody else's benchmarks. A
+// proxy built from the corpus and not held out of it measures memory, and it
+// will produce a high number that somebody will quote.
 package fill
 
 import (
@@ -71,7 +71,7 @@ import (
 )
 
 // Name is what the task set is called wherever it is published or checked
-// against, including in nhat's contamination roster.
+// against, including in pick's contamination roster.
 const Name = "vi-cloze"
 
 // Candidates is how many spellings an item offers.

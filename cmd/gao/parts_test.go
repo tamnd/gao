@@ -264,7 +264,7 @@ func TestAPartThatCannotBeHandedOffFailsTheFile(t *testing.T) {
 
 // acceptingHub is enough of the Hub to push at. It says yes to everything,
 // because what is being tested here is what the ingest does with a push that
-// worked, and the protocol itself is tested in kho.
+// worked, and the protocol itself is tested in store.
 func acceptingHub(t *testing.T) *store.Pusher {
 	t.Helper()
 	var srv *httptest.Server

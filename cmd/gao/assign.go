@@ -140,7 +140,7 @@ type assignHandReport struct {
 	Bytes   int64   `json:"bytes"`
 	Seconds float64 `json:"seconds"`
 
-	// Jobs is which files, and it is only filled in by 'giao files'. The plan
+	// Jobs is which files, and it is only filled in by 'assign files'. The plan
 	// prices the schedule and the file list is the schedule, so printing 122
 	// entries under a command somebody ran to read five summary rows would bury
 	// the thing they asked for.

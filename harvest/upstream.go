@@ -97,15 +97,15 @@ func hpltRow(r row) (*doc.Document, error) {
 		"crawl_id":    in.CrawlID,
 	}
 	if in.Encoding != "" {
-		// The encoding the page declared. It is the first thing phoi will want
-		// when it goes after the legacy Vietnamese fonts, and it is not
-		// recoverable once the ingest has thrown the record away.
+		// The encoding the page declared. It is the first thing normalize will want
+		// when it goes after the legacy Vietnamese fonts, and it is not recoverable
+		// once the ingest has thrown the record away.
 		d.UpstreamFields["source_encoding"] = in.Encoding
 	}
 	if in.ClusterSize > 1 {
 		// The producer's duplicate cluster, kept out of gao's dedup columns on
-		// purpose. Those columns are for what xay finds across all six sources,
-		// and putting somebody else's answer in them would make the two
+		// purpose. Those columns are for what mill finds across all six sources, and
+		// putting somebody else's answer in them would make the two
 		// indistinguishable in a query.
 		d.UpstreamFields["hplt_cluster_size"] = strconv.FormatUint(uint64(in.ClusterSize), 10)
 	}

@@ -14,8 +14,8 @@ import (
 // it means.
 func id(s string) doc.Hash { return doc.SumString(s) }
 
-// parent is a small sealed snapshot: two shards, ten documents, with the counts
-// agreeing with the shards the way kho requires.
+// parent is a small sealed snapshot: two shards, ten documents, with the
+// counts agreeing with the shards the way store requires.
 func parent() *store.Manifest {
 	return &store.Manifest{
 		ManifestVersion: store.ManifestVersion,
@@ -23,7 +23,7 @@ func parent() *store.Manifest {
 		Snapshot:        "gao-v1.0",
 		CreatedAt:       time.Date(2026, 8, 1, 0, 0, 0, 0, time.UTC),
 		Pipeline:        "0.1.0",
-		Stages:          []store.Stage{{Name: "phoi@0.1.0", ConfigHash: id("phoi")}},
+		Stages:          []store.Stage{{Name: "normalize@0.1.0", ConfigHash: id("normalize")}},
 		Counts: store.Counts{
 			Documents: 10, Natural: 10,
 			Bytes: 10000, Chars: 9000, Syllables: 2000,

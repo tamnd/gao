@@ -296,11 +296,11 @@ func VisitRecords(v *Visit, when time.Time, agent string) []*Record {
 // digest and the record id.
 //
 // The id is derived from the record rather than drawn at random, which is a
-// deliberate departure from what most crawlers do. A random uuid means the same
-// crawl written twice produces two files that differ in every record, and `gao
-// kho reproduce` exists precisely to rebuild bytes and compare them. Derived
-// from the content, an identical fetch written again is an identical file, and
-// two records with the same id are the same record.
+// deliberate departure from what most crawlers do. A random uuid means the
+// same crawl written twice produces two files that differ in every record, and
+// `gao store reproduce` exists precisely to rebuild bytes and compare them.
+// Derived from the content, an identical fetch written again is an identical
+// file, and two records with the same id are the same record.
 func finish(r *Record) {
 	r.Set("WARC-Block-Digest", digest(r.Block))
 

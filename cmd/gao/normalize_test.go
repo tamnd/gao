@@ -265,7 +265,7 @@ func TestNormalizeRefusesToNormalizeAPartOntoOneStream(t *testing.T) {
 func TestNormalizeIsInTheUsage(t *testing.T) {
 	var stdout bytes.Buffer
 	usage(&stdout)
-	if !strings.Contains(stdout.String(), "phoi") {
+	if !strings.Contains(stdout.String(), "normalize") {
 		t.Errorf("gao help does not list phoi:\n%s", stdout.String())
 	}
 }

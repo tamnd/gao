@@ -53,7 +53,7 @@ var legacyGolden = []struct {
 // encoding it was written in, and it named it out of six candidates that all
 // decode these bytes to Vietnamese letters.
 //
-// Run go test ./phoi -update to rewrite the outputs. The bytes are never
+// Run go test ./normalize -update to rewrite the outputs. The bytes are never
 // rewritten. They are the input.
 func TestGoldenLegacyBytes(t *testing.T) {
 	for _, g := range legacyGolden {

@@ -44,7 +44,7 @@ func buildSnapshot(t *testing.T) (dir, pub string) {
 		CreatedAt: time.Date(2026, 9, 30, 12, 0, 0, 0, time.UTC),
 		Pipeline:  "0.1.0",
 		Box:       "server1",
-		Stages:    []store.Stage{{Name: "gat@0.1.0", ConfigHash: doc.SumString("gat config")}},
+		Stages:    []store.Stage{{Name: "harvest@0.1.0", ConfigHash: doc.SumString("harvest config")}},
 		Shards:    shards,
 	}
 	for _, s := range shards {
@@ -471,7 +471,7 @@ func TestStoreColumnsSaysWhenNothingCountedTheTokens(t *testing.T) {
 	d, _ := store.Lookup("vietnamese-web-text")
 	dir := t.TempDir()
 	part, err := store.CreatePart(dir, "part-00000", d, store.Stamp{
-		Snapshot: "glotcc-9ad140b6be3a", Stage: "gat@0.1.0", Box: "server3",
+		Snapshot: "glotcc-9ad140b6be3a", Stage: "harvest@0.1.0", Box: "server3",
 	})
 	if err != nil {
 		t.Fatalf("CreatePart: %v", err)
@@ -705,7 +705,7 @@ func removableSnapshot(t *testing.T, n, shards int) (dir, keyPath string, docs [
 		CreatedAt: time.Date(2026, 9, 30, 12, 0, 0, 0, time.UTC),
 		Pipeline:  "0.1.0",
 		Box:       "server1",
-		Stages:    []store.Stage{{Name: "gat@0.1.0", ConfigHash: doc.SumString("gat config")}},
+		Stages:    []store.Stage{{Name: "harvest@0.1.0", ConfigHash: doc.SumString("harvest config")}},
 	}
 	m.Counts.BySource = map[string]int64{}
 	for i := range n {

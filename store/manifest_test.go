@@ -22,8 +22,8 @@ func manifest(n int) *Manifest {
 		Pipeline:  "0.1.0",
 		Box:       "server3",
 		Stages: []Stage{
-			{Name: "gat@0.1.0", ConfigHash: doc.SumString("gat config")},
-			{Name: "sang@0.1.0", ConfigHash: doc.SumString("sang config"), Inputs: []string{"2026-08"}},
+			{Name: "harvest@0.1.0", ConfigHash: doc.SumString("harvest config")},
+			{Name: "sift@0.1.0", ConfigHash: doc.SumString("sift config"), Inputs: []string{"2026-08"}},
 		},
 		Counts: Counts{
 			Bytes:          4_000,
@@ -168,7 +168,7 @@ func TestEveryFieldTheSignatureCoversBreaksIt(t *testing.T) {
 		{"created_at", func(m *Manifest) { m.CreatedAt = m.CreatedAt.Add(time.Second) }},
 		{"pipeline", func(m *Manifest) { m.Pipeline = "0.2.0" }},
 		{"box", func(m *Manifest) { m.Box = "gamingpc" }},
-		{"stage name", func(m *Manifest) { m.Stages[0].Name = "gat@0.2.0" }},
+		{"stage name", func(m *Manifest) { m.Stages[0].Name = "harvest@0.2.0" }},
 		{"stage config", func(m *Manifest) { m.Stages[0].ConfigHash = doc.SumString("other") }},
 		{"stage inputs", func(m *Manifest) { m.Stages[1].Inputs = []string{"2026-07"} }},
 		{"documents", func(m *Manifest) { m.Counts.Documents++ }},

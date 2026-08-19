@@ -103,7 +103,7 @@ const (
 
 // A Task is one benchmark exactly as it will be run.
 type Task struct {
-	// Benchmark is the name on the nhat roster. The harness does not carry the
+	// Benchmark is the name on the pick roster. The harness does not carry the
 	// benchmark's revision or its origin, because the roster carries both and a
 	// second copy is a second thing to keep in step.
 	Benchmark string `json:"benchmark"`
@@ -133,9 +133,9 @@ type Harness struct {
 	// Version is the day it was closed.
 	Version string `json:"version"`
 
-	// Roster is the nhat roster version the benchmark names were checked
-	// against, so that a harness closed today can be read years later against
-	// the roster it was closed against rather than against a later one.
+	// Roster is the pick roster version the benchmark names were checked against,
+	// so that a harness closed today can be read years later against the roster
+	// it was closed against rather than against a later one.
 	Roster string `json:"roster"`
 
 	Note string `json:"note,omitempty"`

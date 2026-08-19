@@ -213,10 +213,10 @@ func TestProgressIsReportedPerShard(t *testing.T) {
 // without its inputs, by asking whether the document is a fixed point of it.
 func TestARegisteredStageCheckRunsOverEveryDocument(t *testing.T) {
 	dir, _ := removable(t, 40, 2)
-	t.Cleanup(func() { delete(checks, "gat") })
+	t.Cleanup(func() { delete(checks, "harvest") })
 
 	var n int
-	RegisterStageCheck("gat", func(*doc.Document) error {
+	RegisterStageCheck("harvest", func(*doc.Document) error {
 		n++
 		return nil
 	})
@@ -242,11 +242,11 @@ func TestARegisteredStageCheckRunsOverEveryDocument(t *testing.T) {
 
 func TestAStageThatDisagreesFailsTheRebuild(t *testing.T) {
 	dir, _ := removable(t, 20, 2)
-	t.Cleanup(func() { delete(checks, "gat") })
+	t.Cleanup(func() { delete(checks, "harvest") })
 
 	// Every document, so the sample being a sample is the thing under test as
 	// much as the failure is.
-	RegisterStageCheck("gat", func(*doc.Document) error {
+	RegisterStageCheck("harvest", func(*doc.Document) error {
 		return errors.New("this is not what the stage produces")
 	})
 
@@ -288,7 +288,7 @@ func TestAStageWithNoCheckSaysSo(t *testing.T) {
 	if st.Why == "" {
 		t.Error("a stage that was not checked did not say why")
 	}
-	if st.Name != "gat@0.1.0" {
+	if st.Name != "harvest@0.1.0" {
 		t.Errorf("the stage is named %q, which is not what the manifest says", st.Name)
 	}
 	if st.ConfigHash.IsZero() {
@@ -301,9 +301,9 @@ func TestAStageWithNoCheckSaysSo(t *testing.T) {
 // the question is whether the snapshot agrees with it.
 func TestTheStageVersionIsNotPartOfTheRegistration(t *testing.T) {
 	for _, tc := range []struct{ in, want string }{
-		{"gat@0.1.0", "gat"},
-		{"phoi@2.3.4-rc1", "phoi"},
-		{"sang", "sang"},
+		{"harvest@0.1.0", "harvest"},
+		{"normalize@2.3.4-rc1", "normalize"},
+		{"sift", "sift"},
 		{"", ""},
 	} {
 		if got := stageName(tc.in); got != tc.want {

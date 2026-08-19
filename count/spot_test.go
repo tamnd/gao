@@ -362,7 +362,7 @@ func textlessPart(t *testing.T) *bytes.Reader {
 		t.Fatal("the restricted URL repo is not in the dataset table")
 	}
 	var buf bytes.Buffer
-	w := store.NewParquetWriter(&buf, d, store.Stamp{Snapshot: snapshot, Stage: "gat@0.1.0", Box: "server1"})
+	w := store.NewParquetWriter(&buf, d, store.Stamp{Snapshot: snapshot, Stage: "harvest@0.1.0", Box: "server1"})
 	for _, text := range texts(0, 5) {
 		row := document(text)
 		row.LicenseClass = doc.LicenseRestricted

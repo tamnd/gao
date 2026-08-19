@@ -15,21 +15,22 @@ import (
 	"github.com/tamnd/gao/store"
 )
 
-// registerStageChecks tells kho what the cleaning stages do.
+// registerStageChecks tells store what the cleaning stages do.
 //
-// It lives here rather than in kho because phoi and sang read and write through
-// kho, so kho reaching back for them would be a cycle. Both checks are the same
-// shape: run the stage on its own output and see whether it changes anything. A
-// stage that is a function has to leave its own output alone, so a document that
-// moves under it was not produced by this version of it.
+// It lives here rather than in store because normalize and sift read and write
+// through store, so store reaching back for them would be a cycle. Both checks
+// are the same shape: run the stage on its own output and see whether it
+// changes anything. A stage that is a function has to leave its own output
+// alone, so a document that moves under it was not produced by this version of
+// it.
 func registerStageChecks() {
-	store.RegisterStageCheck("phoi", func(d *doc.Document) error {
+	store.RegisterStageCheck("normalize", func(d *doc.Document) error {
 		if r := normalize.Normalize(d.Text); r.Changed {
 			return errors.New("normalizing it again changes it")
 		}
 		return nil
 	})
-	store.RegisterStageCheck("sang", func(d *doc.Document) error {
+	store.RegisterStageCheck("sift", func(d *doc.Document) error {
 		if reason, why, rejected := sift.Default().Reject(sift.Measure(d.Text)); rejected {
 			return fmt.Errorf("it would be rejected now as %s: %s", reason, why)
 		}

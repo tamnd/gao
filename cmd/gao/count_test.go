@@ -14,7 +14,7 @@ import (
 	"github.com/tamnd/gao/store"
 )
 
-// Nothing here downloads a tokenizer. What a fetch does is settled in dem
+// Nothing here downloads a tokenizer. What a fetch does is settled in count
 // against the digest, and what is left for the command is the table.
 
 func TestCountIsInTheHelpAndHasItsOwnUsage(t *testing.T) {
@@ -481,9 +481,9 @@ func TestCountCountsNamesEveryBoxThatWasStillGoing(t *testing.T) {
 	}
 }
 
-// Nothing below reaches a store. What a pass over one does is settled in dem,
-// and what is left for the command is the plan it prints before it starts and
-// the verdict it prints at the end.
+// Nothing below reaches a store. What a pass over one does is settled in
+// count, and what is left for the command is the plan it prints before it
+// starts and the verdict it prints at the end.
 
 func TestCountVerifyIsInTheUsageAndSaysWhatItMoves(t *testing.T) {
 	_, errOut, code := exec(t, "count")

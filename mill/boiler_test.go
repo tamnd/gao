@@ -112,9 +112,9 @@ func TestASmallHostKeepsEverything(t *testing.T) {
 	}
 }
 
-// Repetition inside one document is a different problem with its own measure in
-// sang. Counting it here would let one page argue that its own refrain is the
-// whole site's furniture.
+// Repetition inside one document is a different problem with its own measure
+// in sift. Counting it here would let one page argue that its own refrain is
+// the whole site's furniture.
 func TestALineRepeatedInsideOneDocumentIsNotTheHostsFurniture(t *testing.T) {
 	refrain := "Xem tiếp bên dưới"
 	chorus := strings.Repeat(refrain+"\n", 20) + "Bài viết về mùa hè năm nay.\n"
@@ -271,9 +271,9 @@ func TestOnALargeHostThreeCopiesAreNotEnough(t *testing.T) {
 	}
 }
 
-// Blank lines are layout, and layout is settled in phoi. This pass leaves them
-// where they are rather than counting them as the most repeated line on every
-// site in the corpus.
+// Blank lines are layout, and layout is settled in normalize. This pass leaves
+// them where they are rather than counting them as the most repeated line on
+// every site in the corpus.
 func TestBlankLinesAreLeftAlone(t *testing.T) {
 	texts := make([]string, 0, len(bodies))
 	for _, body := range bodies {

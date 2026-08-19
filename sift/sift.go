@@ -257,9 +257,9 @@ func max3(v [3]float64) float64 {
 
 // Measure reads a document once and returns everything the thresholds need.
 //
-// It expects text that has already been through phoi. Measuring unnormalized
-// text would count two spellings of one syllable as two, which is the whole
-// reason normalization runs first.
+// It expects text that has already been through normalize. Measuring
+// unnormalized text would count two spellings of one syllable as two, which is
+// the whole reason normalization runs first.
 func Measure(text string) Result {
 	var r Result
 	r.Runes = len([]rune(text))

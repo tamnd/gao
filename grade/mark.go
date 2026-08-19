@@ -113,8 +113,8 @@ func (d *Mark) Verify(prompt, answer string) Verdict {
 	}
 }
 
-// markedShare is the share of characters carrying a mark, counted the way soi
-// counts them so that this floor and dau's are the same floor.
+// markedShare is the share of characters carrying a mark, counted the way
+// inspect counts them so that this floor and dau's are the same floor.
 func markedShare(text string) float64 {
 	letters := inspect.Letters(text)
 	if len(letters) == 0 {

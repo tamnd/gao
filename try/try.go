@@ -63,8 +63,8 @@ const Runs = 40
 const Repeats = 3
 
 // The model the slate is run at. It is small enough that forty of them is a
-// budget somebody will approve and large enough that the ranking it produces has
-// been shown to survive to 8B, which is what [github.com/tamnd/gao/dien]
+// budget somebody will approve and large enough that the ranking it produces
+// has been shown to survive to 8B, which is what [github.com/tamnd/gao/fill]
 // measures rather than assumes.
 const (
 	Params = 1_400_000_000

@@ -145,7 +145,7 @@ func TestBoardPrintsTheSameBoardAsJSON(t *testing.T) {
 
 func TestBoardHoldsWhenEveryRowCanBeRunAgain(t *testing.T) {
 	// The same board against a roster where nothing is waiting on an address,
-	// which is what this one will read like once nhat's pending list is empty.
+	// which is what this one will read like once pick's pending list is empty.
 	dir := t.TempDir()
 	ros := pick.Roster{Version: "2026-08-12", Note: "every entry pinned"}
 	for i, e := range []struct {

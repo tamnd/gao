@@ -221,9 +221,10 @@ func TestAssignFilesRefusesABoxAndJSONTogether(t *testing.T) {
 	}
 }
 
-// 'giao plan' prices the schedule and 'giao files' is the schedule, so the file
-// list is in one of them and not the other. A hundred and twenty two entries
-// under a command somebody ran to read five summary rows would bury the rows.
+// 'assign plan' prices the schedule and 'assign files' is the schedule, so the
+// file list is in one of them and not the other. A hundred and twenty two
+// entries under a command somebody ran to read five summary rows would bury
+// the rows.
 func TestOnlyAssignFilesCarriesTheJobsInItsJSON(t *testing.T) {
 	type hand struct {
 		Box  string `json:"box"`

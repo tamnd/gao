@@ -275,15 +275,16 @@ func (g *Gates) roundTrips(text string) bool {
 //
 // The normalized form counts as coming back with it, and only for a document
 // that did not arrive normalized. That is not a loosening of T1, it is what
-// makes T1 and T6 possible to satisfy at the same time. T6 asks that a document
-// and its normalized form encode identically, and a tokenizer that satisfies it
-// on a document written with its marks separate has only one sequence of
-// identities to decode back, so one of the two forms is what it returns and the
-// other is what T1 would call a failure. No tokenizer can pass both readings, so
-// the strict one has to give somewhere, and this is the place: the corpus is NFC
-// by the time it reaches a tokenizer, because phoi normalizes at ingest, and a
-// round trip that comes back with the form the pipeline would have produced has
-// lost nothing anybody was going to keep.
+// makes T1 and T6 possible to satisfy at the same time. T6 asks that a
+// document and its normalized form encode identically, and a tokenizer that
+// satisfies it on a document written with its marks separate has only one
+// sequence of identities to decode back, so one of the two forms is what it
+// returns and the other is what T1 would call a failure. No tokenizer can pass
+// both readings, so the strict one has to give somewhere, and this is the
+// place: the corpus is NFC by the time it reaches a tokenizer, because
+// normalize normalizes at ingest, and a round trip that comes back with the
+// form the pipeline would have produced has lost nothing anybody was going to
+// keep.
 //
 // For a document that is already NFC, which is every document in the store, this
 // is a byte comparison and nothing else.

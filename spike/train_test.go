@@ -10,7 +10,7 @@ package spike_test
 // gradients on the real Vietnamese that ships in this repo, and the spike in them
 // comes from a real cause rather than from multiplying a number.
 //
-// Run go test ./vot -update to train them again, then read the diff.
+// Run go test ./spike -update to train them again, then read the diff.
 
 import (
 	"encoding/json"

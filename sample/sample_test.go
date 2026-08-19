@@ -255,8 +255,8 @@ func TestALayerTheListingDoesNotCoverStaysShutAndIsSaidSo(t *testing.T) {
 	}
 }
 
-// The direction that flatters the number, which is the whole reason tang exists
-// and the reason a plan says which end it leaves alone.
+// The direction that flatters the number, which is the whole reason layers
+// exists and the reason a plan says which end it leaves alone.
 func TestTheLayerLeftShutUnderneathEverythingIsNamedAsTheLeaningKind(t *testing.T) {
 	ls := hplt()
 	files := listing(ls, shards())

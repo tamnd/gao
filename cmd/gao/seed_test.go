@@ -172,9 +172,9 @@ func TestSeedRefusesASubcommandItDoesNotHave(t *testing.T) {
 	}
 }
 
-// oaiSite is a repository that answers the three verbs, so the CLI tests can be
-// about what the command reports rather than about the protocol, which mam's own
-// tests cover.
+// oaiSite is a repository that answers the three verbs, so the CLI tests can
+// be about what the command reports rather than about the protocol, which
+// seed's own tests cover.
 func oaiSite(t *testing.T, name string, records int) *httptest.Server {
 	t.Helper()
 	s := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

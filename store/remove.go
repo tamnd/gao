@@ -83,7 +83,7 @@ const (
 	ReasonLegal = "legal"
 
 	// ReasonPrivacy is personal data that the covering stage should have caught
-	// and did not. Each one of these is also a bug report against che.
+	// and did not. Each one of these is also a bug report against cover.
 	ReasonPrivacy = "privacy"
 )
 

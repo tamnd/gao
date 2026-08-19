@@ -73,11 +73,12 @@ import (
 
 // The combining marks a Vietnamese letter can carry, split by what they do.
 //
-// These are spelled out here rather than taken from phoi, which knows the same
-// five tone marks for its own reasons. The two lists say different things:
-// phoi's is about which mark moves when a syllable is retoned, and this one is
-// about which mark carries meaning that a reading can lose. They agree today
-// and there is no reason they have to, so neither imports the other.
+// These are spelled out here rather than taken from normalize, which knows the
+// same five tone marks for its own reasons. The two lists say different
+// things: normalize's is about which mark moves when a syllable is retoned,
+// and this one is about which mark carries meaning that a reading can lose.
+// They agree today and there is no reason they have to, so neither imports the
+// other.
 const (
 	grave = '̀' // huyền
 	acute = '́' // sắc

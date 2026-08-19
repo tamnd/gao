@@ -8,13 +8,14 @@
 //
 // # Why one average is the wrong number
 //
-// Of the twenty four benchmarks on nhat's roster, sixteen are Vietnamese
+// Of the twenty four benchmarks on pick's roster, sixteen are Vietnamese
 // written by Vietnamese speakers, six are English benchmarks translated into
 // Vietnamese, and two are code. A model that reads translated English well
-// scores well on the middle six, and translated English is exactly the register
-// this milestone exists to avoid training the model to write. So an average
-// across the whole board pays the model for the failure the slice is trying to
-// prevent, and pays it in the same units it pays for the thing it wants.
+// scores well on the middle six, and translated English is exactly the
+// register this milestone exists to avoid training the model to write. So an
+// average across the whole board pays the model for the failure the slice is
+// trying to prevent, and pays it in the same units it pays for the thing it
+// wants.
 //
 // The two arms are therefore never summed. The verdict names both, in that
 // order, and the gap between them is a reported number rather than something a

@@ -143,9 +143,9 @@ var checks = map[string]StageCheck{}
 
 // RegisterStageCheck registers a check for a stage.
 //
-// kho does not know what any stage does and must not: the cleaning stages import
-// kho, so kho importing them would be a cycle. Registration is how a binary that
-// has both says so.
+// store does not know what any stage does and must not: the cleaning stages
+// import store, so store importing them would be a cycle. Registration is how
+// a binary that has both says so.
 func RegisterStageCheck(stage string, c StageCheck) { checks[stage] = c }
 
 // A StageStatus is what a rebuild was able to say about one recorded stage.

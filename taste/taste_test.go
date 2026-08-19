@@ -148,8 +148,9 @@ func TestTheVerdictSaysWhatWasReadAndWhatCameOut(t *testing.T) {
 }
 
 // The layer file is the point of the run, and it has to describe the source
-// rather than the run: a layer the reading has no reading for comes through with
-// its stored size and nothing else, because that is exactly what tang bounds.
+// rather than the run: a layer the reading has no reading for comes through
+// with its stored size and nothing else, because that is exactly what layers
+// bounds.
 func TestTheLayerFileCarriesEveryLayerAndFillsInTheOnesThatWereRead(t *testing.T) {
 	s := reading(t)
 	all, err := layers.ReadLayers("../sample/testdata/hplt3-vie_Latn-layers.jsonl")

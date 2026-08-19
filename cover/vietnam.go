@@ -211,13 +211,13 @@ func set(items []string) map[string]bool {
 // bareSet holds a word list twice, once as it is written and once with its tone
 // marks off, and matches either.
 //
-// This is the same loosening `sang` takes for its function words and it is here
-// for the same reason. Vietnamese typed without its marks is a register rather
-// than a defect, `sang` keeps it, and a corpus that keeps it holds contact
-// blocks that read "lien he anh Nguyen Van Minh". A surname list that only
-// matched Nguyễn would find nobody in that half of the corpus, and the half it
-// missed is the half people type in a hurry, which is the half with phone
-// numbers in it.
+// This is the same loosening `sift` takes for its function words and it is
+// here for the same reason. Vietnamese typed without its marks is a register
+// rather than a defect, `sift` keeps it, and a corpus that keeps it holds
+// contact blocks that read "lien he anh Nguyen Van Minh". A surname list that
+// only matched Nguyễn would find nobody in that half of the corpus, and the
+// half it missed is the half people type in a hurry, which is the half with
+// phone numbers in it.
 //
 // The cost is that a bare form matches every marked word it could have come
 // from: hoa matches hoà and họa as well as itself. For a surname list guarded by

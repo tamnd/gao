@@ -24,7 +24,7 @@ func stretchPart(t *testing.T, source doc.Source, ntokens uint32, count int) str
 	}
 	dir := t.TempDir()
 	rel := store.StagePath("gao-v1", 0, 0)
-	p, err := store.CreatePart(dir, rel, d, store.Stamp{Snapshot: "gao-v1", Stage: "kho@0.1.0", Box: "server1"})
+	p, err := store.CreatePart(dir, rel, d, store.Stamp{Snapshot: "gao-v1", Stage: "store@0.1.0", Box: "server1"})
 	if err != nil {
 		t.Fatal(err)
 	}

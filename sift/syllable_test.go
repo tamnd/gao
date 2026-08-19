@@ -122,7 +122,7 @@ func TestAStoppedSyllableTakesTwoOfTheSixTones(t *testing.T) {
 }
 
 // Both tone mark conventions have to be read, because both are correct
-// Vietnamese and phoi settles them to one afterwards rather than before.
+// Vietnamese and normalize settles them to one afterwards rather than before.
 func TestBothToneConventionsAreVietnamese(t *testing.T) {
 	for _, pair := range [][2]string{
 		{"hoà", "hòa"}, {"khoẻ", "khỏe"}, {"thuỷ", "thủy"}, {"loà", "lòa"},
@@ -152,7 +152,7 @@ func TestBareMatchingAdmitsWhatMarkedMatchingDoesNot(t *testing.T) {
 }
 
 // A syllable carries one tone mark. Two is either damage or an input method
-// that did not run, and phoi has already had its say about both.
+// that did not run, and normalize has already had its say about both.
 func TestTwoToneMarksIsNotASyllable(t *testing.T) {
 	for _, s := range []string{"bàá", "hòó", "tóò"} {
 		if Syllable(s) {

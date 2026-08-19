@@ -9,10 +9,10 @@
 // stage and the reason attached, and retuning that threshold later is a query
 // rather than a re-crawl.
 //
-// The reject store shares the segment format with the corpus store, and a reject
-// embeds a whole document, so a document that comes back from vo needs no
-// conversion to go into kho. That is the point: the round trip is the mechanism
-// by which a threshold gets loosened.
+// The reject store shares the segment format with the corpus store, and a
+// reject embeds a whole document, so a document that comes back from vo needs
+// no conversion to go into store. That is the point: the round trip is the
+// mechanism by which a threshold gets loosened.
 //
 // Rejects outnumber the corpus. At the scale gao is aiming for, keeping the text
 // of every rejected document costs more than keeping the corpus, so the text of

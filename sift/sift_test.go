@@ -36,8 +36,8 @@ func TestTheMeanVietnameseSyllableSitsOnGophersLowerBound(t *testing.T) {
 // Vietnamese typed without tone marks is most of what people type on a phone.
 // It is a different distribution and it is not a defect, so it comes through
 // this stage labeled rather than rejected. Rewriting the marks back on would
-// mean guessing which word was meant, which is what phoi refuses to do with
-// input method residue and for the same reason.
+// mean guessing which word was meant, which is what normalize refuses to do
+// with input method residue and for the same reason.
 func TestVietnameseWithoutToneMarksIsKeptAndLabelled(t *testing.T) {
 	r := Measure(unmarked)
 	if reason, detail, ok := Default().Reject(r); ok {

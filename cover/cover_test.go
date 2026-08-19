@@ -188,7 +188,7 @@ func TestACompanyNamedAfterItsFounderIsACompany(t *testing.T) {
 	}
 }
 
-// Vietnamese typed without its tone marks is a register that `sang` keeps, and
+// Vietnamese typed without its tone marks is a register that `sift` keeps, and
 // it is the register people type contact details in. A word list that only
 // matched the marked spelling would find nothing in that half of the corpus.
 func TestPersonalDataTypedWithoutToneMarksIsStillPersonalData(t *testing.T) {

@@ -292,11 +292,11 @@ func short(s string) string {
 
 // tcvn3 writes Vietnamese the way a 2003 document holds it.
 //
-// The fixture is built by inverting phoi's own decoder rather than by typing a
-// byte string, because a hand typed one is a test about what somebody believed
-// TCVN3 was. Every single byte and every byte pair is decoded once and the
-// results are turned around, which is enough because the encoding is a table
-// and a table is invertible.
+// The fixture is built by inverting normalize's own decoder rather than by
+// typing a byte string, because a hand typed one is a test about what somebody
+// believed TCVN3 was. Every single byte and every byte pair is decoded once
+// and the results are turned around, which is enough because the encoding is a
+// table and a table is invertible.
 func tcvn3(s string) string {
 	var set *normalize.Charset
 	for _, c := range normalize.Charsets() {

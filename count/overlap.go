@@ -27,12 +27,13 @@ package count
 // GlotCC shared 1628 documents out of 4,058,101 and 1,500,000, and FinePDFs
 // shared none with either. Both of the first two are Common Crawl derivatives.
 //
-// So this is not the cheap version of the overlap measurement. It is a different
-// measurement that happens to be cheap, and it is the right one for the question
-// a store gets deduplicated on. The question of how much of the same page the
-// corpus holds twice in two renderings is the near duplicate pass in xay, and
-// reading this matrix as that number would describe the corpus as barely
-// redundant on the strength of a measurement that cannot see the redundancy.
+// So this is not the cheap version of the overlap measurement. It is a
+// different measurement that happens to be cheap, and it is the right one for
+// the question a store gets deduplicated on. The question of how much of the
+// same page the corpus holds twice in two renderings is the near duplicate
+// pass in mill, and reading this matrix as that number would describe the
+// corpus as barely redundant on the strength of a measurement that cannot see
+// the redundancy.
 
 import (
 	"errors"

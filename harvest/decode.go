@@ -16,15 +16,15 @@ package harvest
 // contract can rule on. Nothing here decides whether a document is good enough.
 // [Docs] runs the contract and the reject store records what failed.
 //
-// Two things are done here rather than left to a later stage, and both are done
-// because they are part of the document's identity rather than part of its
-// quality. The text is put into NFC, since doc_id is a hash of the text and a
-// hash of two different encodings of the same string is two different documents.
-// And the diacritic verdict is computed, since Vietnamese written without tone
-// marks is still Vietnamese and still useful, but it is not the same
-// distribution and it must not enter the corpus unlabeled. The rest of
+// Two things are done here rather than left to a later stage, and both are
+// done because they are part of the document's identity rather than part of
+// its quality. The text is put into NFC, since doc_id is a hash of the text
+// and a hash of two different encodings of the same string is two different
+// documents. And the diacritic verdict is computed, since Vietnamese written
+// without tone marks is still Vietnamese and still useful, but it is not the
+// same distribution and it must not enter the corpus unlabeled. The rest of
 // normalization, tone mark placement and the legacy font encodings, belongs to
-// phoi and will recompute doc_id when it runs.
+// normalize and will recompute doc_id when it runs.
 
 import (
 	"bufio"
@@ -55,14 +55,21 @@ import (
 const DecoderVersion = "1.0.0"
 
 // Extractor is the value of the extractor column for an ingested document.
+//
+// The gat in it is the old name of this package, kept deliberately. The column
+// exists to say whether two documents were built by the same rules, and tens of
+// millions of rows already carry this string, so renaming it to match the
+// package would split one program's output into two values that mean the same
+// thing. That is a worse answer to the question the column asks than a stale
+// name is.
 const Extractor = "gao-gat@" + DecoderVersion
 
 // PipelineVersion is the value of the pipeline_version column for a document
 // that has been ingested and nothing else.
 //
-// The leading zero is the point. No cleaning stage has touched these rows, and a
-// reader who sees 0.x knows not to compare them against rows that came through
-// phoi, sang, and xay.
+// The leading zero is the point. No cleaning stage has touched these rows, and
+// a reader who sees 0.x knows not to compare them against rows that came
+// through normalize, sift, and mill.
 const PipelineVersion = "0.1.0"
 
 // maxRowBytes is the largest upstream record the decoder will read. It is the

@@ -202,7 +202,7 @@ func TestTheColumnsAreReportedHeaviestFirst(t *testing.T) {
 	}
 }
 
-// sample is the same document the kho tests write, built here so that this
+// sample is the same document the store tests write, built here so that this
 // package can weigh real Parquet rather than only the arithmetic over it.
 func sample(i int) *doc.Document {
 	text := fmt.Sprintf(
@@ -238,7 +238,7 @@ func TestWeighingRealPartsOffDisk(t *testing.T) {
 	if !ok {
 		t.Fatal("vietnamese-web-text is not in the dataset table")
 	}
-	stamp := store.Stamp{Snapshot: "gao-v1.0", Stage: "kho@0.1.0", Box: "server3"}
+	stamp := store.Stamp{Snapshot: "gao-v1.0", Stage: "store@0.1.0", Box: "server3"}
 
 	dir := t.TempDir()
 	paths := make([]string, 0, 3)

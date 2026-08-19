@@ -18,8 +18,9 @@ var update = flag.Bool("update", false, "rewrite the golden files from what the 
 // font. Passing on invented strings proves the rules fire. Passing on these
 // proves they fire together, on documents nobody wrote for the test.
 //
-// Run go test ./phoi -update to rewrite the outputs, then read the diff. A
-// golden file that changed without somebody reading the change is not a test.
+// Run go test ./normalize -update to rewrite the outputs, then read the diff.
+// A golden file that changed without somebody reading the change is not a
+// test.
 func TestGoldenDocuments(t *testing.T) {
 	ins, err := filepath.Glob("testdata/*.in")
 	if err != nil {
