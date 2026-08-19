@@ -208,6 +208,13 @@ func printPeak(w io.Writer, p may.Peak) {
 		fmt.Fprintf(tw, "plan allows\t%s\tif a stage used every worker %s has threads for\n", may.GB(p.Planned), p.Box)
 	}
 	fmt.Fprintf(tw, "watched\t%s\tacross %s, widest gap %s\n", plural(p.Samples, "reading"), p.Watched, p.Widest)
+	// Only where the gap is wide enough to be worth pricing. On a trace the
+	// watcher kept up with, the blind window is narrower than the resolution and
+	// the line is noise.
+	if p.Widest > may.Resolution {
+		fmt.Fprintf(tw, "blind spot\t%s\tthe most a %s gap hides at the %s a second this run was measured allocating\n",
+			may.GB(p.Hidden), p.Widest, may.Size(p.Rise))
+	}
 	fmt.Fprintf(tw, "free\t%s\ton %s\n", may.GB(p.Free), p.Box)
 	_ = tw.Flush()
 

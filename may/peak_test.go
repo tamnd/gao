@@ -129,17 +129,53 @@ func TestThePredictionIsPerTheWorkersTheRunHad(t *testing.T) {
 	}
 }
 
-// A peak sampled too rarely is not a peak. A worker can take a shard, write it,
-// push it and delete it between two readings five minutes apart.
+// A peak sampled too rarely is not a peak when the gap is wide enough to hold
+// the ceiling. A worker can take a shard, write it, push it and delete it
+// between two readings five minutes apart, and on a run allocating this fast
+// five minutes is most of the ceiling.
 func TestAPeakSampledTooRarelyIsNotAPeak(t *testing.T) {
-	p := Measure("hplt-v3", 6*time.Hour, Ceiling, trace("server1", 6*time.Hour, 5*time.Minute, 3_000_000_000, 9_000_000_000))
+	p := Measure("hplt-v3", 6*time.Hour, Ceiling, trace("server1", 6*time.Hour, 5*time.Minute, 3_000_000_000, 80_000_000_000))
 	if p.Settled() {
 		t.Fatal("a trace sampled every five minutes settled the peak")
 	}
-	peakRefusal(t, p, "this is the disk at some moments rather than its peak")
+	peakRefusal(t, p, "could have taken it to")
 	if p.Widest != 5*time.Minute {
 		t.Errorf("the widest gap came back as %s", p.Widest)
 	}
+}
+
+// The gap is read in disk rather than in seconds, so the same sampling interval
+// on a run that allocates slowly answers the question. This is server1's ten
+// hour FineWeb2 ingest: it dropped five ticks out of 3648, and the reading was
+// thrown away over a 50s gap that could not have hidden a fiftieth of the
+// headroom.
+func TestAGapIsPricedInDiskRatherThanInSeconds(t *testing.T) {
+	p := Measure("fineweb2", 6*time.Hour, Ceiling, trace("server1", 6*time.Hour, 5*time.Minute, 3_000_000_000, 9_000_000_000))
+	if len(p.Refused) > 0 {
+		t.Fatalf("a gap too narrow to reach the ceiling was refused: %v", p.Refused)
+	}
+	if p.Rise <= 0 {
+		t.Fatal("the run's allocation rate came back as nothing, and it is what prices the gap")
+	}
+	if want := p.Rise * int64(p.Widest/time.Second); p.Hidden != want {
+		t.Errorf("the gap hides %s, want %s", GB(p.Hidden), GB(want))
+	}
+	if p.Held+p.Hidden > p.Ceiling {
+		t.Errorf("the bound is %s against a %s ceiling, and this trace was meant to clear it", GB(p.Held+p.Hidden), GB(p.Ceiling))
+	}
+}
+
+// A trace that never saw the disk grow has no rate, and a gap that cannot be
+// priced is a gap that bounds nothing. That case keeps the old refusal, because
+// the alternative is reading a flat trace as proof that nothing happened in the
+// part of the run nobody watched.
+func TestAGapWithNoRateToPriceItIsRefused(t *testing.T) {
+	flat := trace("server1", 6*time.Hour, 5*time.Minute, 3_000_000_000, 3_000_000_000)
+	p := Measure("fineweb2", 6*time.Hour, Ceiling, flat)
+	if p.Rise != 0 {
+		t.Fatalf("a flat trace measured a rise of %s a second", Size(p.Rise))
+	}
+	peakRefusal(t, p, "the disk was never seen growing")
 }
 
 // A run allocates hardest when it starts and when it flushes, which is exactly

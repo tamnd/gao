@@ -49,9 +49,18 @@ import (
 const Ceiling int64 = 90_000_000_000
 
 // Resolution is the widest gap between two disk readings that still measures a
-// peak. Thirty seconds is set by the thing that allocates: a worker holds a
-// shard while it writes it, and a shard written and pushed inside a sampling
-// gap is a shard the watcher never saw.
+// peak without having to argue about it. Thirty seconds is set by the thing that
+// allocates: a worker holds a shard while it writes it, and a shard written and
+// pushed inside a sampling gap is a shard the watcher never saw.
+//
+// A gap wider than this is not on its own a reason to throw the reading away.
+// What a blind window can hide is bounded by how fast the run was allocating,
+// and the trace measures that, so a gap is read as [Peak.Hidden] rather than as
+// seconds. The ten hour FineWeb2 ingest on server1 lost five ticks out of 3648
+// and the widest gap came to 50s, which at the 12.8 MB a second that run was
+// ever measured allocating could hide 0.6 GB against 89.5 GB of headroom. The
+// reading was refused anyway, which is a gate answering a question about time
+// when the milestone asked one about disk.
 const Resolution = 30 * time.Second
 
 // Drift is how far the measured peak may sit from the predicted one before the
@@ -131,6 +140,22 @@ type Peak struct {
 	// this peak was actually measured at rather than the one somebody intended.
 	Widest time.Duration `json:"widest"`
 
+	// Rise is the fastest the disk was ever seen growing, in bytes a second,
+	// taken between two adjacent readings. It is the run's own allocation rate,
+	// measured rather than assumed, and it is what prices a blind window.
+	Rise int64 `json:"rise"`
+
+	// Hidden is the most disk the widest gap could have taken and given back
+	// without a reading seeing it, which is Rise across that gap. Held plus
+	// Hidden is the ceiling the run cannot have gone over, so a gap only puts
+	// the gate in doubt when that sum does.
+	//
+	// This is a bound and not a certainty. Rise is the fastest rise anybody
+	// sampled, so a burst shorter than the sampling interval beats it, and the
+	// bound is worth what the sampling is. It is still a great deal more than
+	// the seconds it replaces, which bounded nothing at all.
+	Hidden int64 `json:"hidden"`
+
 	Samples int `json:"samples"`
 
 	// Refused is why the trace cannot support a peak at all, and Faults is what
@@ -195,7 +220,7 @@ func Measure(run string, ran time.Duration, ceiling int64, samples []Sample) Pea
 		}
 	}
 
-	var prev int64
+	var prev, prevBytes int64
 	for i, s := range ordered {
 		switch {
 		case s.Second < 0:
@@ -222,16 +247,36 @@ func Measure(run string, ran time.Duration, ceiling int64, samples []Sample) Pea
 			if gap := time.Duration(s.Second-prev) * time.Second; gap > p.Widest {
 				p.Widest = gap
 			}
+			// The rise is taken per second rather than per reading, so a rise
+			// measured across a long gap is not read as though it happened in
+			// one interval.
+			if secs := s.Second - prev; secs > 0 {
+				if rise := (s.Bytes - prevBytes) / secs; rise > p.Rise {
+					p.Rise = rise
+				}
+			}
 		}
-		prev = s.Second
+		prev, prevBytes = s.Second, s.Bytes
 	}
+	p.Hidden = p.Rise * int64(p.Widest/time.Second)
 	p.Watched = time.Duration(ordered[len(ordered)-1].Second) * time.Second
 	p.Predicted = int64(p.Workers) * ShardsPerWorker * ShardBytes
 
+	// A gap wider than the resolution is read against what it could have hidden
+	// rather than against the clock. A worker can take a shard, write it, push it
+	// and delete it inside a wide enough gap, and whether it could have done that
+	// here is a question about how fast this run was allocating.
 	if p.Widest > Resolution {
-		p.Refused = append(p.Refused, fmt.Sprintf(
-			"the widest gap between two readings is %s against a resolution of %s, and a worker can take a shard, write it, push it and delete it inside that, so this is the disk at some moments rather than its peak",
-			p.Widest, Resolution))
+		switch {
+		case p.Rise <= 0:
+			p.Refused = append(p.Refused, fmt.Sprintf(
+				"the widest gap between two readings is %s against a resolution of %s, and the disk was never seen growing, so there is no rate to price what the gap could have hidden",
+				p.Widest, Resolution))
+		case p.Held+p.Hidden > ceiling:
+			p.Refused = append(p.Refused, fmt.Sprintf(
+				"the widest gap between two readings is %s against a resolution of %s, and at the %s a second this run was measured allocating that gap could have taken it to %s, over the %s ceiling",
+				p.Widest, Resolution, Size(p.Rise), GB(p.Held+p.Hidden), GB(ceiling)))
+		}
 	}
 	switch {
 	case ran <= 0:
@@ -296,6 +341,14 @@ func (p Peak) Verdict() string {
 	}
 	if len(p.Faults) > 0 {
 		return p.Faults[0]
+	}
+	// A run whose widest gap cleared the resolution was watched at the rate it
+	// was watched at, and saying so is the whole sentence. A run that had a wider
+	// gap and passed anyway did so on the bound, and the bound is the sentence.
+	if p.Widest > Resolution {
+		return fmt.Sprintf(
+			"%s held at least %s and at most %s of a %s ceiling during %s, the second number being what the widest gap of %s could have hidden at the %s a second this run was measured allocating",
+			p.Box, GB(p.Held), GB(p.Held+p.Hidden), GB(p.Ceiling), p.During, p.Widest, Size(p.Rise))
 	}
 	return fmt.Sprintf(
 		"%s peaked at %s of a %s ceiling during %s, %.1f times the %s the design predicts, watched every %s across %s",
