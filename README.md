@@ -312,14 +312,14 @@ The register is empty today, and `gao takedown status` reports that nothing has 
 
 ## What goes in
 
-Six public corpora go in before gao crawls anything of its own. The ingest manifest is the list of exactly which files, at exactly which revision, and `gao harvest pins` prints it.
+Six public corpora are pinned before gao crawls anything of its own and four of them go in. The ingest manifest is the list of exactly which files, at exactly which revision, and `gao harvest pins` prints it.
 
 | order | source | repo | files | download | license |
 |---|---|---|---|---|---|
 | 0 | HPLT v3 `vie_Latn` | `data.hplt-project.org/three/sorted` | 12 | 234.5 GB | CC0 |
 | 1 | FinePDFs `vie_Latn` | `HuggingFaceFW/finepdfs` | 3 | 13.0 GB | ODC-By |
 | 2 | FineWeb2 `vie_Latn` | `HuggingFaceFW/fineweb-2` | 30 | 130.1 GB | ODC-By |
-| 3 | CulturaX `vi` | `uonlp/CulturaX` (gated) | 50 | 80.1 GB | inherits mC4 and OSCAR |
+| 3 | CulturaX `vi` | `uonlp/CulturaX` (gated) | 50 | 80.1 GB, dropped | inherits mC4 and OSCAR |
 | 4 | MADLAD-400 `vi` | `allenai/MADLAD-400` | 32 | 95.3 GB, dropped | ODC-By |
 | 5 | GlotCC-V1 `vie-Latn` | `cis-lmu/GlotCC-V1` | 27 | 55.9 GB | CC0 |
 
@@ -329,7 +329,9 @@ Every Hub source is pinned to a commit SHA and never to a branch, because a corp
 
 `gao harvest drift` asks every host what it serves now and reports the ones that have moved. It never rewrites the manifest. Re-pinning is a commit somebody makes deliberately, with the new file lists and byte counts read at the same time, because a manifest that re-pins itself silently changes what a released corpus was built from.
 
-Reading the file lists off the hosts rather than copying them from the plan corrected the plan three times. GlotCC's Vietnamese partition was described as small and is 55.9 GB. The whole download was estimated at roughly 490 GB and is 608.9 GB, of which 513.6 GB is fetched and 95.3 GB is pinned and dropped for the reason below. CulturaX is gated, which nothing had recorded, and a gated repo does not hand its file digests to an unauthenticated caller, so that source pins byte counts and fills in digests when the grant lands.
+Reading the file lists off the hosts rather than copying them from the plan corrected the plan three times. GlotCC's Vietnamese partition was described as small and is 55.9 GB. The whole download was estimated at roughly 490 GB and is 608.9 GB, of which 433.5 GB is fetched and 175.4 GB is pinned and dropped for the reasons below. CulturaX is gated, which nothing had recorded, and a gated repo does not hand its file digests to an unauthenticated caller, which is why that source pins byte counts and no digests.
+
+CulturaX is dropped rather than left pending. It is gated on terms nobody on this project has been granted, and on 2026-08-19 a range request for the first pinned file with the ingest token came back 403 with `Access to dataset uonlp/CulturaX is restricted and you are not in the authorized list`. That is not a run that failed, it is a person accepting terms, and until somebody does there is nothing to fetch. The manifest keeps the pin and the file list with the reason beside them, the same way MADLAD-400 is kept, so re-admitting it is one field rather than a re-pin. What it costs the corpus is less than 80.1 GB suggests: CulturaX is mC4 and OSCAR, both built out of Common Crawl, so it overlaps the four sources that are ingested heavily and the deduplicated union is the number it would move least.
 
 One number sets the shape of the ingest. The largest pinned file is a 26.6 GB HPLT shard and `server1`'s entire peak disk budget is 4.1 GB, so ingestion decompresses in flight and writes gao shards as it goes rather than downloading a file and then reading it. Streaming is not an optimization here, it is the only thing that fits.
 
@@ -381,7 +383,7 @@ So a document now waits for its file. It is staged as it is read and joins the t
 
 There are four boxes and one of them, `server2`, sits under the 20 GB reserve and holds no corpus bytes at all. The three that are left differ by a factor of eight in threads, a factor of eleven in memory and a factor of three in the rate a reading off them says they get through. So somebody has to decide which box fetches which of the 122 pinned files, and the obvious answer, forty each, is wrong twice over.
 
-It is wrong first because the files are not the same size. The largest is 26.6 GB and the median is 2.1 GB, a thirteenth of it, so equal piles of files are not equal piles of work, and a file cannot be cut in half because it is streamed and hashed as one unit. It is wrong second because the sources cannot all be fetched at once. HPLT v3 is pinned at order zero and ingests alone, since every later source dedups against a store that already holds it. The schedule is a sequence of groups with a barrier at the end of each, not one pile, and the idle time that produces is the cost of the ingest order rather than a mistake in the arithmetic.
+It is wrong first because the files are not the same size. The largest is 26.6 GB and the median is 4.4 GB, a sixth of it, so equal piles of files are not equal piles of work, and a file cannot be cut in half because it is streamed and hashed as one unit. It is wrong second because the sources cannot all be fetched at once. HPLT v3 is pinned at order zero and ingests alone, since every later source dedups against a store that already holds it. The schedule is a sequence of groups with a barrier at the end of each, not one pile, and the idle time that produces is the cost of the ingest order rather than a mistake in the arithmetic.
 
 `gao assign` prices both. It takes a file of readings, one per box, and hands out the heaviest remaining file to whichever box would finish it soonest.
 
@@ -391,19 +393,18 @@ order  sources   files  bytes     takes       waiting at the end
 0      hplt3     12     234.5 GB  18.3 hours  1.2 hours
 1      finepdfs  3      13.0 GB   1.4 hours   1.9 hours
 2      fineweb2  30     130.1 GB  10.0 hours  30 minutes
-3      culturax  50     80.1 GB   6.2 hours   19 minutes
 5      glotcc    27     55.9 GB   4.4 hours   28 minutes
 
 box       gets through        fetches   of the ingest  scratch left  busy for
-server3   1.7 MB/s (14 Mbit)  246.6 GB  48.0%          15.5 GB       39.5 hours
-gamingpc  1.3 MB/s (11 Mbit)  190.1 GB  37.0%          244.6 GB      39.6 hours
-server1   0.6 MB/s (5 Mbit)   77.0 GB   15.0%          164.9 GB      37.5 hours
+server3   1.7 MB/s (14 Mbit)  208.1 GB  48.0%          15.5 GB       33.3 hours
+gamingpc  1.3 MB/s (11 Mbit)  161.3 GB  37.2%          244.6 GB      33.6 hours
+server1   0.6 MB/s (5 Mbit)   64.1 GB   14.8%          164.9 GB      31.2 hours
 
-The whole ingest takes 40.3 hours, against 39.2 hours if a file could be cut in half and every source fetched at once.
-On the fastest box alone it takes 3.4 days, so the fleet buys 2.0x.
+The whole ingest takes 34.1 hours, against 33.1 hours if a file could be cut in half and every source fetched at once.
+On the fastest box alone it takes 2.9 days, so the fleet buys 2.0x.
 Order 1 divides 3 files across 3 boxes and still ends 24 minutes after its own floor, because server3 finishes last on data/vie_Latn/train/000_00002.parquet and a file cannot be handed to a second box once it has started.
 
-513.6 GB over 122 files across 3 boxes takes 40.3 hours, against 3.4 days on the fastest box alone. That is 3% over a split no arrangement can beat, and the gap is the ingest order and the file sizes rather than the fleet.
+433.5 GB over 72 files across 3 boxes takes 34.1 hours, against 2.9 days on the fastest box alone. That is 3% over a split no arrangement can beat, and the gap is the ingest order and the file sizes rather than the fleet.
 ```
 
 Every number in that block comes off the S1 runs. `gao assign read` turns an ingest ledger into a reading by timing between two finishes, and the three lines in `assign/testdata/readings.jsonl` are what it printed on each box on 2026-08-18: `server1` at 4.84 GB in 8480 seconds of fineweb2, `server3` at 4.18 GB in 2409 seconds of GlotCC, `gamingpc` at 4.39 GB in 3292 seconds of FinePDFs.
@@ -439,7 +440,7 @@ order  box       bytes     takes       file
 0      server1   10.0 GB   4.8 hours   hplt3/vie_Latn/9_2.jsonl.zst
 ```
 
-That is order zero, the whole of HPLT v3, out of 126 lines. Six files to `server3`, four to `gamingpc` and two to `server1`, and the two include the second largest file in the manifest, because `server1` is slower per byte and still finishes sooner than either of the others would if it took one more file on top of what it has. The 26.2 GB file it opens with costs it 12.8 hours against the 4.2 the same size costs `server3`, and handing that one over as well would leave `server1` idle for most of the group. All three boxes have the disk to land any file in the manifest, so nothing here is decided by scratch, which is the case the disk check exists for rather than the case it is in. A box under the reserve draws nothing at all rather than drawing the small files, and that is the check doing its work one step earlier than the file list.
+That is order zero, the whole of HPLT v3, out of 76 lines. Six files to `server3`, four to `gamingpc` and two to `server1`, and the two include the second largest file in the manifest, because `server1` is slower per byte and still finishes sooner than either of the others would if it took one more file on top of what it has. The 26.2 GB file it opens with costs it 12.8 hours against the 4.2 the same size costs `server3`, and handing that one over as well would leave `server1` idle for most of the group. All three boxes have the disk to land any file in the manifest, so nothing here is decided by scratch, which is the case the disk check exists for rather than the case it is in. A box under the reserve draws nothing at all rather than drawing the small files, and that is the check doing its work one step earlier than the file list.
 
 The command exits 1 when the readings are not a schedule at all, which covers a box nobody has, two rates for one box, a sample too small to mean anything, and a reading that does not say how it was taken. It exits 2 when they describe a schedule that should not be run as written, which is a box that draws no files or a file no box has room to land. Groups that end late are neither. A group of three files across three boxes of different speeds ends when its slowest file ends however it is dealt out, and the sentence saying so is there to stop somebody hunting for a better split that does not exist.
 
@@ -458,14 +459,6 @@ fineweb2/data/vie_Latn/train/003_00004.parquet
 fineweb2/data/vie_Latn/train/002_00002.parquet
 fineweb2/data/vie_Latn/train/004_00000.parquet
 fineweb2/data/vie_Latn/train/004_00001.parquet
-culturax/vi/vi_part_00046.parquet
-culturax/vi/vi_part_00015.parquet
-culturax/vi/vi_part_00049.parquet
-culturax/vi/vi_part_00008.parquet
-culturax/vi/vi_part_00005.parquet
-culturax/vi/vi_part_00034.parquet
-culturax/vi/vi_part_00000.parquet
-culturax/vi/vi_part_00045.parquet
 glotcc/v1.0/vie-Latn/vie-Latn_20.parquet
 glotcc/v1.0/vie-Latn/vie-Latn_14.parquet
 glotcc/v1.0/vie-Latn/vie-Latn_5.parquet
@@ -479,20 +472,20 @@ The other end takes it as a list of files it may fetch, and says what that leave
 ```
 $ gao assign files -box server1 assign/testdata/readings.jsonl > server1.txt
 $ gao harvest hf -dir /tmp/s1dir -only server1.txt -plan
-0 of 122 files done, 0.0 GB of 513.6 GB
-122 files to fetch, 513.6 GB to move
-server1.txt names 19 files, 19 left to fetch, 77.0 GB to move
+0 of 72 files done, 0.0 GB of 433.5 GB
+72 files to fetch, 433.5 GB to move
+server1.txt names 11 files, 11 left to fetch, 64.1 GB to move
 ```
 
-The two numbers on the last line are the ones worth having. Nineteen files were named and nineteen are left, so this box has not started. On a box that has been running for a day the second number is smaller than the first and the difference is what it got through, which is a more useful thing to read at a glance than the ledger, because the ledger counts the whole ingest and this counts the hand.
+The two numbers on the last line are the ones worth having. Eleven files were named and eleven are left, so this box has not started. On a box that has been running for a day the second number is smaller than the first and the difference is what it got through, which is a more useful thing to read at a glance than the ledger, because the ledger counts the whole ingest and this counts the hand.
 
 Here is the same command against a real fetch of the smallest file in `server3`'s share, 294.6 MB of HPLT v3 over a home connection, followed by the same command again.
 
 ```
 $ grep 10_1 server3.txt > one.txt
 $ gao harvest hf -dir /tmp/hplt -only one.txt
-0 of 122 files done, 0.0 GB of 513.6 GB
-122 files to fetch, 513.6 GB to move
+0 of 72 files done, 0.0 GB of 433.5 GB
+72 files to fetch, 433.5 GB to move
 one.txt names 1 file, 1 left to fetch, 0.3 GB to move
 
 hplt3      vie_Latn/10_1.jsonl.zst                        0.3 GB  2m17s
@@ -500,12 +493,12 @@ hplt3      vie_Latn/10_1.jsonl.zst                        0.3 GB  2m17s
 1 of 1 files fetched, 0.3 GB in the ledger
 
 $ gao harvest hf -dir /tmp/hplt -only one.txt
-1 of 122 files done, 0.3 GB of 513.6 GB
-121 files to fetch, 513.3 GB to move
+1 of 72 files done, 0.3 GB of 433.5 GB
+71 files to fetch, 433.2 GB to move
 one.txt names 1 file, 0 left to fetch, 0.0 GB to move
 ```
 
-The second run exits 0 with nothing to do, which is a finished hand and not a mistake. That is the ordinary end of a run on a box that was handed nineteen files and fetched all nineteen, and it is the one case where doing nothing is the right answer.
+The second run exits 0 with nothing to do, which is a finished hand and not a mistake. That is the ordinary end of a run on a box that was handed eleven files and fetched all eleven, and it is the one case where doing nothing is the right answer.
 
 Every other way of ending up with nothing to fetch is refused. An empty list is refused, and so is a list naming files this manifest does not pin.
 
@@ -528,7 +521,7 @@ Documents that fail the contract go to `-rejects` with the reason and the specif
 
 That has already found something, and it cost a source. MADLAD-400's clean split is a JSON object with one field in it, `text`, and there is no URL, no timestamp, and no media type, because Allen AI did not publish them. Every record decodes and every record is rejected for provenance it does not have. Four hundred records read from each of three shards spread across the partition, `vi_clean_0000`, `vi_clean_0011` and `vi_clean_0031`, carry that single key in all twelve hundred, so this is the shape of the split and not one bad file. Design rule 3 settles it: a document that cannot carry provenance is dropped rather than admitted with nulls, and a source where that holds for every document is dropped the same way. So MADLAD-400 is marked dropped in the manifest, which takes 95.3 GB and 32 files out of the download and leaves the pinned revision, the file list, the byte counts and the digests where they are, next to the reason. Deleting the entry would leave the next reader asking why a dataset every Vietnamese corpus cites is absent, and the answer would be in a commit message nobody reads. Re-admitting it takes either Allen AI publishing the provenance or gao changing a design rule.
 
-Five sources have a decoder today. The sixth is CulturaX, which is gated and whose terms have not been granted, so nobody has read a byte of it. Each of the five was written against the real file, and one written from a dataset card alone would be a guess with a version number on it. MADLAD-400's is among them and is what found the gap that dropped it, which is the argument for writing them that way. `gao harvest hf -decode` refuses a source it cannot decode before it opens the ledger, and refuses a dropped one on the same terms, because finding either out two hundred gigabytes into a download is not finding it out.
+Five sources have a decoder today. The sixth is CulturaX, which is gated and whose terms have not been granted, so nobody has read a byte of it, and it is dropped rather than waiting. Each of the five was written against the real file, and one written from a dataset card alone would be a guess with a version number on it. MADLAD-400's is among them and is what found the gap that dropped it, which is the argument for writing them that way. `gao harvest hf -decode` refuses a source it cannot decode before it opens the ledger, and refuses a dropped one on the same terms, because finding either out two hundred gigabytes into a download is not finding it out.
 
 ## Reading Parquet without downloading it
 
@@ -1127,21 +1120,20 @@ Xếp is to place, and `place` is the part that can be checked. What it fixes is
 
 ```
 $ gao place frame
-200000 documents drawn across 6 sources into 4 bands, at seed "gao-refset-1.0", with 10% of them labeled twice. Fixed and hashed before the first document was drawn, because a rubric written during labeling gets written toward the labels already collected.
+200000 documents drawn across 5 sources into 4 bands, at seed "gao-refset-1.0", with 10% of them labeled twice. Fixed and hashed before the first document was drawn, because a rubric written during labeling gets written toward the labels already collected.
 
 the draw:
   source    share  documents  why it gets that share
   hplt3     30%    60000      the largest source and the one the headline token count rests on, so the classifier has to be right about it before it is right about anything
   crawl     25%    50000      the only source nobody else has cleaned, which makes it the one where a quality call is load bearing rather than a second opinion on somebody else's filter
-  fineweb2  15%    30000      already filtered upstream, and a share this size is what says whether our rubric agrees with that filter or quietly replaces it
-  culturax  10%    20000      the oldest of the derived sets and the one most likely to hold text the others have since dropped, which is a different distribution rather than a smaller one
+  fineweb2  20%    40000      already filtered upstream, and a share this size is what says whether our rubric agrees with that filter or quietly replaces it
   finepdfs  15%    30000      three times its share of the corpus, because PDFs are where the edited long form is and a classifier that has seen fifty of them will call the rest of them boilerplate
-  glotcc    5%     10000      the smallest source, kept in at a share big enough to notice if the rubric behaves differently on it
+  glotcc    10%    20000      the smallest source, at twice the share its size argues for, because a derived set built to a different recipe is where the rubric is most likely to behave differently and nobody would notice at 5%
 ```
 
 The scale and the digest are cut from the end of that block and the next two paragraphs are about what is in them.
 
-The shares are not the shares of the corpus, and that is the point. Drawn in proportion, the reference set is overwhelmingly web text, and a classifier trained on it has seen almost nothing of what the corpus is actually short of. FinePDFs gets three times its weight for that reason: PDFs are where the edited long form is, and a labeler who has seen fifty of them calls the fifty first boilerplate. Every share carries the sentence explaining it, because a share nobody can explain is a share somebody argues about after the classifier is trained.
+The shares are not the shares of the corpus, and that is the point. Drawn in proportion, the reference set is overwhelmingly web text, and a classifier trained on it has seen almost nothing of what the corpus is actually short of. FinePDFs gets three times its weight for that reason: PDFs are where the edited long form is, and a labeler who has seen fifty of them calls the fifty first boilerplate. Every share carries the sentence explaining it, because a share nobody can explain is a share somebody argues about after the classifier is trained. CulturaX held ten points of this draw until the manifest dropped it, and the points went to the two derived sets that are still ingested, since what it was there to do was show the rubric a set built to somebody else's recipe.
 
 The scale is four bands and the order is what makes them a scale: rich, plain, thin, unusable. What does the work is not the description of each band. It is the sentence on each one naming the band it gets confused with and saying how to tell them apart, since every disagreement between two labelers is a boundary case and none of them are in the middle of a band.
 
@@ -1249,7 +1241,7 @@ Those four scores are made up, and the table above is what the rule prints rathe
 
 ### How much of each source is already in the others
 
-Five Hugging Face sources are ingested and every one of them is built out of Common Crawl. Adding their published token counts together is the number nobody should quote, because a document that appears in HPLT and in FineWeb2 and in CulturaX has been counted three times, and there is no way to know how far off that sum is except by measuring it. `gao mill -overlap parts/*.parquet` measures it. It builds one index over every source's documents rather than one per source, since the question is whether two sources hold the same document and that is answered by them landing in the same cluster, and it reads which source a row came from off the row rather than off the command line.
+Four Hugging Face sources are ingested and every one of them is built out of Common Crawl. Adding their published token counts together is the number nobody should quote, because a document that appears in HPLT and in FineWeb2 and in GlotCC has been counted three times, and there is no way to know how far off that sum is except by measuring it. `gao mill -overlap parts/*.parquet` measures it. It builds one index over every source's documents rather than one per source, since the question is whether two sources hold the same document and that is answered by them landing in the same cluster, and it reads which source a row came from off the row rather than off the command line.
 
 What comes out is containment in each direction rather than one similarity per pair, and the asymmetry is the point. GlotCC is a fraction of the size of HPLT, so "most of GlotCC is already in HPLT" and "a little of HPLT is already in GlotCC" are the same fact stated twice, and only the first is worth acting on. A symmetric similarity between two sets of wildly different size is a number that reports mostly the size difference. Beside the containments each source gets the share of its documents that nothing else holds, which is what ingesting that source bought, and it cannot be read off the shared counts: a document in three sources is shared with each of the other two and unique to none of them.
 
@@ -1264,7 +1256,7 @@ glotcc                4    25.0%     75.0%     75.0%    100.0%
 A row reads: this share of the source on the left is also in the source above.
 ```
 
-Those counts are off a fixture rather than off the corpus. The real matrix wants a pass over one part from each of the five sources on `server1`, and it is an open item on S1 rather than a number to quote yet. The measurement is built at 32 bands of 4 rows for the same reason the curve is, and it takes a threshold rather than assuming one, because how much two sources overlap depends on what counts as the same document and hiding that behind one figure is how a matrix gets quoted wrong. The membership of each document is a bitset in a `uint64`, which is why the measurement holds at most 64 sources: half a billion memberships is four gigabytes at eight bytes each and thirty two at anything wider.
+Those counts are off a fixture rather than off the corpus. The real matrix wants a pass over one part from each of the four sources on `server1`, and it is an open item on S1 rather than a number to quote yet. The measurement is built at 32 bands of 4 rows for the same reason the curve is, and it takes a threshold rather than assuming one, because how much two sources overlap depends on what counts as the same document and hiding that behind one figure is how a matrix gets quoted wrong. The membership of each document is a bitset in a `uint64`, which is why the measurement holds at most 64 sources: half a billion memberships is four gigabytes at eight bytes each and thirty two at anything wider.
 
 ### The half document identity cannot see
 
@@ -2366,7 +2358,7 @@ One containment failure survives into a world with no copies, and it is the reas
 Slices overlap and are meant to: a document can be both educational and legal. `slice.Overlap` says by how much, because the slices do not sum to the corpus and a reader adding them up will otherwise get a number larger than what was published.
 ## Adding up a release without letting the addition decide anything
 
-`cộng` is to add. The arithmetic here is a sum, and every hard part of it is about what may be added to what. A corpus assembled from five ingested sources, a crawl, a recovery pass, three extraction routes and a generator does not have one number. It has several, and the way this gets published wrong is not a bad sum. It is a good sum over rows that had no business being in the same column.
+`cộng` is to add. The arithmetic here is a sum, and every hard part of it is about what may be added to what. A corpus assembled from four ingested sources, a crawl, a recovery pass, three extraction routes and a generator does not have one number. It has several, and the way this gets published wrong is not a bad sum. It is a good sum over rows that had no business being in the same column.
 
 Three separations are load bearing. Natural text and generated text are never added, and the headline is the natural one, because somebody who downloads a corpus of Vietnamese believes a person wrote it and nothing further down the dataset card undoes that first impression. The publishable subset is stated apart from the total, since license class is a per document column and a corpus whose publishable subset is unstated is one nobody can safely use. And per source contribution is a table rather than a line, because where the tokens came from is what anybody checking the headline asks second.
 
@@ -2377,18 +2369,17 @@ Two ratios say whether a column counted what it says it counted. Vietnamese in U
 ```
 $ gao total counts.jsonl
 source             documents  bytes     characters  syllables  tokens  share
+gao-crawl-2026-09  473M       234.0 GB  175.1B      51.0B      97.2B   37.8%
 hplt-v3            238M       210.0 GB  157.0B      45.8B      87.3B   33.9%
-gao-crawl-2026-09  412M       186.0 GB  139.0B      40.5B      77.2B   30.0%
 fineweb2           96M        74.0 GB   55.6B       16.2B      30.9B   12.0%
 gao-pdf            12M        54.5 GB   40.9B       11.9B      22.7B   8.8%
-culturax           61M        48.0 GB   36.1B       10.5B      20.0B   7.8%
 glotcc             44M        34.0 GB   25.6B       7.5B       14.2B   5.5%
 phap-luat          2M         9.8 GB    7.3B        2.1B       4.1B    1.6%
 gao-voice          1M         2.6 GB    1.9B        0.6B       1.1B    0.4%
 
 license class           documents  tokens  share  ships
-open                    706M       201.4B  78.2%  yes
-permissive-attribution  157M       50.9B   19.8%  yes
+open                    767M       221.4B  86.0%  yes
+permissive-attribution  96M        30.9B   12.0%  yes
 restricted              2M         4.1B    1.6%   held
 unredistributable       1M         1.1B    0.4%   held
 
@@ -2401,7 +2392,7 @@ Against the corpora the claim is written over, that is 1.8x HPLT v3 vie_Latn, 2.
 gao-v1.0 came back at 257.5B of natural tokens against the 300.0B claimed, which is still 1.8x HPLT v3 vie_Latn, 2.5x PhoGPT, 4.6x CulturaX, and those are the ratios the headline gets restated with.
 ```
 
-The numbers above are invented. No source has been ingested and the crawl has not started, so this is the shape of the answer rather than the answer.
+The numbers above are invented. No source has been ingested and the crawl has not started, so this is the shape of the answer rather than the answer. The crawl carries what CulturaX would have: the crawl was sized against what the derived sets already cover, so a derived set leaving is a crawl that has to reach further rather than a corpus that is smaller by that much.
 
 The last two lines are the point of the whole package. The claim in this README is 300B natural tokens, which is 2.1x HPLT v3, 2.9x PhoGPT and 5.4x CulturaX, and the kill criterion for the release slice says that under 250B the project publishes the real number and restates those ratios. So the ratios are computed from the number that came back rather than written down beside it, because a ratio restated by hand is a ratio that gets restated once, in the release note, while the three other places it appears keep quoting the claim. Missing the target and tripping the kill criterion are different events with different consequences and the exit code tells them apart: 1 when the counts are not a release count at all, 2 when the corpus came in under the floor, 0 when it is short but alive, with the shortfall stated in the verdict rather than rounded away.
 
@@ -2889,13 +2880,13 @@ Arithmetic is a plan, and a plan is not evidence. A crawl that ran for six weeks
 
 ## Measuring a corpus that is not on the box
 
-Pushing each part and deleting it is what lets four machines process a corpus several times their disk, and the bill for it arrives the moment somebody asks a question about the whole thing. The question that matters most is how much of the five sources is the same document twice. FineWeb2 and GlotCC are both extracted from Common Crawl, so they have been over the same pages, and how much of the corpus that costs decides whether it is the sum of its sources or a good deal less. Nobody publishing a number like that should be estimating it, and downloading 900 GB back to count it properly is not available on this fleet.
+Pushing each part and deleting it is what lets four machines process a corpus several times their disk, and the bill for it arrives the moment somebody asks a question about the whole thing. The question that matters most is how much of the four sources is the same document twice. FineWeb2 and GlotCC are both extracted from Common Crawl, so they have been over the same pages, and how much of the corpus that costs decides whether it is the sum of its sources or a good deal less. Nobody publishing a number like that should be estimating it, and downloading 900 GB back to count it properly is not available on this fleet.
 
 It does not have to come back. Document identity is one fixed width column, and a part is Parquet, so a pass can open each part over HTTP, read the `doc_id` chunk of every row group, and never ask for the pages the text is in. What crosses the wire is around thirty two bytes per document, which is roughly 13 GB for the whole corpus instead of 900. This is the argument the columnar format was chosen for, applied to a question about the corpus rather than to a query somebody runs against the release.
 
 The identities go to disk sorted, one file per source, because none of these sets fit in memory. HPLT v3 alone is a couple of hundred million documents and the box reading it has 5 GB of RAM. Two sorted files are intersected by walking them together and five are unioned by walking all five, and the memory that costs is the number of open files rather than anything about the size of the corpus. The sort itself spills runs that do fit and merges them, which is the usual answer and the right one here. A key is the first eight bytes of the document's blake3 rather than all thirty two, which is a four times smaller file and a four times cheaper merge for a collision rate that rounds to nothing: at four hundred million documents the expected number of distinct documents that collide is under one in two hundred, so what comes out is a count and not an estimate at any precision anybody quotes.
 
-One walk answers everything. The key files are sorted, so stepping through all of them together yields each distinct document once along with the set of sources holding it, and that set is every pairwise intersection, the union, and what each source contributes that nothing else does. Five sources is ten pairs, and measuring the pairs one at a time would read the same document three times to learn what the first read already said. Overlap is printed from both sides, because it is not symmetric and the single number is the one that misleads: all of a small source can sit inside a large one while very little of the large one sits inside the small one.
+One walk answers everything. The key files are sorted, so stepping through all of them together yields each distinct document once along with the set of sources holding it, and that set is every pairwise intersection, the union, and what each source contributes that nothing else does. Four sources is six pairs, and measuring the pairs one at a time would read the same document three times to learn what the first read already said. Overlap is printed from both sides, because it is not symmetric and the single number is the one that misleads: all of a small source can sit inside a large one while very little of the large one sits inside the small one.
 
 A pass over a few hundred parts gets interrupted, so it is resumable at the part rather than at the source. Each part's keys are written under a working directory and a part that already has its file is skipped, so a run killed after a hundred parts reads the rest and merges. Nothing about that is remembered in a ledger, because the files on disk are the record and a second one would be wrong the first time a process died between the rename and the write.
 

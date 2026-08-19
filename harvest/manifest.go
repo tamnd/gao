@@ -17,11 +17,11 @@
 // rather than copied from the inventory, and reading them corrected the inventory
 // three times. GlotCC's Vietnamese partition was described as small and is
 // 55.9 GB. The full pull was estimated at roughly 490 GB and is 608.9 GB, of
-// which 513.6 GB is fetched and 95.3 GB is pinned and dropped.
-// CulturaX is gated, which the inventory did not say, and a gated repo does not
-// hand its file digests to an unauthenticated caller. All three corrections are
-// in the numbers below rather than in a note about them, which is the point of
-// keeping the manifest as data.
+// which 433.5 GB is fetched and 175.4 GB is pinned and dropped. CulturaX is
+// gated, which the inventory did not say, and a gated repo does not hand its
+// file digests to an unauthenticated caller, so it is one of the two dropped.
+// All three corrections are in the numbers below rather than in a note about
+// them, which is the point of keeping the manifest as data.
 //
 // HPLT v3 is the awkward one and it is also the spine. It is not hosted on the
 // Hub, so there is no commit to pin, and what it publishes instead is a per

@@ -397,12 +397,20 @@ func TestOnlyTheSourcesWithAMappingHaveADecoder(t *testing.T) {
 		}
 	}
 
-	// CulturaX is gated, its terms have not been granted, and nobody has read a
-	// byte of it. The command has to be able to say so before it starts a 149 GB
-	// download that ends in an error.
-	ok, missing := Decodable(Sources())
+	// Every source an ingest fetches has a mapping. That is the check worth
+	// making before a run starts, because the alternative is finding out at the
+	// end of a download that nothing can be done with what arrived.
+	if ok, missing := Decodable(Sources()); !ok {
+		t.Fatalf("Decodable reports %v for the sources an ingest fetches", missing)
+	}
+
+	// CulturaX is the one without a mapping, and it stays without one: it is
+	// gated, its terms have not been granted, and nobody has read a byte of it to
+	// write a mapping against. It is off the fetch list rather than pending, so
+	// the missing decoder is only visible over the whole manifest.
+	ok, missing := Decodable(AllSources())
 	if ok {
-		t.Fatal("Decodable reports every source, and CulturaX has no mapping")
+		t.Fatal("Decodable reports every pinned source, and CulturaX has no mapping")
 	}
 	if len(missing) != 1 || missing[0] != doc.SourceCulturaX {
 		t.Fatalf("Decodable reports %v, want culturax alone", missing)

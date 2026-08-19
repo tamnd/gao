@@ -192,7 +192,7 @@ func cardSources(b *strings.Builder, x []Indexed) {
 			cardCommas(s.Documents), fleet.Size(s.Bytes), strings.Join(s.Snapshots, "`, `"), u.URL)
 	}
 
-	b.WriteString("Two more are pinned in the ingest manifest and are not in the repo yet. CulturaX is gated on the Hub, which is an access control formality rather than a redistribution term, and it waits on the terms being accepted. MADLAD-400 ships as gzipped JSONL rather than Parquet, so it costs a rewrite that the Parquet sources do not, and it is queued behind them.\n\n")
+	b.WriteString("Two more are pinned in the ingest manifest and are not here. CulturaX is gated on the Hub and the terms were never granted to anybody on this project, so not one byte of it has been read and it is dropped rather than pending. It is mC4 and OSCAR, both built out of Common Crawl, so it overlaps the sources above heavily and what it would add to a deduplicated count is the smallest thing it would add. MADLAD-400 ships as gzipped JSONL rather than Parquet, so it costs a rewrite that the Parquet sources do not, and it is queued behind them.\n\n")
 	fmt.Fprintf(b, "The manifest with every pinned revision, every input file and its byte count is at %s/blob/main/harvest/manifest.json.\n\n", Repository)
 }
 

@@ -188,10 +188,17 @@ func TestWhatIsHeldBackSaysWhyAndHowMuch(t *testing.T) {
 // The download is the number that decides whether ingestion fits on server1 a
 // shard at a time. It is asserted rather than assumed, because it grew by a
 // quarter the moment the file lists were read from the hosts.
+//
+// What is compared against the estimate is everything pinned rather than
+// everything fetched. Two sources are pinned and dropped, MADLAD-400 for its
+// provenance and CulturaX for a gate nobody here can pass, and their bytes were
+// part of the corpus the inventory was estimating. Comparing the fetch list
+// against that estimate would read as the manifest having shrunk when what
+// happened is that two sources left the run.
 func TestTheDownloadIsLargerThanTheInventoryEstimated(t *testing.T) {
 	const estimate int64 = 490_000_000_000
 
-	got := TotalBytes()
+	got := TotalBytes() + DroppedBytes()
 	if got <= estimate {
 		t.Errorf("the pinned download is %s, and the inventory's %s estimate was supposed to be the low one",
 			fleet.GB(got), fleet.GB(estimate))
@@ -199,6 +206,13 @@ func TestTheDownloadIsLargerThanTheInventoryEstimated(t *testing.T) {
 	if got > 2*estimate {
 		t.Errorf("the pinned download is %s against a %s estimate, which is too far off to be the same corpus",
 			fleet.GB(got), fleet.GB(estimate))
+	}
+	if DroppedBytes() <= 0 {
+		t.Error("nothing reads as dropped, and both MADLAD-400 and CulturaX are")
+	}
+	if TotalBytes() >= got {
+		t.Errorf("the fetch list is %s of a %s manifest, and the dropped sources should be outside it",
+			fleet.GB(TotalBytes()), fleet.GB(got))
 	}
 
 	// The inventory measured HPLT v3 at 234.5 GB compressed by sampling. The
@@ -334,13 +348,25 @@ func TestOnlyTheHostsThatWithholdDigestsHaveNone(t *testing.T) {
 		t.Error("CulturaX is gated and its note does not say so, which is where somebody would look")
 	}
 	var gated int
-	for _, p := range Sources() {
+	for _, p := range AllSources() {
 		if p.Gated {
 			gated++
 		}
 	}
 	if gated != 1 {
 		t.Errorf("%d sources are gated, and the milestone gate depends on exactly one of them being blockable", gated)
+	}
+	if !c.Dropped {
+		t.Error("CulturaX is gated and not dropped, and the terms were never granted")
+	}
+
+	// Nothing gated is on the fetch list. A gated source there is a run that
+	// spends its time on a queue and ends in a 403, which is the failure this
+	// whole field exists to make visible beforehand.
+	for _, p := range Sources() {
+		if p.Gated {
+			t.Errorf("%s is gated and on the fetch list, so an ingest would run into a 403 on it", p.Source)
+		}
 	}
 }
 

@@ -3,7 +3,7 @@ package count
 // The identities of one source, sorted, on disk.
 //
 // The questions S1 has to answer about the corpus are set questions. How much of
-// FineWeb2 is already in GlotCC, how many distinct documents the five sources
+// FineWeb2 is already in GlotCC, how many distinct documents the four sources
 // come to together, how much of a source is a copy of itself. All of them are
 // answered from the identities alone, and none of them can be answered from a
 // hash set in memory: HPLT v3 is a couple of hundred million documents on a box
@@ -400,8 +400,8 @@ func (m *merge) next() (Key, bool, error) {
 // file in the order they were opened.
 //
 // The mask is what makes every pairwise intersection one pass rather than one
-// pass per pair. Five sources is ten pairs, and reading five files once to
-// answer all ten is the difference between a measurement that takes an evening
+// pass per pair. Four sources is six pairs, and reading four files once to
+// answer all six is the difference between a measurement that takes an evening
 // and one that takes a night.
 func (m *merge) nextGroup() (key Key, in uint64, ok bool, err error) {
 	if !m.started {
