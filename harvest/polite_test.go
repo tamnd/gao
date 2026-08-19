@@ -2,6 +2,7 @@ package harvest_test
 
 import (
 	"context"
+	"errors"
 	"sync"
 	"testing"
 	"time"
@@ -46,6 +47,14 @@ func (c *clock) Sleep(ctx context.Context, d time.Duration) error {
 		c.now = c.now.Add(d + c.over)
 	}
 	return nil
+}
+
+// pass moves the clock without anybody sleeping through it, which is how a test
+// says that time went by while the crawl was busy elsewhere.
+func (c *clock) pass(d time.Duration) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.now = c.now.Add(d)
 }
 
 func (c *clock) waits() []time.Duration {
@@ -262,8 +271,8 @@ func TestASilentFileLeavesUsOnOurOwnNumber(t *testing.T) {
 }
 
 // The concurrency cap. Two workers picking URLs off one host must not become two
-// connections to one server, and the second one has to actually block rather
-// than be counted afterwards.
+// connections to one server, and the second worker is turned away rather than
+// put in a line behind the first.
 func TestOnlyOneRequestPerHostIsInFlight(t *testing.T) {
 	c := newClock()
 	p := polite(c, harvest.PoliteOptions{})
@@ -273,36 +282,24 @@ func TestOnlyOneRequestPerHostIsInFlight(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	started := make(chan struct{})
-	finished := make(chan struct{})
-	go func() {
-		close(started)
-		second, err := p.Wait(context.Background(), "otofun.net")
-		if err == nil {
-			second()
-		}
-		close(finished)
-	}()
-
-	<-started
-	select {
-	case <-finished:
-		t.Fatal("a second request to the same host went out while the first was in flight")
-	case <-time.After(20 * time.Millisecond):
+	if _, err := p.Wait(context.Background(), "otofun.net"); !errors.Is(err, harvest.ErrBusy) {
+		t.Fatalf("a second request to the same host got %v", err)
 	}
 
+	// And the host is usable again the moment the first one is done, so the
+	// refusal was about this instant rather than about the host.
 	first()
-	select {
-	case <-finished:
-	case <-time.After(time.Second):
-		t.Fatal("the second request never went out after the first finished")
+	second, err := p.Wait(context.Background(), "otofun.net")
+	if err != nil {
+		t.Fatalf("the host was unusable after the first request finished: %v", err)
 	}
+	second()
 }
 
 // A cap above one is allowed and is a decision somebody makes, not a default.
 func TestTheCapCanBeRaisedDeliberately(t *testing.T) {
 	c := newClock()
-	p := polite(c, harvest.PoliteOptions{PerHost: 2, Delay: time.Hour})
+	p := polite(c, harvest.PoliteOptions{PerHost: 2, Delay: time.Hour, Patience: 2 * time.Hour})
 
 	a, err := p.Wait(context.Background(), "voz.vn")
 	if err != nil {
@@ -310,29 +307,23 @@ func TestTheCapCanBeRaisedDeliberately(t *testing.T) {
 	}
 	defer a()
 
-	held := make(chan struct{})
-	go func() {
-		b, err := p.Wait(context.Background(), "voz.vn")
-		if err == nil {
-			defer b()
-		}
-		close(held)
-	}()
-
 	// The second slot is free, so the second request is waiting on the delay
 	// rather than on the first request, and the fake clock lets it through.
-	select {
-	case <-held:
-	case <-time.After(time.Second):
-		t.Fatal("a cap of two only let one request through")
+	b, err := p.Wait(context.Background(), "voz.vn")
+	if err != nil {
+		t.Fatalf("a cap of two only let one request through: %v", err)
 	}
+	b()
 }
 
 // A 429 is the server telling us something about itself. The answer is to leave
 // it alone for the time it named, on top of whatever it was already owed.
 func TestABackoffPushesTheNextRequestOut(t *testing.T) {
 	c := newClock()
-	p := polite(c, harvest.PoliteOptions{Delay: time.Second})
+	// The patience is the arithmetic's, not the crawl's: what is being measured
+	// here is where the schedule put the next request, and a run that would have
+	// come back for it later is tested in its own case below.
+	p := polite(c, harvest.PoliteOptions{Delay: time.Second, Patience: 5 * time.Minute})
 
 	fetch(t, p, "cafef.vn")
 	p.Backoff("cafef.vn", 2*time.Minute)
@@ -362,7 +353,7 @@ func TestABackoffOfNothingChangesNothing(t *testing.T) {
 // anybody's patience.
 func TestACanceledCrawlStopsWaiting(t *testing.T) {
 	c := newClock()
-	p := polite(c, harvest.PoliteOptions{Delay: time.Hour})
+	p := polite(c, harvest.PoliteOptions{Delay: time.Hour, Patience: 2 * time.Hour})
 
 	fetch(t, p, "dantri.com.vn")
 
@@ -402,23 +393,17 @@ func TestFinishingTwiceDoesNotFreeAHostTwice(t *testing.T) {
 	}
 	defer first()
 
-	blocked := make(chan struct{})
-	go func() {
-		second, err := p.Wait(context.Background(), "kienthuc.net.vn")
-		if err == nil {
-			second()
-		}
-		close(blocked)
-	}()
-	select {
-	case <-blocked:
-		t.Fatal("two requests to one host were in flight after a double release")
-	case <-time.After(20 * time.Millisecond):
+	// One slot, so a second holder here would mean the first release freed a
+	// slot that was already free.
+	if _, err := p.Wait(context.Background(), "kienthuc.net.vn"); !errors.Is(err, harvest.ErrBusy) {
+		t.Fatalf("two requests to one host were in flight after a double release: %v", err)
 	}
 }
 
 // The whole point, under the load it is for: many workers, a handful of hosts,
-// and no host ever seeing two at once.
+// and no host ever seeing two at once. The workers that could not have a host
+// are told so and are free to go and fetch something else, which is the whole
+// difference between a slow host and a stopped crawl.
 func TestManyWorkersOnAFewHostsStayWithinTheCap(t *testing.T) {
 	c := newClock()
 	p := polite(c, harvest.PoliteOptions{})
@@ -426,7 +411,7 @@ func TestManyWorkersOnAFewHostsStayWithinTheCap(t *testing.T) {
 
 	var mu sync.Mutex
 	inFlight := map[string]int{}
-	var worst int
+	var worst, went int
 
 	var wg sync.WaitGroup
 	for i := range 60 {
@@ -435,6 +420,9 @@ func TestManyWorkersOnAFewHostsStayWithinTheCap(t *testing.T) {
 			defer wg.Done()
 			host := hosts[i%len(hosts)]
 			done, err := p.Wait(context.Background(), host)
+			if errors.Is(err, harvest.ErrBusy) {
+				return
+			}
 			if err != nil {
 				t.Errorf("waiting on %s: %v", host, err)
 				return
@@ -444,6 +432,7 @@ func TestManyWorkersOnAFewHostsStayWithinTheCap(t *testing.T) {
 			if inFlight[host] > worst {
 				worst = inFlight[host]
 			}
+			went++
 			mu.Unlock()
 
 			mu.Lock()
@@ -456,5 +445,75 @@ func TestManyWorkersOnAFewHostsStayWithinTheCap(t *testing.T) {
 
 	if worst > 1 {
 		t.Errorf("%d requests were in flight to one host at once", worst)
+	}
+	if went == 0 {
+		t.Error("sixty workers on three hosts and not one request went out")
+	}
+}
+
+// The defect the patience exists for. Twenty workers reaching for a host that is
+// not due must not be twenty workers doing nothing, which is what the third
+// shard of the first fleet run spent five hours being.
+func TestAHostThatIsNotDueDoesNotHoldTheWorker(t *testing.T) {
+	c := newClock()
+	p := polite(c, harvest.PoliteOptions{Delay: time.Second, Patience: 30 * time.Second})
+
+	fetch(t, p, "vov.vn")
+	p.Backoff("vov.vn", time.Hour)
+
+	before := len(c.waits())
+	if _, err := p.Wait(context.Background(), "vov.vn"); !errors.Is(err, harvest.ErrBusy) {
+		t.Fatalf("a host an hour out gave %v", err)
+	}
+	if got := c.waits(); len(got) != before {
+		t.Errorf("the worker slept %v on a host it was told to come back to", got[before:])
+	}
+
+	// And the host is not spoiled by having been asked. Once the hour is up it
+	// is an ordinary host again, on the gap it was always owed.
+	c.pass(time.Hour)
+	done, err := p.Wait(context.Background(), "vov.vn")
+	if err != nil {
+		t.Fatalf("the host was still refused after its hour was up: %v", err)
+	}
+	done()
+}
+
+// Asking has to be free. A worker that gave up and still moved the host's next
+// slot out would be paying for a request it never made, and twenty of them would
+// push a host that is merely busy into next week.
+func TestARefusalDoesNotMoveTheSchedule(t *testing.T) {
+	c := newClock()
+	p := polite(c, harvest.PoliteOptions{Delay: time.Second, Patience: time.Minute})
+
+	fetch(t, p, "tuoitre.vn")
+	p.Backoff("tuoitre.vn", 10*time.Minute)
+
+	for range 20 {
+		if _, err := p.Wait(context.Background(), "tuoitre.vn"); !errors.Is(err, harvest.ErrBusy) {
+			t.Fatalf("a host ten minutes out gave %v", err)
+		}
+	}
+
+	c.pass(10 * time.Minute)
+	done, err := p.Wait(context.Background(), "tuoitre.vn")
+	if err != nil {
+		t.Fatalf("twenty refusals pushed the host out to %v", err)
+	}
+	done()
+}
+
+// The gap itself is still waited for when it is short, since a trip back to the
+// queue for the ordinary one second gap would be a lot of bookkeeping to save a
+// second.
+func TestAShortGapIsStillWaitedFor(t *testing.T) {
+	c := newClock()
+	p := polite(c, harvest.PoliteOptions{Delay: 5 * time.Second, Patience: 30 * time.Second})
+
+	fetch(t, p, "zingnews.vn")
+	fetch(t, p, "zingnews.vn")
+
+	if got := c.waits(); len(got) != 2 || got[1] != 5*time.Second {
+		t.Errorf("the second request to a host on a five second gap waited %v", got)
 	}
 }

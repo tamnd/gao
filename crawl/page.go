@@ -85,9 +85,23 @@ const Extractor = "gao-crawl@" + ExtractorVersion
 // refused as boilerplate is still a Vietnamese page and its links are the most
 // valuable thing on the site.
 //
+// 0.6.0 is where a worker stopped waiting for a host. Under 0.5.0 and earlier a
+// worker that drew a URL for a host with a request already in flight got in line
+// behind it, and one that drew a host the schedule had pushed hours out slept
+// until then. Both were the politeness rules doing what they were written to do
+// and both were paid for out of the crawl: on the third shard of the fleet run
+// that found this, all twenty workers ended up on one host, nineteen queued
+// behind the twentieth and the twentieth asleep on a twenty seven minute gap,
+// and between two and a half and four and a half hours in the shard fetched one
+// page while the other two held three pages a second. A host that is not ready
+// now hands the URL back to the queue. The host is not treated any faster for
+// it, so what changed is not what the sites see but which of the queued million
+// this run got to, and the corpus either side of the boundary is drawn from a
+// different set of hosts.
+//
 // Older rows stay published rather than being deleted, since a version column
 // nobody has to trust is worth more than a corpus with holes in it.
-const PipelineVersion = "0.5.0"
+const PipelineVersion = "0.6.0"
 
 // A Page is what one HTML document had in it.
 type Page struct {
