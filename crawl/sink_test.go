@@ -346,6 +346,44 @@ func TestOldVolumesAreAgedOut(t *testing.T) {
 	}
 }
 
+// Keep counts the volumes on the disk and not the ones this process wrote. A
+// crawler is restarted to take a new binary and restarted by its supervisor
+// after the network goes, so a run that only ages out its own volumes gives the
+// box back nothing at all across a night of restarts.
+func TestARestartAgesOutTheVolumesItFound(t *testing.T) {
+	dir := t.TempDir()
+	for i := range 4 {
+		s := openSink(t, SinkOptions{Dir: dir, Volume: 1, Keep: 2})
+		if _, err := s.Archive(visit("https://baodongthap.example/tin.html", "<html></html>"), time.Now()); err != nil {
+			t.Fatalf("Archive on run %d: %v", i, err)
+		}
+		if err := s.Close(); err != nil {
+			t.Fatalf("Close on run %d: %v", i, err)
+		}
+	}
+	volumes, err := filepath.Glob(filepath.Join(dir, "warc", "*.warc.gz"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(volumes) != 2 {
+		t.Errorf("%d volumes on the disk after four runs, want the two the box was told to keep: %v", len(volumes), volumes)
+	}
+
+	// Another shard's volumes are another box's archive even when they are in
+	// the same directory, and a run that swept them up would delete them.
+	other := filepath.Join(dir, "warc", "gaocrawl-20260819-00007-00000.warc.gz")
+	if err := os.WriteFile(other, []byte("not this box's"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	s := openSink(t, SinkOptions{Dir: dir, Volume: 1, Keep: 1})
+	if err := s.Close(); err != nil {
+		t.Fatalf("Close: %v", err)
+	}
+	if _, err := os.Stat(other); err != nil {
+		t.Errorf("shard 0 deleted shard 7's volume: %v", err)
+	}
+}
+
 func TestASinkSaysWhichRepoItCannotFind(t *testing.T) {
 	if _, err := OpenSink(SinkOptions{Snapshot: "gaocrawl-20260819"}); err == nil {
 		t.Error("a sink opened with no directory to write under")

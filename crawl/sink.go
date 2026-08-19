@@ -30,6 +30,8 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"sort"
+	"strings"
 	"sync"
 	"time"
 
@@ -220,9 +222,51 @@ func OpenSink(o SinkOptions) (*Sink, error) {
 	if err := s.load(); err != nil {
 		return nil, err
 	}
+	if err := s.found(); err != nil {
+		return nil, err
+	}
 	s.rolls[KeptRepo] = s.roll(kept, s.state.Kept)
 	s.rolls[RejectRepo] = s.roll(drops, s.state.Reject)
 	return s, nil
+}
+
+// found picks up the volumes an earlier run left on the disk, so that Keep
+// counts what is there rather than what this run wrote.
+//
+// A crawl is restarted. It is restarted to take a new binary, and it is
+// restarted by its own supervisor after a box loses its network, so the run that
+// is going now is rarely the run that wrote the volumes under it. Ageing only
+// what this process wrote means a box set to keep two volumes keeps two per run
+// and every restart resets the count, which is how a disk that is supposed to
+// hold a gigabyte ends up holding all of it. server2 had four volumes and 7 GB
+// of headroom when this was found.
+//
+// Only this shard's volumes are collected. A box crawling shard 1 that deleted a
+// file named for shard 2 would be deleting another box's archive, and one
+// directory shared by two shards is a mistake worth surviving rather than
+// compounding.
+func (s *Sink) found() error {
+	dir := filepath.Join(s.o.Dir, "warc")
+	ents, err := os.ReadDir(dir)
+	if err != nil {
+		return fmt.Errorf("crawl: reading the volume directory: %w", err)
+	}
+	prefix := fmt.Sprintf("%s-%05d-", s.o.Snapshot, s.o.Shard)
+	var names []string
+	for _, e := range ents {
+		if e.IsDir() {
+			continue
+		}
+		n := e.Name()
+		if strings.HasPrefix(n, prefix) && strings.HasSuffix(n, ".warc.gz") {
+			names = append(names, "warc/"+n)
+		}
+	}
+	// The volume number is zero padded and fixed width, so the names sort in the
+	// order they were written and the oldest is the one that goes first.
+	sort.Strings(names)
+	s.done = names
+	return s.age()
 }
 
 // roll builds the roll for one dataset, starting at the part number this box
