@@ -300,18 +300,38 @@ func (r *loop) one(ctx context.Context, rawurl string) error {
 			// bytes are in the archive and a later extractor can have them.
 			return r.write(rawurl, Refused(rawurl, at, reject.ReasonExtract, err.Error()))
 		}
-		if !page.NoFollow {
-			for _, link := range page.Links {
-				r.offer(link)
-			}
-		}
 	}
 
-	return r.write(rawurl, Build(v, page, BuildOptions{
+	verdict := Build(v, page, BuildOptions{
 		Locator:   locator,
 		FetchedAt: at,
 		Limits:    r.o.Limits,
-	}))
+	})
+
+	// The links are followed after the page has been judged rather than before,
+	// and a page that failed the language test is not followed.
+	//
+	// This is the frontier's only defense against fanning out through a language
+	// it did not come for. A page in Chinese links to more pages in Chinese, and
+	// offering its links queues hosts whose entire subgraph is somebody else's
+	// web. The reach rule bounds what each of those hosts costs and does nothing
+	// about how many of them arrive: on the run that added it, 5,818 hosts
+	// outside .vn showed up in half an hour, took 3.6 requests each, and 19,880
+	// of those 20,691 requests went to a host that never kept a page.
+	//
+	// Only the language rejection stops a page from being followed. A listing
+	// page rejected as boilerplate, an article rejected as too short, a page
+	// rejected for repeating itself are all still Vietnamese pages, and their
+	// links are how the crawl reaches the articles. A category index is the
+	// clearest case: it is refused on every content test there is and it is the
+	// most valuable page on the site to follow.
+	if page != nil && !page.NoFollow && verdict.Reason != reject.ReasonLanguage {
+		for _, link := range page.Links {
+			r.offer(link)
+		}
+	}
+
+	return r.write(rawurl, verdict)
 }
 
 // missed handles a URL that produced no response at all.

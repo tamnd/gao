@@ -74,9 +74,20 @@ const Extractor = "gao-crawl@" + ExtractorVersion
 // so a reader counting what share of this crawl is Vietnamese gets a different
 // answer either side of the boundary and deserves to know where it is.
 //
+// 0.5.0 is the other half of the same problem, and it needed the 0.4.0 rows to
+// find. Reach bounds what one host that keeps nothing can cost and says nothing
+// about how many such hosts arrive, and under 0.4.0, 5,818 hosts outside .vn
+// showed up in half an hour and took 3.6 requests each. They arrive because the
+// links on a page were queued before the page was judged, so a page in another
+// language handed the frontier a whole subgraph of that language. Links are now
+// followed after the verdict and a page that failed the language test is a dead
+// end. Only that one rejection stops a page from being followed: a listing
+// refused as boilerplate is still a Vietnamese page and its links are the most
+// valuable thing on the site.
+//
 // Older rows stay published rather than being deleted, since a version column
 // nobody has to trust is worth more than a corpus with holes in it.
-const PipelineVersion = "0.4.0"
+const PipelineVersion = "0.5.0"
 
 // A Page is what one HTML document had in it.
 type Page struct {
