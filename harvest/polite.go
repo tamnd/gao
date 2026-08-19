@@ -200,6 +200,7 @@ func (p *Polite) Wait(ctx context.Context, host string) (func(), error) {
 		p.release(h)
 		return nil, err
 	}
+	p.woke(h)
 
 	var once sync.Once
 	return func() { once.Do(func() { p.release(h) }) }, nil
@@ -217,6 +218,33 @@ func (p *Polite) reserve(h *politeHost) time.Duration {
 	}
 	h.next = start.Add(h.delay)
 	return start.Sub(now)
+}
+
+// woke pushes the schedule out by however late this request is, so that the
+// request after it still gets the whole delay.
+//
+// The slots are absolute times and a timer fires at or after its deadline, never
+// before it. On a box doing anything else at the time the after can be a fifth
+// of a second, and the request that woke late has eaten that out of the gap in
+// front of it: it goes out at its slot plus the overshoot, the next one goes out
+// at its own slot, and the site is left with less than the delay between two
+// requests it was promised the delay between.
+//
+// The first fleet run measured it. Over 11,956 consecutive pairs of requests to
+// one host with a one second delay, 24 were closer than nine tenths of a second
+// and the tightest was 0.764. Small, and it is the kind of small that a site
+// operator reads off their own log rather than off ours.
+//
+// It never pulls the schedule back, since by now other workers may have queued
+// behind this host and reserved slots of their own, and moving those forward is
+// the only safe direction.
+func (p *Polite) woke(h *politeHost) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+
+	if next := p.now().Add(h.delay); next.After(h.next) {
+		h.next = next
+	}
 }
 
 func (p *Polite) release(h *politeHost) {

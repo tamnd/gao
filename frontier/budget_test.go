@@ -31,7 +31,13 @@ func crawl(b *frontier.Budget, format string, r frontier.Result, limit int) (int
 
 func small() frontier.Options {
 	return frontier.Options{
-		HostStart:  1000,
+		HostStart: 1000,
+		// Reach matches HostStart here so that these tests keep asking what they
+		// were written to ask. Most of them crawl a template that produces nothing
+		// and check where the template stops, and a host wide reach limit would
+		// stop them somewhere else for a reason that has nothing to do with
+		// templates. Reach has its own tests below.
+		Reach:      1000,
 		HostEarn:   4,
 		ShapeStart: 10,
 		ShapeEarn:  4,
@@ -295,9 +301,13 @@ func TestTheSubsetsOfAFilterSetStopMultiplying(t *testing.T) {
 // domain and the auto generated directory, and there are a lot of both in a
 // frontier of 900,000 hosts. The per template rule alone would give each of
 // those templates its own allowance, so the host wide number is the backstop.
+//
+// For a host in this state the host wide number is Reach, since a parked domain
+// is precisely a host that has never produced a page worth keeping. A host that
+// has produced one is held by HostStart instead, which the test below covers.
 func TestAHostCanRunOutEvenWhenNoTemplateHas(t *testing.T) {
 	o := small()
-	o.HostStart = 40
+	o.Reach = 40
 	b := frontier.NewBudget(o)
 
 	spent := 0
@@ -305,7 +315,7 @@ func TestAHostCanRunOutEvenWhenNoTemplateHas(t *testing.T) {
 		url := fmt.Sprintf("https://rac.vn/muc-%d/trang", i)
 		ok, why := b.Offer(url)
 		if !ok {
-			if !strings.Contains(why, "the host has spent its budget") {
+			if !strings.Contains(why, "has not produced a page worth keeping") {
 				t.Fatalf("the host stopped for the wrong reason: %s", why)
 			}
 			break
@@ -313,8 +323,8 @@ func TestAHostCanRunOutEvenWhenNoTemplateHas(t *testing.T) {
 		spent++
 		b.Fetched(url, frontier.Empty)
 	}
-	if spent != o.HostStart {
-		t.Errorf("the host spent %d against a starting budget of %d", spent, o.HostStart)
+	if spent != o.Reach {
+		t.Errorf("the host spent %d against a reach of %d", spent, o.Reach)
 	}
 }
 
@@ -490,5 +500,76 @@ func TestTheBudgetCountsPagesRatherThanSpellings(t *testing.T) {
 	}
 	if _, _, shapes := b.Spent("diendan.vn"); shapes != 1 {
 		t.Errorf("three spellings of one template produced %d templates", shapes)
+	}
+}
+
+// The rule that keeps a crawl of the Vietnamese web from becoming a crawl of the
+// web. Every seed links outwards, and a frontier that admits whatever it is
+// offered follows those links until most of what it is fetching is somebody
+// else's language. The first fleet run did exactly that: 19,457 of one hour's
+// 22,022 requests went to hosts outside .vn.
+func TestAHostThatKeepsNothingDoesNotGetTheFullAllowance(t *testing.T) {
+	o := small()
+	o.Reach = 5
+	b := frontier.NewBudget(o)
+
+	spent, why := crawl(b, "https://books.google.com/trang-%d", frontier.Empty, 100)
+	if spent != o.Reach {
+		t.Errorf("a host that kept nothing got %d requests against a reach of %d", spent, o.Reach)
+	}
+	if !strings.Contains(why, "has not produced a page worth keeping") {
+		t.Errorf("the host stopped for the wrong reason: %s", why)
+	}
+}
+
+// And the other half, which is what makes this a rule about evidence rather than
+// a rule about domain suffixes. vnexpress.net is not a .vn host and is one of the
+// largest Vietnamese publishers there is. One kept page is all it takes.
+func TestOneKeptPageBuysTheFullAllowance(t *testing.T) {
+	o := small()
+	o.Reach = 5
+	o.HostStart = 60
+	b := frontier.NewBudget(o)
+
+	// The first page keeps, which is the median case: half the hosts that ever
+	// produced Vietnamese text produced it on their second fetch.
+	url := "https://vnexpress.net/tin-tuc/bai-viet-1"
+	if ok, why := b.Offer(url); !ok {
+		t.Fatalf("the first URL on a new host was refused: %s", why)
+	}
+	b.Fetched(url, frontier.New)
+
+	spent, why := crawl(b, "https://vnexpress.net/tin-tuc/bai-viet-%d", frontier.Empty, 200)
+	if spent+1 <= o.Reach {
+		t.Fatalf("a host that kept a page stopped at %d, still inside its reach of %d: %s", spent+1, o.Reach, why)
+	}
+	if !strings.Contains(why, "the host has spent its budget") {
+		t.Errorf("the host stopped for the wrong reason: %s", why)
+	}
+}
+
+// A host does not fall back into reach by going quiet. It earned its way out
+// with a page that exists, and a run of empty pages after that is what the
+// template rules are for. The alternative is a site whose allowance flickers
+// between thirty and five hundred depending on which section the crawl is in.
+func TestAHostDoesNotFallBackIntoReach(t *testing.T) {
+	o := small()
+	o.Reach = 5
+	o.HostStart = 60
+	b := frontier.NewBudget(o)
+
+	url := "https://tuoitre.vn/thoi-su/bai-1"
+	if ok, _ := b.Offer(url); !ok {
+		t.Fatal("the first URL on a new host was refused")
+	}
+	b.Fetched(url, frontier.New)
+
+	for i := range 20 {
+		u := fmt.Sprintf("https://tuoitre.vn/the-thao/bai-%d", i)
+		ok, why := b.Offer(u)
+		if !ok {
+			t.Fatalf("a host that had earned out of reach was refused at %d: %s", i, why)
+		}
+		b.Fetched(u, frontier.Empty)
 	}
 }

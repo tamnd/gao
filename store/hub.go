@@ -109,10 +109,25 @@ type Dataset struct {
 	// consolation prize.
 	Text bool
 
+	// Reject reports whether the repo holds rejections rather than documents.
+	// Its files carry three columns more, the stage and the reason and the
+	// detail, and they never carry text: failing a filter does not change what
+	// a document's license lets us publish.
+	Reject bool
+
 	// Classes is the license classes whose documents land here. A repo that
 	// carries text may only name classes whose text ships, and there is a test
 	// for that rather than a convention.
 	Classes []doc.LicenseClass
+
+	// Crawled reports whether the rows came off gao's own crawler rather than
+	// out of somebody else's corpus.
+	//
+	// It decides what the card is allowed to say for the same reason Cleaned
+	// does. The ingest repos' cards are an argument about four upstream
+	// projects and what they disagree about, and printing that over a repo of
+	// pages gao fetched itself would be a card describing the wrong work.
+	Crawled bool
 
 	// Cleaned reports whether the text in the repo has been through the
 	// cleaning line.
@@ -191,10 +206,11 @@ var datasets = []Dataset{
 		Classes: []doc.LicenseClass{doc.LicenseOpen},
 	},
 	{
-		Name:  "vietnamese-text-rejects",
-		Tier:  Published,
-		Holds: "one row per dropped document with the stage and reason code that dropped it, and no text, because failing a filter does not change a document's license",
-		Text:  false,
+		Name:   "vietnamese-text-rejects",
+		Tier:   Published,
+		Holds:  "one row per dropped document with the stage and reason code that dropped it, and no text, because failing a filter does not change a document's license",
+		Text:   false,
+		Reject: true,
 		Classes: []doc.LicenseClass{
 			doc.LicenseOpen, doc.LicensePermissiveAttribution,
 			doc.LicenseRestricted, doc.LicenseUnredistributable,
@@ -207,6 +223,32 @@ var datasets = []Dataset{
 		Holds:   "the pinned public Vietnamese corpora as gao read them, every source put to one contract and one schema, before any cleaning",
 		Text:    true,
 		Classes: []doc.LicenseClass{doc.LicenseOpen, doc.LicensePermissiveAttribution},
+	},
+	{
+		Name:    "vitweb",
+		Tier:    Working,
+		Pretty:  "ViTweb",
+		Holds:   "one row per page gao's own crawler fetched and kept: the address, the host, the fetch time, the robots decision that allowed it, and every measurement the page was judged on, with the text withheld because a crawled page carries no grant to pass it on",
+		Text:    false,
+		Crawled: true,
+		// Everything a crawl of the open web keeps is restricted, and the row
+		// without the text is the whole artifact rather than a consolation
+		// prize: it is what lets somebody else fetch the same pages under their
+		// own lawful access and rebuild the same corpus.
+		Classes: []doc.LicenseClass{doc.LicenseRestricted},
+	},
+	{
+		Name:    "vitweb-rejects",
+		Tier:    Working,
+		Pretty:  "ViTweb Rejects",
+		Holds:   "one row per page the crawl turned away, carrying the stage that turned it away, the reason, and the measurements it was judged on",
+		Text:    false,
+		Reject:  true,
+		Crawled: true,
+		Classes: []doc.LicenseClass{
+			doc.LicenseOpen, doc.LicensePermissiveAttribution,
+			doc.LicenseRestricted, doc.LicenseUnredistributable,
+		},
 	},
 	{
 		Name:    "vitco-clean",

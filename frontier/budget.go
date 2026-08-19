@@ -73,6 +73,30 @@ type Options struct {
 	// sites with nothing on them.
 	HostStart int
 
+	// Reach is what a host may spend before it has produced a single page the
+	// crawl kept. It is the difference between a crawl of the Vietnamese web and
+	// a crawl of the web, and the first fleet run needed it.
+	//
+	// Every seed links outwards. Follow those links without a rule and the
+	// frontier is off the Vietnamese web within the hour: 19,457 of one hour's
+	// 22,022 requests went to 6,795 hosts outside .vn, and a fifth of those pages
+	// came back in a language nobody asked for. The language check catches them,
+	// but it catches them after the fetch, which is the half that costs somebody
+	// else's server a second of its time.
+	//
+	// The number comes from the run rather than from taste. Of 218 hosts that
+	// ever produced a Vietnamese page, every one produced its first within 14
+	// fetches, half of them on the second, and 99 in a hundred by the tenth. So
+	// twice the worst case is enough to recognize a Vietnamese site, and the
+	// 8,002 hosts that produced nothing get thirty requests instead of the five
+	// hundred HostStart was holding for them.
+	//
+	// This is deliberately not a rule about .vn. A suffix would refuse
+	// vnexpress.net and admit a parked .vn domain, where evidence of Vietnamese
+	// text on the host admits the first and refuses the second. A host earns its
+	// way out of Reach with one kept page and never falls back into it.
+	Reach int
+
 	// HostEarn is how many URLs a host buys with one page of new text.
 	HostEarn int
 
@@ -134,6 +158,7 @@ type Options struct {
 func Defaults() Options {
 	return Options{
 		HostStart:  500,
+		Reach:      30,
 		HostEarn:   4,
 		HostCap:    2_000_000,
 		ShapeStart: 50,
@@ -186,6 +211,9 @@ func NewBudget(o Options) *Budget {
 	if o.HostStart == 0 {
 		o.HostStart = d.HostStart
 	}
+	if o.Reach == 0 {
+		o.Reach = d.Reach
+	}
 	if o.HostEarn == 0 {
 		o.HostEarn = d.HostEarn
 	}
@@ -236,6 +264,9 @@ func (b *Budget) Offer(canonical string) (bool, string) {
 
 	h := b.host(s.Host)
 	if h.spent >= b.allowedHost(h) {
+		if h.gained == 0 {
+			return false, "the host has had " + plural(h.spent, "request") + " and has not produced a page worth keeping"
+		}
 		return false, "the host has spent its budget: " + plural(h.spent, "url") + " for " + plural(h.gained, "page") + " of new text"
 	}
 
@@ -308,6 +339,13 @@ func (b *Budget) markFacet(h *ledger, s Shape) {
 }
 
 func (b *Budget) allowedHost(h *ledger) int {
+	// A host with nothing to its name is on Reach rather than HostStart, and one
+	// kept page moves it to the full allowance for good. The step is the point:
+	// the crawl is buying evidence that this host publishes what it came for, and
+	// thirty requests is what the run says that evidence costs.
+	if h.gained == 0 {
+		return b.o.Reach
+	}
 	allowed := b.o.HostStart + h.gained*b.o.HostEarn
 	if allowed > b.o.HostCap {
 		return b.o.HostCap

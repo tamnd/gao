@@ -86,6 +86,16 @@ type Visit struct {
 	// of the fetch can say which rule allowed it rather than only that nothing
 	// stopped it.
 	Robots Decision
+
+	// At is when the request went out, taken after the politeness schedule let
+	// it go rather than when the crawler picked the URL up.
+	//
+	// The difference is the whole of the wait, which on a host that asked for
+	// thirty seconds is thirty seconds, and it is what a reader measures the
+	// crawl's manners with. A time taken before the wait says two requests to
+	// one host went out together when what happened is that two workers reached
+	// for the same host together and one of them then stood in line.
+	At time.Time
 }
 
 // Reject turns a visit that did not produce a page into a rejection, so that a
@@ -96,7 +106,15 @@ func Reject(err error) (reject.Reason, string, bool) {
 	case errors.Is(err, ErrDeclined):
 		return reject.ReasonRobots, err.Error(), true
 	case errors.Is(err, ErrBlocked):
-		return reject.ReasonRobots, err.Error(), true
+		// A 403 is a non-200 status and that is what it is filed as. It reads
+		// like a robots decision and it is not one: robots means a publisher
+		// stated a rule in a file or a meta tag, and counting a bot wall under
+		// it inflates the number of Vietnamese sites that asked to be left
+		// alone. On the first fleet run that was 832 refusals against 999 real
+		// disallows, so the reason column would have overstated it by four
+		// fifths. The error keeps the host and the status, so a reader who
+		// wants the walls back can have them from the detail.
+		return reject.ReasonFetch, err.Error(), true
 	case errors.Is(err, ErrBusy):
 		return reject.ReasonFetch, err.Error(), true
 	case errors.Is(err, ErrTooLarge):
@@ -261,6 +279,7 @@ func (c *Crawler) Get(ctx context.Context, rawurl string) (*Visit, error) {
 		Body:    got.body,
 		Reserve: site.reserve(u.EscapedPath()).Merge(ReadHeaders(got.header, Bot)),
 		Robots:  decision,
+		At:      got.at,
 	}
 	if loc := got.header.Get("Location"); loc != "" && got.status >= 300 && got.status < 400 {
 		if abs, err := u.Parse(loc); err == nil {
@@ -434,6 +453,7 @@ type fetched struct {
 	status int
 	header http.Header
 	body   []byte
+	at     time.Time
 }
 
 // fetch does the waiting, the request and the reading, and turns the statuses
@@ -444,6 +464,9 @@ func (c *Crawler) fetch(ctx context.Context, host, target string) (fetched, erro
 		return fetched{}, err
 	}
 	defer done()
+
+	// After the wait, because this is the time the site sees.
+	at := time.Now()
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, target, nil)
 	if err != nil {
@@ -478,7 +501,7 @@ func (c *Crawler) fetch(ctx context.Context, host, target string) (fetched, erro
 	if int64(len(body)) > c.maxBody {
 		return fetched{}, fmt.Errorf("%w: %s sent over %d bytes", ErrTooLarge, target, c.maxBody)
 	}
-	return fetched{status: resp.StatusCode, header: resp.Header, body: body}, nil
+	return fetched{status: resp.StatusCode, header: resp.Header, body: body, at: at}, nil
 }
 
 // Delay is the gap this crawler is currently leaving between requests to a host,

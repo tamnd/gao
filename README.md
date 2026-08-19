@@ -77,7 +77,6 @@ gao layers -source hplt-v3 -quoted 176000000000 layers.jsonl  # and whether the 
 gao sample -source hplt-v3 -seed s -layers layers.jsonl files.jsonl  # a sample: which shards of the buckets nobody opened get read
 gao sample -source hplt-v3 -seed s -layers layers.jsonl -takes files.jsonl  # the read list on its own, which is what does the fetching
 gao harvest cc     --snapshots all              # recover Vietnamese from Common Crawl
-gao harvest crawl  --policy crawl.toml          # crawl the Vietnamese web directly
 gao harvest media  --from crawl                 # fetch PDFs, audio, video
 
 gao frontier canon < seeds.txt                  # one spelling per page, and what merged with what
@@ -90,6 +89,11 @@ gao seed ct -counts < ct.json                # hosts Certificate Transparency na
 gao seed ct -direct -seed seed.txt < ct.json # and which of them a seed list did not already have
 gao seed oai < repositories.txt              # which university repositories will hand over a catalog
 gao seed oai -links -from 2024-01-01 BASE    # and the URLs in one, ready for the frontier
+
+gao crawl -dir run -seed seeds.txt              # crawl the Vietnamese web, and publish what it kept and what it turned away
+gao crawl -dir run -pages 5000                  # a run somebody can read, carrying on from the frontier the last one left
+gao crawl -dir run -shard 1 -fleet 3 -push      # box two of three, splitting on the host so one site has one crawler
+gao crawl -dir run -part 30m -keep 2 -push      # publish every half hour and keep two volumes, for a box with no room
 
 gao yield yield.jsonl                        # a rate: net yield per target class, read while the crawl runs
 gao wait hosts.jsonl                         # what the crawl left between requests to one host, on a real box under load
@@ -522,6 +526,53 @@ Documents that fail the contract go to `-rejects` with the reason and the specif
 That has already found something, and it cost a source. MADLAD-400's clean split is a JSON object with one field in it, `text`, and there is no URL, no timestamp, and no media type, because Allen AI did not publish them. Every record decodes and every record is rejected for provenance it does not have. Four hundred records read from each of three shards spread across the partition, `vi_clean_0000`, `vi_clean_0011` and `vi_clean_0031`, carry that single key in all twelve hundred, so this is the shape of the split and not one bad file. Design rule 3 settles it: a document that cannot carry provenance is dropped rather than admitted with nulls, and a source where that holds for every document is dropped the same way. So MADLAD-400 is marked dropped in the manifest, which takes 95.3 GB and 32 files out of the download and leaves the pinned revision, the file list, the byte counts and the digests where they are, next to the reason. Deleting the entry would leave the next reader asking why a dataset every Vietnamese corpus cites is absent, and the answer would be in a commit message nobody reads. Re-admitting it takes either Allen AI publishing the provenance or gao changing a design rule.
 
 Five sources have a decoder today. The sixth is CulturaX, which is gated and whose terms have not been granted, so nobody has read a byte of it, and it is dropped rather than waiting. Each of the five was written against the real file, and one written from a dataset card alone would be a guess with a version number on it. MADLAD-400's is among them and is what found the gap that dropped it, which is the argument for writing them that way. `gao harvest hf -decode` refuses a source it cannot decode before it opens the ledger, and refuses a dropped one on the same terms, because finding either out two hundred gigabytes into a download is not finding it out.
+
+## Crawling the sites the four sources went past
+
+The four ingested corpora are Common Crawl three times over. FineWeb2 and GlotCC are built from it directly and HPLT overlaps it heavily, so a Vietnamese site Common Crawl reaches badly is missing from all of them at once, and provincial news is a good deal of what that misses. `gao crawl` is the part of the corpus that does not come from anybody else's crawl.
+
+It publishes two repos and neither of them holds text. `open-index/vitweb` is one row per page that was kept, with the URL, the host, the fetch time, the robots rule that allowed it and every measurement the page was judged on. `open-index/vitweb-rejects` is one row per page that was turned away, with the stage that turned it away, the reason and the detail. A crawled page carries no grant to republish it, so `law.For(SourceCrawl)` puts it under the restricted posture and what ships is the address and the numbers, with the bytes staying in a WARC on the box that fetched them. Somebody with the URL and the measurements can fetch the same pages under their own access and rebuild the same corpus, knowing before each request whether it is worth making.
+
+Both repos are written while the crawl runs rather than at the end of it. A part is filled, closed, pushed and deleted before the next one opens, so a box holds one part per repo whatever the crawl weighs. Size alone is not enough to make that true: a crawl's rows are metadata at around 312 bytes each, so a 512 MB part takes a million and a half pages to fill, which on one polite box is weeks of writing to a disk that is supposed to be cache. `-part` is the other bound, and a part open longer than it is closed by the next row that arrives. An interval that saw no rows leaves no file, because an empty part in a repo reads as a shard whose documents went missing.
+
+A fleet splits on the host and never on the URL. A box offered a link to a site another box owns writes it down as another box's and does not queue it, so one site has one crawler and that crawler's politeness schedule is the whole story for it. Three boxes each waiting a second between requests would otherwise be three requests a second to a site that asked for one. The split is pinned in the frontier when it is first opened and a resume under a different shard is refused rather than quietly accepted, since a box that changed shards would crawl a set of hosts it has no record of and skip the ones it does.
+
+server1, server2 and server3 run shards 0, 1 and 2 against a seed list of 137 Vietnamese national and provincial newspapers, universities, government portals and forums. The seed list is leads rather than sites: the hosts on it are where the frontier starts, and within ten minutes each box had queued between four hundred thousand and nine hundred thousand URLs it found on the way. The three boxes together fetch around 12 pages a second at 24, 16 and 20 workers, which is a rate set by the one second per host rather than by the machines, and the disks stay flat.
+
+The published rows say the split holds. Across 2,395 hosts seen by the fleet, none appears on two shards.
+
+Five defects came out of running it against real Vietnamese sites, and none of them would have turned up in a fixture. Two came from watching the run. The first run reported two requests to `baoquangninh.vn` in the same millisecond, and to three other hosts as well, which is the crawl looking impolite in the one column anybody can audit manners with. Nothing of the sort had happened: the timestamp was taken before the fetch waited for the host's turn, so two workers reaching for one host together produced two rows a millisecond apart describing two requests a second apart. It is now taken inside the fetch, after the schedule lets the request go. And the last part of a stopped run was never published, because a crawl ends by being stopped and the push that closes the rolls ran under the run's own context, which the signal had already cancelled. Every stop left its final part on the disk. It now runs on a context that outlives the cancellation.
+
+Two more came out of reading the published rows rather than the run. 2,010 URLs were turned away with reason `robots`, and 999 of them were robots.txt disallows. The rest were servers answering 403 or 401, mostly bot walls, and reporting those as Vietnamese publishers asking to be left alone would have overstated the number by four fifths. A 403 is a non-200 status and is now filed as one, with the host and the status kept in the detail so the walls are still countable.
+
+And once `fetched_at` meant what it says, the gaps could be measured, which is the point of publishing the column. Over 11,956 consecutive pairs of requests to one host at a one second delay, the median gap was 2.7 seconds and 24 pairs were closer than nine tenths of a second, the tightest at 0.764. The schedule was not wrong: it reserves absolute slots exactly a second apart. A timer fires at or after its deadline though, so a request that woke a fifth of a second late went out a fifth of a second into the gap belonging to the request behind it, and the site is the one that sees it. The schedule now moves forward by however late a request was and never back, since by then other workers may have queued behind that host. Measured again on the fixed build over 10,382 pairs, the median gap is 2.0 seconds and one pair is under nine tenths, at 0.864. That one is the wait returning on time and the request reaching the wire a tenth of a second later, which is jitter rather than a schedule that can be talked into going early.
+
+`pipeline_version` moves whenever rows stop being comparable to the rows before them. 0.1.0 rows carry the pickup time, 0.2.0 rows carry the request time with bot walls still filed under `robots`, and from 0.3.0 both columns mean what the card says they mean. The older rows stay published, because a version column nobody has to trust is worth more than a corpus with holes in it. The reject table below is filtered to one version for that reason, and any query that mixes them should say which it means.
+
+```
+$ duckdb -c "SELECT reject_stage, reject_reason, count(*) AS n
+  FROM read_parquet('hf://datasets/open-index/vitweb-rejects/data/web/*.parquet')
+  WHERE pipeline_version = '0.3.0'
+  GROUP BY 1,2 ORDER BY n DESC"
+crawl.fetch    robots        5778
+crawl.sift     short         5562
+crawl.sift     language      5426
+crawl.extract  boilerplate   5311
+crawl.fetch    fetch         4430
+crawl.sift     repetition     471
+crawl.reserve  robots         386
+crawl.sift     boilerplate    190
+```
+
+The same table found the fifth defect, and it is the one that decides whether any of this scales. 798 pages kept against 27,554 turned away is a net yield of 0.028 against the 0.15 this milestone is meant to hold, and the reason is in the hosts rather than in the filters. Of 22,022 requests in the last measured hour, 19,457 went to hosts outside `.vn` across 6,795 of them, and one in five of those pages came back in a language nobody asked for. The seed list is 137 Vietnamese sites and every one of them links outwards, so a frontier that admits whatever it is offered walks off the Vietnamese web inside an hour and spends its second per host on `books.google.com` and `ur.wikiquote.org`. The language check does catch them, after the fetch, which is the half that costs somebody else's server its time.
+
+What the budget was missing is a way to spend less on a host that has shown nothing. It already grants a host 500 URLs to start with and lets it earn more, and 8,002 of the 8,220 hosts the fleet has met produced not one page worth keeping while holding that allowance. A host that has kept nothing now gets 30 requests instead, and one kept page moves it to the full allowance for good. The number is the run's rather than anybody's taste: of the 218 hosts that ever produced a Vietnamese page, every one produced its first within 14 fetches, half of them on the second, and 99 in a hundred by the tenth, so twice the worst case is enough to recognize a Vietnamese site.
+
+It is deliberately not a rule about `.vn`. A suffix would refuse `vnexpress.net`, which is one of the largest Vietnamese publishers there is, and admit a parked `.vn` domain that has never published anything. Evidence of Vietnamese text on the host gets both of those right, and the crawl is already measuring it on every page.
+
+That one moved `pipeline_version` too, to 0.4.0, and for a different reason than the others. No column changed meaning. A frontier refusal never becomes a row, so the only trace of the old behaviour is which hosts are in the corpus at all, and somebody counting what share of this crawl is Vietnamese gets a different answer either side of the boundary.
+
+Every one of the reject rows is something somebody can re-cost. The repetition threshold is the one that matters most and it is the one that is wrong for Vietnamese: a third of what it removed on the first run was article prose rather than listing pages, because an official is named in full every time they are mentioned and `đồng chí Vũ Quyết Tiến, Phó Bí thư Tỉnh ủy, Chủ tịch Ủy ban MTTQ tỉnh` is three occurrences of one eight syllable gram in a nine hundred word article. The threshold is Gopher's, scaled from words to syllables, and a Vietnamese title is long in syllables and carries one fact. Because the rejects carry the measured rate for every page, the threshold can be moved and the corpus recomposed without fetching anything again.
 
 ## Reading Parquet without downloading it
 

@@ -17,6 +17,10 @@ type clock struct {
 	mu   sync.Mutex
 	now  time.Time
 	rest []time.Duration
+
+	// over is how much longer than it was asked for each sleep takes, which is
+	// what a real timer does on a box that is doing something else.
+	over time.Duration
 }
 
 func newClock() *clock {
@@ -39,7 +43,7 @@ func (c *clock) Sleep(ctx context.Context, d time.Duration) error {
 	defer c.mu.Unlock()
 	c.rest = append(c.rest, d)
 	if d > 0 {
-		c.now = c.now.Add(d)
+		c.now = c.now.Add(d + c.over)
 	}
 	return nil
 }
@@ -118,6 +122,31 @@ func TestTheGapIsMeasuredFromOneRequestStartingToTheNext(t *testing.T) {
 	got := c.waits()
 	if last := got[len(got)-1]; last != time.Second {
 		t.Errorf("a request that took 4s of a 5s gap then waited %v, want 1s", last)
+	}
+}
+
+// A timer fires at or after its deadline. The request that wakes late has eaten
+// the overshoot out of the gap in front of it, so the schedule has to move by
+// however late it was, or the site sees two requests closer together than the
+// delay it was given. The first fleet run had 24 pairs of them.
+func TestARequestThatWokeLateDoesNotShortenTheNextGap(t *testing.T) {
+	c := newClock()
+	c.over = 250 * time.Millisecond
+	p := polite(c, harvest.PoliteOptions{Delay: time.Second})
+
+	// Three requests to one host. The first goes out at once and waits for
+	// nothing, so it is on time. The second sleeps a second and wakes 250ms
+	// late, which is the one that would otherwise cost the third its gap.
+	for range 3 {
+		fetch(t, p, "baoquangninh.vn")
+	}
+
+	got := c.waits()
+	if len(got) != 3 {
+		t.Fatalf("%d waits, want one per request: %v", len(got), got)
+	}
+	if got[2] != time.Second {
+		t.Errorf("the request after a late one waited %v, want the whole second: %v", got[2], got)
 	}
 }
 

@@ -74,6 +74,17 @@ type Roll struct {
 	// produced them, and a path that has to be revised later is not a path.
 	File int
 
+	// First is the part number this roll starts numbering at.
+	//
+	// It is zero for a stage whose input is replayable. An ingest that dies in
+	// the middle of a file reads that file again from the beginning, so its
+	// parts are written over the ones it left behind and numbering from zero is
+	// what makes a restart idempotent. A crawl is not replayable: it stops, it
+	// is started again, and it carries on with URLs the first run never saw. A
+	// part number it has already used names a file somebody else's documents
+	// are in, so the run remembers where it got to and says so here.
+	First int
+
 	// TextPerPart overrides [TextPerPart] for this roll. It is here for tests
 	// and for a box whose disk says something different from the fleet average.
 	TextPerPart int64
@@ -115,6 +126,30 @@ func (r *Roll) Append(d *doc.Document) error {
 	return nil
 }
 
+// AppendReject writes one dropped document, opening and rolling parts on the
+// same rule [Roll.Append] uses.
+//
+// The rule is the same and what it measures is not. A rejects part carries no
+// text, so the text bound never fires and the size bound is what closes it,
+// which is the right way round for a stream of rows that are all metadata.
+func (r *Roll) AppendReject(d *doc.Document, stage, reason, detail string) error {
+	if r.closed {
+		return ErrRollClosed
+	}
+	if r.cur == nil {
+		if err := r.open(); err != nil {
+			return err
+		}
+	}
+	if err := r.cur.AppendReject(d, stage, reason, detail); err != nil {
+		return err
+	}
+	if r.cur.Size() >= r.size() || r.cur.Text() >= r.limit() {
+		return r.rotate()
+	}
+	return nil
+}
+
 // Close finishes the open part and returns every part the roll wrote.
 //
 // A roll that was given no documents writes no file. An input file that admits
@@ -129,6 +164,27 @@ func (r *Roll) Close() ([]PartFile, error) {
 		return r.files, nil
 	}
 	return r.files, r.rotate()
+}
+
+// Cut closes the open part now and leaves the roll ready to open the next one.
+//
+// It is for a writer whose input does not end. An ingest reads a file and
+// stops, so its last part closes when the file does, but a crawl runs for days
+// and a part that only closes when it is full is a part nobody off the box can
+// read until it does. Cutting on a clock publishes what has been written and
+// gives the disk back, and what it costs is parts smaller than the target.
+//
+// A roll with nothing open cuts nothing. An interval in which no document
+// arrived should leave no file behind, since an empty part reads as a shard
+// whose documents went missing rather than as a shard that never had any.
+func (r *Roll) Cut() error {
+	if r.closed {
+		return ErrRollClosed
+	}
+	if r.cur == nil {
+		return nil
+	}
+	return r.rotate()
 }
 
 // Abandon throws away the part being written and leaves the finished ones
@@ -177,7 +233,7 @@ func (r *Roll) size() int64 {
 }
 
 func (r *Roll) open() error {
-	p, err := CreatePart(r.Dir, StagePath(r.Stamp.Snapshot, r.File, r.part), r.Dataset, r.Stamp)
+	p, err := CreatePart(r.Dir, StagePath(r.Stamp.Snapshot, r.File, r.First+r.part), r.Dataset, r.Stamp)
 	if err != nil {
 		return err
 	}
