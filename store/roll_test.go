@@ -37,6 +37,61 @@ func textOf(docs ...*doc.Document) int64 {
 	return n
 }
 
+// A writer whose input does not end needs a way to publish what it has without
+// closing the roll it is still writing to.
+func TestARollCutsThePartItIsWriting(t *testing.T) {
+	docs := []*doc.Document{sample(0), sample(1), sample(2)}
+	r, dir := roll(t, textOf(docs...)*10)
+
+	// Nothing is open yet, so there is nothing to cut and no file to show for it.
+	if err := r.Cut(); err != nil {
+		t.Fatalf("Cut on an empty roll: %v", err)
+	}
+	if len(r.Files()) != 0 {
+		t.Fatalf("cutting an empty roll wrote %v", r.Files())
+	}
+
+	for _, d := range docs[:2] {
+		if err := r.Append(d); err != nil {
+			t.Fatalf("Append: %v", err)
+		}
+	}
+	if err := r.Cut(); err != nil {
+		t.Fatalf("Cut: %v", err)
+	}
+	if len(r.Files()) != 1 {
+		t.Fatalf("the cut wrote %d parts, want 1", len(r.Files()))
+	}
+	if err := r.Append(docs[2]); err != nil {
+		t.Fatalf("Append after the cut: %v", err)
+	}
+	files, err := r.Close()
+	if err != nil {
+		t.Fatalf("Close: %v", err)
+	}
+	if len(files) != 2 {
+		t.Fatalf("wrote %d parts, want the cut one and the one after it", len(files))
+	}
+	if files[0].Path == files[1].Path {
+		t.Fatalf("both parts are at %s, so the second wrote over the first", files[0].Path)
+	}
+	if files[0].Documents != 2 || files[1].Documents != 1 {
+		t.Errorf("the parts hold %d and %d documents, want 2 and 1", files[0].Documents, files[1].Documents)
+	}
+	for _, f := range files {
+		rows, err := ReadPart(filepath.Join(dir, filepath.FromSlash(f.Path)))
+		if err != nil {
+			t.Fatalf("ReadPart %s: %v", f.Path, err)
+		}
+		if len(rows) != f.Documents {
+			t.Errorf("%s holds %d rows and says %d", f.Path, len(rows), f.Documents)
+		}
+	}
+	if err := r.Cut(); err == nil {
+		t.Error("a closed roll was cut")
+	}
+}
+
 func TestARollWritesOnePartWhenTheTextFits(t *testing.T) {
 	docs := []*doc.Document{sample(0), sample(1), sample(2)}
 	r, dir := roll(t, textOf(docs...)*2)

@@ -47,6 +47,7 @@ func commands() []command {
 		{name: "cook", alias: "nau", short: "the training plan, its token budget, its curriculum, and the arithmetic between them", run: runCook},
 		{name: "count", alias: "dem", short: "fetch the tokenizer that defines a gao token, print what an ingest counted", run: runCount},
 		{name: "cover", alias: "che", short: "find the personal data in a document and tag over it", run: runCover},
+		{name: "crawl", alias: "bo", short: "run gao's own crawler and publish what it keeps and what it turned away", run: runCrawl},
 		{name: "efficiency", alias: "hieu", short: "what fraction of the hardware a training run turns into gradient", run: runEfficiency},
 		{name: "estimate", alias: "uoc", short: "what a sampled count is worth, as an interval and as a stopping rule", run: runEstimate},
 		{name: "fill", alias: "dien", short: "build and score the cloze proxy the ablation slate is run against", run: runFill},

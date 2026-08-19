@@ -77,7 +77,6 @@ gao layers -source hplt-v3 -quoted 176000000000 layers.jsonl  # and whether the 
 gao sample -source hplt-v3 -seed s -layers layers.jsonl files.jsonl  # a sample: which shards of the buckets nobody opened get read
 gao sample -source hplt-v3 -seed s -layers layers.jsonl -takes files.jsonl  # the read list on its own, which is what does the fetching
 gao harvest cc     --snapshots all              # recover Vietnamese from Common Crawl
-gao harvest crawl  --policy crawl.toml          # crawl the Vietnamese web directly
 gao harvest media  --from crawl                 # fetch PDFs, audio, video
 
 gao frontier canon < seeds.txt                  # one spelling per page, and what merged with what
@@ -90,6 +89,11 @@ gao seed ct -counts < ct.json                # hosts Certificate Transparency na
 gao seed ct -direct -seed seed.txt < ct.json # and which of them a seed list did not already have
 gao seed oai < repositories.txt              # which university repositories will hand over a catalog
 gao seed oai -links -from 2024-01-01 BASE    # and the URLs in one, ready for the frontier
+
+gao crawl -dir run -seed seeds.txt              # crawl the Vietnamese web, and publish what it kept and what it turned away
+gao crawl -dir run -pages 5000                  # a run somebody can read, carrying on from the frontier the last one left
+gao crawl -dir run -shard 1 -fleet 3 -push      # box two of three, splitting on the host so one site has one crawler
+gao crawl -dir run -part 30m -keep 2 -push      # publish every half hour and keep two volumes, for a box with no room
 
 gao yield yield.jsonl                        # a rate: net yield per target class, read while the crawl runs
 gao wait hosts.jsonl                         # what the crawl left between requests to one host, on a real box under load

@@ -106,6 +106,34 @@ type Row struct {
 	UpstreamFields map[string]string `parquet:"upstream_fields"`
 }
 
+// RejectRow is one dropped document as one row of the rejects repo.
+//
+// It is [Row] with the three columns that say what happened to it, and it is a
+// separate type rather than three more fields on Row because those columns
+// belong to one repo. A document that was kept has no stage that dropped it, and
+// a column that is empty on every row of eight repos is a column a reader has to
+// ask about.
+//
+// The embedded Row flattens into the same column names, so a query that works
+// against the corpus works against the rejects with three columns more.
+type RejectRow struct {
+	Row
+
+	// RejectStage is which part of the pipeline dropped it, as stage.step, so
+	// that a reader can separate a page the crawler turned away from a document
+	// the cleaning line did.
+	RejectStage string `parquet:"reject_stage,dict"`
+
+	// RejectReason is the closed set in [reject.Reason]. It is the column
+	// anybody counts by.
+	RejectReason string `parquet:"reject_reason,dict"`
+
+	// RejectDetail is the sentence that goes with the reason: the threshold it
+	// missed and by how much. It is not a dictionary because it carries numbers
+	// and is therefore nearly unique.
+	RejectDetail string `parquet:"reject_detail"`
+}
+
 // Span is one detected identifier in the text, as a Parquet row.
 //
 // It is declared here rather than reused from [doc.PIISpan] for the same reason
@@ -307,25 +335,39 @@ var (
 		return parquet.NewSchema(schemaName, parquet.SchemaOf(Row{}))
 	})
 	withoutText = sync.OnceValue(func() *parquet.Schema {
-		g := parquet.Group{}
-		for _, f := range withText().Fields() {
-			if f.Name() == TextColumn {
-				continue
-			}
-			g[f.Name()] = f
-		}
-		return parquet.NewSchema(schemaName, g)
+		return elide(parquet.SchemaOf(Row{}))
+	})
+	rejects = sync.OnceValue(func() *parquet.Schema {
+		return elide(parquet.SchemaOf(RejectRow{}))
 	})
 )
 
-// SchemaFor returns the schema a dataset's files are written with, which is the
-// published schema for a repo that carries text and the published schema
-// without the text column for one that does not.
-func SchemaFor(d Dataset) *parquet.Schema {
-	if d.Text {
-		return withText()
+// elide returns the schema without its text column, which is the published
+// schema of a repo that carries everything about a document except the document.
+func elide(s *parquet.Schema) *parquet.Schema {
+	g := parquet.Group{}
+	for _, f := range s.Fields() {
+		if f.Name() == TextColumn {
+			continue
+		}
+		g[f.Name()] = f
 	}
-	return withoutText()
+	return parquet.NewSchema(schemaName, g)
+}
+
+// SchemaFor returns the schema a dataset's files are written with: the
+// published schema for a repo that carries text, that schema without the text
+// column for one that does not, and that one plus the three reject columns for
+// the repo that holds what the pipeline dropped.
+func SchemaFor(d Dataset) *parquet.Schema {
+	switch {
+	case d.Reject:
+		return rejects()
+	case d.Text:
+		return withText()
+	default:
+		return withoutText()
+	}
 }
 
 // Columns returns the column names of the schema, in the order the file holds
@@ -425,10 +467,17 @@ const DefaultRowGroup = 50_000
 var RowGroupText int64 = 256_000_000
 
 // ParquetWriter writes documents to one Parquet file.
+//
+// There are two writers under it and exactly one of them is open, because the
+// rejects repo has three columns the others do not and a Parquet writer is
+// typed on the row it writes. Which one is open follows from the dataset, so a
+// caller cannot open a file for one and append rows of the other.
 type ParquetWriter struct {
 	dataset   Dataset
 	w         *parquet.GenericWriter[Row]
+	r         *parquet.GenericWriter[RejectRow]
 	buf       []Row
+	rbuf      []RejectRow
 	n         int
 	text      int64
 	group     int64
@@ -452,7 +501,13 @@ func NewParquetWriter(w io.Writer, d Dataset, s Stamp) *ParquetWriter {
 	for k, v := range meta {
 		opts = append(opts, parquet.KeyValueMetadata(k, v))
 	}
-	return &ParquetWriter{dataset: d, w: parquet.NewGenericWriter[Row](w, opts...)}
+	p := &ParquetWriter{dataset: d}
+	if d.Reject {
+		p.r = parquet.NewGenericWriter[RejectRow](w, opts...)
+	} else {
+		p.w = parquet.NewGenericWriter[Row](w, opts...)
+	}
+	return p
 }
 
 // Append writes one document.
@@ -475,6 +530,52 @@ func NewParquetWriter(w io.Writer, d Dataset, s Stamp) *ParquetWriter {
 // in the reject store, which carries no text, so it is still counted and
 // reported on rather than vanishing without a number.
 func (p *ParquetWriter) Append(d *doc.Document) error {
+	if p.w == nil {
+		return fmt.Errorf("%w: %s holds what the pipeline dropped, and a document with no rejection is not that",
+			ErrNotAdmitted, p.dataset.Name)
+	}
+	if err := p.admits(d); err != nil {
+		return err
+	}
+	p.buf = append(p.buf[:0], RowOf(d))
+	if _, err := p.w.Write(p.buf); err != nil {
+		return fmt.Errorf("store: writing row %d: %w", p.n, err)
+	}
+	return p.wrote(d)
+}
+
+// AppendReject writes one dropped document, with the stage that dropped it and
+// why.
+//
+// It is a separate method rather than three more fields on a document because
+// the rejection is not a property of the document. The same page dropped by the
+// language filter on Monday and by the quality classifier on Tuesday is one
+// document and two rejections, and a field would make it two documents.
+func (p *ParquetWriter) AppendReject(d *doc.Document, stage, reason, detail string) error {
+	if p.r == nil {
+		return fmt.Errorf("%w: %s holds documents, and one that was dropped is not one",
+			ErrNotAdmitted, p.dataset.Name)
+	}
+	if reason == "" {
+		return fmt.Errorf("store: %s was dropped at %s for no stated reason", d.URL, stage)
+	}
+	if err := p.admits(d); err != nil {
+		return err
+	}
+	p.rbuf = append(p.rbuf[:0], RejectRow{
+		Row:          RowOf(d),
+		RejectStage:  stage,
+		RejectReason: reason,
+		RejectDetail: detail,
+	})
+	if _, err := p.r.Write(p.rbuf); err != nil {
+		return fmt.Errorf("store: writing row %d: %w", p.n, err)
+	}
+	return p.wrote(d)
+}
+
+// admits is the check both write paths make before a row is written.
+func (p *ParquetWriter) admits(d *doc.Document) error {
 	if p.closed {
 		return errors.New("store: append to a closed parquet file")
 	}
@@ -484,10 +585,12 @@ func (p *ParquetWriter) Append(d *doc.Document) error {
 	if d.Consent.Reserved() && p.dataset.Text {
 		return fmt.Errorf("%w: %s publishes text and this page said %s", ErrNotAdmitted, p.dataset.Name, d.Consent)
 	}
-	p.buf = append(p.buf[:0], RowOf(d))
-	if _, err := p.w.Write(p.buf); err != nil {
-		return fmt.Errorf("store: writing row %d: %w", p.n, err)
-	}
+	return nil
+}
+
+// wrote counts a written row and closes the row group when it has taken its
+// share.
+func (p *ParquetWriter) wrote(d *doc.Document) error {
 	p.n++
 	p.text += int64(len(d.Text))
 	p.group += int64(len(d.Text))
@@ -499,12 +602,19 @@ func (p *ParquetWriter) Append(d *doc.Document) error {
 	// the disk, and the estimate built on it read six times the file's real
 	// size. The option is still set, as the backstop for a row this never sees.
 	if p.group >= RowGroupText || p.groupRows >= DefaultRowGroup {
-		if err := p.w.Flush(); err != nil {
+		if err := p.flush(); err != nil {
 			return fmt.Errorf("store: closing the row group at row %d: %w", p.n, err)
 		}
 		p.group, p.groupRows = 0, 0
 	}
 	return nil
+}
+
+func (p *ParquetWriter) flush() error {
+	if p.r != nil {
+		return p.r.Flush()
+	}
+	return p.w.Flush()
 }
 
 // Documents returns how many rows have been written.
@@ -529,7 +639,13 @@ func (p *ParquetWriter) Close() error {
 		return nil
 	}
 	p.closed = true
-	if err := p.w.Close(); err != nil {
+	var err error
+	if p.r != nil {
+		err = p.r.Close()
+	} else {
+		err = p.w.Close()
+	}
+	if err != nil {
 		return fmt.Errorf("store: closing the parquet file: %w", err)
 	}
 	return nil
@@ -608,6 +724,11 @@ func CreatePart(dir, rel string, d Dataset, s Stamp) (*Part, error) {
 
 // Append writes one document to the part.
 func (p *Part) Append(d *doc.Document) error { return p.w.Append(d) }
+
+// AppendReject writes one dropped document to the part.
+func (p *Part) AppendReject(d *doc.Document, stage, reason, detail string) error {
+	return p.w.AppendReject(d, stage, reason, detail)
+}
 
 // Documents returns how many rows the part holds.
 func (p *Part) Documents() int { return p.w.Documents() }
@@ -703,6 +824,39 @@ func ReadPart(path string) ([]Row, error) {
 		return nil
 	})
 	return rows, err
+}
+
+// ReadRejectPart is [ReadPart] over a part of the rejects repo, whose rows
+// carry three columns more.
+func ReadRejectPart(path string) ([]RejectRow, error) {
+	f, err := os.Open(path)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = f.Close() }()
+
+	stat, err := f.Stat()
+	if err != nil {
+		return nil, err
+	}
+	if _, err := parquet.OpenFile(f, stat.Size()); err != nil {
+		return nil, fmt.Errorf("store: opening %s: %w", path, err)
+	}
+	rd := parquet.NewGenericReader[RejectRow](f)
+	defer func() { _ = rd.Close() }()
+
+	var rows []RejectRow
+	buf := make([]RejectRow, 64)
+	for {
+		n, err := rd.Read(buf)
+		rows = append(rows, buf[:n]...)
+		if errors.Is(err, io.EOF) || n == 0 {
+			return rows, nil
+		}
+		if err != nil {
+			return rows, fmt.Errorf("store: reading %s: %w", path, err)
+		}
+	}
 }
 
 // ScanPart reads a Parquet file back a row at a time and hands each row to fn.

@@ -774,6 +774,9 @@ func cardFields(b *strings.Builder, d Dataset) {
 		b.WriteString("\n")
 	}
 
+	if d.Reject {
+		cardFieldsCrawl(b)
+	}
 	if !d.Text {
 		b.WriteString("The `text` column is in the schema and is null in every row of this repo, which is the point of it: the same schema, with the one thing that may not be redistributed left out, so that a reader can rebuild the text themselves from `url` under their own lawful access.\n\n")
 	}

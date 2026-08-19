@@ -251,6 +251,114 @@ func TestTheWithheldColumnIsMissingAndNotEmpty(t *testing.T) {
 	}
 }
 
+func rejectDataset(t *testing.T) Dataset {
+	t.Helper()
+	d, ok := Lookup("vietnamese-text-rejects")
+	if !ok {
+		t.Fatal("vietnamese-text-rejects is not in the dataset table")
+	}
+	if !d.Reject {
+		t.Fatal("vietnamese-text-rejects is not marked as the rejects repo")
+	}
+	return d
+}
+
+// The rejects repo carries every column the corpus carries, minus the text and
+// plus the three that say what happened, so a query written against one works
+// against the other.
+func TestTheRejectsSchemaIsTheCorpusSchemaAndThreeColumns(t *testing.T) {
+	without := Columns(SchemaFor(urlDataset(t)))
+	rejects := Columns(SchemaFor(rejectDataset(t)))
+	if len(rejects) != len(without)+3 {
+		t.Fatalf("the rejects schema has %d columns against %d, want three more", len(rejects), len(without))
+	}
+	for _, c := range without {
+		if !slices.Contains(rejects, c) {
+			t.Errorf("the rejects schema is missing %q", c)
+		}
+	}
+	for _, c := range []string{"reject_stage", "reject_reason", "reject_detail"} {
+		if !slices.Contains(rejects, c) {
+			t.Errorf("the rejects schema has no %q column", c)
+		}
+	}
+	if slices.Contains(rejects, TextColumn) {
+		t.Error("the rejects schema carries text, and a document that failed a filter has the license it always had")
+	}
+}
+
+func TestARejectionCarriesTheStageAndTheReason(t *testing.T) {
+	in := sample(4)
+	in.LicenseClass = doc.LicenseRestricted
+	in.Text = "một tài liệu bị loại vì quá ngắn"
+	in.DocID = doc.SumString(in.Text)
+
+	dir := t.TempDir()
+	rel := StagePath(stamp.Snapshot, 0, 0)
+	p, err := CreatePart(dir, rel, rejectDataset(t), stamp)
+	if err != nil {
+		t.Fatalf("CreatePart: %v", err)
+	}
+	defer p.Abandon()
+	if err := p.AppendReject(in, "crawl.sift", "short", "42 syllables against a floor of 60"); err != nil {
+		t.Fatalf("AppendReject: %v", err)
+	}
+	if _, err := p.Close(); err != nil {
+		t.Fatalf("Close: %v", err)
+	}
+
+	path := filepath.Join(dir, filepath.FromSlash(rel))
+	rows, err := ReadRejectPart(path)
+	if err != nil {
+		t.Fatalf("ReadRejectPart: %v", err)
+	}
+	if len(rows) != 1 {
+		t.Fatalf("read %d rows, want 1", len(rows))
+	}
+	got := rows[0]
+	if got.RejectStage != "crawl.sift" || got.RejectReason != "short" {
+		t.Errorf("the rejection came back as %q %q", got.RejectStage, got.RejectReason)
+	}
+	if got.RejectDetail == "" {
+		t.Error("the detail did not survive, and a reason with no number behind it cannot be argued with")
+	}
+	if got.URL != in.URL {
+		t.Errorf("the url came back %q, want %q", got.URL, in.URL)
+	}
+	b, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if bytes.Contains(b, []byte(in.Text)) {
+		t.Error("the text of a rejected document is in the bytes of the file")
+	}
+}
+
+// The two write paths are not interchangeable, and each says so rather than
+// writing a row that is missing half of what its repo promises.
+func TestARepoTakesEitherDocumentsOrRejectionsAndNotBoth(t *testing.T) {
+	in := sample(5)
+	in.LicenseClass = doc.LicenseRestricted
+
+	var b bytes.Buffer
+	w := NewParquetWriter(&b, rejectDataset(t), stamp)
+	if err := w.Append(in); !errors.Is(err, ErrNotAdmitted) {
+		t.Errorf("the rejects repo took a document with no rejection: %v", err)
+	}
+	if err := w.AppendReject(in, "crawl.sift", "", "nothing"); err == nil {
+		t.Error("a rejection with no reason was written, and the reason is the column anybody counts by")
+	}
+	if err := w.Close(); err != nil {
+		t.Fatalf("Close: %v", err)
+	}
+
+	b.Reset()
+	w = NewParquetWriter(&b, urlDataset(t), stamp)
+	if err := w.AppendReject(in, "crawl.sift", "short", "too short"); !errors.Is(err, ErrNotAdmitted) {
+		t.Errorf("the url repo took a rejection: %v", err)
+	}
+}
+
 // The legal check is at the write, so that a stage cannot be the place somebody
 // has to remember it.
 func TestADocumentOfAClassTheRepoDoesNotCarryIsRefused(t *testing.T) {

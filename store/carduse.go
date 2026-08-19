@@ -62,6 +62,10 @@ func cardWhatIsIt(b *strings.Builder, d Dataset, m *Manifest, x []Indexed) {
 	if d.Tier != Working || m != nil {
 		return
 	}
+	if d.Crawled {
+		cardWhatIsItCrawl(b, d)
+		return
+	}
 	if d.Cleaned {
 		cardWhatIsItClean(b)
 		return
@@ -207,6 +211,10 @@ func cardSources(b *strings.Builder, x []Indexed) {
 func cardUses(b *strings.Builder, d Dataset, m *Manifest, x []Indexed) {
 	by := BySource(x)
 	if len(by) == 0 || m != nil {
+		return
+	}
+	if d.Crawled {
+		cardUsesCrawl(b, d)
 		return
 	}
 	glob := cardGlob(d, m, by)
@@ -588,6 +596,10 @@ func cardZero(t string) string {
 // in the order somebody is going to hit them, and says which of them are going
 // to be fixed and which are the nature of the thing.
 func cardCaveats(b *strings.Builder, d Dataset, x []Indexed) {
+	if d.Crawled {
+		cardCaveatsCrawl(b)
+		return
+	}
 	b.WriteString("## Things to know before you use it\n\n")
 
 	if d.Cleaned {
