@@ -314,7 +314,10 @@ func Measure(hosts, shapes int) Sample {
 	runtime.GC()
 	runtime.ReadMemStats(&before)
 
-	b := NewBudget(Options{HostStart: 1 << 30, ShapeStart: 1 << 30})
+	// Every allowance is set past anything this can reach, because what is being
+	// measured is what a ledger of this many hosts and templates weighs. A
+	// refusal here would shrink the answer by not building the entry.
+	b := NewBudget(Options{HostStart: 1 << 30, Reach: 1 << 30, ShapeStart: 1 << 30})
 	for _, u := range urls {
 		if ok, _ := b.Offer(u); ok {
 			s.Offered++

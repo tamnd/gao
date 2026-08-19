@@ -47,9 +47,10 @@ const Extractor = "gao-crawl@" + ExtractorVersion
 // document that has been extracted and nothing else. The leading zero says that
 // no cleaning stage has touched it, the same as it does for an ingest.
 //
-// It has moved twice, both times because a published column changed meaning,
-// and both times because of something the first fleet run said rather than
-// something in the code.
+// It moves when rows stop being comparable to the rows before them, which is
+// either because a published column changed meaning or because the crawl
+// changed its mind about what to fetch. Every move so far came out of the first
+// fleet run rather than out of the code.
 //
 // 0.2.0 is where fetched_at became the time the request went out. Under 0.1.0 it
 // was taken when a worker picked the URL up, before the fetch waited for the
@@ -64,9 +65,18 @@ const Extractor = "gao-crawl@" + ExtractorVersion
 // status in reject_detail, so a wall is countable in every version and only the
 // reason column changed.
 //
+// 0.4.0 is where the crawl stopped spending a full host allowance on hosts that
+// had never produced a Vietnamese page. Nothing about the columns changed, and
+// that is exactly why the version has to move: a frontier refusal never becomes
+// a row, so the only trace of the old behavior is which hosts are in the
+// corpus at all. Under 0.3.0 and earlier the fleet followed the seeds outwards
+// until 19,457 of one hour's 22,022 requests were going to hosts outside .vn,
+// so a reader counting what share of this crawl is Vietnamese gets a different
+// answer either side of the boundary and deserves to know where it is.
+//
 // Older rows stay published rather than being deleted, since a version column
 // nobody has to trust is worth more than a corpus with holes in it.
-const PipelineVersion = "0.3.0"
+const PipelineVersion = "0.4.0"
 
 // A Page is what one HTML document had in it.
 type Page struct {
