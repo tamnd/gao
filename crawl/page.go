@@ -47,22 +47,26 @@ const Extractor = "gao-crawl@" + ExtractorVersion
 // document that has been extracted and nothing else. The leading zero says that
 // no cleaning stage has touched it, the same as it does for an ingest.
 //
-// It moved to 0.2.0 when two published columns changed meaning, and both
-// changes came out of reading the first fleet run rather than the code.
+// It has moved twice, both times because a published column changed meaning,
+// and both times because of something the first fleet run said rather than
+// something in the code.
 //
-// A 403 is now filed under the fetch reason rather than the robots one, so
-// reject_reason separates a publisher who stated a rule from a server that put
-// up a wall. Under 0.1.0 the two are added together and only reject_detail
-// tells them apart.
+// 0.2.0 is where fetched_at became the time the request went out. Under 0.1.0 it
+// was taken when a worker picked the URL up, before the fetch waited for the
+// host's turn, so a pair of 0.1.0 rows can say two requests went to one site in
+// the same millisecond when the requests were a second apart. Anybody measuring
+// this crawl's manners should measure them on 0.2.0 and later.
 //
-// And fetched_at changed. Rows written by 0.1.0 were
-// stamped when a worker picked the URL up, before the fetch waited for the
-// host's turn, so a pair of them can say two requests went to one site in the
-// same millisecond when the requests were a second apart. Rows written by 0.2.0
-// are stamped after the wait, when the request goes out. Both are published and
-// this column is how a reader tells them apart, which is better than a sentence
-// in the card that a query cannot see.
-const PipelineVersion = "0.2.0"
+// 0.3.0 is where a 403 or a 401 became a fetch rejection instead of a robots
+// one. Under 0.2.0 and earlier, reject_reason adds a publisher who stated a rule
+// in robots.txt to a server that put up a bot wall, and on the first run that
+// was 999 real disallows against 832 walls. Both versions keep the host and the
+// status in reject_detail, so a wall is countable in every version and only the
+// reason column changed.
+//
+// Older rows stay published rather than being deleted, since a version column
+// nobody has to trust is worth more than a corpus with holes in it.
+const PipelineVersion = "0.3.0"
 
 // A Page is what one HTML document had in it.
 type Page struct {

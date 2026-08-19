@@ -527,6 +527,38 @@ That has already found something, and it cost a source. MADLAD-400's clean split
 
 Five sources have a decoder today. The sixth is CulturaX, which is gated and whose terms have not been granted, so nobody has read a byte of it, and it is dropped rather than waiting. Each of the five was written against the real file, and one written from a dataset card alone would be a guess with a version number on it. MADLAD-400's is among them and is what found the gap that dropped it, which is the argument for writing them that way. `gao harvest hf -decode` refuses a source it cannot decode before it opens the ledger, and refuses a dropped one on the same terms, because finding either out two hundred gigabytes into a download is not finding it out.
 
+## Crawling the sites the four sources went past
+
+The four ingested corpora are Common Crawl three times over. FineWeb2 and GlotCC are built from it directly and HPLT overlaps it heavily, so a Vietnamese site Common Crawl reaches badly is missing from all of them at once, and provincial news is a good deal of what that misses. `gao crawl` is the part of the corpus that does not come from anybody else's crawl.
+
+It publishes two repos and neither of them holds text. `open-index/vitweb` is one row per page that was kept, with the URL, the host, the fetch time, the robots rule that allowed it and every measurement the page was judged on. `open-index/vitweb-rejects` is one row per page that was turned away, with the stage that turned it away, the reason and the detail. A crawled page carries no grant to republish it, so `law.For(SourceCrawl)` puts it under the restricted posture and what ships is the address and the numbers, with the bytes staying in a WARC on the box that fetched them. Somebody with the URL and the measurements can fetch the same pages under their own access and rebuild the same corpus, knowing before each request whether it is worth making.
+
+Both repos are written while the crawl runs rather than at the end of it. A part is filled, closed, pushed and deleted before the next one opens, so a box holds one part per repo whatever the crawl weighs. Size alone is not enough to make that true: a crawl's rows are metadata at around 312 bytes each, so a 512 MB part takes a million and a half pages to fill, which on one polite box is weeks of writing to a disk that is supposed to be cache. `-part` is the other bound, and a part open longer than it is closed by the next row that arrives. An interval that saw no rows leaves no file, because an empty part in a repo reads as a shard whose documents went missing.
+
+A fleet splits on the host and never on the URL. A box offered a link to a site another box owns writes it down as another box's and does not queue it, so one site has one crawler and that crawler's politeness schedule is the whole story for it. Three boxes each waiting a second between requests would otherwise be three requests a second to a site that asked for one. The split is pinned in the frontier when it is first opened and a resume under a different shard is refused rather than quietly accepted, since a box that changed shards would crawl a set of hosts it has no record of and skip the ones it does.
+
+server1, server2 and server3 run shards 0, 1 and 2 against a seed list of 137 Vietnamese national and provincial newspapers, universities, government portals and forums. The seed list is leads rather than sites: the hosts on it are where the frontier starts, and within ten minutes each box had queued between four hundred thousand and nine hundred thousand URLs it found on the way. The three boxes together fetch around 12 pages a second at 24, 16 and 20 workers, which is a rate set by the one second per host rather than by the machines, and the disks stay flat.
+
+The published rows say the split holds. Across 2,395 hosts seen by the fleet, none appears on two shards.
+
+Two defects came out of running it that no amount of reading the code would have found. The first run reported two requests to `baoquangninh.vn` in the same millisecond, and to three other hosts as well, which is the crawl looking impolite in the one column anybody can audit manners with. Nothing of the sort had happened: the timestamp was taken before the fetch waited for the host's turn, so two workers reaching for one host together produced two rows a millisecond apart describing two requests a second apart. It is now taken inside the fetch, after the schedule lets the request go. And the last part of a stopped run was never published, because a crawl ends by being stopped and the push that closes the rolls ran under the run's own context, which the signal had already cancelled. Every stop left its final part on the disk. It now runs on a context that outlives the cancellation.
+
+A third came out of reading the published rejects rather than the run. 2,010 URLs were turned away with reason `robots`, and 999 of them were robots.txt disallows. The rest were servers answering 403 or 401, mostly bot walls, and reporting those as Vietnamese publishers asking to be left alone would have overstated the number by four fifths. A 403 is a non-200 status and is now filed as one, with the host and the status kept in the detail so the walls are still countable.
+
+```
+$ duckdb -c "SELECT reject_stage, reject_reason, count(*) AS n
+  FROM read_parquet('hf://datasets/open-index/vitweb-rejects/data/web/*.parquet')
+  GROUP BY 1,2 ORDER BY n DESC"
+crawl.sift     short         4029
+crawl.fetch    robots        1855
+crawl.sift     language      1579
+crawl.fetch    fetch         1569
+crawl.sift     repetition    1105
+crawl.extract  boilerplate    913
+```
+
+Every one of those is a row somebody can re-cost. The repetition threshold is the one that matters most and it is the one that is wrong for Vietnamese: a third of what it removed on the first run was article prose rather than listing pages, because an official is named in full every time they are mentioned and `đồng chí Vũ Quyết Tiến, Phó Bí thư Tỉnh ủy, Chủ tịch Ủy ban MTTQ tỉnh` is three occurrences of one eight syllable gram in a nine hundred word article. The threshold is Gopher's, scaled from words to syllables, and a Vietnamese title is long in syllables and carries one fact. Because the rejects carry the measured rate for every page, the threshold can be moved and the corpus recomposed without fetching anything again.
+
 ## Reading Parquet without downloading it
 
 Four of the six ship Parquet, three of them have mappings, and Parquet keeps its schema and its row group index in a footer at the end of the file. A reader has to know where the end is before it can read the beginning, so the format cannot be decoded from a stream that only goes forwards, and the files run 1.6 to 4.8 GB against a box that peaks at 4.1 GB for everything it is doing at once. Downloading one to read it is not available and neither is buffering it.
