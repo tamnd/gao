@@ -267,3 +267,55 @@ func TestASumIsFinishedOnlyWhenEveryBoxIs(t *testing.T) {
 		t.Error("a sum of nothing called itself finished")
 	}
 }
+
+// A rebuilt report is a different measurement from the one it replaces, and the
+// two places that show is the byte column and the line that says where the
+// numbers came from.
+func TestARebuiltReportSaysItCameFromTheStore(t *testing.T) {
+	got := count.Rebuilt("server3", "gemma-3", at("2026-08-19T04:11:09Z"), map[doc.Source]count.Counts{
+		doc.SourceGlotCC: {Documents: 13232715, Chars: 40, Syllables: 12, Tokens: 30},
+		doc.SourceSynth:  {Documents: 5, Chars: 4, Syllables: 2, Tokens: 3},
+	})
+
+	if got.From != count.FromStore {
+		t.Errorf("the report says it came from %q, want %q", got.From, count.FromStore)
+	}
+	if !got.Complete {
+		t.Error("a report rebuilt from the whole store called itself partial")
+	}
+	if got.Total.Bytes != 0 {
+		t.Errorf("the byte total is %d, and the store cannot answer for one", got.Total.Bytes)
+	}
+	if got.Total.Documents != 13232720 {
+		t.Errorf("the total is %d documents, want 13232720", got.Total.Documents)
+	}
+	if got.Natural.Documents != 13232715 {
+		t.Errorf("the corpus is %d documents, want 13232715 with the synthetic left out", got.Natural.Documents)
+	}
+	if len(got.Sources) != 2 || got.Sources[1].Source != doc.SourceGlotCC {
+		t.Errorf("the sources came back as %+v, want them in source order", got.Sources)
+	}
+}
+
+// Adding a repaired box to an unrepaired one gives a byte total that quietly
+// omits whichever box was repaired, and that reads as a smaller corpus rather
+// than as a missing column, so it is refused.
+func TestMergingRefusesAnIngestAndAStore(t *testing.T) {
+	ingest := count.Report{Box: "server1"}
+	stored := count.Report{Box: "server3", From: count.FromStore}
+
+	_, err := count.Merge(ingest, stored)
+	if !errors.Is(err, count.ErrMixedOrigins) {
+		t.Fatalf("merging an ingest with a store returned %v, want ErrMixedOrigins", err)
+	}
+	if !strings.Contains(err.Error(), "an ingest") || !strings.Contains(err.Error(), "the store") {
+		t.Errorf("the message is %q, and it should name both origins", err)
+	}
+
+	if _, err := count.Merge(stored, count.Report{Box: "gamingpc", From: count.FromStore}); err != nil {
+		t.Errorf("merging two rebuilt reports: %v", err)
+	}
+	if _, err := count.Merge(ingest, count.Report{Box: "server2"}); err != nil {
+		t.Errorf("merging two ingest reports: %v", err)
+	}
+}
