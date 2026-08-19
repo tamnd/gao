@@ -43,7 +43,7 @@ import (
 // hatch: a stage can no longer park text it may not redistribute in a working
 // repo on the way to somewhere else. What it buys is that the check runs on
 // every write rather than on the writes somebody remembered to mark. A repo
-// that carries text may only carry text that [luat] says ships, and the test
+// that carries text may only carry text that [law] says ships, and the test
 // below enforces it rather than the person creating the repo remembering it.
 //
 // The material that has nowhere to go under that rule stays on the box that
@@ -56,7 +56,7 @@ import (
 const Org = "open-index"
 
 // HubStore is what GAO_STORE is set to for a normal run. It is here rather than
-// in may because the layout under it is this package's business, and it is a
+// in fleet because the layout under it is this package's business, and it is a
 // constant rather than a default because may still refuses to start without the
 // variable set.
 const HubStore = "hf://" + Org
@@ -113,6 +113,18 @@ type Dataset struct {
 	// carries text may only name classes whose text ships, and there is a test
 	// for that rather than a convention.
 	Classes []doc.LicenseClass
+
+	// Cleaned reports whether the text in the repo has been through the
+	// cleaning line.
+	//
+	// It is on the dataset rather than worked out from the data because it
+	// decides what the card is allowed to say, and what a card says about
+	// filtering, deduplication and personal data is most of what a reader
+	// decides on. The raw repo's card is a long argument for why none of those
+	// three has been done. Printing that argument over a repo where all three
+	// have been done is not a stale sentence, it is a card telling somebody the
+	// opposite of what is in the files.
+	Cleaned bool
 }
 
 // Repo returns the full repo id, which is what the Hub API and DuckDB both want.
@@ -202,6 +214,7 @@ var datasets = []Dataset{
 		Pretty:  "ViTco Clean",
 		Holds:   "the same corpora after the cleaning line: normalized, measured, filtered to Vietnamese prose, deduplicated on identity, and with the personal identifiers covered",
 		Text:    true,
+		Cleaned: true,
 		Classes: []doc.LicenseClass{doc.LicenseOpen, doc.LicensePermissiveAttribution},
 	},
 }

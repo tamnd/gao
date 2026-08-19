@@ -248,9 +248,13 @@ type Privacy struct {
 	PIILevel RedactionLevel `json:"pii_level"`
 	PIITypes []string       `json:"pii_types,omitempty"`
 
-	// PIISpans is present at levels 0 and 1 and absent at level 2. Shipping the
-	// offsets of redacted personal data alongside the redacted text
-	// re-identifies it, which makes the redaction a performance.
+	// PIISpans carries where the identifiers were found, and the cleaning line
+	// clears it on every row it writes. Two reasons, and either one is enough.
+	// The offsets index the text that was searched, and covering rewrote that
+	// text, so on a covered row they point at the wrong bytes. And offsets
+	// published next to covered text re-identify what was covered, which makes
+	// the covering a performance. The field stays in the contract because a
+	// caller that runs [cover] itself gets the spans back from it.
 	PIISpans []PIISpan `json:"pii_spans,omitempty"`
 }
 

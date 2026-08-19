@@ -115,7 +115,7 @@ func printCoverage(stdout, stderr io.Writer, report count.GateReport) int {
 		fmt.Fprint(stdout, "this is not eligibility, which needs the corpus and a throughput measured on it\n")
 		return 0
 	}
-	fmt.Fprintf(stderr, "\ngao dem gates: %s does not pass the coverage set\n", report.Tokenizer)
+	fmt.Fprintf(stderr, "\ngao count gates: %s does not pass the coverage set\n", report.Tokenizer)
 	printFailures(stderr, report, func(g count.Gate) bool { return g.Name == count.ThroughputGate })
 	return 1
 }
@@ -137,7 +137,7 @@ func printGates(stdout, stderr io.Writer, report count.GateReport) int {
 		return 0
 	}
 
-	fmt.Fprintf(stderr, "\ngao dem gates: %s is not eligible\n", report.Tokenizer)
+	fmt.Fprintf(stderr, "\ngao count gates: %s is not eligible\n", report.Tokenizer)
 	printFailures(stderr, report, nil)
 	for _, g := range report.Gates {
 		if !g.Audit && g.Ran && g.Failed > 0 {

@@ -177,9 +177,9 @@ type assignReport struct {
 }
 
 func runAssignPlan(stdout, stderr io.Writer, args []string, byFile bool) int {
-	name := "giao plan"
+	name := "assign plan"
 	if byFile {
-		name = "giao files"
+		name = "assign files"
 	}
 	fs := flag.NewFlagSet(name, flag.ContinueOnError)
 	fs.SetOutput(stderr)

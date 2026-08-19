@@ -92,7 +92,7 @@ var meanings = map[string]struct{ stage, meaning string }{
 
 	"pii_level": {"cover", "how much personal data has been removed: none, the structured identifiers, or those plus addresses and identifying names"},
 	"pii_types": {"cover", "which kinds of personal data were found"},
-	"pii_spans": {"cover", "where they were found, present at levels 0 and 1 and absent at level 2, because shipping the offsets of redacted data alongside the redacted text re-identifies it"},
+	"pii_spans": {"cover", "where they were found, empty on every row the cleaning line writes, because the offsets index the text before it was covered and because offsets published next to covered text say where the identifiers were"},
 
 	"license_class":    {"law", "the per document redistribution determination, stored by name so a file read without gao says restricted rather than 3"},
 	"license_evidence": {"law", "what determined that class, since a class without evidence is a guess"},

@@ -3,7 +3,7 @@
 //
 // Cân is to weigh, and it is the same word for a balance: two pans, one thing
 // in each, and a reading that only means something if nothing else is in either
-// pan. That is exactly the shape of this slice. The arms are locked in nau: gao,
+// pan. That is exactly the shape of this slice. The arms are locked in cook: gao,
 // CulturaX, and CulturaX run through gao's cleaning, differing in the data and
 // in nothing else. This package reads what the three runs actually did and
 // checks that the promise held.
@@ -89,7 +89,7 @@ type Point struct {
 
 // A Run is one arm, as it came back.
 type Run struct {
-	// Arm is the model name, which has to be one of the three locked in nau,
+	// Arm is the model name, which has to be one of the three locked in cook,
 	// and Data is what it trained on, which has to be that arm's data.
 	Arm  string `json:"arm"`
 	Data string `json:"data"`

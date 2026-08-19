@@ -142,8 +142,8 @@ gao mix -slate                             # the finetuning slate, and what each
 gao mix sft.jsonl                          # a composed set, with native origin kept a column rather than a note
 gao mix -json sft.jsonl                    # the same, for whatever writes the model card
 gao grade roster                             # the seven specialists, and which of their verifiers are written
-gao grade dau -rollouts rollouts.jsonl parts/*.parquet  # grade restoration rollouts against the pages they came from
-gao grade trich -register instruments.jsonl rollouts.jsonl  # grade legal citations against the instruments that exist
+gao grade mark -rollouts rollouts.jsonl parts/*.parquet  # grade restoration rollouts against the pages they came from
+gao grade quote -register instruments.jsonl rollouts.jsonl  # grade legal citations against the instruments that exist
 gao tighten recipe -why                        # the GRPO step the specialists are trained with, and what each setting fixes
 gao tighten read -specialist dau steps.jsonl   # a training log read back against the configuration it was taken under
 gao keep retention.jsonl                     # what the distillation kept of each specialist, against merging the same checkpoints
@@ -1625,7 +1625,7 @@ The training loop is the part everybody publishes and the part that matters leas
 Two of them are written. The first is diacritic restoration, which is the arm this corpus gets for free, since `normalize.Bare` turns any page into a prompt whose exact answer is the page. That is a training set the size of the corpus with no annotator in it, for a task that cannot be done without real Vietnamese.
 
 ```
-$ gao grade dau -rollouts rollouts.jsonl -v page.txt
+$ gao grade mark -rollouts rollouts.jsonl -v page.txt
 the key holds 1 pages and refused 0
 
 Tieng Viet co sau thanh dieu, trong do nam thanh duoc ghi bang dau va mo...
@@ -1647,7 +1647,7 @@ The group is its own baseline, which is the whole reason for sampling several an
 The second written arm is legal citation, and it exists because Vietnamese legal drafting numbers instruments to a fixed form. A document is a number, a year, and a code naming the body that issued it. Only the Government issues a nghị định, so a nghị định whose code is not `NĐ-CP` is wrong however plausible it reads, and that is the exact shape a hallucinated citation takes: the right kind of thing, numbered like a real one, issued by a body that cannot issue it. The register of instruments that exist comes out of the legal shard, which is the one part of the corpus whose documents carry identifiers that either match something or do not.
 
 ```
-$ gao grade trich -register instruments.jsonl -v rollouts.jsonl
+$ gao grade quote -register instruments.jsonl -v rollouts.jsonl
 the register holds 3 instruments and the key 1 prompts
 
 Doanh nghiệp phải làm gì khi dữ liệu cá nhân của khách hàng bị lộ?
@@ -1963,7 +1963,7 @@ What is not answered yet is the only question that matters, which is what the re
 
 Everything up to here harvests. The crawl, the Hugging Face union, the PDFs and the transcripts are all Vietnamese somebody already wrote, and the whole project is arranged around finding it, reading it correctly, and throwing away the parts that are not worth keeping. That runs out. Deduplication collapses the web harder than anybody expects the first time they measure it, and past the edge of what is left the only move available is to make text rather than to find it. The mixture spends 150 billion tokens doing that, which is more than the legal and spoken registers put together.
 
-Making text is where corpora go wrong, so this one makes it under a rule: the generator rephrases rather than invents. Gieo is to sow, and every document `sow` produces has a real Vietnamese document behind it that a person wrote, taken from the educational slice rather than from the corpus at large, because rephrasing text that was already poor produces poor text in a new voice. That property is worth something only if it is enforced, so the recipe names the slice by digest and a recipe that does not pin its source is refused as invention wearing a rephrase's name.
+Making text is where corpora go wrong, so this one makes it under a rule: the generator rephrases rather than invents. Sowing is planting what you already have, and every document `sow` produces has a real Vietnamese document behind it that a person wrote, taken from the educational slice rather than from the corpus at large, because rephrasing text that was already poor produces poor text in a new voice. That property is worth something only if it is enforced, so the recipe names the slice by digest and a recipe that does not pin its source is refused as invention wearing a rephrase's name.
 
 The recipe is fixed and hashed before a token of output exists. It holds the generator and its revision, the registers with their prompts verbatim, the decoding settings including the seed, the gates with their config hashes, and the roster the output is checked against. It lives in the source rather than in a file somebody edits, because that is the only version of committing to something in advance that means anything: changing it is a diff on a pull request with a reviewer on it, not a file edited the afternoon the numbers came out.
 
@@ -1976,8 +1976,8 @@ read gao   no
 source     gao-edu at a9f34a5444eb
 target     150.0B tokens
 decoding   temperature 0.8, top_p 0.95, 4096 tokens, seed 20260401
-roster     nhat-2026.08
-digest     dbff94782b24372314c769b245e209b882830e5233de5708d5b3898c27a994fb
+roster     pick-2026.08
+digest     fc7ee91f3a0f305fbe92691b8c84a7f812bf08b7f478982dd4b9c7f61f27d8ec
 
 4 registers:
   bao-chi     the register most Vietnamese prose on the web is already written in, kept so the rephrase does not drift away from what the corpus looks like
@@ -1986,12 +1986,12 @@ digest     dbff94782b24372314c769b245e209b882830e5233de5708d5b3898c27a994fb
   tom-luoc    compression, which teaches the model what in a document is load bearing, and the only style here that produces fewer tokens than it reads
 
 6 gates:
-  vi-only        5334c64fa157  a generator asked for Vietnamese answers in English more often than anybody expects, particularly at the end of a long document
-  faithful       8ebcaf855ae5  a rephrase that invents a number is not a rephrase, and it is the failure that survives every other gate here because the text reads perfectly
-  not-a-copy     8cad63589b4f  output that is the source back again spends GPU hours to add a duplicate, which the dedup pass would then remove anyway
-  degenerate     3d234d3ca080  the loop a sampled generator falls into, which is fluent for a paragraph and then is not text at all
-  refusal        9b50b1850a05  the model talking about the task instead of doing it, which is training data for a habit nobody wants
-  contamination  1f25ea1ccf71  a generated document that reproduces a benchmark item puts the answer in the training set, and the evaluation afterward is scoring memorization
+  vi-only        ad2140502d74  a generator asked for Vietnamese answers in English more often than anybody expects, particularly at the end of a long document
+  faithful       d3974e06c192  a rephrase that invents a number is not a rephrase, and it is the failure that survives every other gate here because the text reads perfectly
+  not-a-copy     f4dd40a614ed  output that is the source back again spends GPU hours to add a duplicate, which the dedup pass would then remove anyway
+  degenerate     c7961498d753  the loop a sampled generator falls into, which is fluent for a paragraph and then is not text at all
+  refusal        d67e623e9e4c  the model talking about the task instead of doing it, which is training data for a habit nobody wants
+  contamination  6907e55e356d  a generated document that reproduces a benchmark item puts the answer in the training set, and the evaluation afterward is scoring memorization
 ```
 
 One line is cut off the end, saying that the source is the educational slice rather than the corpus, which is the paragraph above this block.
@@ -2271,7 +2271,7 @@ This is not the run it looks like:
 vot-len logged 400 rows from step 0 to step 3990, every 10 steps, at a median loss of 1.3904 and a scatter of 0.3398. 1 spike cleared the band, 1 of them came back on their own, and rewinding to the checkpoint before each would have cost 130 steps, which is 3.2% of the run. One reading says this is not the run it looks like: a rewind at step 2530 throws away 130 steps, which is 3.2% of the run and over the 2.0% one rewind may cost, so the checkpoint cadence of 200 steps is the thing to change rather than the protocol.
 ```
 
-That is a real spike in a real run. Every log in `spike/testdata` came off a character language model trained in Go on the Vietnamese that already ships in this repository, and the spike above was caused the way spikes are actually caused, by a resume that came back without its scheduler state and ran twenty five times too hot for thirty steps. Nothing here was drawn with a formula, and the reason is that a loss curve is easy to fake badly. The noise is not symmetric, it shrinks as the model fits, the decay is not linear, and a real spike does not go up by a constant factor and come back down the way it went up. A detector tuned against a drawn curve has been tuned against whoever drew it. `go test ./vot -update` trains the five logs again from the same text.
+That is a real spike in a real run. Every log in `spike/testdata` came off a character language model trained in Go on the Vietnamese that already ships in this repository, and the spike above was caused the way spikes are actually caused, by a resume that came back without its scheduler state and ran twenty five times too hot for thirty steps. Nothing here was drawn with a formula, and the reason is that a loss curve is easy to fake badly. The noise is not symmetric, it shrinks as the model fits, the decay is not linear, and a real spike does not go up by a constant factor and come back down the way it went up. A detector tuned against a drawn curve has been tuned against whoever drew it. `go test ./spike -update` trains the five logs again from the same text.
 
 They earned their place immediately. The scatter multiplier was six when it was written, and against this log six read that spike, one anybody would see by eye, as an ordinary step. Swept across all three of the four thousand step runs, anything under three starts reporting the clean run's own noise and anything over four and a half stops reporting the recoverable blowup, so the constant is three and a half and the sweep is in the package documentation rather than in somebody's memory. That is what real data buys that review does not.
 
@@ -2703,7 +2703,7 @@ Off-box means dataset repos on the Hugging Face Hub, holding Parquet, under the 
 read_parquet('hf://datasets/open-index/vietnamese-legal-text/data/snapshot=gao-v1.0/*.parquet')
 ```
 
-The repos are named for the data rather than for the stage that wrote it, because a name like `gao-xay` tells a reader which of our programs ran, which is the one thing they do not care about. Every repo is public and there is no private tier, which is a rule about what may be pushed rather than a setting on a repo: a repo carrying text may only carry text the publication posture says ships, and that is checked in code rather than remembered by whoever creates the repo. The material that has nowhere to go under that rule is not stored somewhere quieter. It stays on the box that produced it and is deleted when the stage that needed it finishes, because a private repo holding text a page reserved is the same publication with a smaller audience and one setting between them.
+The repos are named for the data rather than for the stage that wrote it, because a name like `gao-mill` tells a reader which of our programs ran, which is the one thing they do not care about. Every repo is public and there is no private tier, which is a rule about what may be pushed rather than a setting on a repo: a repo carrying text may only carry text the publication posture says ships, and that is checked in code rather than remembered by whoever creates the repo. The material that has nowhere to go under that rule is not stored somewhere quieter. It stays on the box that produced it and is deleted when the stage that needed it finishes, because a private repo holding text a page reserved is the same publication with a smaller audience and one setting between them.
 
 Offload is what makes the arithmetic work. A worker writes one shard, pushes it, deletes it, and takes the next, so peak disk is two shards per worker no matter how large the corpus gets. That is 4.1 GB on `server1` against a 90 GB budget, and it is why a fleet with 549 GB of disk can process a corpus several times that size. Nothing on the fleet is authoritative and nothing on it is backed up. Every disk here is cache: what is worth keeping is pushed before it is deleted, and what cannot be pushed was not worth keeping. One of the four boxes holds no corpus bytes at all: `server2` has 19.1 GB free, under the 20 GB reserve every box keeps, so the arithmetic says no without anybody having to remember to say it.
 

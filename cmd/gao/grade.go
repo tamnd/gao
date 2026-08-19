@@ -22,9 +22,9 @@ func runGrade(stdout, stderr io.Writer, args []string) int {
 	switch args[0] {
 	case "roster":
 		return runGradeRoster(stdout, stderr, args[1:])
-	case "dau":
+	case "mark", "dau":
 		return runGradeMark(stdout, stderr, args[1:])
-	case "trich":
+	case "quote", "trich":
 		return runGradeQuote(stdout, stderr, args[1:])
 	case "help", "-h", "--help":
 		gradeUsage(stdout)
@@ -50,8 +50,8 @@ unpublished verifier is an unfalsifiable reward.
 
 subcommands:
   roster  the seven specialists, including the ones not built yet
-  dau     grade diacritic restoration rollouts against the pages they came from
-  trich   grade legal citation rollouts against a register of instruments
+  mark    grade diacritic restoration rollouts against the pages they came from
+  quote   grade legal citation rollouts against a register of instruments
 
 run 'gao grade <subcommand> -h' for the flags of a single subcommand.
 `)
@@ -103,8 +103,8 @@ flags:
 
 // A gradeRollouts is one prompt and everything sampled from it.
 type gradeRollouts struct {
-	// Prompt is the question. For dau it is the page with its marks off, which
-	// is what the key is dictated on.
+	// Prompt is the question. For the dau arm it is the page with its marks
+	// off, which is what the key is dictated on.
 	Prompt string `json:"prompt"`
 
 	// Must is what an answer has to rest on, for the arms whose key is per
@@ -236,13 +236,13 @@ func ellipsis(s string, n int) string {
 }
 
 func runGradeMark(stdout, stderr io.Writer, args []string) int {
-	fs := flag.NewFlagSet("grade dau", flag.ContinueOnError)
+	fs := flag.NewFlagSet("grade mark", flag.ContinueOnError)
 	fs.SetOutput(stderr)
 	rollouts := fs.String("rollouts", "", "the sampled answers to grade, one prompt per line")
 	asJSON := fs.Bool("json", false, "print the graded batch as JSON")
 	verbose := fs.Bool("v", false, "print every group and every rollout, which is the sample log")
 	fs.Usage = func() {
-		fmt.Fprint(stderr, `usage: gao grade dau -rollouts FILE <corpus file...>
+		fmt.Fprint(stderr, `usage: gao grade mark -rollouts FILE <corpus file...>
 
 Grades diacritic restoration rollouts. The key is built from the corpus files
 given here: each page is dictated as its own answer, and the prompt is that page
@@ -274,7 +274,7 @@ flags:
 
 	sets, err := readGradeRollouts(*rollouts)
 	if err != nil {
-		fmt.Fprintf(stderr, "gao grade dau: %v\n", err)
+		fmt.Fprintf(stderr, "gao grade mark: %v\n", err)
 		return 1
 	}
 
@@ -288,12 +288,12 @@ flags:
 			return nil
 		})
 		if err != nil {
-			fmt.Fprintf(stderr, "gao grade dau: %s: %v\n", name, err)
+			fmt.Fprintf(stderr, "gao grade mark: %s: %v\n", name, err)
 			return 1
 		}
 	}
 	if v.Items() == 0 {
-		fmt.Fprintf(stderr, "gao grade dau: the key holds no pages, and %d were refused for being typed without marks\n", refused)
+		fmt.Fprintf(stderr, "gao grade mark: the key holds no pages, and %d were refused for being typed without marks\n", refused)
 		return 1
 	}
 
@@ -306,13 +306,13 @@ flags:
 }
 
 func runGradeQuote(stdout, stderr io.Writer, args []string) int {
-	fs := flag.NewFlagSet("grade trich", flag.ContinueOnError)
+	fs := flag.NewFlagSet("grade quote", flag.ContinueOnError)
 	fs.SetOutput(stderr)
 	registry := fs.String("register", "", "the instruments that exist, one JSON object per line with kind, id, and articles")
 	asJSON := fs.Bool("json", false, "print the graded batch as JSON")
 	verbose := fs.Bool("v", false, "print every group and every rollout, which is the sample log")
 	fs.Usage = func() {
-		fmt.Fprint(stderr, `usage: gao grade trich -register FILE <rollouts.jsonl>
+		fmt.Fprint(stderr, `usage: gao grade quote -register FILE <rollouts.jsonl>
 
 Grades legal citation rollouts. Each line of the rollout file carries the
 prompt, the instruments an answer has to rest on in its "must" field, and the
@@ -348,12 +348,12 @@ flags:
 
 	reg, err := readGradeRegister(*registry)
 	if err != nil {
-		fmt.Fprintf(stderr, "gao grade trich: %v\n", err)
+		fmt.Fprintf(stderr, "gao grade quote: %v\n", err)
 		return 1
 	}
 	sets, err := readGradeRollouts(fs.Arg(0))
 	if err != nil {
-		fmt.Fprintf(stderr, "gao grade trich: %v\n", err)
+		fmt.Fprintf(stderr, "gao grade quote: %v\n", err)
 		return 1
 	}
 
@@ -361,7 +361,7 @@ flags:
 	var graded []gradeRollouts
 	for _, set := range sets {
 		if !v.Ask(set.Prompt, set.Must...) {
-			fmt.Fprintf(stderr, "gao grade trich: %q asks for something the register does not hold, so no answer to it could win\n",
+			fmt.Fprintf(stderr, "gao grade quote: %q asks for something the register does not hold, so no answer to it could win\n",
 				ellipsis(set.Prompt, 60))
 			return 1
 		}

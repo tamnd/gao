@@ -25,7 +25,7 @@ var Slices = []Slice{
 	{
 		ID:    "S0",
 		Title: "Foundations and law",
-		Ships: "Go module, kho store, ingest contract, licensing determination",
+		Ships: "Go module, store, ingest contract, licensing determination",
 		Gate:  "ingest contract frozen, license classes defined, counsel questions filed",
 		Kill:  "text and data mining allowance does not cover model training, fall back to recipe-only publication",
 	},

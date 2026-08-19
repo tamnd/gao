@@ -278,11 +278,11 @@ func (s Sample) Faults() []string {
 	switch n := len(small); {
 	case n == 1:
 		out = append(out, fmt.Sprintf(
-			"%s was read off %s, under the %s a layer's rate needs before one long page moves it, so tang will not scale anything by it",
+			"%s was read off %s, under the %s a layer's rate needs before one long page moves it, so layers will not scale anything by it",
 			small[0].Layer, size(small[0].Read), size(layers.MinRead)))
 	case n > 1:
 		out = append(out, fmt.Sprintf(
-			"%d layers were read off under %s each, starting with %s at %s, so tang will not scale anything by them",
+			"%d layers were read off under %s each, starting with %s at %s, so layers will not scale anything by them",
 			n, size(layers.MinRead), small[0].Layer, size(small[0].Read)))
 	}
 

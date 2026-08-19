@@ -689,7 +689,7 @@ func unusable(piece string) (string, bool) {
 		}
 	}
 	if norm.NFC.String(piece) != piece {
-		return "not NFC, so it is reachable only from text phoi would have rewritten", true
+		return "not NFC, so it is reachable only from text normalize would have rewritten", true
 	}
 	return "", false
 }

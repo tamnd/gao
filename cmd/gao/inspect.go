@@ -92,7 +92,7 @@ flags:
 		return 0
 	}
 	if !*asJSON {
-		fmt.Fprintln(stderr, "\ngao soi: this reading does not clear the S4 gate:")
+		fmt.Fprintln(stderr, "\ngao inspect: this reading does not clear the S4 gate:")
 		for _, f := range fails {
 			fmt.Fprintf(stderr, "  %s\n", f)
 		}

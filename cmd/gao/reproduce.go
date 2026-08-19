@@ -164,7 +164,7 @@ flags:
 	}
 
 	if err != nil {
-		fmt.Fprintf(stderr, "\ngao kho reproduce: %v\n", err)
+		fmt.Fprintf(stderr, "\ngao store reproduce: %v\n", err)
 		if errors.Is(err, store.ErrNotReproducible) {
 			fmt.Fprintln(stderr, "the documents are intact. what differs is how they were written, so compare the versions above against the box that wrote the snapshot")
 		}
