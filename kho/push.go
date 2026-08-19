@@ -210,19 +210,29 @@ func (p *Pusher) Push(ctx context.Context, local, path string) (Pushed, error) {
 // a path: the card is generated, and writing it to a temporary file so that
 // [Pusher.Push] could read it back would be a round trip through the disk for
 // no reason.
-func (p *Pusher) PushCard(ctx context.Context, d Dataset, m *Manifest) (Pushed, error) {
-	body := []byte(Card(d, m))
-	id := identifyBytes(body)
-	done := Pushed{Path: CardName, Bytes: id.size, OID: id.gitOID}
+func (p *Pusher) PushCard(ctx context.Context, d Dataset, m *Manifest, x []Indexed) (Pushed, error) {
+	return p.PushText(ctx, CardName, []byte(Card(d, m, x)))
+}
 
-	present, err := p.present(ctx, CardName, id)
+// PushText puts generated text at a path, and reports that it did nothing when
+// what is up there already says the same thing.
+//
+// The card and the parts index are both generated on every run over a repo that
+// mostly has not changed, so the check that nothing moved is the common case
+// rather than the optimization: without it, a nightly index would put a commit
+// on the repo every night whether or not a single part had arrived.
+func (p *Pusher) PushText(ctx context.Context, path string, body []byte) (Pushed, error) {
+	id := identifyBytes(body)
+	done := Pushed{Path: path, Bytes: id.size, OID: id.gitOID}
+
+	present, err := p.present(ctx, path, id)
 	if err != nil {
 		return done, err
 	}
 	if present {
 		return done, nil
 	}
-	if err := p.commit(ctx, commitFile(CardName, body)); err != nil {
+	if err := p.commit(ctx, commitFile(path, body)); err != nil {
 		return done, err
 	}
 	done.Committed, done.Transferred = true, true
@@ -478,22 +488,28 @@ func commitFile(path string, body []byte) commitOp {
 }
 
 // commit points the path at what was uploaded.
-func (p *Pusher) commit(ctx context.Context, op commitOp) error {
+func (p *Pusher) commit(ctx context.Context, ops ...commitOp) error {
+	if len(ops) == 0 {
+		return nil
+	}
 	summary := p.Message
 	if summary == "" {
-		summary = "Add " + opPath(op)
+		summary = "Add " + opPath(ops[0])
+		if len(ops) > 1 {
+			summary = fmt.Sprintf("Add %s and %s", opPath(ops[0]), plural(len(ops)-1, "other file"))
+		}
 	}
 	var body bytes.Buffer
 	enc := json.NewEncoder(&body)
 	header := commitOp{Key: "header", Value: map[string]any{"summary": summary}}
-	for _, line := range []commitOp{header, op} {
+	for _, line := range append([]commitOp{header}, ops...) {
 		if err := enc.Encode(line); err != nil {
 			return err
 		}
 	}
 	url := fmt.Sprintf("%s/api/datasets/%s/commit/%s", p.api(), p.Repo, p.branch())
 	if err := p.send(ctx, url, "application/x-ndjson", &body, nil); err != nil {
-		return fmt.Errorf("kho: committing %s to %s: %w", opPath(op), p.Repo, err)
+		return fmt.Errorf("kho: committing %s to %s: %w", opPath(ops[0]), p.Repo, err)
 	}
 	return nil
 }
@@ -523,7 +539,7 @@ func (p *Pusher) EnsureRepo(ctx context.Context, d Dataset) error {
 	if err != nil || !made {
 		return err
 	}
-	if _, err := p.PushCard(ctx, d, nil); err != nil {
+	if _, err := p.PushCard(ctx, d, nil, nil); err != nil {
 		return fmt.Errorf("kho: putting a card on %s: %w", d.Repo(), err)
 	}
 	return nil

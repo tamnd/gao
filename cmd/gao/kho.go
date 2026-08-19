@@ -44,6 +44,10 @@ func runKho(stdout, stderr io.Writer, args []string) int {
 		return runKhoOrder(stdout, stderr, args[1:])
 	case "card":
 		return runKhoCard(stdout, stderr, args[1:])
+	case "move":
+		return runKhoMove(stdout, stderr, args[1:])
+	case "index":
+		return runKhoIndex(stdout, stderr, args[1:])
 	case "help", "-h", "--help":
 		khoUsage(stdout)
 		return 0
@@ -67,6 +71,8 @@ subcommands:
   schema    print the full record schema, every column and what it means
   push      upload a file to a dataset repo at the path it belongs at
   card      generate a dataset card from a snapshot manifest
+  index     read every part's footer and write the parts index
+  move      re-lay a dataset repo into another one without the bytes traveling
   order     what sorting a shard by host buys, and what holding it resident costs
 
 run 'gao kho <subcommand> -h' for the flags of a single subcommand.
@@ -597,15 +603,20 @@ func runKhoCard(stdout, stderr io.Writer, args []string) int {
 	fs.SetOutput(stderr)
 	name := fs.String("dataset", "", "the dataset repo the card is for")
 	from := fs.String("from", "", "the snapshot directory holding the manifest the card is generated from")
+	index := fs.String("index", "", "the parts index the card's counts come from, for a repo with no manifest")
 	push := fs.Bool("push", false, "put the card on the repo instead of printing it")
 	fs.Usage = func() {
-		fmt.Fprint(stderr, `usage: gao kho card -dataset NAME [-from DIR] [-push]
+		fmt.Fprint(stderr, `usage: gao kho card -dataset NAME [-from DIR] [-index PATH] [-push]
 
 Generates the dataset card for a repo and prints it. Every number in it comes
 out of the manifest of the snapshot named by -from: the counts, the breakdown by
 source, the stages that produced it and the versions they ran at, the merkle root
-and who signed it. Without -from the card is the one a repo carries before its
-first release, which says so rather than printing zeros.
+and who signed it.
+
+A working repo never gets a manifest, so its card is generated from the parts
+index instead. Pass one with -index, or let `+"`gao kho index -push`"+` do both at
+once, which is what the pipeline runs. With neither the card is the one a repo
+carries before it holds anything, which says so rather than printing zeros.
 
 A card is generated rather than written because a card written by hand describes
 the release before last, and there is no way to tell by reading one which of its
@@ -645,8 +656,23 @@ flags:
 		m = loaded
 	}
 
+	var x []kho.Indexed
+	if *index != "" {
+		f, err := os.Open(*index) //nolint:gosec // the path is one the operator named
+		if err != nil {
+			fmt.Fprintf(stderr, "gao kho card: %v\n", err)
+			return 1
+		}
+		x, err = kho.ReadIndex(f)
+		_ = f.Close()
+		if err != nil {
+			fmt.Fprintf(stderr, "gao kho card: %v\n", err)
+			return 1
+		}
+	}
+
 	if !*push {
-		fmt.Fprint(stdout, kho.Card(d, m))
+		fmt.Fprint(stdout, kho.Card(d, m, x))
 		return 0
 	}
 
@@ -656,7 +682,7 @@ flags:
 		fmt.Fprintf(stderr, "gao kho card: %v\n", err)
 		return 1
 	}
-	sent, err := p.PushCard(ctx, d, m)
+	sent, err := p.PushCard(ctx, d, m, x)
 	if err != nil {
 		fmt.Fprintf(stderr, "gao kho card: %v\n", err)
 		return 1
