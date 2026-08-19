@@ -444,3 +444,38 @@ func TestAVerdictWithNoDocumentIsRefused(t *testing.T) {
 		t.Error("a verdict with no document was written")
 	}
 }
+
+// Keep is how many volumes may sit on the disk, and a snapshot is not part of
+// that question. A run started under a new snapshot to measure a frontier change
+// left every box in the fleet over its limit inside a day, because each snapshot
+// was aged separately and kept its own two. server1 was holding eight volumes
+// against a keep of four.
+func TestANewSnapshotDoesNotStartTheVolumeCountOver(t *testing.T) {
+	dir := t.TempDir()
+	for _, snapshot := range []string{"web-20260819", "web-20260820", "web-20260820b"} {
+		for range 2 {
+			s := openSink(t, SinkOptions{Dir: dir, Snapshot: snapshot, Volume: 1, Keep: 2})
+			if _, err := s.Archive(visit("https://baodongthap.example/tin.html", "<html></html>"), time.Now()); err != nil {
+				t.Fatalf("Archive under %s: %v", snapshot, err)
+			}
+			if err := s.Close(); err != nil {
+				t.Fatalf("Close under %s: %v", snapshot, err)
+			}
+		}
+	}
+	volumes, err := filepath.Glob(filepath.Join(dir, "warc", "*.warc.gz"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(volumes) != 2 {
+		t.Errorf("%d volumes across three snapshots, want the two the box was told to keep: %v", len(volumes), volumes)
+	}
+	// And the two left are the newest two, which is the whole point of aging
+	// rather than deleting. The volume counter carries on across snapshots, so
+	// the survivors are the highest numbered wherever their snapshot sorts.
+	for _, v := range volumes {
+		if volumeOf(v) < 4 {
+			t.Errorf("aging kept %s and deleted something newer", filepath.Base(v))
+		}
+	}
+}
