@@ -8,10 +8,12 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
 	"github.com/tamnd/gao/harvest"
+	"github.com/tamnd/gao/reject"
 	"github.com/tamnd/gao/store"
 )
 
@@ -271,4 +273,97 @@ func parts(t *testing.T, dir, repo string) []string {
 		t.Fatal(err)
 	}
 	return found
+}
+
+// english is a page long enough to clear every threshold except the one that
+// matters, which is the point of it.
+func english(path string) string {
+	var b strings.Builder
+	b.WriteString(`<!doctype html><html lang="en"><head><title>Rice harvest</title></head><body><div class="content">`)
+	b.WriteString(`<h1>The rice harvest in the Mekong delta</h1>`)
+	for range 6 {
+		b.WriteString(`<p>The summer autumn rice crop in the delta province came in at seven tonnes
+		a hectare this year, which is close to a tonne more than the same season last year, and
+		traders were paying around eight thousand a kilogram for wet paddy at the field.</p>`)
+		b.WriteString(`<p>The provincial agriculture department has asked growers to finish cutting
+		before the rains arrive, because water coming up a few days early costs a whole season of
+		work, and the pumping stations have been running all week to clear the fields.</p>`)
+	}
+	fmt.Fprintf(&b, `</div><a href="%s">Read more</a></body></html>`, path)
+	return b.String()
+}
+
+// The rule that keeps a crawl of the Vietnamese web from becoming a crawl of the
+// web. A page in another language is fetched once, because there is no way to
+// know what language a page is in without reading it, and then it is a dead end.
+// Following it queues hosts whose entire subgraph is somebody else's web, and on
+// the first fleet run that is where most of the requests went.
+func TestALinkOnAPageInAnotherLanguageIsNotFollowed(t *testing.T) {
+	var deeper atomic.Int64
+	mux := http.NewServeMux()
+	mux.HandleFunc("/robots.txt", func(w http.ResponseWriter, r *http.Request) {
+		fmt.Fprint(w, "User-agent: *\nCrawl-delay: 0\n")
+	})
+	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/html; charset=utf-8")
+		switch r.URL.Path {
+		case "/":
+			fmt.Fprint(w, `<html lang="vi"><body><ul>
+			<li><a href="/tin/1.html">Bài một</a></li>
+			<li><a href="/en/">In English</a></li>
+			</ul></body></html>`)
+		case "/en/":
+			fmt.Fprint(w, english("/en/deeper.html"))
+		case "/en/deeper.html":
+			deeper.Add(1)
+			fmt.Fprint(w, english("/en/"))
+		default:
+			fmt.Fprint(w, article(1))
+		}
+	})
+	srv := httptest.NewServer(mux)
+	defer srv.Close()
+
+	dir := t.TempDir()
+	f, err := OpenFrontier(FrontierOptions{Dir: filepath.Join(dir, "frontier")})
+	if err != nil {
+		t.Fatalf("OpenFrontier: %v", err)
+	}
+	defer func() { _ = f.Close() }()
+	if ok, why, err := f.Offer(srv.URL + "/"); err != nil || !ok {
+		t.Fatalf("offering the seed: ok=%v why=%q err=%v", ok, why, err)
+	}
+
+	s := openSink(t, SinkOptions{Dir: filepath.Join(dir, "out"), Snapshot: "gaocrawl-20260819"})
+	c := harvest.NewCrawler(harvest.CrawlOptions{
+		Polite:  harvest.NewPolite(harvest.PoliteOptions{Delay: time.Millisecond}),
+		Version: "test",
+	})
+	ctx, cancel := context.WithTimeout(t.Context(), 30*time.Second)
+	defer cancel()
+	if _, err := Run(ctx, RunOptions{Frontier: f, Sink: s, Crawler: c, Workers: 2, Batch: 8}); err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+	if err := s.Close(); err != nil {
+		t.Fatalf("closing the sink: %v", err)
+	}
+
+	// The English page is fetched, because there is no way to know. It is
+	// fetched once, and what it points at is never asked for.
+	if n := deeper.Load(); n != 0 {
+		t.Errorf("the page behind the English one was fetched %d times", n)
+	}
+
+	var sawEnglish bool
+	for _, r := range rejectRows(t, dir, RejectRepo) {
+		if strings.HasSuffix(r.URL, "/en/") {
+			sawEnglish = true
+			if r.RejectReason != string(reject.ReasonLanguage) {
+				t.Errorf("the English page was turned away as %q, want language: %s", r.RejectReason, r.RejectDetail)
+			}
+		}
+	}
+	if !sawEnglish {
+		t.Error("the English page was never fetched, so the test proved nothing")
+	}
 }
