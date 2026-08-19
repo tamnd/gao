@@ -256,7 +256,7 @@ var pinned = mustLoad(manifestJSON)
 func mustLoad(b []byte) manifest {
 	m, err := load(b)
 	if err != nil {
-		panic("gat: the embedded ingest manifest is not usable: " + err.Error())
+		panic("harvest: the embedded ingest manifest is not usable: " + err.Error())
 	}
 	return m
 }

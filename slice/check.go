@@ -132,10 +132,10 @@ func Read(dir string) (*Slice, error) {
 	var s Slice
 	path := filepath.Join(dir, SliceName)
 	if _, err := toml.DecodeFile(path, &s); err != nil {
-		return nil, fmt.Errorf("lat: reading %s: %w", path, err)
+		return nil, fmt.Errorf("slice: reading %s: %w", path, err)
 	}
 	if s.SliceVersion > SliceVersion {
-		return nil, fmt.Errorf("lat: %s is slice version %d, this build understands %d", path, s.SliceVersion, SliceVersion)
+		return nil, fmt.Errorf("slice: %s is slice version %d, this build understands %d", path, s.SliceVersion, SliceVersion)
 	}
 	if err := s.check(); err != nil {
 		return nil, err
@@ -153,11 +153,11 @@ func Write(dir string, s *Slice) error {
 	path := filepath.Join(dir, SliceName)
 	f, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o644)
 	if err != nil {
-		return fmt.Errorf("lat: writing the slice: %w", err)
+		return fmt.Errorf("slice: writing the slice: %w", err)
 	}
 	defer func() { _ = f.Close() }()
 	if err := toml.NewEncoder(f).Encode(s); err != nil {
-		return fmt.Errorf("lat: encoding the slice: %w", err)
+		return fmt.Errorf("slice: encoding the slice: %w", err)
 	}
 	return f.Close()
 }

@@ -25,7 +25,7 @@ type Tokenizer struct {
 func Load(m Model, b []byte) (*Tokenizer, error) {
 	proc, err := sentencepiece.NewProcessor(bytes.NewReader(b))
 	if err != nil {
-		return nil, fmt.Errorf("dem: %s does not parse as a tokenizer: %w", m.Name, err)
+		return nil, fmt.Errorf("count: %s does not parse as a tokenizer: %w", m.Name, err)
 	}
 	if got := proc.ModelInfo().VocabularySize; got != m.Vocab {
 		return nil, fmt.Errorf("%w: %s has a vocabulary of %d, expected %d", ErrWrongModel, m.Name, got, m.Vocab)

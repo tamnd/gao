@@ -107,7 +107,7 @@ type Ledger struct {
 // corpus contains.
 func OpenLedger(dir string) (*Ledger, error) {
 	if err := os.MkdirAll(dir, 0o755); err != nil {
-		return nil, fmt.Errorf("gat: creating the ingest directory: %w", err)
+		return nil, fmt.Errorf("harvest: creating the ingest directory: %w", err)
 	}
 	path := filepath.Join(dir, LedgerName)
 
@@ -117,7 +117,7 @@ func OpenLedger(dir string) (*Ledger, error) {
 	}
 	f, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_APPEND, 0o644)
 	if err != nil {
-		return nil, fmt.Errorf("gat: opening %s: %w", path, err)
+		return nil, fmt.Errorf("harvest: opening %s: %w", path, err)
 	}
 	return &Ledger{path: path, f: f, done: done}, nil
 }
@@ -131,7 +131,7 @@ func readLedger(path string) (map[string]Entry, error) {
 		return done, nil
 	}
 	if err != nil {
-		return nil, fmt.Errorf("gat: reading %s: %w", path, err)
+		return nil, fmt.Errorf("harvest: reading %s: %w", path, err)
 	}
 	defer func() { _ = f.Close() }()
 
@@ -143,15 +143,15 @@ func readLedger(path string) (map[string]Entry, error) {
 		}
 		var e Entry
 		if err := json.Unmarshal(sc.Bytes(), &e); err != nil {
-			return nil, fmt.Errorf("gat: %s line %d is not an ingest entry: %w", path, line, err)
+			return nil, fmt.Errorf("harvest: %s line %d is not an ingest entry: %w", path, line, err)
 		}
 		if e.Source == "" || e.Path == "" || e.Revision == "" {
-			return nil, fmt.Errorf("gat: %s line %d does not say which file at which revision", path, line)
+			return nil, fmt.Errorf("harvest: %s line %d does not say which file at which revision", path, line)
 		}
 		done[e.Key()] = e
 	}
 	if err := sc.Err(); err != nil {
-		return nil, fmt.Errorf("gat: reading %s: %w", path, err)
+		return nil, fmt.Errorf("harvest: reading %s: %w", path, err)
 	}
 	return done, nil
 }
@@ -201,14 +201,14 @@ func (l *Ledger) Record(e Entry) error {
 	}
 	b, err := json.Marshal(e)
 	if err != nil {
-		return fmt.Errorf("gat: recording %s: %w", e.Path, err)
+		return fmt.Errorf("harvest: recording %s: %w", e.Path, err)
 	}
 	b = append(b, '\n')
 	if _, err := l.f.Write(b); err != nil {
-		return fmt.Errorf("gat: writing %s: %w", l.path, err)
+		return fmt.Errorf("harvest: writing %s: %w", l.path, err)
 	}
 	if err := l.f.Sync(); err != nil {
-		return fmt.Errorf("gat: syncing %s: %w", l.path, err)
+		return fmt.Errorf("harvest: syncing %s: %w", l.path, err)
 	}
 	l.done[e.Key()] = e
 	return nil
@@ -222,7 +222,7 @@ func (l *Ledger) Close() error {
 	err := l.f.Close()
 	l.f = nil
 	if err != nil {
-		return fmt.Errorf("gat: closing %s: %w", l.path, err)
+		return fmt.Errorf("harvest: closing %s: %w", l.path, err)
 	}
 	return nil
 }

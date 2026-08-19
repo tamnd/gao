@@ -71,7 +71,7 @@ func IndexOf(ctx context.Context, s *Store, note Indexing) (IndexReport, error) 
 		return IndexReport{}, err
 	}
 	if len(snapshots) == 0 {
-		return IndexReport{}, fmt.Errorf("dem: %s holds no parts, so there is nothing to index", s.Repo)
+		return IndexReport{}, fmt.Errorf("count: %s holds no parts, so there is nothing to index", s.Repo)
 	}
 
 	var parts []store.Stored
@@ -149,7 +149,7 @@ func IndexOf(ctx context.Context, s *Store, note Indexing) (IndexReport, error) 
 func indexPart(ctx context.Context, s *Store, part store.Stored) (store.Indexed, int64, error) {
 	snapshot, file, n, ok := store.ParseStagePath(part.Path)
 	if !ok {
-		return store.Indexed{}, 0, fmt.Errorf("dem: %s is under %s and is not a part path, so the index cannot say which source it belongs to", part.Path, s.Repo)
+		return store.Indexed{}, 0, fmt.Errorf("count: %s is under %s and is not a part path, so the index cannot say which source it belongs to", part.Path, s.Repo)
 	}
 
 	r, err := s.Open(ctx, part)
@@ -163,7 +163,7 @@ func indexPart(ctx context.Context, s *Store, part store.Stored) (store.Indexed,
 	f, err := parquet.OpenFile(r, part.Bytes,
 		parquet.SkipPageIndex(true), parquet.SkipBloomFilters(true))
 	if err != nil {
-		return store.Indexed{}, r.Bytes(), fmt.Errorf("dem: opening %s: %w", part.Path, err)
+		return store.Indexed{}, r.Bytes(), fmt.Errorf("count: opening %s: %w", part.Path, err)
 	}
 	return store.Indexed{
 		Source:    store.Source(snapshot),

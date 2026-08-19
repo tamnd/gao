@@ -50,15 +50,15 @@ const DefaultRetryWait = 2 * time.Second
 
 // ErrGated is returned when a gated source is fetched without a token, or with
 // one that has not accepted the repo's terms.
-var ErrGated = errors.New("gat: the source is gated")
+var ErrGated = errors.New("harvest: the source is gated")
 
 // ErrTruncated is returned when a host stops sending before the byte count in
 // the manifest.
-var ErrTruncated = errors.New("gat: the host sent less than the manifest says the file is")
+var ErrTruncated = errors.New("harvest: the host sent less than the manifest says the file is")
 
 // ErrDigestMismatch is returned when a file downloads completely and hashes to
 // something other than what was pinned.
-var ErrDigestMismatch = errors.New("gat: the file does not hash to its pinned digest")
+var ErrDigestMismatch = errors.New("harvest: the file does not hash to its pinned digest")
 
 // Fetcher opens pinned files. The zero value works and uses
 // [http.DefaultClient], no token, and [DefaultRetries].
@@ -147,7 +147,7 @@ type Body struct {
 func (b *Body) connect() error {
 	req, err := http.NewRequestWithContext(b.ctx, http.MethodGet, b.url, nil)
 	if err != nil {
-		return fmt.Errorf("gat: fetching %s from %s: %w", b.file.Path, b.pin.Source, err)
+		return fmt.Errorf("harvest: fetching %s from %s: %w", b.file.Path, b.pin.Source, err)
 	}
 	if b.pin.Origin == Hub && b.fetcher.Token != "" {
 		req.Header.Set("Authorization", "Bearer "+b.fetcher.Token)
@@ -158,7 +158,7 @@ func (b *Body) connect() error {
 
 	resp, err := b.fetcher.client().Do(req)
 	if err != nil {
-		return fmt.Errorf("gat: fetching %s from %s: %w", b.file.Path, b.pin.Source, err)
+		return fmt.Errorf("harvest: fetching %s from %s: %w", b.file.Path, b.pin.Source, err)
 	}
 
 	switch {
@@ -168,23 +168,23 @@ func (b *Body) connect() error {
 			return fmt.Errorf("%w: %s answered %s for %s, so accept the terms at %s and set %s",
 				ErrGated, b.pin.Repo, resp.Status, b.file.Path, b.pin.Page(), fleet.TokenEnv)
 		}
-		return fmt.Errorf("gat: fetching %s from %s: %s", b.file.Path, b.pin.Source, resp.Status)
+		return fmt.Errorf("harvest: fetching %s from %s: %s", b.file.Path, b.pin.Source, resp.Status)
 
 	case b.read > 0 && resp.StatusCode == http.StatusOK:
 		// The host ignored the Range header and started the file over. Taking
 		// it would mean hashing the first bytes twice and reporting a size
 		// larger than the file, so this is a failure rather than a slow path.
 		drain(resp)
-		return fmt.Errorf("gat: resuming %s from %s: the host restarted the file at byte 0 instead of %d",
+		return fmt.Errorf("harvest: resuming %s from %s: the host restarted the file at byte 0 instead of %d",
 			b.file.Path, b.pin.Source, b.read)
 
 	case b.read > 0 && resp.StatusCode != http.StatusPartialContent:
 		drain(resp)
-		return fmt.Errorf("gat: resuming %s from %s: %s", b.file.Path, b.pin.Source, resp.Status)
+		return fmt.Errorf("harvest: resuming %s from %s: %s", b.file.Path, b.pin.Source, resp.Status)
 
 	case b.read == 0 && resp.StatusCode != http.StatusOK:
 		drain(resp)
-		return fmt.Errorf("gat: fetching %s from %s: %s", b.file.Path, b.pin.Source, resp.Status)
+		return fmt.Errorf("harvest: fetching %s from %s: %s", b.file.Path, b.pin.Source, resp.Status)
 	}
 
 	b.resp = resp
@@ -229,7 +229,7 @@ func (b *Body) Read(p []byte) (int, error) {
 			b.err = b.ctx.Err()
 			return n, b.err
 		case b.tries >= b.fetcher.retries():
-			b.err = fmt.Errorf("gat: fetching %s from %s: gave up at byte %d after %d reconnects: %w",
+			b.err = fmt.Errorf("harvest: fetching %s from %s: gave up at byte %d after %d reconnects: %w",
 				b.file.Path, b.pin.Source, b.read, b.tries, err)
 			return n, b.err
 		}
@@ -305,7 +305,7 @@ func (b *Body) Close() error {
 	err := b.resp.Body.Close()
 	b.resp = nil
 	if b.err == nil {
-		b.err = errors.New("gat: read from a closed body")
+		b.err = errors.New("harvest: read from a closed body")
 	}
 	return err
 }

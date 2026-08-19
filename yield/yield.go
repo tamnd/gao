@@ -140,7 +140,7 @@ type Run struct {
 
 // Errors a run can fail with.
 var (
-	ErrBadRun = errors.New("suat: the yield was not measured continuously")
+	ErrBadRun = errors.New("yield: the yield was not measured continuously")
 )
 
 // Yield is unique documents kept per fetch made.

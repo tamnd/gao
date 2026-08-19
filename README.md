@@ -2354,7 +2354,7 @@ What a view costs is that it can go stale, and the whole design is arranged so t
 ```
 $ gao slice -snapshot snapshots/gao-v1.0 -head snapshots/gao-v1.1 slices/gao-edu
 gao-edu:
-  lat: stale slice: gao-edu is a view over gao-v1.0, which gao-v1.1 has superseded carrying 2 tombstones, so re-derive it before it is published again
+  slice: stale: gao-edu is a view over gao-v1.0, which gao-v1.1 has superseded carrying 2 tombstones, so re-derive it before it is published again
 ```
 
 It is reported rather than resolved. Re-deriving a slice is one pass of the predicate over the parent and costs nothing worth mentioning, while a check that quietly followed the lineage forward would hide the only event anybody needs to be told about.

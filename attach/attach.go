@@ -410,7 +410,7 @@ func (b Batch) sum(of func(Page) int64) int64 {
 func ReadBatch(name, path string) (Batch, error) {
 	raw, err := os.ReadFile(path)
 	if err != nil {
-		return Batch{}, fmt.Errorf("dinh: %w", err)
+		return Batch{}, fmt.Errorf("attach: %w", err)
 	}
 	b := Batch{Name: name}
 	for i, line := range strings.Split(strings.TrimSpace(string(raw)), "\n") {
@@ -421,12 +421,12 @@ func ReadBatch(name, path string) (Batch, error) {
 		dec.DisallowUnknownFields()
 		var p Page
 		if err := dec.Decode(&p); err != nil {
-			return Batch{}, fmt.Errorf("dinh: %s line %d: %w", path, i+1, err)
+			return Batch{}, fmt.Errorf("attach: %s line %d: %w", path, i+1, err)
 		}
 		b.Pages = append(b.Pages, p)
 	}
 	if len(b.Pages) == 0 {
-		return Batch{}, fmt.Errorf("dinh: %s holds no pages", path)
+		return Batch{}, fmt.Errorf("attach: %s holds no pages", path)
 	}
 	return b, nil
 }

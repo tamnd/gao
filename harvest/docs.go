@@ -45,7 +45,7 @@ const minLangScore = 0.5
 // and either way the next sixty files will do the same thing. Finding that out
 // after one file is better than finding it out after ninety gigabytes of
 // somebody else's bandwidth.
-var ErrNothingAdmitted = errors.New("gat: the file produced documents and none of them were admitted")
+var ErrNothingAdmitted = errors.New("harvest: the file produced documents and none of them were admitted")
 
 // Docs is a [Sink] that decodes a fetched file into documents and puts each one
 // to the ingest contract.

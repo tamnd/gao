@@ -428,7 +428,7 @@ func (s Set) Verdict() string {
 func ReadSet(name, path string) (Set, error) {
 	raw, err := os.ReadFile(path)
 	if err != nil {
-		return Set{}, fmt.Errorf("hoi: %w", err)
+		return Set{}, fmt.Errorf("ask: %w", err)
 	}
 	s := Set{Name: name}
 	for i, line := range strings.Split(strings.TrimSpace(string(raw)), "\n") {
@@ -439,12 +439,12 @@ func ReadSet(name, path string) (Set, error) {
 		dec.DisallowUnknownFields()
 		var q Question
 		if err := dec.Decode(&q); err != nil {
-			return Set{}, fmt.Errorf("hoi: %s line %d: %w", path, i+1, err)
+			return Set{}, fmt.Errorf("ask: %s line %d: %w", path, i+1, err)
 		}
 		s.Questions = append(s.Questions, q)
 	}
 	if len(s.Questions) == 0 {
-		return Set{}, fmt.Errorf("hoi: %s holds no questions", path)
+		return Set{}, fmt.Errorf("ask: %s holds no questions", path)
 	}
 	return s, nil
 }

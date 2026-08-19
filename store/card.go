@@ -81,7 +81,7 @@ func cardFrontMatter(b *strings.Builder, d Dataset, m *Manifest, x []Indexed) {
 	// something false about the rest.
 	b.WriteString("license: other\n")
 	fmt.Fprintf(b, "license_name: %s\n", cardLicenseName(d))
-	fmt.Fprintf(b, "license_link: %s/blob/main/luat/posture.go\n", Repository)
+	fmt.Fprintf(b, "license_link: %s/blob/main/law/posture.go\n", Repository)
 
 	if n := cardDocuments(m, x); n > 0 {
 		fmt.Fprintf(b, "size_categories:\n  - %s\n", cardSize(n))

@@ -170,7 +170,7 @@ func KeysOf(ctx context.Context, s *Store, snapshot, work, out string, note Prog
 		return Keys{}, err
 	}
 	if len(parts) == 0 {
-		return Keys{}, fmt.Errorf("dem: %s holds no parts of %s, so there is nothing to measure", s.Repo, snapshot)
+		return Keys{}, fmt.Errorf("count: %s holds no parts of %s, so there is nothing to measure", s.Repo, snapshot)
 	}
 	if err := os.MkdirAll(work, 0o750); err != nil {
 		return Keys{}, err
@@ -227,7 +227,7 @@ func keysOfPart(ctx context.Context, s *Store, part store.Stored, path string, m
 	}
 	b := NewBuilder(filepath.Dir(path))
 	if err := DocIDs(r, r.Size(), b.Add); err != nil {
-		return Keys{}, moved, fmt.Errorf("dem: reading %s: %w", part.Path, err)
+		return Keys{}, moved, fmt.Errorf("count: reading %s: %w", part.Path, err)
 	}
 	tmp := path + ".partial"
 	keys, err := b.Write(tmp)

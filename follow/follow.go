@@ -126,8 +126,8 @@ type Reply struct {
 
 // Errors a set or a grading can fail with.
 var (
-	ErrBadSet     = errors.New("theo: the set does not measure what it says")
-	ErrBadReplies = errors.New("theo: the replies do not cover the set")
+	ErrBadSet     = errors.New("follow: the set does not measure what it says")
+	ErrBadReplies = errors.New("follow: the replies do not cover the set")
 )
 
 // Digest identifies the set by the prompts and what each one wants back.

@@ -162,7 +162,7 @@ func (p Point) Ranked() []Class {
 func ReadRun(crawl, path string) (*Run, error) {
 	b, err := os.ReadFile(path)
 	if err != nil {
-		return nil, fmt.Errorf("suat: %w", err)
+		return nil, fmt.Errorf("yield: %w", err)
 	}
 	r := &Run{Crawl: crawl}
 	for i, line := range strings.Split(strings.TrimSpace(string(b)), "\n") {
@@ -173,12 +173,12 @@ func ReadRun(crawl, path string) (*Run, error) {
 		dec.DisallowUnknownFields()
 		var p Point
 		if err := dec.Decode(&p); err != nil {
-			return nil, fmt.Errorf("suat: %s line %d: %w", path, i+1, err)
+			return nil, fmt.Errorf("yield: %s line %d: %w", path, i+1, err)
 		}
 		r.Points = append(r.Points, p)
 	}
 	if len(r.Points) == 0 {
-		return nil, fmt.Errorf("suat: %s holds no measurements", path)
+		return nil, fmt.Errorf("yield: %s holds no measurements", path)
 	}
 	return r, nil
 }

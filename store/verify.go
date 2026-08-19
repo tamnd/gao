@@ -163,7 +163,7 @@ func verifyShard(dir string, s Shard) error {
 func checkForStrays(dir string, listed map[string]bool) error {
 	entries, err := os.ReadDir(dir)
 	if err != nil {
-		return fmt.Errorf("kho: reading the snapshot directory: %w", err)
+		return fmt.Errorf("store: reading the snapshot directory: %w", err)
 	}
 	var strays []string
 	for _, e := range entries {

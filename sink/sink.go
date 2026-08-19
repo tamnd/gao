@@ -480,7 +480,7 @@ func leastAligned(s Step) Tensor {
 func ReadStep(model string, loss, reference float64, path string) (Step, error) {
 	b, err := os.ReadFile(path)
 	if err != nil {
-		return Step{}, fmt.Errorf("chim: %w", err)
+		return Step{}, fmt.Errorf("sink: %w", err)
 	}
 	s := Step{Model: model, Loss: loss, Reference: reference}
 	for i, line := range strings.Split(strings.TrimSpace(string(b)), "\n") {
@@ -491,12 +491,12 @@ func ReadStep(model string, loss, reference float64, path string) (Step, error) 
 		dec.DisallowUnknownFields()
 		var t Tensor
 		if err := dec.Decode(&t); err != nil {
-			return Step{}, fmt.Errorf("chim: %s line %d: %w", path, i+1, err)
+			return Step{}, fmt.Errorf("sink: %s line %d: %w", path, i+1, err)
 		}
 		s.Tensors = append(s.Tensors, t)
 	}
 	if len(s.Tensors) == 0 {
-		return Step{}, fmt.Errorf("chim: %s holds no tensors", path)
+		return Step{}, fmt.Errorf("sink: %s holds no tensors", path)
 	}
 	s.At = s.Tensors[0].Step
 	return s, nil

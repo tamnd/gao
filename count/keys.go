@@ -58,7 +58,7 @@ const keysHeader = 8 + 8 + 8
 const DefaultRunKeys = 8 << 20
 
 // ErrNotKeys is returned when a file being read as keys is not one.
-var ErrNotKeys = errors.New("dem: not a gao key file")
+var ErrNotKeys = errors.New("count: not a gao key file")
 
 // Keys is what a key file says about the source it was built from.
 type Keys struct {
@@ -275,7 +275,7 @@ func (k *KeyReader) Next() (Key, bool, error) {
 		if errors.Is(err, io.EOF) {
 			return 0, false, nil
 		}
-		return 0, false, fmt.Errorf("dem: reading %s: %w", k.name, err)
+		return 0, false, fmt.Errorf("count: reading %s: %w", k.name, err)
 	}
 	return binary.LittleEndian.Uint64(b[:]), true, nil
 }

@@ -69,7 +69,7 @@ func (o *Overlap) Add(source, text string) (doc.Hash, error) {
 	i, ok := o.byName[source]
 	if !ok {
 		if len(o.names) == MaxSources {
-			return doc.Hash{}, fmt.Errorf("xay: %d sources is the most one overlap measurement holds", MaxSources)
+			return doc.Hash{}, fmt.Errorf("mill: %d sources is the most one overlap measurement holds", MaxSources)
 		}
 		i = len(o.names)
 		o.names = append(o.names, source)

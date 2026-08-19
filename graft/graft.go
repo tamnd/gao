@@ -378,7 +378,7 @@ func (t Trial) Verdict() string {
 func ReadTrial(budget int64, path string) (Trial, error) {
 	b, err := os.ReadFile(path)
 	if err != nil {
-		return Trial{}, fmt.Errorf("ghep: %w", err)
+		return Trial{}, fmt.Errorf("graft: %w", err)
 	}
 	t := Trial{Budget: budget}
 	for i, line := range strings.Split(strings.TrimSpace(string(b)), "\n") {
@@ -389,12 +389,12 @@ func ReadTrial(budget int64, path string) (Trial, error) {
 		dec.DisallowUnknownFields()
 		var e Expansion
 		if err := dec.Decode(&e); err != nil {
-			return Trial{}, fmt.Errorf("ghep: %s line %d: %w", path, i+1, err)
+			return Trial{}, fmt.Errorf("graft: %s line %d: %w", path, i+1, err)
 		}
 		t.Runs = append(t.Runs, e)
 	}
 	if len(t.Runs) == 0 {
-		return Trial{}, fmt.Errorf("ghep: %s holds no expansions", path)
+		return Trial{}, fmt.Errorf("graft: %s holds no expansions", path)
 	}
 	return t, nil
 }

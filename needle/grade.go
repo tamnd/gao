@@ -113,7 +113,7 @@ type Score struct {
 }
 
 // ErrNoReplies is what an empty file comes back as.
-var ErrNoReplies = errors.New("kim: no answers to read")
+var ErrNoReplies = errors.New("needle: no answers to read")
 
 // Grade reads answers against the items they were asked from.
 //

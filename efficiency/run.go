@@ -72,7 +72,7 @@ type Run struct {
 func ReadLog(path string) ([]Step, error) {
 	b, err := os.ReadFile(path)
 	if err != nil {
-		return nil, fmt.Errorf("hieu: %w", err)
+		return nil, fmt.Errorf("efficiency: %w", err)
 	}
 	var out []Step
 	for i, line := range strings.Split(strings.TrimSpace(string(b)), "\n") {
@@ -83,10 +83,10 @@ func ReadLog(path string) ([]Step, error) {
 		dec.DisallowUnknownFields()
 		var s Step
 		if err := dec.Decode(&s); err != nil {
-			return nil, fmt.Errorf("hieu: %s line %d: %w", path, i+1, err)
+			return nil, fmt.Errorf("efficiency: %s line %d: %w", path, i+1, err)
 		}
 		if s.Tokens <= 0 {
-			return nil, fmt.Errorf("hieu: %s line %d: a step with no tokens in it, and a training log is a record of tokens", path, i+1)
+			return nil, fmt.Errorf("efficiency: %s line %d: a step with no tokens in it, and a training log is a record of tokens", path, i+1)
 		}
 		out = append(out, s)
 	}

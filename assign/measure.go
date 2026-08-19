@@ -29,7 +29,7 @@ import (
 // ErrNotAReading is returned when a ledger cannot support a reading. It is not a
 // failure of the run, which may have gone perfectly. It is a refusal to publish
 // a rate that would not mean anything.
-var ErrNotAReading = errors.New("giao: the ledger does not carry a reading")
+var ErrNotAReading = errors.New("assign: the ledger does not carry a reading")
 
 // Measure derives one box's reading from the entries its ingest wrote.
 //

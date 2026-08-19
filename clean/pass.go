@@ -288,7 +288,7 @@ func (p *Pass) part(ctx context.Context, line *Line, from store.Stored, done boo
 		if v.Kept {
 			t.cover.Add(line.Level, v.Found)
 			if err := out.Append(d); err != nil {
-				return fmt.Errorf("sach: %s: %w", from.Path, err)
+				return fmt.Errorf("clean: %s: %w", from.Path, err)
 			}
 			return nil
 		}

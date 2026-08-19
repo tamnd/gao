@@ -95,11 +95,11 @@ type Register struct {
 func Read(rd io.Reader) (*Register, error) {
 	b, err := io.ReadAll(rd)
 	if err != nil {
-		return nil, fmt.Errorf("xoa: reading the register: %w", err)
+		return nil, fmt.Errorf("takedown: reading the register: %w", err)
 	}
 	var reg Register
 	if err := toml.Unmarshal(b, &reg); err != nil {
-		return nil, fmt.Errorf("xoa: reading the register: %w", err)
+		return nil, fmt.Errorf("takedown: reading the register: %w", err)
 	}
 	for i := range reg.Requests {
 		reg.Requests[i].Host = strings.ToLower(strings.TrimSpace(reg.Requests[i].Host))
@@ -111,7 +111,7 @@ func Read(rd io.Reader) (*Register, error) {
 func Load(path string) (*Register, error) {
 	f, err := os.Open(path)
 	if err != nil {
-		return nil, fmt.Errorf("xoa: %w", err)
+		return nil, fmt.Errorf("takedown: %w", err)
 	}
 	defer func() { _ = f.Close() }()
 	return Read(f)
@@ -124,7 +124,7 @@ func Load(path string) (*Register, error) {
 // zero requests is that the question is open. A report that instead prints a
 // median of zero hours and a hundred percent honored describes a system that has
 // never done anything as one that has never failed.
-var ErrNothingFiled = errors.New("xoa: nothing has been filed, so nothing has been measured")
+var ErrNothingFiled = errors.New("takedown: nothing has been filed, so nothing has been measured")
 
 // Blocked says whether a URL is one we have been asked not to fetch.
 //
@@ -266,7 +266,7 @@ func (g *Register) Median() (time.Duration, error) {
 // dilute the number toward zero as the frontier grows.
 func (g *Register) Rate(crawled int) (float64, error) {
 	if crawled <= 0 {
-		return 0, errors.New("xoa: a rate needs a count of hosts that were actually crawled")
+		return 0, errors.New("takedown: a rate needs a count of hosts that were actually crawled")
 	}
 	hosts := make(map[string]bool, len(g.Requests))
 	for _, r := range g.Requests {

@@ -131,7 +131,7 @@ type Ingest struct {
 // them together helps nobody.
 func (in *Ingest) Run(ctx context.Context, todo []Work) (int, error) {
 	if in.Ledger == nil {
-		return 0, errors.New("gat: an ingest needs a ledger, or an interruption costs the whole run")
+		return 0, errors.New("harvest: an ingest needs a ledger, or an interruption costs the whole run")
 	}
 	fetcher := in.Fetcher
 	if fetcher == nil {
@@ -186,7 +186,7 @@ func (in *Ingest) one(ctx context.Context, fetcher *Fetcher, sink Sink, w Work) 
 	rep.Reconnects = body.Reconnects()
 	rep.Elapsed = time.Since(start)
 	if err != nil {
-		rep.Err = fmt.Errorf("gat: %s from %s: %w", w.File.Path, w.Pin.Source, err)
+		rep.Err = fmt.Errorf("harvest: %s from %s: %w", w.File.Path, w.Pin.Source, err)
 		return rep, rep.Err
 	}
 
@@ -241,7 +241,7 @@ func (in *Ingest) random(ctx context.Context, fetcher *Fetcher, sink RandomSink,
 	rep.Requests = r.Requests()
 	rep.Elapsed = time.Since(start)
 	if err != nil {
-		rep.Err = fmt.Errorf("gat: %s from %s: %w", w.File.Path, w.Pin.Source, err)
+		rep.Err = fmt.Errorf("harvest: %s from %s: %w", w.File.Path, w.Pin.Source, err)
 		return rep, rep.Err
 	}
 

@@ -53,7 +53,7 @@ func singleTable(rows string) map[byte]rune {
 		n++
 	}
 	if n != 128 {
-		panic("phoi: a single byte table covers 0x80 to 0xff and this one does not")
+		panic("normalize: a single byte table covers 0x80 to 0xff and this one does not")
 	}
 	return m
 }
@@ -73,7 +73,7 @@ func pairTable(rows []markRow) map[[2]byte]rune {
 	for _, row := range rows {
 		letters := []rune(row.letters)
 		if len(letters) != len(row.marks) {
-			panic("phoi: a mark row has to name one letter per mark byte")
+			panic("normalize: a mark row has to name one letter per mark byte")
 		}
 		for i := range letters {
 			m[[2]byte{row.base, row.marks[i]}] = letters[i]

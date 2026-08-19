@@ -184,8 +184,8 @@ type Score struct {
 
 // Errors a set or a grading can fail with.
 var (
-	ErrBadSet     = errors.New("ngai: the set does not measure what it says")
-	ErrBadReplies = errors.New("ngai: the replies do not cover the set")
+	ErrBadSet     = errors.New("hesitate: the set does not measure what it says")
+	ErrBadReplies = errors.New("hesitate: the replies do not cover the set")
 )
 
 // Digest identifies the set by the prompts in it and what each one expects. The

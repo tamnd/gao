@@ -27,11 +27,11 @@ const partExt = ".part"
 
 // ErrNotThisWorker is returned when a document hashes into a shard the set does
 // not own.
-var ErrNotThisWorker = errors.New("kho: that document belongs to another shard range")
+var ErrNotThisWorker = errors.New("store: that document belongs to another shard range")
 
 // ErrSealed is returned when a shard set is pointed at a directory that already
 // holds a sealed snapshot.
-var ErrSealed = errors.New("kho: the snapshot is sealed")
+var ErrSealed = errors.New("store: the snapshot is sealed")
 
 // ShardName returns the file name of shard i of n.
 //
@@ -135,10 +135,10 @@ type openShard[P Record[T], T any] struct {
 // content identity and for a reject is whichever of its two identities it has.
 func NewShardSet[P Record[T], T any](dir string, n int, key func(P) doc.Hash, opts ...ShardOption) (*ShardSet[P, T], error) {
 	if n <= 0 {
-		return nil, fmt.Errorf("kho: a snapshot needs at least one shard, got %d", n)
+		return nil, fmt.Errorf("store: a snapshot needs at least one shard, got %d", n)
 	}
 	if key == nil {
-		return nil, errors.New("kho: a shard set needs a key function")
+		return nil, errors.New("store: a shard set needs a key function")
 	}
 
 	cfg := shardOptions{from: 0, to: n, buffer: DefaultShardBuffer}
@@ -146,13 +146,13 @@ func NewShardSet[P Record[T], T any](dir string, n int, key func(P) doc.Hash, op
 		opt(&cfg)
 	}
 	if cfg.from < 0 || cfg.to > n || cfg.from >= cfg.to {
-		return nil, fmt.Errorf("kho: shard range [%d, %d) is not inside [0, %d)", cfg.from, cfg.to, n)
+		return nil, fmt.Errorf("store: shard range [%d, %d) is not inside [0, %d)", cfg.from, cfg.to, n)
 	}
 	if Sealed(dir) {
 		return nil, fmt.Errorf("%w: %s already has a %s", ErrSealed, dir, ManifestName)
 	}
 	if err := os.MkdirAll(dir, 0o755); err != nil {
-		return nil, fmt.Errorf("kho: creating the snapshot directory: %w", err)
+		return nil, fmt.Errorf("store: creating the snapshot directory: %w", err)
 	}
 
 	return &ShardSet[P, T]{
@@ -185,7 +185,7 @@ func (s *ShardSet[P, T]) Owns(i int) bool {
 // the corpus.
 func (s *ShardSet[P, T]) Append(d P) error {
 	if s.closed {
-		return errors.New("kho: append to a closed shard set")
+		return errors.New("store: append to a closed shard set")
 	}
 	i := s.Shard(d)
 	if !s.Owns(i) {
@@ -208,7 +208,7 @@ func (s *ShardSet[P, T]) shardFor(i int) (*openShard[P, T], error) {
 
 	f, err := os.OpenFile(part, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o644)
 	if err != nil {
-		return nil, fmt.Errorf("kho: opening %s: %w", name, err)
+		return nil, fmt.Errorf("store: opening %s: %w", name, err)
 	}
 	buf := bufio.NewWriterSize(f, s.cfg.buffer)
 	seg, err := NewWriter[P](buf, s.cfg.writer...)
@@ -275,7 +275,7 @@ func (s *ShardSet[P, T]) finish(sh *openShard[P, T]) (Shard, error) {
 	}
 	if err := sh.buf.Flush(); err != nil {
 		_ = sh.f.Close()
-		return Shard{}, fmt.Errorf("kho: flushing %s: %w", sh.name, err)
+		return Shard{}, fmt.Errorf("store: flushing %s: %w", sh.name, err)
 	}
 
 	// The file is fsynced before it is renamed. Without that, a crash can leave
@@ -283,18 +283,18 @@ func (s *ShardSet[P, T]) finish(sh *openShard[P, T]) (Shard, error) {
 	// named as complete, and empty.
 	if err := sh.f.Sync(); err != nil {
 		_ = sh.f.Close()
-		return Shard{}, fmt.Errorf("kho: syncing %s: %w", sh.name, err)
+		return Shard{}, fmt.Errorf("store: syncing %s: %w", sh.name, err)
 	}
 	size, err := sh.f.Seek(0, io.SeekCurrent)
 	if err != nil {
 		_ = sh.f.Close()
-		return Shard{}, fmt.Errorf("kho: sizing %s: %w", sh.name, err)
+		return Shard{}, fmt.Errorf("store: sizing %s: %w", sh.name, err)
 	}
 	if err := sh.f.Close(); err != nil {
-		return Shard{}, fmt.Errorf("kho: closing %s: %w", sh.name, err)
+		return Shard{}, fmt.Errorf("store: closing %s: %w", sh.name, err)
 	}
 	if err := os.Rename(sh.part, filepath.Join(s.dir, sh.name)); err != nil {
-		return Shard{}, fmt.Errorf("kho: moving %s into place: %w", sh.name, err)
+		return Shard{}, fmt.Errorf("store: moving %s into place: %w", sh.name, err)
 	}
 	return Shard{
 		Name:      sh.name,

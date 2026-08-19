@@ -48,18 +48,18 @@ const DefaultBackoff = 5 * time.Minute
 var (
 	// ErrDeclined is robots.txt saying no to this path. The host is fine and
 	// other paths on it may still be fetched.
-	ErrDeclined = errors.New("gat: robots.txt declined this path")
+	ErrDeclined = errors.New("harvest: robots.txt declined this path")
 
 	// ErrBlocked is the host saying no to us. It is remembered, and every later
 	// request to that host fails with it without a packet being sent.
-	ErrBlocked = errors.New("gat: the host has blocked this crawler")
+	ErrBlocked = errors.New("harvest: the host has blocked this crawler")
 
 	// ErrBusy is the host saying it cannot take this now. It is not a failure
 	// and it is not a reason to try again sooner.
-	ErrBusy = errors.New("gat: the host asked for time")
+	ErrBusy = errors.New("harvest: the host asked for time")
 
 	// ErrTooLarge is a body over [MaxBody].
-	ErrTooLarge = errors.New("gat: the body is larger than a page")
+	ErrTooLarge = errors.New("harvest: the body is larger than a page")
 )
 
 // A Visit is one fetch and everything that came back with it.
@@ -225,14 +225,14 @@ func NewCrawler(o CrawlOptions) *Crawler {
 func (c *Crawler) Get(ctx context.Context, rawurl string) (*Visit, error) {
 	u, err := url.Parse(rawurl)
 	if err != nil {
-		return nil, fmt.Errorf("gat: %s: %w", rawurl, err)
+		return nil, fmt.Errorf("harvest: %s: %w", rawurl, err)
 	}
 	if u.Scheme != "http" && u.Scheme != "https" {
-		return nil, fmt.Errorf("gat: %s: %q is not a scheme this fetches", rawurl, u.Scheme)
+		return nil, fmt.Errorf("harvest: %s: %q is not a scheme this fetches", rawurl, u.Scheme)
 	}
 	host := u.Host
 	if host == "" {
-		return nil, fmt.Errorf("gat: %s: no host", rawurl)
+		return nil, fmt.Errorf("harvest: %s: no host", rawurl)
 	}
 
 	if why, ok := c.isBlocked(host); ok {
@@ -447,7 +447,7 @@ func (c *Crawler) fetch(ctx context.Context, host, target string) (fetched, erro
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, target, nil)
 	if err != nil {
-		return fetched{}, fmt.Errorf("gat: %s: %w", target, err)
+		return fetched{}, fmt.Errorf("harvest: %s: %w", target, err)
 	}
 	req.Header.Set("User-Agent", c.agent)
 	// Accept-Encoding is deliberately not set. Setting it by hand turns off the
@@ -457,7 +457,7 @@ func (c *Crawler) fetch(ctx context.Context, host, target string) (fetched, erro
 
 	resp, err := c.client.Do(req)
 	if err != nil {
-		return fetched{}, fmt.Errorf("gat: %s: %w", target, err)
+		return fetched{}, fmt.Errorf("harvest: %s: %w", target, err)
 	}
 	defer func() { _ = resp.Body.Close() }()
 
@@ -473,7 +473,7 @@ func (c *Crawler) fetch(ctx context.Context, host, target string) (fetched, erro
 
 	body, err := io.ReadAll(io.LimitReader(resp.Body, c.maxBody+1))
 	if err != nil {
-		return fetched{}, fmt.Errorf("gat: %s: %w", target, err)
+		return fetched{}, fmt.Errorf("harvest: %s: %w", target, err)
 	}
 	if int64(len(body)) > c.maxBody {
 		return fetched{}, fmt.Errorf("%w: %s sent over %d bytes", ErrTooLarge, target, c.maxBody)

@@ -73,7 +73,7 @@ func WeighPart(path string) (PartWeight, error) {
 	counted := &countingReaderAt{r: f}
 	pf, err := parquet.OpenFile(counted, stat.Size())
 	if err != nil {
-		return PartWeight{}, fmt.Errorf("kho: opening %s: %w", path, err)
+		return PartWeight{}, fmt.Errorf("store: opening %s: %w", path, err)
 	}
 
 	w := PartWeight{

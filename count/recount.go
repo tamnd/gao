@@ -54,7 +54,7 @@ import (
 func ShapeOf(r io.ReaderAt, size int64) (Counts, error) {
 	f, err := parquet.OpenFile(r, size)
 	if err != nil {
-		return Counts{}, fmt.Errorf("dem: opening a part of %d bytes: %w", size, err)
+		return Counts{}, fmt.Errorf("count: opening a part of %d bytes: %w", size, err)
 	}
 	return shapeOf(f)
 }
@@ -83,7 +83,7 @@ func shapeOf(f *parquet.File) (Counts, error) {
 			return Counts{}, err
 		}
 		if rows != c.Documents {
-			return Counts{}, fmt.Errorf("dem: this part says it holds %d rows and its %s column holds %d values", c.Documents, col.name, rows)
+			return Counts{}, fmt.Errorf("count: this part says it holds %d rows and its %s column holds %d values", c.Documents, col.name, rows)
 		}
 	}
 	return c, nil
@@ -109,7 +109,7 @@ func RecountOf(ctx context.Context, s *Store, snapshot, work string, note Counti
 		return Counts{}, err
 	}
 	if len(parts) == 0 {
-		return Counts{}, fmt.Errorf("dem: %s holds no parts of %s, so there is nothing to recount", s.Repo, snapshot)
+		return Counts{}, fmt.Errorf("count: %s holds no parts of %s, so there is nothing to recount", s.Repo, snapshot)
 	}
 	if err := os.MkdirAll(work, 0o750); err != nil {
 		return Counts{}, err
@@ -149,7 +149,7 @@ func recountPart(ctx context.Context, s *Store, part store.Stored, moved int64) 
 	}
 	c, err := ShapeOf(r, r.Size())
 	if err != nil {
-		return Counts{}, moved, fmt.Errorf("dem: reading %s: %w", part.Path, err)
+		return Counts{}, moved, fmt.Errorf("count: reading %s: %w", part.Path, err)
 	}
 	return c, moved + r.Bytes(), nil
 }
@@ -224,7 +224,7 @@ func (s *shapes) read() (int64, error) {
 			// A line that was terminated and still does not parse is not a torn
 			// tail, it is a file something else wrote, and appending gao's
 			// records to the end of it would make two problems out of one.
-			return 0, fmt.Errorf("dem: %s is not a recount resume file: %w", s.f.Name(), err)
+			return 0, fmt.Errorf("count: %s is not a recount resume file: %w", s.f.Name(), err)
 		}
 		s.by[l.Part] = l.Counts
 	}

@@ -228,12 +228,12 @@ type Manifest struct {
 // a bad shard hash means a byte flipped in storage, and an incomplete manifest
 // means it was written by a broken pipeline.
 var (
-	ErrUnsigned      = errors.New("kho: manifest is not signed")
-	ErrBadSignature  = errors.New("kho: manifest signature does not verify")
-	ErrBadRoot       = errors.New("kho: merkle root does not match the shard hashes")
-	ErrBadShard      = errors.New("kho: shard hash does not match its bytes")
-	ErrBadManifest   = errors.New("kho: manifest is incomplete")
-	ErrSnapshotDirty = errors.New("kho: snapshot directory does not match its manifest")
+	ErrUnsigned      = errors.New("store: manifest is not signed")
+	ErrBadSignature  = errors.New("store: manifest signature does not verify")
+	ErrBadRoot       = errors.New("store: merkle root does not match the shard hashes")
+	ErrBadShard      = errors.New("store: shard hash does not match its bytes")
+	ErrBadManifest   = errors.New("store: manifest is incomplete")
+	ErrSnapshotDirty = errors.New("store: snapshot directory does not match its manifest")
 )
 
 // ComputeRoot returns the merkle root over the shard hashes as listed.
@@ -346,7 +346,7 @@ func (m *Manifest) Seal(key ed25519.PrivateKey, at time.Time) error {
 	}
 	pub, ok := key.Public().(ed25519.PublicKey)
 	if !ok {
-		return errors.New("kho: signing key has no ed25519 public key")
+		return errors.New("store: signing key has no ed25519 public key")
 	}
 	digest := m.Digest()
 	m.Signature = Signature{
@@ -467,11 +467,11 @@ func WriteManifest(dir string, m *Manifest) error {
 	path := filepath.Join(dir, ManifestName)
 	f, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o644)
 	if err != nil {
-		return fmt.Errorf("kho: writing the manifest: %w", err)
+		return fmt.Errorf("store: writing the manifest: %w", err)
 	}
 	defer func() { _ = f.Close() }()
 	if err := toml.NewEncoder(f).Encode(m); err != nil {
-		return fmt.Errorf("kho: encoding the manifest: %w", err)
+		return fmt.Errorf("store: encoding the manifest: %w", err)
 	}
 	return f.Close()
 }
@@ -481,10 +481,10 @@ func ReadManifest(dir string) (*Manifest, error) {
 	var m Manifest
 	path := filepath.Join(dir, ManifestName)
 	if _, err := toml.DecodeFile(path, &m); err != nil {
-		return nil, fmt.Errorf("kho: reading %s: %w", path, err)
+		return nil, fmt.Errorf("store: reading %s: %w", path, err)
 	}
 	if m.ManifestVersion > ManifestVersion {
-		return nil, fmt.Errorf("kho: %s is manifest version %d, this build understands %d",
+		return nil, fmt.Errorf("store: %s is manifest version %d, this build understands %d",
 			path, m.ManifestVersion, ManifestVersion)
 	}
 	return &m, nil

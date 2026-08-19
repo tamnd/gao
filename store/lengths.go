@@ -61,7 +61,7 @@ func ScanLengths(path string, fn func(Length) error) (int64, error) {
 	}
 	counted := &sizedReaderAt{countingReaderAt: countingReaderAt{r: f}, size: stat.Size()}
 	if _, err := parquet.OpenFile(counted, stat.Size()); err != nil {
-		return counted.n, fmt.Errorf("kho: opening %s: %w", path, err)
+		return counted.n, fmt.Errorf("store: opening %s: %w", path, err)
 	}
 
 	rd := parquet.NewGenericReader[Length](counted)
@@ -79,7 +79,7 @@ func ScanLengths(path string, fn func(Length) error) (int64, error) {
 			return counted.n, nil
 		}
 		if err != nil {
-			return counted.n, fmt.Errorf("kho: reading %s: %w", path, err)
+			return counted.n, fmt.Errorf("store: reading %s: %w", path, err)
 		}
 	}
 }

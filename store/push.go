@@ -67,7 +67,7 @@ const MaxUpload = 5 << 30
 const InlineMax = 10 << 20
 
 // ErrUnauthorized is returned when the Hub refuses the token.
-var ErrUnauthorized = errors.New("kho: the hub refused the token")
+var ErrUnauthorized = errors.New("store: the hub refused the token")
 
 // Pusher is the handle on one dataset repo. It uploads files into it and it
 // lists what is already in it, because the repo, the token and the client are
@@ -154,7 +154,7 @@ func (p *Pusher) Push(ctx context.Context, local, path string) (Pushed, error) {
 	}
 	oid, size := id.sha256, id.size
 	if size > MaxUpload {
-		return Pushed{}, fmt.Errorf("kho: %s is %d bytes and nothing here should be over %d, so this is a bug in whatever wrote it rather than a large file", path, size, int64(MaxUpload))
+		return Pushed{}, fmt.Errorf("store: %s is %d bytes and nothing here should be over %d, so this is a bug in whatever wrote it rather than a large file", path, size, int64(MaxUpload))
 	}
 	done := Pushed{Path: path, Bytes: size, OID: oid}
 
@@ -172,7 +172,7 @@ func (p *Pusher) Push(ctx context.Context, local, path string) (Pushed, error) {
 	}
 	if mode != "lfs" {
 		if size > InlineMax {
-			return done, fmt.Errorf("kho: %s wants to be committed inline at %d bytes, which means %s does not track it with lfs and its .gitattributes needs fixing before anything is pushed", path, size, p.Repo)
+			return done, fmt.Errorf("store: %s wants to be committed inline at %d bytes, which means %s does not track it with lfs and its .gitattributes needs fixing before anything is pushed", path, size, p.Repo)
 		}
 		body, rErr := os.ReadFile(local) //nolint:gosec // the path is one this process wrote
 		if rErr != nil {
@@ -302,7 +302,7 @@ func identify(local string) (fileID, error) {
 		return fileID{}, err
 	}
 	if n != id.size {
-		return fileID{}, fmt.Errorf("kho: %s was %d bytes and read as %d, so it is being written while it is being pushed", local, id.size, n)
+		return fileID{}, fmt.Errorf("store: %s was %d bytes and read as %d, so it is being written while it is being pushed", local, id.size, n)
 	}
 	id.sha256 = hex.EncodeToString(sum.Sum(nil))
 	id.gitOID = hex.EncodeToString(blob.Sum(nil))
@@ -342,7 +342,7 @@ func (p *Pusher) present(ctx context.Context, path string, id fileID) (bool, err
 	c.CheckRedirect = func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }
 	resp, err := c.Do(req)
 	if err != nil {
-		return false, fmt.Errorf("kho: asking %s whether it has %s: %w", p.Repo, path, err)
+		return false, fmt.Errorf("store: asking %s whether it has %s: %w", p.Repo, path, err)
 	}
 	defer closeBody(resp)
 
@@ -354,7 +354,7 @@ func (p *Pusher) present(ctx context.Context, path string, id fileID) (bool, err
 	case http.StatusUnauthorized, http.StatusForbidden:
 		return false, p.refused(resp)
 	default:
-		return false, fmt.Errorf("kho: asking %s whether it has %s: %s", p.Repo, path, resp.Status)
+		return false, fmt.Errorf("store: asking %s whether it has %s: %s", p.Repo, path, resp.Status)
 	}
 
 	if tag := resp.Header.Get("X-Linked-Etag"); tag != "" {
@@ -387,13 +387,13 @@ func (p *Pusher) preupload(ctx context.Context, path string, size int64, sample 
 	}
 	url := fmt.Sprintf("%s/api/datasets/%s/preupload/%s", p.api(), p.Repo, p.branch())
 	if err := p.post(ctx, url, "application/json", in, &out); err != nil {
-		return "", fmt.Errorf("kho: asking %s how to upload %s: %w", p.Repo, path, err)
+		return "", fmt.Errorf("store: asking %s how to upload %s: %w", p.Repo, path, err)
 	}
 	if len(out.Files) != 1 {
-		return "", fmt.Errorf("kho: asking %s how to upload %s: the hub answered about %d files", p.Repo, path, len(out.Files))
+		return "", fmt.Errorf("store: asking %s how to upload %s: the hub answered about %d files", p.Repo, path, len(out.Files))
 	}
 	if out.Files[0].ShouldIgnore {
-		return "", fmt.Errorf("kho: %s says %s is ignored, which means its .gitignore excludes what this run is producing", p.Repo, path)
+		return "", fmt.Errorf("store: %s says %s is ignored, which means its .gitignore excludes what this run is producing", p.Repo, path)
 	}
 	return out.Files[0].UploadMode, nil
 }
@@ -428,14 +428,14 @@ func (p *Pusher) batch(ctx context.Context, oid string, size int64) (*lfsAction,
 	}
 	url := fmt.Sprintf("%s/datasets/%s.git/info/lfs/objects/batch", p.api(), p.Repo)
 	if err := p.post(ctx, url, "application/vnd.git-lfs+json", in, &out); err != nil {
-		return nil, fmt.Errorf("kho: asking %s whether it holds %s already: %w", p.Repo, oid, err)
+		return nil, fmt.Errorf("store: asking %s whether it holds %s already: %w", p.Repo, oid, err)
 	}
 	if len(out.Objects) != 1 {
-		return nil, fmt.Errorf("kho: asking %s whether it holds %s already: the hub answered about %d objects", p.Repo, oid, len(out.Objects))
+		return nil, fmt.Errorf("store: asking %s whether it holds %s already: the hub answered about %d objects", p.Repo, oid, len(out.Objects))
 	}
 	o := out.Objects[0]
 	if o.Error != nil {
-		return nil, fmt.Errorf("kho: %s refused the object %s: %s", p.Repo, oid, o.Error.Message)
+		return nil, fmt.Errorf("store: %s refused the object %s: %s", p.Repo, oid, o.Error.Message)
 	}
 	return o.Actions.Upload, nil
 }
@@ -460,11 +460,11 @@ func (p *Pusher) transfer(ctx context.Context, a *lfsAction, local string, size 
 	}
 	resp, err := p.client().Do(req)
 	if err != nil {
-		return fmt.Errorf("kho: uploading %s: %w", local, err)
+		return fmt.Errorf("store: uploading %s: %w", local, err)
 	}
 	defer closeBody(resp)
 	if resp.StatusCode/100 != 2 {
-		return fmt.Errorf("kho: uploading %s: %s: %s", local, resp.Status, snippet(resp.Body))
+		return fmt.Errorf("store: uploading %s: %s: %s", local, resp.Status, snippet(resp.Body))
 	}
 	return nil
 }
@@ -509,7 +509,7 @@ func (p *Pusher) commit(ctx context.Context, ops ...commitOp) error {
 	}
 	url := fmt.Sprintf("%s/api/datasets/%s/commit/%s", p.api(), p.Repo, p.branch())
 	if err := p.send(ctx, url, "application/x-ndjson", &body, nil); err != nil {
-		return fmt.Errorf("kho: committing %s to %s: %w", opPath(ops[0]), p.Repo, err)
+		return fmt.Errorf("store: committing %s to %s: %w", opPath(ops[0]), p.Repo, err)
 	}
 	return nil
 }
@@ -540,7 +540,7 @@ func (p *Pusher) EnsureRepo(ctx context.Context, d Dataset) error {
 		return err
 	}
 	if _, err := p.PushCard(ctx, d, nil, nil); err != nil {
-		return fmt.Errorf("kho: putting a card on %s: %w", d.Repo(), err)
+		return fmt.Errorf("store: putting a card on %s: %w", d.Repo(), err)
 	}
 	return nil
 }
@@ -549,7 +549,7 @@ func (p *Pusher) EnsureRepo(ctx context.Context, d Dataset) error {
 func (p *Pusher) createRepo(ctx context.Context, d Dataset) (bool, error) {
 	org, name, ok := strings.Cut(d.Repo(), "/")
 	if !ok {
-		return false, fmt.Errorf("kho: %s is not an org and a name", d.Repo())
+		return false, fmt.Errorf("store: %s is not an org and a name", d.Repo())
 	}
 	in := map[string]any{
 		"type":         "dataset",
@@ -565,7 +565,7 @@ func (p *Pusher) createRepo(ctx context.Context, d Dataset) (bool, error) {
 		return false, nil
 	}
 	if err != nil {
-		return false, fmt.Errorf("kho: creating %s: %w", d.Repo(), err)
+		return false, fmt.Errorf("store: creating %s: %w", d.Repo(), err)
 	}
 	return true, nil
 }

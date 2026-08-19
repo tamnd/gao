@@ -20,13 +20,13 @@ import (
 // language against a 64 character hex string.
 
 // ErrBadKey is returned when a key file is not a gao signing key.
-var ErrBadKey = errors.New("kho: not a gao signing key")
+var ErrBadKey = errors.New("store: not a gao signing key")
 
 // GenerateKey returns a new signing key.
 func GenerateKey() (ed25519.PublicKey, ed25519.PrivateKey, error) {
 	pub, priv, err := ed25519.GenerateKey(rand.Reader)
 	if err != nil {
-		return nil, nil, fmt.Errorf("kho: generating a signing key: %w", err)
+		return nil, nil, fmt.Errorf("store: generating a signing key: %w", err)
 	}
 	return pub, priv, nil
 }
@@ -53,11 +53,11 @@ func writeKeyFile(path string, key []byte, mode os.FileMode) error {
 	// with, and noticing at the next release.
 	f, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_EXCL, mode)
 	if err != nil {
-		return fmt.Errorf("kho: writing %s: %w", path, err)
+		return fmt.Errorf("store: writing %s: %w", path, err)
 	}
 	defer func() { _ = f.Close() }()
 	if _, err := fmt.Fprintln(f, hex.EncodeToString(key)); err != nil {
-		return fmt.Errorf("kho: writing %s: %w", path, err)
+		return fmt.Errorf("store: writing %s: %w", path, err)
 	}
 	return f.Close()
 }
@@ -71,7 +71,7 @@ func LoadPrivateKey(path string) (ed25519.PrivateKey, error) {
 	if runtime.GOOS != "windows" {
 		info, err := os.Stat(path)
 		if err != nil {
-			return nil, fmt.Errorf("kho: reading %s: %w", path, err)
+			return nil, fmt.Errorf("store: reading %s: %w", path, err)
 		}
 		if mode := info.Mode().Perm(); mode&0o077 != 0 {
 			return nil, fmt.Errorf("%w: %s is mode %#o and a signing key must be 0600", ErrBadKey, path, mode)
@@ -106,7 +106,7 @@ func ParsePublicKey(s string) (ed25519.PublicKey, error) {
 func readKeyFile(path string, size int) ([]byte, error) {
 	raw, err := os.ReadFile(path)
 	if err != nil {
-		return nil, fmt.Errorf("kho: reading %s: %w", path, err)
+		return nil, fmt.Errorf("store: reading %s: %w", path, err)
 	}
 	b, err := decodeKey(strings.TrimSpace(string(raw)), size)
 	if err != nil {

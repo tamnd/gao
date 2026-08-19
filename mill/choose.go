@@ -99,7 +99,7 @@ type Choice struct {
 }
 
 // ErrNotMeasured is returned when a choice is asked for and no ablation was run.
-var ErrNotMeasured = errors.New("xay: no ablation was run, so 0.71 is a default rather than a measurement")
+var ErrNotMeasured = errors.New("mill: no ablation was run, so 0.71 is a default rather than a measurement")
 
 // Choose picks the deduplication threshold from a set of ablation runs.
 //
@@ -126,7 +126,7 @@ func Choose(ablations []Ablation) (Choice, error) {
 		return fallback(ErrNotMeasured.Error()), ErrNotMeasured
 	}
 	if problems := CheckAblations(ablations); len(problems) > 0 {
-		return fallback(problems[0]), errors.New("xay: " + problems[0])
+		return fallback(problems[0]), errors.New("mill: " + problems[0])
 	}
 
 	runs := slices.Clone(ablations)

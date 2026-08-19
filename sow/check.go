@@ -157,13 +157,13 @@ func (c Card) Source() doc.Source { return doc.SourceSynth }
 func ReadRecipe(path string) (Recipe, error) {
 	b, err := os.ReadFile(path)
 	if err != nil {
-		return Recipe{}, fmt.Errorf("gieo: %w", err)
+		return Recipe{}, fmt.Errorf("sow: %w", err)
 	}
 	dec := json.NewDecoder(strings.NewReader(string(b)))
 	dec.DisallowUnknownFields()
 	var r Recipe
 	if err := dec.Decode(&r); err != nil {
-		return Recipe{}, fmt.Errorf("gieo: %s: %w", path, err)
+		return Recipe{}, fmt.Errorf("sow: %s: %w", path, err)
 	}
 	return r, nil
 }
@@ -177,13 +177,13 @@ func ReadCard(dir string) (Card, error) {
 	}
 	b, err := os.ReadFile(path)
 	if err != nil {
-		return Card{}, fmt.Errorf("gieo: %w", err)
+		return Card{}, fmt.Errorf("sow: %w", err)
 	}
 	dec := json.NewDecoder(strings.NewReader(string(b)))
 	dec.DisallowUnknownFields()
 	var c Card
 	if err := dec.Decode(&c); err != nil {
-		return Card{}, fmt.Errorf("gieo: %s: %w", path, err)
+		return Card{}, fmt.Errorf("sow: %s: %w", path, err)
 	}
 	if len(c.Rejects) == 0 {
 		return Card{}, fmt.Errorf("%w: %s: the card accounts for no rejections at all", ErrBadCard, path)
@@ -196,15 +196,15 @@ func ReadCard(dir string) (Card, error) {
 func WriteCard(dir string, c Card) error {
 	b, err := json.MarshalIndent(c, "", "  ")
 	if err != nil {
-		return fmt.Errorf("gieo: %w", err)
+		return fmt.Errorf("sow: %w", err)
 	}
 	f, err := os.OpenFile(filepath.Join(dir, CardName), os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o644)
 	if err != nil {
-		return fmt.Errorf("gieo: %w", err)
+		return fmt.Errorf("sow: %w", err)
 	}
 	defer func() { _ = f.Close() }()
 	if _, err := f.Write(append(b, '\n')); err != nil {
-		return fmt.Errorf("gieo: %w", err)
+		return fmt.Errorf("sow: %w", err)
 	}
 	return f.Close()
 }

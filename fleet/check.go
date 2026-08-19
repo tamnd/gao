@@ -47,7 +47,7 @@ type Live struct {
 func Now(path string) (Live, error) {
 	free, err := freeBytes(path)
 	if err != nil {
-		return Live{}, fmt.Errorf("may: measuring free disk on %s: %w", path, err)
+		return Live{}, fmt.Errorf("fleet: measuring free disk on %s: %w", path, err)
 	}
 	return Live{Box: Label(), Path: path, Free: free, Threads: runtime.NumCPU()}, nil
 }

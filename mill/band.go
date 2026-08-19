@@ -64,7 +64,7 @@ func (b Banding) Valid() bool {
 
 func (b Banding) check() error {
 	if !b.Valid() {
-		return fmt.Errorf("xay: banding of %d bands by %d rows does not cover a signature of %d", b.Bands, b.Rows, Perms)
+		return fmt.Errorf("mill: banding of %d bands by %d rows does not cover a signature of %d", b.Bands, b.Rows, Perms)
 	}
 	return nil
 }

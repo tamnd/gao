@@ -166,7 +166,7 @@ func DecodeRoster(r io.Reader) (Roster, error) {
 	dec := json.NewDecoder(r)
 	dec.DisallowUnknownFields()
 	if err := dec.Decode(&ros); err != nil {
-		return Roster{}, fmt.Errorf("nhat: reading the roster: %w", err)
+		return Roster{}, fmt.Errorf("pick: reading the roster: %w", err)
 	}
 	if err := ros.check(); err != nil {
 		return Roster{}, err
@@ -190,7 +190,7 @@ func DecodeList(r io.Reader) (List, error) {
 	dec := json.NewDecoder(r)
 	dec.DisallowUnknownFields()
 	if err := dec.Decode(&l); err != nil {
-		return List{}, fmt.Errorf("nhat: reading the benchmark list: %w", err)
+		return List{}, fmt.Errorf("pick: reading the benchmark list: %w", err)
 	}
 	if err := l.check(); err != nil {
 		return List{}, err
@@ -227,7 +227,7 @@ func (l List) Names() []string {
 // back clean.
 func (l List) Covers(ros Roster) error {
 	if l.Roster != "" && l.Roster != ros.Version {
-		return fmt.Errorf("nhat: the list was built from roster %s and this is roster %s, so rebuild the list", l.Roster, ros.Version)
+		return fmt.Errorf("pick: the list was built from roster %s and this is roster %s, so rebuild the list", l.Roster, ros.Version)
 	}
 	have := make(map[string]string, len(l.Benchmarks))
 	for _, b := range l.Benchmarks {
@@ -245,11 +245,11 @@ func (l List) Covers(ros Roster) error {
 	}
 	switch {
 	case len(missing) > 0 && len(wrong) > 0:
-		return fmt.Errorf("nhat: the list is missing %s, and holds the wrong revision of %s", strings.Join(missing, ", "), strings.Join(wrong, ", "))
+		return fmt.Errorf("pick: the list is missing %s, and holds the wrong revision of %s", strings.Join(missing, ", "), strings.Join(wrong, ", "))
 	case len(missing) > 0:
-		return fmt.Errorf("nhat: the list is missing %s, and a benchmark that is not in the list comes back clean without being checked", strings.Join(missing, ", "))
+		return fmt.Errorf("pick: the list is missing %s, and a benchmark that is not in the list comes back clean without being checked", strings.Join(missing, ", "))
 	case len(wrong) > 0:
-		return fmt.Errorf("nhat: the list holds the wrong revision of %s", strings.Join(wrong, ", "))
+		return fmt.Errorf("pick: the list holds the wrong revision of %s", strings.Join(wrong, ", "))
 	}
 	return nil
 }
@@ -281,11 +281,11 @@ func (ros Roster) Grew(older Roster) error {
 	}
 	switch {
 	case len(gone) > 0 && len(moved) > 0:
-		return fmt.Errorf("nhat: %s came off the roster, and %s changed revision", strings.Join(gone, ", "), strings.Join(moved, ", "))
+		return fmt.Errorf("pick: %s came off the roster, and %s changed revision", strings.Join(gone, ", "), strings.Join(moved, ", "))
 	case len(gone) > 0:
-		return fmt.Errorf("nhat: %s came off the roster, and the roster only grows", strings.Join(gone, ", "))
+		return fmt.Errorf("pick: %s came off the roster, and the roster only grows", strings.Join(gone, ", "))
 	case len(moved) > 0:
-		return fmt.Errorf("nhat: %s changed revision, so an earlier release was checked against different items", strings.Join(moved, ", "))
+		return fmt.Errorf("pick: %s changed revision, so an earlier release was checked against different items", strings.Join(moved, ", "))
 	}
 	return nil
 }
@@ -305,27 +305,27 @@ func (ros Roster) Unpinned() []string {
 
 func (ros Roster) check() error {
 	if ros.Version == "" {
-		return fmt.Errorf("nhat: the roster has no version, and a contamination table that cannot name its roster cannot be read later")
+		return fmt.Errorf("pick: the roster has no version, and a contamination table that cannot name its roster cannot be read later")
 	}
 	if len(ros.Benchmarks) == 0 {
-		return fmt.Errorf("nhat: the roster is empty, and a decontamination run against nothing reports a clean corpus")
+		return fmt.Errorf("pick: the roster is empty, and a decontamination run against nothing reports a clean corpus")
 	}
 	if len(ros.Benchmarks) > MaxBenchmarks {
-		return fmt.Errorf("nhat: the roster holds %d benchmarks and an index holds %d", len(ros.Benchmarks), MaxBenchmarks)
+		return fmt.Errorf("pick: the roster holds %d benchmarks and an index holds %d", len(ros.Benchmarks), MaxBenchmarks)
 	}
 	seen := make(map[string]bool, len(ros.Benchmarks))
 	for _, e := range ros.Benchmarks {
 		if e.Name == "" {
-			return fmt.Errorf("nhat: a benchmark on the roster has no name")
+			return fmt.Errorf("pick: a benchmark on the roster has no name")
 		}
 		if seen[e.Name] {
-			return fmt.Errorf("nhat: %s is on the roster twice", e.Name)
+			return fmt.Errorf("pick: %s is on the roster twice", e.Name)
 		}
 		seen[e.Name] = true
 		switch e.Origin {
 		case Native, Translated, Neutral:
 		default:
-			return fmt.Errorf("nhat: %s has origin %q, and a benchmark is %s, %s or %s", e.Name, e.Origin, Native, Translated, Neutral)
+			return fmt.Errorf("pick: %s has origin %q, and a benchmark is %s, %s or %s", e.Name, e.Origin, Native, Translated, Neutral)
 		}
 		if err := e.checkPin(); err != nil {
 			return err
@@ -336,25 +336,25 @@ func (ros Roster) check() error {
 
 func (l List) check() error {
 	if l.Version == "" {
-		return fmt.Errorf("nhat: the benchmark list has no version, and a contamination table that cannot name its list cannot be read later")
+		return fmt.Errorf("pick: the benchmark list has no version, and a contamination table that cannot name its list cannot be read later")
 	}
 	if len(l.Benchmarks) == 0 {
-		return fmt.Errorf("nhat: the benchmark list is empty, and a decontamination run against nothing reports a clean corpus")
+		return fmt.Errorf("pick: the benchmark list is empty, and a decontamination run against nothing reports a clean corpus")
 	}
 	if len(l.Benchmarks) > MaxBenchmarks {
-		return fmt.Errorf("nhat: the list holds %d benchmarks and an index holds %d", len(l.Benchmarks), MaxBenchmarks)
+		return fmt.Errorf("pick: the list holds %d benchmarks and an index holds %d", len(l.Benchmarks), MaxBenchmarks)
 	}
 	seen := make(map[string]bool, len(l.Benchmarks))
 	for _, b := range l.Benchmarks {
 		if b.Name == "" {
-			return fmt.Errorf("nhat: a benchmark on the list has no name")
+			return fmt.Errorf("pick: a benchmark on the list has no name")
 		}
 		if seen[b.Name] {
-			return fmt.Errorf("nhat: %s is on the list twice", b.Name)
+			return fmt.Errorf("pick: %s is on the list twice", b.Name)
 		}
 		seen[b.Name] = true
 		if len(b.Items) == 0 {
-			return fmt.Errorf("nhat: %s has no items, so a run would report it clean without checking it", b.Name)
+			return fmt.Errorf("pick: %s has no items, so a run would report it clean without checking it", b.Name)
 		}
 	}
 	return nil

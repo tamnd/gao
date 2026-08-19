@@ -90,7 +90,7 @@ func (r Report) Write(dir string) error {
 }
 
 // ErrNoReport reports an ingest directory that has no counts in it.
-var ErrNoReport = errors.New("dem: no counts in this directory")
+var ErrNoReport = errors.New("count: no counts in this directory")
 
 // ReadReport loads the report from an ingest directory.
 func ReadReport(dir string) (Report, error) {
@@ -109,7 +109,7 @@ func ReadReport(dir string) (Report, error) {
 func DecodeReport(r io.Reader) (Report, error) {
 	var out Report
 	if err := json.NewDecoder(r).Decode(&out); err != nil {
-		return Report{}, fmt.Errorf("dem: reading counts: %w", err)
+		return Report{}, fmt.Errorf("count: reading counts: %w", err)
 	}
 	return out, nil
 }
@@ -121,7 +121,7 @@ func DecodeReport(r io.Reader) (Report, error) {
 // something like 30%, so a sum across them is not a token count that is slightly
 // off, it is a number that does not correspond to any tokenizer at all, and it
 // would be quoted as a corpus size.
-var ErrMixedTokenizers = errors.New("dem: these counts were produced by different tokenizers")
+var ErrMixedTokenizers = errors.New("count: these counts were produced by different tokenizers")
 
 // Merge adds reports together, which is how the four boxes' counts become one
 // corpus count.

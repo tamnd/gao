@@ -144,10 +144,10 @@ func (m Matrix) Share(a, b string) float64 {
 // than a smaller overlap.
 func Measure(files ...string) (Matrix, error) {
 	if len(files) == 0 {
-		return Matrix{}, errors.New("dem: no key files to measure")
+		return Matrix{}, errors.New("count: no key files to measure")
 	}
 	if len(files) > MaxSources {
-		return Matrix{}, fmt.Errorf("dem: %d key files is more than the %d one pass can hold", len(files), MaxSources)
+		return Matrix{}, fmt.Errorf("count: %d key files is more than the %d one pass can hold", len(files), MaxSources)
 	}
 
 	m, err := openMerge(files)
@@ -162,7 +162,7 @@ func Measure(files ...string) (Matrix, error) {
 		name := SourceName(r.Name())
 		for _, before := range out.Sources[:i] {
 			if before.Name == name {
-				return Matrix{}, fmt.Errorf("dem: two key files are both called %s, so the answer could not say which is which", name)
+				return Matrix{}, fmt.Errorf("count: two key files are both called %s, so the answer could not say which is which", name)
 			}
 		}
 		out.Sources[i] = Source{Name: name, Documents: r.Keys().Documents, Distinct: r.Keys().Distinct}
@@ -202,7 +202,7 @@ func Measure(files ...string) (Matrix, error) {
 
 	for i, s := range out.Sources {
 		if seen[i] != s.Distinct {
-			return Matrix{}, fmt.Errorf("dem: %s says it holds %d distinct keys and %d came out of it, so it is truncated or was not written by gao", files[i], s.Distinct, seen[i])
+			return Matrix{}, fmt.Errorf("count: %s says it holds %d distinct keys and %d came out of it, so it is truncated or was not written by gao", files[i], s.Distinct, seen[i])
 		}
 	}
 	for i := range n {

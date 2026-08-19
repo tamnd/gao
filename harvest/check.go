@@ -87,22 +87,22 @@ func Current(ctx context.Context, c *http.Client, p Pinned) (string, error) {
 	}
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, p.RevisionURL, nil)
 	if err != nil {
-		return "", fmt.Errorf("gat: %s: %w", p.Source, err)
+		return "", fmt.Errorf("harvest: %s: %w", p.Source, err)
 	}
 	resp, err := c.Do(req)
 	if err != nil {
-		return "", fmt.Errorf("gat: %s: %w", p.Source, err)
+		return "", fmt.Errorf("harvest: %s: %w", p.Source, err)
 	}
 	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusOK {
-		return "", fmt.Errorf("gat: %s: %s answered %s", p.Source, p.RevisionURL, resp.Status)
+		return "", fmt.Errorf("harvest: %s: %s answered %s", p.Source, p.RevisionURL, resp.Status)
 	}
 	body := io.LimitReader(resp.Body, MaxRevisionBytes)
 
 	if p.Origin == Direct {
 		h := sha256.New()
 		if _, err := io.Copy(h, body); err != nil {
-			return "", fmt.Errorf("gat: %s: reading %s: %w", p.Source, p.RevisionURL, err)
+			return "", fmt.Errorf("harvest: %s: reading %s: %w", p.Source, p.RevisionURL, err)
 		}
 		return "sha256:" + hex.EncodeToString(h.Sum(nil)), nil
 	}
@@ -111,10 +111,10 @@ func Current(ctx context.Context, c *http.Client, p Pinned) (string, error) {
 		SHA string `json:"sha"`
 	}
 	if err := json.NewDecoder(body).Decode(&info); err != nil {
-		return "", fmt.Errorf("gat: %s: reading %s: %w", p.Source, p.RevisionURL, err)
+		return "", fmt.Errorf("harvest: %s: reading %s: %w", p.Source, p.RevisionURL, err)
 	}
 	if !commitSHA.MatchString(info.SHA) {
-		return "", fmt.Errorf("gat: %s: %s reports its revision as %q, which is not a commit SHA", p.Source, p.RevisionURL, info.SHA)
+		return "", fmt.Errorf("harvest: %s: %s reports its revision as %q, which is not a commit SHA", p.Source, p.RevisionURL, info.SHA)
 	}
 	return info.SHA, nil
 }
