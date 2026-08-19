@@ -71,6 +71,7 @@ func commands() []command {
 		{"nhip", "the beat: what each pipeline stage runs at, with the box on every number", runNhip},
 		{"phoi", "normalize Vietnamese text, or report what normalizing it would do", runPhoi},
 		{"plan", "print the build plan: slices, gates, and kill criteria", runPlan},
+		{"sach", "clean: run the whole line over the raw corpus and publish what comes out", runSach},
 		{"sang", "sift: measure documents and say which of them are Vietnamese prose", runSang},
 		{"siet", "to tighten: the GRPO step the specialists are trained with, and a run read back against it", runSiet},
 		{"so", "to compare: a human evaluation read back, and whether the raters read the answers or the layout", runSo},

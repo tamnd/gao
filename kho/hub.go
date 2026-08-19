@@ -196,6 +196,14 @@ var datasets = []Dataset{
 		Text:    true,
 		Classes: []doc.LicenseClass{doc.LicenseOpen, doc.LicensePermissiveAttribution},
 	},
+	{
+		Name:    "vitco-clean",
+		Tier:    Working,
+		Pretty:  "ViTco Clean",
+		Holds:   "the same corpora after the cleaning line: normalized, measured, filtered to Vietnamese prose, deduplicated on identity, and with the personal identifiers covered",
+		Text:    true,
+		Classes: []doc.LicenseClass{doc.LicenseOpen, doc.LicensePermissiveAttribution},
+	},
 }
 
 // Datasets returns every repo, published tier first.

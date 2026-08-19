@@ -577,3 +577,56 @@ func TestScanPartSaysWhichFileIsNotAPart(t *testing.T) {
 		t.Errorf("scanning a file that is not a part returned %v, and it should name the file", err)
 	}
 }
+
+// The inverse. A working repo is an input as well as an output: the cleaning
+// stage reads the raw corpus back out of Parquet and puts documents through the
+// line, and every column it drops on the way in is a column the clean corpus
+// loses. DeepEqual on the whole document is the point of the test, because a
+// field added to the record and forgotten in DocumentOf is exactly the bug that
+// would otherwise ship quietly.
+func TestARowComesBackAsTheDocumentItCameFrom(t *testing.T) {
+	in := sample(11)
+	in.TDMSignals = map[string]string{"tdmrep": "0", "ai-robots": "disallow"}
+	in.Consent = doc.ConsentOpen
+	in.Heuristics = map[string]float32{"mean_line_length": 63.5, "symbol_rate": 0.01}
+	in.ContamFlags = []string{"vmlu", "vi-mmlu"}
+	in.UpstreamFields = map[string]string{"bucket": "9", "warc": "CC-MAIN-2026-05"}
+	in.PIITypes = []string{"phone", "email"}
+	in.PIISpans = []doc.PIISpan{{Start: 12, Len: 10, Type: "phone"}}
+	in.PIILevel = doc.RedactStandard
+	in.DupCluster = doc.Cluster{9, 8, 7, 6, 5, 4, 3, 2, 1, 0, 1, 2, 3, 4, 5, 6}
+	in.DupClusterSize = 4
+	in.IsRepresentative = true
+	in.NSyllables = 31
+	in.NTokens = 44
+	in.GaoQual = 0.71
+	in.GaoEdu = 0.44
+	in.HPLTBucket = 9
+	in.Register = "narrative"
+
+	got := DocumentOf(RowOf(in))
+
+	// The timestamp is compared first, for the same reason as above: the column
+	// holds milliseconds and time.Time holds a location and a monotonic reading.
+	if !got.FetchedAt.Equal(in.FetchedAt) {
+		t.Errorf("fetched_at came back %v, want %v", got.FetchedAt, in.FetchedAt)
+	}
+	got.FetchedAt = in.FetchedAt
+	if !reflect.DeepEqual(got, in) {
+		t.Errorf("the document came back different:\ngot  %+v\nwant %+v", got, in)
+	}
+	if err := got.Admit(); err != nil {
+		t.Errorf("a document read back out of a row fails the contract: %v", err)
+	}
+}
+
+// A license class the build does not know is not a reason to lose the row. It
+// is a reason to read it as unknown, which is the class that ships nowhere and
+// is the safe end of the scale.
+func TestARowWithAnUnreadableLicenseComesBackUnknown(t *testing.T) {
+	row := RowOf(sample(3))
+	row.LicenseClass = "invented-later"
+	if got := DocumentOf(row).LicenseClass; got != doc.LicenseUnknown {
+		t.Errorf("a license class this build cannot read came back as %q, want %q", got, doc.LicenseUnknown)
+	}
+}
