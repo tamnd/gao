@@ -36,13 +36,32 @@ import (
 // computes one and hands it back for the ledger to record, so the second fetch
 // of a file has something to compare against even though the first did not.
 
-// DefaultRetries is how many times a fetch reconnects after a dropped
-// connection before it gives up on the file.
+// DefaultRetries is how many times a fetch reconnects, without the transfer
+// moving, before it gives up on the file.
 //
 // Five rather than one, because the thing being retried is not a request that
 // might be answered differently. It is a transfer that was working, ran for
 // possibly an hour, and stopped, and the cost of abandoning it is the hour.
+//
+// The five are consecutive, and that is the part that took a real run to get
+// right. Counted over the life of a file instead, the budget is spent by a link
+// that drops once every few gigabytes and never recovers, because a reconnect
+// that worked did not give anything back. gamingpc lost the same 26.4 GB HPLT
+// shard twice that way, the second time at byte 25,137,168,622, which is 95% of
+// it. A reconnect followed by real bytes now resets the count, so a transfer
+// that keeps moving keeps going, while a host that answers a range request and
+// then sends nothing still stops after five.
 const DefaultRetries = 5
+
+// RetryCeiling is how many reconnects one file gets in total, for each of the
+// fetcher's consecutive retries.
+//
+// Nothing real reaches it. The shard above dropped five times across 25 GB and
+// the ceiling on the default budget is five hundred. It exists because the
+// consecutive rule on its own has no end: a host handing out a few bytes per
+// connection makes progress by this definition every time, resets the budget
+// every time, and would hold a fetch open forever.
+const RetryCeiling = 100
 
 // DefaultRetryWait is how long a fetch waits before reconnecting. It backs off
 // linearly, so the fifth attempt waits five times this.
@@ -70,9 +89,9 @@ type Fetcher struct {
 	// token is fine for everything except the gated source.
 	Token string
 
-	// Retries is how many times a dropped connection is resumed. Zero means
-	// [DefaultRetries]. A negative value means no retry at all, which is what
-	// the tests want and what nothing else should.
+	// Retries is how many times a dropped connection is resumed without the
+	// transfer moving. Zero means [DefaultRetries]. A negative value means no
+	// retry at all, which is what the tests want and what nothing else should.
 	Retries int
 
 	// RetryWait is the base backoff between reconnects. Zero means
@@ -97,6 +116,10 @@ func (f *Fetcher) retries() int {
 		return f.Retries
 	}
 }
+
+// ceiling is the total number of reconnects one file gets, whatever the
+// consecutive budget does. A fetcher with no retries has no ceiling to reach.
+func (f *Fetcher) ceiling() int { return f.retries() * RetryCeiling }
 
 func (f *Fetcher) retryWait() time.Duration {
 	if f.RetryWait <= 0 {
@@ -135,12 +158,21 @@ type Body struct {
 	file    File
 	url     string
 
-	resp  *http.Response
-	sum   hash.Hash
-	read  int64
+	resp *http.Response
+	sum  hash.Hash
+	read int64
+
+	// stall is the reconnects since the last byte arrived, tries is the
+	// reconnects over the whole file, and mark is the offset the last reconnect
+	// started from. The budget is spent by stall and the ceiling by tries, so
+	// the two questions a stuck fetch raises, is it moving and how long has it
+	// been at this, have separate answers.
+	stall int
 	tries int
-	done  bool
-	err   error
+	mark  int64
+
+	done bool
+	err  error
 }
 
 // connect issues the request, resuming from the current offset if there is one.
@@ -199,9 +231,9 @@ func drain(resp *http.Response) {
 
 // Read implements [io.Reader].
 //
-// A short read followed by an error is a reconnect, not a failure, up to the
-// fetcher's retry count. The caller sees a stream that stalls for a couple of
-// seconds and then continues.
+// A short read followed by an error is a reconnect, not a failure, for as long
+// as the reconnects keep producing bytes. The caller sees a stream that stalls
+// for a couple of seconds and then continues.
 func (b *Body) Read(p []byte) (int, error) {
 	if b.err != nil {
 		return 0, b.err
@@ -211,6 +243,11 @@ func (b *Body) Read(p []byte) (int, error) {
 		if n > 0 {
 			b.read += int64(n)
 			_, _ = b.sum.Write(p[:n])
+			if b.read > b.mark {
+				// The reconnect worked and the file is moving again, so the
+				// budget belongs to the next stall rather than to this one.
+				b.stall = 0
+			}
 		}
 		switch {
 		case err == nil:
@@ -228,15 +265,21 @@ func (b *Body) Read(p []byte) (int, error) {
 			// would turn a cancel into a retry storm.
 			b.err = b.ctx.Err()
 			return n, b.err
-		case b.tries >= b.fetcher.retries():
-			b.err = fmt.Errorf("harvest: fetching %s from %s: gave up at byte %d after %d reconnects: %w",
-				b.file.Path, b.pin.Source, b.read, b.tries, err)
+		case b.stall >= b.fetcher.retries():
+			b.err = fmt.Errorf("harvest: fetching %s from %s: gave up at byte %d after %d reconnects that moved nothing, %d in all: %w",
+				b.file.Path, b.pin.Source, b.read, b.stall, b.tries, err)
+			return n, b.err
+		case b.tries >= b.fetcher.ceiling():
+			b.err = fmt.Errorf("harvest: fetching %s from %s: gave up at byte %d after %d reconnects, which is the ceiling on a budget of %d: %w",
+				b.file.Path, b.pin.Source, b.read, b.tries, b.fetcher.retries(), err)
 			return n, b.err
 		}
 
+		b.stall++
 		b.tries++
+		b.mark = b.read
 		_ = b.resp.Body.Close()
-		if waitErr := sleep(b.ctx, time.Duration(b.tries)*b.fetcher.retryWait()); waitErr != nil {
+		if waitErr := sleep(b.ctx, time.Duration(b.stall)*b.fetcher.retryWait()); waitErr != nil {
 			b.err = waitErr
 			return n, b.err
 		}
