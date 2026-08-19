@@ -91,8 +91,8 @@ func cardWhatIsItClean(b *strings.Builder) {
 
 	b.WriteString("Four things were done to every document here, in this order, and the order is the design. The text was normalized, because every stage after it compares strings and two spellings of one word are two documents to a hash. It was measured and sifted, because there is no point scoring a page that is not Vietnamese prose. It was deduplicated on the normalized text, because the corpus is four projects reading overlapping crawls and that is the largest single fact about it. Then the personal identifiers were covered, last of the four that change the text, so that what gets covered is covered in the document that actually ships.\n\n")
 
-	fmt.Fprintf(b, "Over the %s hplt3 parts that have been both ingested and cleaned so far, %s documents went in and %s came out, which is %s of them kept. That number is the line's, not a target: nothing here was tuned to hit a keep rate, and the breakdown of what went for which reason is in the run report rather than on this card.\n\n",
-		cardCleanKeep.Parts, cardCommas(cardCleanKeep.Raw), cardCommas(cardCleanKeep.Kept), cardCleanKeep.Pct)
+	fmt.Fprintf(b, "How much that removes was measured over %s hplt3 parts, by joining them back to the parts of the same name in the raw repo: %s documents went in and %s came out, which is %s of them kept. It is a reading over %s parts rather than a property of the corpus, and the runs since have added more. The number is the line's either way, not a target: nothing here was tuned to hit a keep rate, and the breakdown of what went for which reason is in the run report rather than on this card.\n\n",
+		cardCleanKeep.Parts, cardCommas(cardCleanKeep.Raw), cardCommas(cardCleanKeep.Kept), cardCleanKeep.Pct, cardCleanKeep.Parts)
 
 	b.WriteString("What was not done is the quality classifier, and it is missing rather than stubbed. `gao_qual` and `gao_edu` are `0.0` in every row because the model behind them is trained against a hand built reference set that does not exist yet, and a filter with an untrained model behind it removes documents for a reason nobody could defend. So this repo is Vietnamese prose. Finding good Vietnamese prose is a later stage, and saying so here is cheaper than letting somebody discover it from the data.\n\n")
 
@@ -105,8 +105,11 @@ func cardWhatIsItClean(b *strings.Builder) {
 // It is written down rather than computed because the two repos are not both in
 // hand when a card is rendered: the index this card is generated from is the
 // clean repo's, and the raw counts are a second read of a second repo. It
-// carries the part count it was taken over so that the sentence stays true as
-// the runs go on rather than quietly restating an old ratio as a current one.
+// carries the part count it was taken over, and the sentence that prints it
+// says so twice, because a keep rate is the one number on this card a reader
+// will quote elsewhere and the runs keep adding parts underneath it. A reading
+// over six parts stays a true reading over six parts. A reading described as
+// the corpus's keep rate stops being true the next time the line runs.
 var cardCleanKeep = struct {
 	Parts     string
 	Raw, Kept int64
