@@ -91,12 +91,38 @@ func cardWhatIsItClean(b *strings.Builder) {
 
 	b.WriteString("Four things were done to every document here, in this order, and the order is the design. The text was normalized, because every stage after it compares strings and two spellings of one word are two documents to a hash. It was measured and sifted, because there is no point scoring a page that is not Vietnamese prose. It was deduplicated on the normalized text, because the corpus is four projects reading overlapping crawls and that is the largest single fact about it. Then the personal identifiers were covered, last of the four that change the text, so that what gets covered is covered in the document that actually ships.\n\n")
 
-	fmt.Fprintf(b, "How much that removes was measured over %s hplt3 parts, by joining them back to the parts of the same name in the raw repo: %s documents went in and %s came out, which is %s of them kept. It is a reading over %s parts rather than a property of the corpus, and the runs since have added more. The number is the line's either way, not a target: nothing here was tuned to hit a keep rate, and the breakdown of what went for which reason is in the run report rather than on this card.\n\n",
-		cardCleanKeep.Parts, cardCommas(cardCleanKeep.Raw), cardCommas(cardCleanKeep.Kept), cardCleanKeep.Pct, cardCleanKeep.Parts)
+	cardKeepRate(b)
 
 	b.WriteString("What was not done is the quality classifier, and it is missing rather than stubbed. `gao_qual` and `gao_edu` are `0.0` in every row because the model behind them is trained against a hand built reference set that does not exist yet, and a filter with an untrained model behind it removes documents for a reason nobody could defend. So this repo is Vietnamese prose. Finding good Vietnamese prose is a later stage, and saying so here is cheaper than letting somebody discover it from the data.\n\n")
 
 	b.WriteString("Everything the sift measured is on the row and none of it is a verdict. `lang_score`, `n_syllables`, `diacritics` and the `heuristics` map are gao's own measurements here rather than each upstream project's, taken with one identifier over all sources, so a corpus filtered at one threshold can be refiltered at another without going back to the text.\n\n")
+}
+
+// cardKeepRate prints what the cleaning line kept, per source.
+//
+// Per source rather than as one number, because the two sources that have been
+// through the line disagree by twenty four points and a single figure would
+// have to be one of them or neither. The paragraph under the table says why
+// they disagree, since a reader who sees 33.8% next to 58.1% and no explanation
+// will assume one of the runs was misconfigured.
+func cardKeepRate(b *strings.Builder) {
+	b.WriteString("How much that removes was measured by joining every part in this repo back to the part of the same name in the raw repo. It is not one number, and the spread is the useful part:\n\n")
+	b.WriteString("| source | parts read | documents in | documents out | kept |\n| --- | ---: | ---: | ---: | ---: |\n")
+	var parts int
+	var raw, kept int64
+	for _, k := range cardCleanKeep {
+		fmt.Fprintf(b, "| `%s` | %d | %s | %s | %s |\n", k.Source, k.Parts, cardCommas(k.Raw), cardCommas(k.Kept), k.Pct)
+		parts += k.Parts
+		raw += k.Raw
+		kept += k.Kept
+	}
+	fmt.Fprintf(b, "| | %d | %s | %s | %.1f%% |\n\n", parts, cardCommas(raw), cardCommas(kept), 100*float64(kept)/float64(raw))
+
+	fmt.Fprintf(b, "The keep rate is a property of the source before it is a property of the line, and the run report says which property. Over the %d FinePDFs parts the line last reported on, %s documents went in and %s came out, and the largest single reason for the rest was repetition, at %s documents against %s for boilerplate, %s for not being Vietnamese and %s for being too short. That is what text pulled out of PDFs looks like: page headers and footers and table rows running down the document. HPLT v3 arrives already sorted by a quality model of its own and loses less. The line is the same code over both.\n\n",
+		cardCleanWhy.Parts, cardCommas(cardCleanWhy.In), cardCommas(cardCleanWhy.Out),
+		cardCommas(cardCleanWhy.Repetition), cardCommas(cardCleanWhy.Boilerplate),
+		cardCommas(cardCleanWhy.Language), cardCommas(cardCleanWhy.Short))
+	fmt.Fprintf(b, "These are readings over the %d parts named in the table rather than the corpus's rate, and the runs since have added more. Nothing here was tuned to hit a keep rate, and the breakdown of what went for which reason is in the run report rather than on this card.\n\n", parts)
 }
 
 // cardCleanKeep is what the cleaning line kept, measured by joining the parts
@@ -104,17 +130,35 @@ func cardWhatIsItClean(b *strings.Builder) {
 //
 // It is written down rather than computed because the two repos are not both in
 // hand when a card is rendered: the index this card is generated from is the
-// clean repo's, and the raw counts are a second read of a second repo. It
-// carries the part count it was taken over, and the sentence that prints it
-// says so twice, because a keep rate is the one number on this card a reader
+// clean repo's, and the raw counts are a second read of a second repo. Each row
+// carries the part count it was taken over, and the sentence under the table
+// says so again, because a keep rate is the one number on this card a reader
 // will quote elsewhere and the runs keep adding parts underneath it. A reading
-// over six parts stays a true reading over six parts. A reading described as
+// over seven parts stays a true reading over seven parts. A reading described as
 // the corpus's keep rate stops being true the next time the line runs.
-var cardCleanKeep = struct {
-	Parts     string
+var cardCleanKeep = []struct {
+	Source    string
+	Parts     int
 	Raw, Kept int64
 	Pct       string
-}{Parts: "six", Raw: 1464238, Kept: 850712, Pct: "58.1%"}
+}{
+	{Source: "hplt3", Parts: 7, Raw: 1839058, Kept: 1067860, Pct: "58.1%"},
+	{Source: "finepdfs", Parts: 35, Raw: 796802, Kept: 269592, Pct: "33.8%"},
+}
+
+// cardCleanWhy is why the FinePDFs documents that went did, off the run report
+// the cleaning line wrote rather than off anybody's reading of the corpus.
+//
+// It is one batch of the same source the table above reads over 35 parts, so it
+// explains the rate rather than restating it, and the sentence that prints it
+// says which batch. The four reasons and the normalizer's own 326 add up to the
+// difference between In and Out, which is the check that this is the whole
+// story rather than the interesting part of it.
+var cardCleanWhy = struct {
+	Parts                                    int
+	In, Out                                  int64
+	Repetition, Boilerplate, Language, Short int64
+}{Parts: 7, In: 154138, Out: 51899, Repetition: 65875, Boilerplate: 19136, Language: 10182, Short: 6720}
 
 // cardBiggestUpstream is the vie_Latn row count of fineweb-2, from the Hub's own
 // size API rather than from anybody's summary of it. It is the number this repo
