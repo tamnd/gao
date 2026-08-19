@@ -12,12 +12,12 @@ package mill
 // thousand times, which is more copies of that sentence than the corpus holds of
 // any sentence anybody wrote on purpose.
 //
-// The unit is the line rather than the blank line separated block. After phoi a
-// document is lines with the layout settled, and that is what the extractors
-// emit: a nav column is one line per item, a footer is a line, a share prompt is
-// a line. Blocks would glue the whole column into one lump that matches the
-// column on no other page, which is the shape of furniture that gets missed
-// rather than removed.
+// The unit is the line rather than the blank line separated block. After
+// normalize a document is lines with the layout settled, and that is what the
+// extractors emit: a nav column is one line per item, a footer is a line, a
+// share prompt is a line. Blocks would glue the whole column into one lump
+// that matches the column on no other page, which is the shape of furniture
+// that gets missed rather than removed.
 //
 // Host aware because the same sentence means different things in different
 // places. "Đọc thêm" repeated across one site is that site's furniture. The same
@@ -101,8 +101,9 @@ func NewBoiler(rule Furniture) *Boiler {
 // it once per document.
 //
 // A line that appears twice in one document counts once. Repetition inside a
-// document is a different problem with its own measure in sang, and counting it
-// here would let one page argue that its own refrain is the site's furniture.
+// document is a different problem with its own measure in sift, and counting
+// it here would let one page argue that its own refrain is the site's
+// furniture.
 func (b *Boiler) Count(host, text string) {
 	h := b.host(host)
 	h.documents++

@@ -175,14 +175,15 @@ func Of(p sample.Plan, tokenizer string, takes []Take) Sample {
 	return s
 }
 
-// Layers turns the sample into the layer file tang reads, carrying every layer
-// of the plan through whether it was read or not, so that what comes out is a
-// file that describes the source rather than a file that describes the run.
+// Layers turns the sample into the layer file layers reads, carrying every
+// layer of the plan through whether it was read or not, so that what comes out
+// is a file that describes the source rather than a file that describes the
+// run.
 //
-// Read is the compressed bytes fetched and Text is the text they held, which are
-// the two numbers tang divides. The layers the sample has no reading for come
-// through with their stored size and nothing else, which is exactly what tang
-// bounds.
+// Read is the compressed bytes fetched and Text is the text they held, which
+// are the two numbers layers divides. The layers the sample has no reading for
+// come through with their stored size and nothing else, which is exactly what
+// layers bounds.
 func (s Sample) Layers(all []layers.Layer) []layers.Layer {
 	got := make(map[string]Reading, len(s.Readings))
 	for _, r := range s.Readings {

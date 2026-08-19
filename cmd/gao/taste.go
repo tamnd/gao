@@ -274,7 +274,7 @@ func pinnedFor(s doc.Source) (harvest.Pinned, error) {
 	return p, nil
 }
 
-// writeLayers writes the layer file tang reads, one JSON object per line.
+// writeLayers writes the layer file layers reads, one JSON object per line.
 func writeLayers(path string, ls []layers.Layer) error {
 	f, err := os.Create(path)
 	if err != nil {

@@ -31,11 +31,12 @@
 // one of these pages with its marks on, and a benchmark whose answer key is in
 // the training data measures memory rather than ability.
 //
-// That is the only reason an [Item] records a document identity. The identity is
-// what lets the items be held out of the corpus before training, and checked for
-// afterwards by the same machinery nhat uses on everybody else's benchmarks. A
-// task set built from the corpus and not held out of it is worse than no
-// benchmark, because it produces a high number that somebody will quote.
+// That is the only reason an [Item] records a document identity. The identity
+// is what lets the items be held out of the corpus before training, and
+// checked for afterwards by the same machinery pick uses on everybody else's
+// benchmarks. A task set built from the corpus and not held out of it is worse
+// than no benchmark, because it produces a high number that somebody will
+// quote.
 //
 // # What makes a usable item
 //
@@ -44,12 +45,13 @@
 // second copy of the question. Feeding it in teaches a scorer that bare text is
 // correct.
 //
-// So an item has to carry marks at roughly the rate the language does. That rate
-// is measured rather than picked: soi puts it at about a quarter of characters
-// marked and a sixth toned, and the floor here is set below that with room for
-// a document about a subject that happens to be short of marked vowels. A
-// document under the floor is rejected and counted, because a builder that
-// silently drops most of what it is given is a builder nobody can debug.
+// So an item has to carry marks at roughly the rate the language does. That
+// rate is measured rather than picked: inspect puts it at about a quarter of
+// characters marked and a sixth toned, and the floor here is set below that
+// with room for a document about a subject that happens to be short of marked
+// vowels. A document under the floor is rejected and counted, because a
+// builder that silently drops most of what it is given is a builder nobody can
+// debug.
 //
 // # What a result has to be published with
 //
@@ -73,9 +75,10 @@
 // strong, because most bare syllables have one common answer. A model that does
 // not beat it has learned the dictionary and not the language.
 //
-// Reporting is soi's job. This package builds the questions, keeps the answers,
-// and hands both to [inspect.Measure], because a restoration is a reading of a page
-// and the thing worth counting about it is which marks came back.
+// Reporting is inspect's job. This package builds the questions, keeps the
+// answers, and hands both to [inspect.Measure], because a restoration is a
+// reading of a page and the thing worth counting about it is which marks came
+// back.
 package mark
 
 import (
@@ -85,7 +88,7 @@ import (
 )
 
 // Name is what the task set is called wherever it is published or checked
-// against, including in nhat's contamination roster.
+// against, including in pick's contamination roster.
 const Name = "vi-diacritic"
 
 // An Item is one question and the answer it was made from.

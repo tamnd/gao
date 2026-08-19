@@ -46,13 +46,13 @@
 //
 // # Why agreement is the last thing and not the first
 //
-// Agreement between raters is what says the choice was about the answers rather
-// than about the rater, and it is chance corrected for the same reason xep
-// corrects it: three choices with ties rare means two people who never read
-// anything would agree most of the time. It is Scott's pi rather than Cohen's
-// kappa because there is no first rater and second rater, a pair gets read by
-// whoever picks it up, and the marginals are pooled so the statistic does not
-// depend on who was written to the file first.
+// Agreement between raters is what says the choice was about the answers
+// rather than about the rater, and it is chance corrected for the same reason
+// place corrects it: three choices with ties rare means two people who never
+// read anything would agree most of the time. It is Scott's pi rather than
+// Cohen's kappa because there is no first rater and second rater, a pair gets
+// read by whoever picks it up, and the marginals are pooled so the statistic
+// does not depend on who was written to the file first.
 package compare
 
 import (
@@ -73,7 +73,7 @@ const MinPairs = 200
 const MinDouble = 0.20
 
 // MinPi is the floor on chance corrected agreement between raters. Forty is
-// lower than the line xep holds its rubric to, deliberately: a preference
+// lower than the line place holds its rubric to, deliberately: a preference
 // between two good answers has real ties in it, and a floor set where a
 // classification task sets it would fail protocols that are working.
 const MinPi = 0.40
@@ -96,11 +96,11 @@ const MaxOrder = 0.55
 const MaxRater = 0.25
 
 // Prevalent is the share of one outcome above which the agreement figure has
-// stopped measuring the raters. Past this, two people agreeing mostly means two
-// people have noticed which system is better, which is a fact about the systems
-// and not evidence about the protocol. It sits above the line xep holds its
-// rubric to because a preference where one system genuinely wins three pairs in
-// four is an ordinary result rather than a degenerate draw.
+// stopped measuring the raters. Past this, two people agreeing mostly means
+// two people have noticed which system is better, which is a fact about the
+// systems and not evidence about the protocol. It sits above the line place
+// holds its rubric to because a preference where one system genuinely wins
+// three pairs in four is an ordinary result rather than a degenerate draw.
 const Prevalent = 0.75
 
 // Z is the 95% two sided normal quantile.
@@ -127,9 +127,9 @@ type Pair struct {
 	Left  string `json:"left"`
 	Right string `json:"right"`
 
-	// LeftSyllables and RightSyllables are the lengths of the two answers as
-	// sang counts them. They are recorded rather than derived so that the
-	// protocol file does not carry every answer once per rater.
+	// LeftSyllables and RightSyllables are the lengths of the two answers as sift
+	// counts them. They are recorded rather than derived so that the protocol
+	// file does not carry every answer once per rater.
 	LeftSyllables  int `json:"left_syllables"`
 	RightSyllables int `json:"right_syllables"`
 

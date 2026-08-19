@@ -1,11 +1,11 @@
 // Package clean runs the cleaning line over a document and says what came out.
 //
-// The stages already exist one package at a time: phoi normalizes, sang
-// measures and sifts, xay computes the key duplicates are found on, che covers
-// the personal data. What did not exist is the thing that runs them in order,
-// keeps the account of what each one removed, and writes the result somewhere.
-// Four report commands over a corpus of a quarter of a terabyte are four
-// opinions about it. This is the stage that acts on them.
+// The stages already exist one package at a time: normalize for the spelling,
+// sift for the measurement, mill for the key duplicates are found on, cover
+// for the personal data. What did not exist is the thing that runs them in
+// order, keeps the account of what each one removed, and writes the result
+// somewhere. Four report commands over a corpus of a quarter of a terabyte are
+// four opinions about it. This is the stage that acts on them.
 //
 // # The order is the design
 //
@@ -29,11 +29,11 @@
 //
 // The text is changed by two stages, normalization and redaction, and both say
 // so on the row: pipeline_version moves off the ingest's 0.x, and pii_level
-// records what was covered. Everything sang measures is recorded and nothing it
-// measures is a verdict stored on the row, so a corpus filtered at one threshold
-// can be re-filtered at another without going back to the text. That is the same
-// rule sang states for itself and this stage is where it would have been easiest
-// to break.
+// records what was covered. Everything sift measures is recorded and nothing
+// it measures is a verdict stored on the row, so a corpus filtered at one
+// threshold can be re-filtered at another without going back to the text. That
+// is the same rule sift states for itself and this stage is where it would
+// have been easiest to break.
 //
 // Deduplication is the exception worth naming. A streaming pass sees a document
 // before it has seen the copies of it, so it can say this is the first copy and
@@ -91,15 +91,15 @@ func Clean() store.Dataset {
 type Stage string
 
 const (
-	// StageNormalize is phoi: the document is not text, or its words cannot be
-	// recovered.
-	StageNormalize Stage = "phoi"
+	// StageNormalize is where the document is not text at all, or its words
+	// cannot be recovered.
+	StageNormalize Stage = "normalize"
 
-	// StageSift is sang: the document is not Vietnamese prose of some length.
-	StageSift Stage = "sang"
+	// StageSift is where the document is not Vietnamese prose of some length.
+	StageSift Stage = "sift"
 
-	// StageMill is xay: gao already has this document.
-	StageMill Stage = "xay"
+	// StageMill is where gao already has this document.
+	StageMill Stage = "mill"
 
 	// StageContract is the ingest contract, checked again on the way out. A
 	// document that fails it here was made to fail by something this line did,
@@ -114,9 +114,9 @@ const (
 // It is not safe for concurrent use by itself. [Seen] is, which is the part
 // that has to be shared, so a run gives every worker its own Line over one Seen.
 type Line struct {
-	// Limits is what sang sifts against. The defaults are sang's, which are
-	// Gopher's shapes at Vietnamese sizes and are labeled by that package as
-	// starting points rather than as findings.
+	// Limits is what the sift stage runs against. The defaults are sift's,
+	// which are Gopher's shapes at Vietnamese sizes and are labeled by that
+	// package as starting points rather than as findings.
 	Limits sift.Limits
 
 	// Level is how much of the personal data is covered. L1 is the level for
@@ -130,7 +130,7 @@ type Line struct {
 	Seen *Seen
 }
 
-// New returns the line as it runs, which is sang's default thresholds, L1
+// New returns the line as it runs, which is sift's default thresholds, L1
 // redaction, and a deduplication set sized for keys documents.
 func New(keys int) *Line {
 	return &Line{Limits: sift.Default(), Level: cover.L1, Seen: NewSeen(keys)}
@@ -226,7 +226,7 @@ func (l *Line) Run(d *doc.Document) Verdict {
 	return v
 }
 
-// measure writes what sang measured onto the document.
+// measure writes what sift measured onto the document.
 //
 // It runs for a document the sift removed as well as for one it kept, because a
 // reject that carries its measurements can be argued with and one that carries
@@ -255,7 +255,7 @@ func Cluster(text string) doc.Cluster {
 }
 
 // kinds is the distinct kinds of personal data a document held, in the order
-// che declares them so that two rows with the same kinds hold the same list.
+// cover declares them so that two rows with the same kinds hold the same list.
 func kinds(found []cover.Span) []string {
 	if len(found) == 0 {
 		return nil

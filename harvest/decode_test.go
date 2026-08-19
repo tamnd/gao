@@ -164,7 +164,7 @@ func TestAnHPLTRecordKeepsWhatHPLTKnowsThatWeDoNot(t *testing.T) {
 	}
 
 	// The producer's duplicate cluster stays out of gao's dedup columns. Those
-	// are for what xay finds across all six sources, and a query cannot tell the
+	// are for what mill finds across all six sources, and a query cannot tell the
 	// two apart once they share a column.
 	if !d.DupCluster.IsZero() || d.DupClusterSize != 0 {
 		t.Error("the producer's cluster was written into gao's dedup columns")

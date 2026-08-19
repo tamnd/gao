@@ -94,8 +94,8 @@ func TestLineKeepsAnArticleAndStampsIt(t *testing.T) {
 }
 
 func TestLineMovesIdentityWithTheText(t *testing.T) {
-	// A page typed with a soft hyphen and a full width digit, which is what a
-	// lot of this corpus looks like before phoi runs.
+	// A page typed with a soft hyphen and a full width digit, which is what a lot
+	// of this corpus looks like before normalize runs.
 	dirty := strings.Replace(article, "39 độ C", "3\u200b9 độ C", 1)
 	l := New(1024)
 	d := raw(dirty)
@@ -123,7 +123,7 @@ func TestLineDropsTheSecondCopy(t *testing.T) {
 	}
 
 	// The same page as a republisher would carry it: different case, different
-	// punctuation. xay's key ignores exactly that, so it is the same document.
+	// punctuation. mill's key ignores exactly that, so it is the same document.
 	again := raw(strings.ToUpper(article))
 	v := l.Run(again)
 	if v.Kept {

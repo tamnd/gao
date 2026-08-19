@@ -35,9 +35,10 @@ import (
 // published Vietnamese corpus has to be for anybody to use it, and a bucket
 // would mean paying to store the same data twice and paying egress to move it
 // between the two. Parquet under a snapshot prefix is queryable in place, so a
-// question about a column costs one column rather than a download, and the same
-// path serves the fleet, the release, and the reader. The layout lives in kho
-// and the pattern comes from ccrawl-cli, which already publishes down it.
+// question about a column costs one column rather than a download, and the
+// same path serves the fleet, the release, and the reader. The layout lives in
+// store and the pattern comes from ccrawl-cli, which already publishes down
+// it.
 //
 // What lives on the fleet is scratch: the shards a stage is working on right
 // now, plus the WARCs server1 has fetched and not yet uploaded. A worker writes

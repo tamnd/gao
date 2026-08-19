@@ -144,7 +144,7 @@ func TestEveryDatasetIsUsable(t *testing.T) {
 // A repo named for the stage that wrote it tells a reader which of our programs
 // ran, which is the one thing they do not care about.
 func TestTheNamesDescribeTheDataRatherThanTheCode(t *testing.T) {
-	code := []string{"gat", "phoi", "sang", "xay", "kho", "gao-", "stage", "pipeline", "v1"}
+	code := []string{"harvest", "normalize", "sift", "mill", "store", "gao-", "stage", "pipeline", "v1"}
 	for _, d := range Datasets() {
 		for _, bad := range code {
 			if strings.Contains(d.Name, bad) {

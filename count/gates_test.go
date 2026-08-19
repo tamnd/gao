@@ -587,9 +587,9 @@ func TestThePinnedTokenizerHasNoPieceForOneLetterOfVietnamese(t *testing.T) {
 // from its letter.
 //
 // This is a fact about the tokenizer and it is not a reason to reject it. gao
-// normalizes at ingest and nothing reaches a tokenizer before phoi has, so the
-// document this fails on is a document the corpus does not contain. It is
-// asserted here, on exactly one document and no other, because the day that
+// normalizes at ingest and nothing reaches a tokenizer before normalize has,
+// so the document this fails on is a document the corpus does not contain. It
+// is asserted here, on exactly one document and no other, because the day that
 // changes is the day the normalization step stopped running.
 func TestThePinnedTokenizerIsNotStableAcrossTheTwoSpellings(t *testing.T) {
 	r := coverageRun(t)

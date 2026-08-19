@@ -1,7 +1,7 @@
 // Package sample decides which bytes of a layer nobody has opened get read, and
 // decides it before anybody reads them.
 //
-// Mẫu is a sample. tang says what the layers nobody opened are worth and how
+// Mẫu is a sample. layers says what the layers nobody opened are worth and how
 // wide the bound over them is, and the only thing that closes that bound is
 // reading them. The item that has been open on this project since the 176B
 // estimate was taken is the HPLT v3 buckets at 40 MB each, which against the
@@ -172,8 +172,8 @@ type Plan struct {
 	files  []File
 }
 
-// ReadPlan works out what to read. The layers come from the same file tang
-// reads, since the question of which layers are unread is the question tang
+// ReadPlan works out what to read. The layers come from the same file layers
+// reads, since the question of which layers are unread is the question layers
 // already answers, and the listing is whatever the source publishes about its
 // own shards.
 func ReadPlan(source, seed string, want int64, layers []layers.Layer, files []File) Plan {
@@ -428,7 +428,7 @@ func (p Plan) Faults() []string {
 
 // under is the layers left shut that rank below every layer the plan opens or
 // that somebody already read. They are the ones that make the estimate lean
-// rather than merely widen, for the reason tang gives.
+// rather than merely widen, for the reason layers gives.
 func (p Plan) under() []layers.Layer {
 	floor, ok := 0, false
 	for _, l := range p.layers {

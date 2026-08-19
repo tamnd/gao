@@ -10,9 +10,10 @@ import (
 )
 
 // pages is real Vietnamese prose, long enough to clear the length floor. The
-// numbers in this file are measured off it rather than asserted, the way soi
-// measures the shape of the language, because a task set whose selection rules
-// are tuned to one paragraph is a task set that works on one paragraph.
+// numbers in this file are measured off it rather than asserted, the way
+// inspect measures the shape of the language, because a task set whose
+// selection rules are tuned to one paragraph is a task set that works on one
+// paragraph.
 var pages = []string{
 	`Hà Nội là thủ đô của nước Cộng hòa xã hội chủ nghĩa Việt Nam, nằm ở phía bắc, bên bờ sông Hồng. Thành phố có lịch sử hơn một nghìn năm kể từ khi vua Lý Thái Tổ dời đô về đây và đặt tên là Thăng Long, nghĩa là rồng bay lên. Khu phố cổ với ba mươi sáu phố phường vẫn giữ được cách bố trí từ thời xưa, mỗi phố bán một mặt hàng riêng, và tên phố ngày nay vẫn nhắc lại nghề cũ dù nghề ấy đã mất từ lâu.`,
 
@@ -201,8 +202,8 @@ func TestTheSixWordsThatShareOneSpelling(t *testing.T) {
 			t.Errorf("Bare(%q) = %q, want ma", w, got)
 		}
 	}
-	// And they are six different answers, not one, which soi's confusion matrix
-	// is what makes visible.
+	// And they are six different answers, not one, which inspect's confusion
+	// matrix is what makes visible.
 	seen := map[inspect.Tone]bool{}
 	for _, w := range []string{"ma", "má", "mà", "mả", "mã", "mạ"} {
 		seen[inspect.Letters(w)[1].Tone] = true

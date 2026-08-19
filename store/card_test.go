@@ -26,8 +26,8 @@ func released(t *testing.T) *Manifest {
 		Pipeline:  "0.4.1",
 		Box:       "server1",
 		Stages: []Stage{
-			{Name: "gat@0.4.1", ConfigHash: doc.SumString("ingest config")},
-			{Name: "sang@0.4.1", ConfigHash: doc.SumString("clean config"), Inputs: []string{"2026-09-ingest"}},
+			{Name: "harvest@0.4.1", ConfigHash: doc.SumString("ingest config")},
+			{Name: "sift@0.4.1", ConfigHash: doc.SumString("clean config"), Inputs: []string{"2026-09-ingest"}},
 		},
 		Counts: Counts{
 			Documents: 412_000_000,
@@ -116,9 +116,9 @@ func TestACardNamesTheStagesAndTheVersionsTheyRanAt(t *testing.T) {
 	card := Card(published(t), released(t), nil)
 
 	// The version is the point. Two documents cleaned by different versions of
-	// the same stage are not comparable, so a card that said "sang" without
+	// the same stage are not comparable, so a card that said "sift" without
 	// saying which one would be describing a pipeline nobody can rerun.
-	for _, want := range []string{"gat@0.4.1", "sang@0.4.1", "2026-09-ingest"} {
+	for _, want := range []string{"harvest@0.4.1", "sift@0.4.1", "2026-09-ingest"} {
 		if !strings.Contains(card, want) {
 			t.Errorf("the card does not name %s", want)
 		}

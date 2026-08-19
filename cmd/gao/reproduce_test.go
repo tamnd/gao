@@ -13,9 +13,10 @@ import (
 	"github.com/tamnd/gao/store"
 )
 
-// prose is a page of real Vietnamese as the cleaning stages would leave it: long
-// enough to clear sang's length floor, varied enough to clear its repetition
-// bound, and put through phoi so that phoi run again over it changes nothing.
+// prose is a page of real Vietnamese as the cleaning stages would leave it:
+// long enough to clear sift's length floor, varied enough to clear its
+// repetition bound, and put through normalize so that normalize run again over
+// it changes nothing.
 func prose(i int) string {
 	return normalize.Normalize(fmt.Sprintf("%s Đây là tài liệu số %d trong bộ.", markPages[i%len(markPages)], i)).Text
 }
@@ -79,7 +80,7 @@ func rebuildable(t *testing.T, n, shards int, stages []string, text func(i int) 
 }
 
 func TestStoreReproduceRebuildsASnapshotAndSaysWhatItRanOn(t *testing.T) {
-	dir := rebuildable(t, 40, 3, []string{"gat@0.1.0"}, nil)
+	dir := rebuildable(t, 40, 3, []string{"harvest@0.1.0"}, nil)
 
 	out, errOut, code := exec(t, "store", "reproduce", dir)
 	if code != 0 {
@@ -102,7 +103,7 @@ func TestStoreReproduceRebuildsASnapshotAndSaysWhatItRanOn(t *testing.T) {
 // looks like, and it is the only failure a rebuild sees that verification does
 // not, since a corrupted shard cannot be read back at all.
 func TestStoreReproduceOnASnapshotWrittenWithOtherSettings(t *testing.T) {
-	dir := rebuildable(t, 30, 2, []string{"gat@0.1.0"}, nil)
+	dir := rebuildable(t, 30, 2, []string{"harvest@0.1.0"}, nil)
 
 	out, errOut, code := exec(t, "store", "reproduce", "-frame-bytes", "2048", dir)
 	if code != 1 {
@@ -120,7 +121,7 @@ func TestStoreReproduceOnASnapshotWrittenWithOtherSettings(t *testing.T) {
 }
 
 func TestStoreReproduceVerboseAccountsForEveryShard(t *testing.T) {
-	dir := rebuildable(t, 30, 3, []string{"gat@0.1.0"}, nil)
+	dir := rebuildable(t, 30, 3, []string{"harvest@0.1.0"}, nil)
 	m, err := store.ReadManifest(dir)
 	if err != nil {
 		t.Fatal(err)
@@ -138,7 +139,7 @@ func TestStoreReproduceVerboseAccountsForEveryShard(t *testing.T) {
 }
 
 func TestStoreReproduceStopsAtTheFirstFailureWhenAsked(t *testing.T) {
-	dir := rebuildable(t, 40, 4, []string{"gat@0.1.0"}, nil)
+	dir := rebuildable(t, 40, 4, []string{"harvest@0.1.0"}, nil)
 
 	out, _, code := exec(t, "store", "reproduce", "-stop", "-frame-bytes", "2048", "-v", dir)
 	if code != 1 {
@@ -153,7 +154,7 @@ func TestStoreReproduceStopsAtTheFirstFailureWhenAsked(t *testing.T) {
 // normalized document, and classifying an already accepted one, are the same
 // check twice: a stage that is a function has to leave its own output alone.
 func TestStoreReproduceRerunsTheStagesItKnows(t *testing.T) {
-	dir := rebuildable(t, 20, 2, []string{"phoi@0.1.0", "sang@0.1.0"}, prose)
+	dir := rebuildable(t, 20, 2, []string{"normalize@0.1.0", "sift@0.1.0"}, prose)
 
 	out, errOut, code := exec(t, "store", "reproduce", dir)
 	if code != 0 {
@@ -162,7 +163,7 @@ func TestStoreReproduceRerunsTheStagesItKnows(t *testing.T) {
 	if n := strings.Count(out, "20 documents agree"); n != 2 {
 		t.Errorf("%d of 2 stages were re-run over every document:\n%s", n, out)
 	}
-	for _, want := range []string{"phoi@0.1.0", "sang@0.1.0"} {
+	for _, want := range []string{"normalize@0.1.0", "sift@0.1.0"} {
 		if !strings.Contains(out, want) {
 			t.Errorf("the report does not name %s:\n%s", want, out)
 		}
@@ -171,8 +172,8 @@ func TestStoreReproduceRerunsTheStagesItKnows(t *testing.T) {
 
 func TestStoreReproduceCatchesDocumentsAStageWouldNotProduce(t *testing.T) {
 	// Text with a no-break space and a decomposed syllable in it, which is
-	// exactly what a snapshot normalized by an older phoi looks like.
-	dir := rebuildable(t, 12, 2, []string{"phoi@0.1.0"}, func(i int) string {
+	// exactly what a snapshot normalized by an older normalize looks like.
+	dir := rebuildable(t, 12, 2, []string{"normalize@0.1.0"}, func(i int) string {
 		return "Ba\u0300i viê\u0301t sô\u0301 " + string(rune('A'+i)) + ".\u00a0" +
 			"Cộng hòa xã hội chủ nghĩa Việt Nam, độc lập tự do hạnh phúc. " +
 			"Nội dung của tài liệu này đủ dài để vượt qua ngưỡng tối thiểu của hợp đồng nhập liệu."
@@ -180,7 +181,7 @@ func TestStoreReproduceCatchesDocumentsAStageWouldNotProduce(t *testing.T) {
 
 	out, errOut, code := exec(t, "store", "reproduce", dir)
 	if code != 1 {
-		t.Fatalf("a snapshot phoi would rewrite was accepted: exit %d\n%s", code, out)
+		t.Fatalf("a snapshot normalize would rewrite was accepted: exit %d\n%s", code, out)
 	}
 	if !strings.Contains(out, "documents disagree") {
 		t.Errorf("the report does not say the stage disagreed:\n%s", out)
@@ -194,7 +195,7 @@ func TestStoreReproduceCatchesDocumentsAStageWouldNotProduce(t *testing.T) {
 		t.Errorf("a stage failure was reported as a byte failure:\n%s", out)
 	}
 	// Named, so the next step is opening a document rather than looking for one.
-	if !strings.Contains(out, "phoi@0.1.0, starting with:") {
+	if !strings.Contains(out, "normalize@0.1.0, starting with:") {
 		t.Errorf("no document was named:\n%s", out)
 	}
 }
@@ -202,13 +203,13 @@ func TestStoreReproduceCatchesDocumentsAStageWouldNotProduce(t *testing.T) {
 // Most stages will never have a check. Saying so is the point, because a report
 // that lists only what it checked reads as a report that checked everything.
 func TestStoreReproduceSaysWhichStagesItCouldNotCheck(t *testing.T) {
-	dir := rebuildable(t, 10, 1, []string{"gat@0.1.0", "xay@0.2.0"}, nil)
+	dir := rebuildable(t, 10, 1, []string{"harvest@0.1.0", "mill@0.2.0"}, nil)
 
 	out, _, code := exec(t, "store", "reproduce", dir)
 	if code != 0 {
 		t.Fatalf("exit %d\n%s", code, out)
 	}
-	for _, want := range []string{"gat@0.1.0", "xay@0.2.0", "not checked"} {
+	for _, want := range []string{"harvest@0.1.0", "mill@0.2.0", "not checked"} {
 		if !strings.Contains(out, want) {
 			t.Errorf("the report does not say %q:\n%s", want, out)
 		}
@@ -216,7 +217,7 @@ func TestStoreReproduceSaysWhichStagesItCouldNotCheck(t *testing.T) {
 }
 
 func TestStoreReproduceRefusesASnapshotThatDoesNotVerify(t *testing.T) {
-	dir := rebuildable(t, 10, 1, []string{"gat@0.1.0"}, nil)
+	dir := rebuildable(t, 10, 1, []string{"harvest@0.1.0"}, nil)
 	m, err := store.ReadManifest(dir)
 	if err != nil {
 		t.Fatal(err)
@@ -239,7 +240,7 @@ func TestStoreReproduceRefusesASnapshotThatDoesNotVerify(t *testing.T) {
 }
 
 func TestStoreReproduceUsageErrors(t *testing.T) {
-	dir := rebuildable(t, 5, 1, []string{"gat@0.1.0"}, nil)
+	dir := rebuildable(t, 5, 1, []string{"harvest@0.1.0"}, nil)
 
 	if _, _, code := exec(t, "store", "reproduce"); code != 2 {
 		t.Errorf("no snapshot: exit %d, want 2", code)

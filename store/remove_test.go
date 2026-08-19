@@ -26,7 +26,7 @@ func removable(t *testing.T, n, shards int, opts ...ShardOption) (dir string, pr
 		CreatedAt: sealedAt,
 		Pipeline:  "0.1.0",
 		Box:       "server1",
-		Stages:    []Stage{{Name: "gat@0.1.0", ConfigHash: doc.SumString("gat config")}},
+		Stages:    []Stage{{Name: "harvest@0.1.0", ConfigHash: doc.SumString("harvest config")}},
 		Shards:    recs,
 	}
 	m.Counts.BySource = map[string]int64{}

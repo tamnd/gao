@@ -143,7 +143,7 @@ func TestHarvestIsInTheTopLevelHelp(t *testing.T) {
 	if code != 0 {
 		t.Fatalf("gao help: exit %d, want 0", code)
 	}
-	if !strings.Contains(out, "gat") {
+	if !strings.Contains(out, "harvest") {
 		t.Error("gao help does not list gat")
 	}
 }

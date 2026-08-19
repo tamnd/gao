@@ -256,14 +256,14 @@ func legacyWords(text string) int {
 // evidence is the Vietnamese function words the detector looks for, written with
 // their marks on.
 //
-// The marks are the point. sang has a list like this one and matches it with the
-// marks taken off, because a great deal of Vietnamese is typed without them and
-// that register is still Vietnamese. Here the opposite is true: an unmarked word
-// is spelled the same under all six encodings and under none of them, so it can
-// tell them apart from nothing. Every word below carries at least one letter
-// that only exists in the document because an encoding put it there, which is
-// what makes counting them a measurement of the encoding rather than of the
-// language.
+// The marks are the point. sift has a list like this one and matches it with
+// the marks taken off, because a great deal of Vietnamese is typed without
+// them and that register is still Vietnamese. Here the opposite is true: an
+// unmarked word is spelled the same under all six encodings and under none of
+// them, so it can tell them apart from nothing. Every word below carries at
+// least one letter that only exists in the document because an encoding put it
+// there, which is what makes counting them a measurement of the encoding
+// rather than of the language.
 //
 // They are common words and they are short, and the list is long enough that a
 // page of any real length hits several of them. A page that hits none is a page

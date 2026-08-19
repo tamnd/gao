@@ -337,7 +337,7 @@ func TestSiftSaysWhichFileItCouldNotRead(t *testing.T) {
 func TestSiftIsInTheUsage(t *testing.T) {
 	var stdout bytes.Buffer
 	usage(&stdout)
-	if !strings.Contains(stdout.String(), "sang") {
+	if !strings.Contains(stdout.String(), "sift") {
 		t.Errorf("gao help does not list sang:\n%s", stdout.String())
 	}
 }

@@ -13,12 +13,12 @@ package count
 // gigabytes before it can answer is a suite nobody runs while changing a
 // tokenizer.
 //
-// The coverage set is the fix. It is a few kilobytes, it is fixed, and it holds
-// one document for each thing a gate needs to see: every letter of the language,
-// the same letters decomposed, the mixed text T3 asks for, digit runs in
-// different company, and the text a document arrives as when it comes out of
-// each of the legacy encodings phoi reads. Running it takes a millisecond and
-// leaves no gate unrun.
+// The coverage set is the fix. It is a few kilobytes, it is fixed, and it
+// holds one document for each thing a gate needs to see: every letter of the
+// language, the same letters decomposed, the mixed text T3 asks for, digit
+// runs in different company, and the text a document arrives as when it comes
+// out of each of the legacy encodings normalize reads. Running it takes a
+// millisecond and leaves no gate unrun.
 //
 // It is not a sample of the corpus and no number measured on it is a number
 // about gao. Fertility on this set is fertility on a letter chart. What it
@@ -36,10 +36,10 @@ import (
 	"github.com/tamnd/gao/doc"
 )
 
-// The three legacy documents, which are the same text phoi's own golden files
-// carry after transcoding.
+// The three legacy documents, which are the same text normalize's own golden
+// files carry after transcoding.
 //
-// They are copied here rather than read from phoi's testdata because one
+// They are copied here rather than read from normalize's testdata because one
 // package cannot embed another's files, and a fixture that reaches across a
 // directory at run time breaks the first time somebody reorganizes the other
 // package. The copies are checked against the originals by a test, so a copy

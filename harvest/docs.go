@@ -33,8 +33,8 @@ const Stage = Extractor
 // rejected as not Vietnamese rather than admitted as weakly Vietnamese.
 //
 // It is low on purpose. This is a gate against records the producer's own
-// identifier was unsure about, not a quality filter, and the real language pass
-// runs in sang against a reference set. Setting it high here would throw
+// identifier was unsure about, not a quality filter, and the real language
+// pass runs in sift against a reference set. Setting it high here would throw
 // documents away before anything had measured what was in them.
 const minLangScore = 0.5
 

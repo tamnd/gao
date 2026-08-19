@@ -100,10 +100,10 @@ const (
 
 // Identify measures a document against the Vietnamese syllable inventory.
 //
-// It expects text that has already been through phoi, for the same reason
+// It expects text that has already been through normalize, for the same reason
 // [Measure] does, and for one more: a page in a legacy font encoding is not
-// Vietnamese to any test that reads characters, and it is Vietnamese to a reader
-// who has the font. Normalization is what settles that, and running the
+// Vietnamese to any test that reads characters, and it is Vietnamese to a
+// reader who has the font. Normalization is what settles that, and running the
 // identifier ahead of it would file a large part of the older web under the
 // wrong language and never look at it again.
 func Identify(text string) Language {

@@ -146,7 +146,7 @@ func (s *hub) putDocs(snapshot string, file, part int, docs ...*doc.Document) {
 	}
 	dir := s.t.TempDir()
 	rel := store.StagePath(snapshot, file, part)
-	p, err := store.CreatePart(dir, rel, d, store.Stamp{Snapshot: snapshot, Stage: "gat@0.1.0", Box: "server1"})
+	p, err := store.CreatePart(dir, rel, d, store.Stamp{Snapshot: snapshot, Stage: "harvest@0.1.0", Box: "server1"})
 	if err != nil {
 		s.t.Fatalf("CreatePart: %v", err)
 	}

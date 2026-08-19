@@ -14,7 +14,7 @@ import (
 type Result struct {
 	DocID doc.Hash `json:"doc_id"`
 
-	// Score is soi's reading of the answer against the page, and the number
+	// Score is inspect's reading of the answer against the page, and the number
 	// worth quoting off it is [inspect.Score.DER], the share of the page's marks
 	// that did not come back.
 	Score inspect.Score `json:"score"`
@@ -27,8 +27,8 @@ type Result struct {
 
 	// Faithful reports whether the answer is the question with marks added and
 	// nothing else. An answer that fails this has rewritten the text rather than
-	// restored it, which soi will score anyway and which is not the task. It is
-	// counted separately rather than thrown away, because a model that
+	// restored it, which inspect will score anyway and which is not the task. It
+	// is counted separately rather than thrown away, because a model that
 	// paraphrases half the time is a fact about the model.
 	Faithful bool `json:"faithful"`
 }
@@ -79,9 +79,9 @@ func (r *Report) Add(res Result) {
 // Restored is the share of the page's marks that came back, which is the
 // headline number.
 //
-// It is one minus soi's diacritic error rate rather than a character accuracy,
-// for the reason in the package comment: character accuracy on this task starts
-// at about 76% for a model that does nothing at all.
+// It is one minus inspect's diacritic error rate rather than a character
+// accuracy, for the reason in the package comment: character accuracy on this
+// task starts at about 76% for a model that does nothing at all.
 func (r Report) Restored() float64 { return 1 - r.Score.DER() }
 
 // SyllableAccuracy is the share of syllables that came back exactly right. It

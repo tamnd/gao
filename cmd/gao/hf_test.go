@@ -21,10 +21,10 @@ import (
 	"github.com/tamnd/gao/reject"
 )
 
-// The tests here never fetch anything. What a real fetch does is settled in the
-// gat package against test hosts, and what is left for the command is the part
-// that decides whether to fetch at all: the plan, the source flag, the limit,
-// and the refusal to start without a directory.
+// The tests here never fetch anything. What a real fetch does is settled in
+// the harvest package against test hosts, and what is left for the command is
+// the part that decides whether to fetch at all: the plan, the source flag,
+// the limit, and the refusal to start without a directory.
 
 func TestTheHFPlanSaysWhatIsLeftAndFetchesNothing(t *testing.T) {
 	dir := t.TempDir()

@@ -22,15 +22,15 @@
 //
 // # What this package holds and what it does not
 //
-// A signature is 1 KB, and that number decides the shape of a corpus scale run.
-// Four hundred million documents is 400 GB of signatures against a fleet whose
-// largest box has 64 GB, so the index here, which keeps signatures in memory to
-// be able to answer at more than one threshold, is for a shard and for the
-// ablation. The corpus scale pass keeps only the band hashes, 128 bytes per
-// document, and works one band at a time from a file sorted on disk in the way
-// dem sorts document keys. That pass is not in this package yet, and the
-// arithmetic that says it is needed is written here rather than discovered on
-// the box.
+// A signature is 1 KB, and that number decides the shape of a corpus scale
+// run. Four hundred million documents is 400 GB of signatures against a fleet
+// whose largest box has 64 GB, so the index here, which keeps signatures in
+// memory to be able to answer at more than one threshold, is for a shard and
+// for the ablation. The corpus scale pass keeps only the band hashes, 128
+// bytes per document, and works one band at a time from a file sorted on disk
+// in the way count sorts document keys. That pass is not in this package yet,
+// and the arithmetic that says it is needed is written here rather than
+// discovered on the box.
 //
 // # Why the threshold is a measurement
 //

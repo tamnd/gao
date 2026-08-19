@@ -24,13 +24,13 @@ package cover
 //
 // # What is marked
 //
-// What the policy says must be covered, and not everything a person could point
-// at. Names are the case that matters: a name beside an identifier is marked,
-// because L2 covers it, and a name in an article about a minister is not,
-// because covering that is what this package refuses to do. So the recall here
-// is recall against the policy in che.go rather than against every proper noun
-// in the corpus, and reading it any other way makes it say something it does
-// not say.
+// What the policy says must be covered, and not everything a person could
+// point at. Names are the case that matters: a name beside an identifier is
+// marked, because L2 covers it, and a name in an article about a minister is
+// not, because covering that is what this package refuses to do. So the recall
+// here is recall against the policy in cover.go rather than against every
+// proper noun in the corpus, and reading it any other way makes it say
+// something it does not say.
 
 import (
 	"embed"

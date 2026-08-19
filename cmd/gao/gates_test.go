@@ -9,11 +9,12 @@ import (
 	"github.com/tamnd/gao/count"
 )
 
-// The suite itself is tested in dem, against tokenizers written to fail one
+// The suite itself is tested in count, against tokenizers written to fail one
 // gate each. What is left here is the report, so these build a result by hand
-// rather than tokenizing anything. Nothing in this file needs the 4.7 MB model,
-// which is the point: how a failure reads on a terminal is worth a test of its
-// own and should not be skipped on a box that has not downloaded a protobuf.
+// rather than tokenizing anything. Nothing in this file needs the 4.7 MB
+// model, which is the point: how a failure reads on a terminal is worth a test
+// of its own and should not be skipped on a box that has not downloaded a
+// protobuf.
 
 func gateReport(gates ...count.Gate) count.GateReport {
 	return count.GateReport{

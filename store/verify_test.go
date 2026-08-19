@@ -23,7 +23,7 @@ func snapshot(t *testing.T, n, shards int) (dir string, pub ed25519.PublicKey) {
 		CreatedAt: sealedAt,
 		Pipeline:  "0.1.0",
 		Box:       "server1",
-		Stages:    []Stage{{Name: "gat@0.1.0", ConfigHash: doc.SumString("gat config")}},
+		Stages:    []Stage{{Name: "harvest@0.1.0", ConfigHash: doc.SumString("harvest config")}},
 		Shards:    recs,
 	}
 	for _, rec := range recs {

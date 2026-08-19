@@ -26,7 +26,7 @@ func sliceParent(t *testing.T, snapshot string) (string, *store.Manifest) {
 		Snapshot:        snapshot,
 		CreatedAt:       time.Date(2026, 8, 1, 0, 0, 0, 0, time.UTC),
 		Pipeline:        "0.1.0",
-		Stages:          []store.Stage{{Name: "phoi@0.1.0", ConfigHash: sliceID("phoi")}},
+		Stages:          []store.Stage{{Name: "normalize@0.1.0", ConfigHash: sliceID("normalize")}},
 		Counts: store.Counts{
 			Documents: 1000, Natural: 1000,
 			Bytes: 4_000_000, Chars: 3_600_000, Syllables: 800_000,

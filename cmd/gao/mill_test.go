@@ -241,7 +241,7 @@ func TestMillSaysWhichFileItCouldNotRead(t *testing.T) {
 func TestMillIsInTheUsage(t *testing.T) {
 	var stdout bytes.Buffer
 	usage(&stdout)
-	if !strings.Contains(stdout.String(), "xay") {
+	if !strings.Contains(stdout.String(), "mill") {
 		t.Errorf("gao help does not list xay:\n%s", stdout.String())
 	}
 }

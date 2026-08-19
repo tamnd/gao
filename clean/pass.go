@@ -339,6 +339,10 @@ func (p *Pass) part(ctx context.Context, line *Line, from store.Stored, done boo
 // part's, because a cleaned FineWeb2 part is still that revision of FineWeb2
 // and a snapshot name that hid which revision it was cleaned from would make
 // the clean repo unreproducible from the raw one.
+//
+// The sach in the stage is the old name of this package and stays for the same
+// reason harvest.Extractor keeps its own: parts already pushed carry it, and a
+// provenance value that means one thing should not be written two ways.
 func (p *Pass) stamp(from store.Stored) store.Stamp {
 	snapshot, _, _, _ := store.ParseStagePath(from.Path)
 	return store.Stamp{Snapshot: snapshot, Stage: "gao-sach@" + PipelineVersion, Box: p.Box}

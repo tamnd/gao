@@ -48,7 +48,7 @@ func packParts(t *testing.T, dataset string, snapshot string, n int) []string {
 		t.Fatalf("%s is not in the dataset table", dataset)
 	}
 	dir := t.TempDir()
-	stamp := store.Stamp{Snapshot: snapshot, Stage: "kho@0.1.0", Box: "server3"}
+	stamp := store.Stamp{Snapshot: snapshot, Stage: "store@0.1.0", Box: "server3"}
 	paths := make([]string, 0, n)
 	for file := range n {
 		rel := store.StagePath(snapshot, file, 0)

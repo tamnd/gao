@@ -32,10 +32,10 @@ import (
 // reading one column instead of every byte, and it answers them from the Hub
 // without downloading the shard first.
 //
-// Descriptive names rather than stage names. A repo called gao-xay tells a
-// reader which of our programs wrote it, which is the one thing they do not care
-// about. A repo called vietnamese-legal-text tells them whether to click. The
-// stage that produced it is in the manifest, where it belongs.
+// Descriptive names rather than stage names. A repo called gao-mill tells a
+// reader which of our programs wrote it, which is the one thing they do not
+// care about. A repo called vietnamese-legal-text tells them whether to click.
+// The stage that produced it is in the manifest, where it belongs.
 //
 // Every repo here is public. There is no private tier and nothing is pushed
 // that may not be published, which is a stronger rule than the one this started

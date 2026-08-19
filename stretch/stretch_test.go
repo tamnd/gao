@@ -58,7 +58,7 @@ func measured(t *testing.T, docs ...document) Pool {
 	}
 	dir := t.TempDir()
 	rel := store.StagePath("gao-v1", 0, 0)
-	p, err := store.CreatePart(dir, rel, d, store.Stamp{Snapshot: "gao-v1", Stage: "kho@0.1.0", Box: "server3"})
+	p, err := store.CreatePart(dir, rel, d, store.Stamp{Snapshot: "gao-v1", Stage: "store@0.1.0", Box: "server3"})
 	if err != nil {
 		t.Fatal(err)
 	}

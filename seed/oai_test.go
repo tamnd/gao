@@ -408,7 +408,7 @@ func TestABaseURLThatAlreadyHasAQuery(t *testing.T) {
 
 // dc:language on a DSpace install is whatever the deposit form defaulted to,
 // which is often en_US on a thesis written in Vietnamese. It is a hint that
-// travels with the record and not a verdict, and sang decides.
+// travels with the record and not a verdict, and sift decides.
 func TestTheLanguageFieldIsKeptAndNotBelieved(t *testing.T) {
 	s := serve(t, func(q url.Values) string {
 		if q.Get("verb") != "ListRecords" {

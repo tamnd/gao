@@ -189,10 +189,10 @@ func printMovePlan(stdout, stderr io.Writer, ctx context.Context, p *store.Pushe
 // hivePathPattern reads the Hive spelled layout the working repo had before
 // this one: data/snapshot=glotcc-9ad140b6be3a/file=00003/part-00000.parquet.
 //
-// It is here rather than in kho because it is not a layout gao writes any more.
-// It is a fact about one repo on the Hub, it stops mattering the day that repo
-// is empty, and the parser that reads it should go the same day rather than
-// sitting in the package that defines the real one.
+// It is here rather than in store because it is not a layout gao writes any
+// more. It is a fact about one repo on the Hub, it stops mattering the day
+// that repo is empty, and the parser that reads it should go the same day
+// rather than sitting in the package that defines the real one.
 var hivePathPattern = regexp.MustCompile(
 	`^` + store.DataDir + `/snapshot=([A-Za-z0-9][A-Za-z0-9._-]*)/file=(\d{5,})/part-(\d{5,})\` + store.ParquetExt + `$`)
 

@@ -140,7 +140,7 @@ func TestAdmitRequiresAnActionableRejection(t *testing.T) {
 
 func TestAdmitAcceptsADocumentThatFailedTheIngestContract(t *testing.T) {
 	// This is the case the reject store exists for. A document with a broken
-	// identity and no provenance cannot go into kho, and has to go into vo, or
+	// identity and no provenance cannot go into store, and has to go into vo, or
 	// the pipeline has no record that it ever saw it.
 	r := &Reject{
 		Document: doc.Document{RawID: doc.SumString("some warc payload"), Text: "\xff\xfe not utf-8"},

@@ -1,12 +1,13 @@
 // Package repeat reads a set of generated documents and says whether it is a
 // corpus or one prompt run a million times.
 //
-// Lặp is to repeat. Everything else in this project that judges text judges one
-// document at a time. sang asks whether a document repeats itself, xay asks
-// whether two documents are the same document, and both of them are answering
-// questions about web text, where the failure is a page of boilerplate or a
-// mirror of a site already in the store. Neither of them can see the failure
-// that matters for generated text, because it is not in any document.
+// Lặp is to repeat. Everything else in this project that judges text judges
+// one document at a time. sift asks whether a document repeats itself, mill
+// asks whether two documents are the same document, and both of them are
+// answering questions about web text, where the failure is a page of
+// boilerplate or a mirror of a site already in the store. Neither of them can
+// see the failure that matters for generated text, because it is not in any
+// document.
 //
 // # Why a set can pass every filter a document has to pass and still be worthless
 //
@@ -306,7 +307,7 @@ func (s Set) Verdict() string {
 }
 
 // split reduces a document to its syllables, lowercased and stripped of
-// everything that is not a letter or a digit, which is the same reduction sang
+// everything that is not a letter or a digit, which is the same reduction sift
 // makes for the same reason: two spellings of a syllable are one syllable.
 func split(text string) []string {
 	fields := strings.Fields(text)

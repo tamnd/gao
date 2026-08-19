@@ -15,7 +15,7 @@ import (
 
 // stamp is what the tests write into every part, since the stamp is not what
 // most of them are about.
-var stamp = Stamp{Snapshot: "glotcc-9ad140b6be3a", Stage: "gat@0.1.0", Box: "server1"}
+var stamp = Stamp{Snapshot: "glotcc-9ad140b6be3a", Stage: "harvest@0.1.0", Box: "server1"}
 
 // textDataset is a repo that carries text, and urlDataset is one that does not.
 // Both are looked up rather than constructed, so a change to the real table is
@@ -422,7 +422,7 @@ func TestAPartCarriesItsStamp(t *testing.T) {
 // file to say which of the two things that meant. counts.json says it, and a
 // part on the Hub does not travel with counts.json.
 func TestAPartSaysWhetherAnythingCountedItsTokens(t *testing.T) {
-	none := Stamp{Snapshot: "glotcc-9ad140b6be3a", Stage: "gat@0.1.0", Box: "server3"}
+	none := Stamp{Snapshot: "glotcc-9ad140b6be3a", Stage: "harvest@0.1.0", Box: "server3"}
 	if got, ok := none.Metadata()["gao.tokenizer"]; !ok || got != "" {
 		t.Errorf("a run with no tokenizer stamps %q with present=%v, want an empty value that is present", got, ok)
 	}
