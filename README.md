@@ -331,7 +331,7 @@ Every Hub source is pinned to a commit SHA and never to a branch, because a corp
 
 Reading the file lists off the hosts rather than copying them from the plan corrected the plan three times. GlotCC's Vietnamese partition was described as small and is 55.9 GB. The whole download was estimated at roughly 490 GB and is 608.9 GB, of which 433.5 GB is fetched and 175.4 GB is pinned and dropped for the reasons below. CulturaX is gated, which nothing had recorded, and a gated repo does not hand its file digests to an unauthenticated caller, which is why that source pins byte counts and no digests.
 
-CulturaX is dropped rather than left pending. It is gated on terms nobody on this project has been granted, and on 2026-08-19 a range request for the first pinned file with the ingest token came back 403 with `Access to dataset uonlp/CulturaX is restricted and you are not in the authorized list`. That is not a run that failed, it is a person accepting terms, and until somebody does there is nothing to fetch. The manifest keeps the pin and the file list with the reason beside them, the same way MADLAD-400 is kept, so re-admitting it is one field rather than a re-pin. What it costs the corpus is less than 80.1 GB suggests: CulturaX is mC4 and OSCAR, both built out of Common Crawl, so it overlaps the four sources that are ingested heavily and the deduplicated union is the number it would move least.
+CulturaX is dropped rather than left pending. It is gated on terms nobody on this project has been granted, and on 2026-08-19 a range request for the first pinned file with the ingest token came back 403 with `Access to dataset uonlp/CulturaX is restricted and you are not in the authorized list`. That is not a run that failed, it is a person accepting terms, and until somebody does there is nothing to fetch. The manifest keeps the pin and the file list with the reason beside them, the same way MADLAD-400 is kept, so re-admitting it is one field rather than a re-pin. What it costs the corpus is an open question rather than a small number. The first reason to think it was small is that CulturaX is mC4 and OSCAR, both built out of Common Crawl, so it goes over the same pages the four ingested sources went over. The measurement does not back that up. Under gao's identity, which is a hash of the extracted text, FineWeb2 and GlotCC share seven tenths of one percent of the smaller of them despite both being Common Crawl derivatives, because two extractors agreeing on every byte of a page is rare. So CulturaX would most likely have added close to its own size in distinct documents, and the argument that it overlaps heavily only holds for the same page rather than the same text. Which of those two matters is the near duplicate pass in S2, and until that has run the honest statement is that a gate cost this corpus 80.1 GB.
 
 One number sets the shape of the ingest. The largest pinned file is a 26.6 GB HPLT shard and `server1`'s entire peak disk budget is 4.1 GB, so ingestion decompresses in flight and writes gao shards as it goes rather than downloading a file and then reading it. Streaming is not an optimization here, it is the only thing that fits.
 
@@ -2890,59 +2890,54 @@ One walk answers everything. The key files are sorted, so stepping through all o
 
 A pass over a few hundred parts gets interrupted, so it is resumable at the part rather than at the source. Each part's keys are written under a working directory and a part that already has its file is skipped, so a run killed after a hundred parts reads the rest and merges. Nothing about that is remembered in a ledger, because the files on disk are the record and a second one would be wrong the first time a process died between the rename and the write.
 
-Run against the GlotCC snapshot in the store, over a home connection:
+Run against the whole GlotCC snapshot in the store, over a home connection:
 
 ```
 $ gao count keys -dir keys/ glotcc-9ad140b6be3a
-reading glotcc-9ad140b6be3a out of open-index/vietnamese-source-text
-     1/12  part-00000.parquet                                       126853 documents, 5.8 MB read so far
-     2/12  part-00001.parquet                                       125846 documents, 11.7 MB read so far
-     3/12  part-00002.parquet                                       126717 documents, 17.6 MB read so far
-     4/12  part-00003.parquet                                       120584 documents, 23.3 MB read so far
-     5/12  part-00000.parquet                                       127476 documents, 29.1 MB read so far
-     6/12  part-00001.parquet                                       125554 documents, 34.7 MB read so far
-     7/12  part-00002.parquet                                       125338 documents, 40.5 MB read so far
-     8/12  part-00003.parquet                                       121632 documents, 46.1 MB read so far
-     9/12  part-00000.parquet                                       124776 documents, 51.9 MB read so far
-    10/12  part-00001.parquet                                       124954 documents, 57.8 MB read so far
-    11/12  part-00002.parquet                                       126539 documents, 63.6 MB read so far
-    12/12  part-00003.parquet                                       123731 documents, 69.1 MB read so far
+reading glotcc-9ad140b6be3a out of open-index/vitco
+     1/113  glotcc-9ad140b6be3a-00000-00000.parquet                  126853 documents, 5.8 MB read so far
+     2/113  glotcc-9ad140b6be3a-00000-00001.parquet                  125846 documents, 11.7 MB read so far
+   ...
+   112/113  glotcc-9ad140b6be3a-00026-00002.parquet                  126063 documents, 619.8 MB read so far
+   113/113  glotcc-9ad140b6be3a-00026-00003.parquet                  122588 documents, 625.7 MB read so far
 
 glotcc-9ad140b6be3a
-  parts      12
-  documents  1500000
-  distinct   1405791
-  repeats    6.3% of the source is a copy of something already in it
+  parts      113
+  documents  13232715
+  distinct   11634117
+  repeats    12.1% of the source is a copy of something already in it
 
 written to keys/glotcc-9ad140b6be3a.keys
 ```
 
-Two numbers to take from that. The pass moved 69.1 MB to read the identities of a 6.1 GB snapshot, which is 46 bytes per document rather than the 32 the identity itself is, the difference being window granularity and the footer each part is opened with. At four hundred million documents that is around 18 GB for the whole corpus rather than the 13 the arithmetic above predicts, and 18 GB against 900 is still the entire argument. And GlotCC's Vietnamese split is 6.3% duplicates of itself before any other source is put next to it, which is the first real number this project has on duplication and is a floor rather than an estimate: exact document identity catches a byte for byte copy and nothing weaker, and the near duplicate work that catches the rest is a later milestone.
+Two numbers to take from that. The pass moved 625.7 MB to read the identities of a 55.9 GB snapshot, which is 47 bytes per document rather than the 32 the identity itself is, the difference being window granularity and the footer each part is opened with. At four hundred million documents that is around 19 GB for the whole corpus rather than the 13 the arithmetic above predicts, and 19 GB against 900 is still the entire argument. And GlotCC's Vietnamese split is 12.1% duplicates of itself before any other source is put next to it, which is the first real number this project has on duplication and is a floor rather than an estimate: exact document identity catches a byte for byte copy and nothing weaker, and the near duplicate work that catches the rest is a later milestone.
 
-Then the matrix over what the three boxes had published by the middle of the day. FinePDFs is the whole source, all three of its pinned files. The other two are what had landed by then, 22 parts of FineWeb2 and the 12 that GlotCC's first three files came to, so the sizes are prefixes and the shares are about these documents rather than about the sources.
+The first reading of that number was 6.3%, taken over the twelve parts three of GlotCC's files had come to at the time. It doubled over the whole source, which is what a duplication rate does when the sample is a prefix: a copy is only visible once both of its ends have been read.
+
+Then the matrix. Three of the four ingested sources have a complete key file and HPLT v3 is still being read, so this is three sources at their full size rather than a prefix of four.
 
 ```
 $ gao count overlap keys/*.keys
-3 sources, 6776358 documents read, 6680520 of them different
+3 sources, 43516967 documents read, 41842560 of them different
 
 source                 documents  distinct  only here  repeats
-finepdfs-220bac3acbf0  1218257    1218256   1218256    0.0%
-fineweb2-af9c13333eb9  4058101    4058101   4056473    0%
-glotcc-9ad140b6be3a    1500000    1405791   1404163    6.3%
+finepdfs-220bac3acbf0  1218257    1218256   1218255    0.0%
+fineweb2-af9c13333eb9  29065995   29065995  28990187   0%
+glotcc-9ad140b6be3a    13232715   11634117  11558310   12.1%
 
-union                  6776358    6680520              1.4%
+union                  43516967   41842560             3.8%
 
 pair                                             in both  of the first  of the second
-finepdfs-220bac3acbf0 and fineweb2-af9c13333eb9  0        0%            0%
+finepdfs-220bac3acbf0 and fineweb2-af9c13333eb9  1        0.0%          0.0%
 finepdfs-220bac3acbf0 and glotcc-9ad140b6be3a    0        0%            0%
-fineweb2-af9c13333eb9 and glotcc-9ad140b6be3a    1628     0.0%          0.1%
+fineweb2-af9c13333eb9 and glotcc-9ad140b6be3a    75807    0.3%          0.7%
 ```
 
-That is not the answer the section was written expecting. FineWeb2 and GlotCC are both extracted from Common Crawl and they share 1628 documents out of four million and one and a half, which is a tenth of one percent of the smaller one. FinePDFs shares nothing with either, which at least makes sense, since it comes off PDFs and the other two come off HTML.
+That is not the answer the section was written expecting. FineWeb2 and GlotCC are both extracted from Common Crawl and they share 75807 documents out of twenty nine million and thirteen, which is seven tenths of one percent of the smaller one. FinePDFs shares one document with FineWeb2 and none with GlotCC, which at least makes sense, since it comes off PDFs and the other two come off HTML. Almost all of the 3.8% the union saves is GlotCC being a copy of itself rather than any two sources being copies of each other.
 
 The reason is in the identity rather than in the sources. A document's id is the blake3 of its extracted text, not of its URL, so two projects that pulled the same page out of the same crawl produce the same document only if their extractors agreed on every byte of it. They do not. Trafilatura and whatever FineWeb2's pipeline settles on disagree about a nav bar, a trailing newline, a boilerplate line at the foot of the page, and one byte is enough. So this matrix answers a narrower question than the one the paragraph above the code opened with. It says how much of the corpus is literally the same text twice, which is the thing a store can be deduplicated on, and it says nothing about how much of it is the same page twice.
 
-Both questions are worth having and only one of them is answered here. The 1628 that did match are pages where the two extractors happened to agree, which is roughly what you would expect of short documents with nothing around the text to disagree about. The rest of the shared crawl is still in the corpus, twice, in two slightly different renderings, and finding it is the near duplicate pass rather than this one. Which is to say the exact matrix is not the cheap version of the overlap measurement. It is a different measurement that happens to be cheap, and reading it as the overlap number would have this project publish a corpus described as barely redundant when nobody has measured the redundancy that matters.
+Both questions are worth having and only one of them is answered here. The 75807 that did match are pages where the two extractors happened to agree, which is roughly what you would expect of short documents with nothing around the text to disagree about. The rest of the shared crawl is still in the corpus, twice, in two slightly different renderings, and finding it is the near duplicate pass rather than this one. Which is to say the exact matrix is not the cheap version of the overlap measurement. It is a different measurement that happens to be cheap, and reading it as the overlap number would have this project publish a corpus described as barely redundant when nobody has measured the redundancy that matters.
 
 ```
 gao count keys                                # what the store holds, ready to measure
