@@ -6,9 +6,12 @@ import (
 	"flag"
 	"fmt"
 	"io"
+	"maps"
 	"os"
 	"os/signal"
+	"slices"
 	"sort"
+	"strings"
 	"syscall"
 	"text/tabwriter"
 
@@ -23,7 +26,7 @@ func runSach(stdout, stderr io.Writer, args []string) int {
 	fs := flag.NewFlagSet("clean", flag.ContinueOnError)
 	fs.SetOutput(stderr)
 	dir := fs.String("dir", "", "where a part is built before it is pushed")
-	source := fs.String("source", "", "clean one source rather than all of them, by name")
+	source := fs.String("source", "", "clean these sources rather than all of them, named and separated by commas")
 	limit := fs.Int("limit", 0, "stop after this many parts, which is how a new box is tried out")
 	workers := fs.Int("workers", 4, "how many parts are cleaned at once")
 	keys := fs.Int("keys", sach.DefaultKeys, "how many documents the deduplication set is sized for")
@@ -32,7 +35,7 @@ func runSach(stdout, stderr io.Writer, args []string) int {
 	report := fs.String("report", "", "write the run report to this file as JSON")
 	asJSON := fs.Bool("json", false, "print the report as JSON")
 	fs.Usage = func() {
-		fmt.Fprint(stderr, `usage: gao clean -dir DIR [-source NAME] [-limit N] [-workers N] [-keys N] [-push] [-plan] [-report FILE] [-json]
+		fmt.Fprint(stderr, `usage: gao clean -dir DIR [-source NAMES] [-limit N] [-workers N] [-keys N] [-push] [-plan] [-report FILE] [-json]
 
 Runs the cleaning line over the raw corpus and publishes what comes out.
 
@@ -175,16 +178,22 @@ flags:
 	return 0
 }
 
-// rawParts is every part of the raw repo, or of one source of it, in the order
-// the parts were written.
+// rawParts is every part of the raw repo, or of the named sources of it, in
+// the order the parts were written.
+//
+// The names are a list rather than one name because the fleet is sharded by
+// source. Two boxes given overlapping lists clean the same part twice, race
+// each other writing it, and publish whichever finished last, so the way to
+// hand one box everything except what another box has is to say so.
 func rawParts(ctx context.Context, s *dem.Store, source string) ([]kho.Stored, error) {
 	snapshots, err := s.Snapshots(ctx)
 	if err != nil {
 		return nil, err
 	}
+	want := sources(source)
 	var out []kho.Stored
 	for _, snapshot := range snapshots {
-		if source != "" && dem.SourceOf(snapshot) != source {
+		if len(want) > 0 && !want[dem.SourceOf(snapshot)] {
 			continue
 		}
 		parts, err := s.Parts(ctx, snapshot)
@@ -196,11 +205,28 @@ func rawParts(ctx context.Context, s *dem.Store, source string) ([]kho.Stored, e
 	return out, nil
 }
 
+// sources reads the -source flag, which is empty for the whole corpus and a
+// comma separated list otherwise. An empty entry is dropped rather than
+// matching a snapshot with no source, since a trailing comma is a typo and not
+// a request for nothing.
+func sources(flag string) map[string]bool {
+	if flag == "" {
+		return nil
+	}
+	want := make(map[string]bool)
+	for _, name := range strings.Split(flag, ",") {
+		if name = strings.TrimSpace(name); name != "" {
+			want[name] = true
+		}
+	}
+	return want
+}
+
 func ofSource(source string) string {
 	if source == "" {
 		return ""
 	}
-	return " of " + source
+	return " of " + strings.Join(slices.Sorted(maps.Keys(sources(source))), ", ")
 }
 
 func writeReport(path string, rep sach.Report) error {
