@@ -185,7 +185,7 @@ func TestGianSaysHowToBeAskedProperly(t *testing.T) {
 		}
 	}
 	out, _, code := exec(t, "gian", "help")
-	if code != 0 || !strings.Contains(out, "usage: gao gian ladder") {
+	if code != 0 || !strings.Contains(out, "usage: gao stretch ladder") {
 		t.Errorf("gian help exited %d without a usage line:\n%s", code, out)
 	}
 }

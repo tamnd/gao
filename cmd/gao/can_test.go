@@ -179,10 +179,10 @@ func TestCanJSONCarriesTheGapAndWhatItRestsOn(t *testing.T) {
 
 func TestCanWithoutAnArmsFileIsAUsageError(t *testing.T) {
 	if _, _, code := exec(t, "can"); code != 2 {
-		t.Error("gao can with no arms file did not exit 2")
+		t.Error("gao weigh with no arms file did not exit 2")
 	}
 	if _, _, code := exec(t, "can", "a.jsonl", "b.jsonl"); code != 2 {
-		t.Error("gao can with two arms files did not exit 2")
+		t.Error("gao weigh with two arms files did not exit 2")
 	}
 	if _, _, code := exec(t, "can", filepath.Join(t.TempDir(), "nothing.jsonl")); code != 1 {
 		t.Error("an arms file that is not there did not exit 1")

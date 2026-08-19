@@ -45,14 +45,14 @@ func runGat(stdout, stderr io.Writer, args []string) int {
 		gatUsage(stdout)
 		return 0
 	default:
-		fmt.Fprintf(stderr, "gao gat: unknown subcommand %q\n", args[0])
+		fmt.Fprintf(stderr, "gao harvest: unknown subcommand %q\n", args[0])
 		gatUsage(stderr)
 		return 2
 	}
 }
 
 func gatUsage(w io.Writer) {
-	fmt.Fprint(w, `usage: gao gat <subcommand> [flags]
+	fmt.Fprint(w, `usage: gao harvest <subcommand> [flags]
 
 subcommands:
   pins   print the ingest manifest: what gets downloaded and at which revision
@@ -63,7 +63,7 @@ subcommands:
   fetch  fetch one page the way the crawler would, and print what happened
   warc   read a WARC back: what is in it, and the bytes of one page out of it
 
-run 'gao gat <subcommand> -h' for the flags of a single subcommand.
+run 'gao harvest <subcommand> -h' for the flags of a single subcommand.
 `)
 }
 
@@ -73,10 +73,10 @@ run 'gao gat <subcommand> -h' for the flags of a single subcommand.
 // command rather than a grep. A published identity that has to be read out of
 // the source is not published.
 func runGatAgent(stdout, stderr io.Writer, args []string) int {
-	fs := flag.NewFlagSet("gat agent", flag.ContinueOnError)
+	fs := flag.NewFlagSet("harvest agent", flag.ContinueOnError)
 	fs.SetOutput(stderr)
 	fs.Usage = func() {
-		fmt.Fprint(stderr, `usage: gao gat agent
+		fmt.Fprint(stderr, `usage: gao harvest agent
 
 Prints the User-Agent header this build sends, the product token a site writes
 in robots.txt to address it, and the contact page every request points at.
@@ -118,7 +118,7 @@ this is the command that shows the two are not the same thing.
 // that worked, and all of it is what makes this a crawler rather than a loop
 // around curl.
 func runGatFetch(stdout, stderr io.Writer, args []string) int {
-	fs := flag.NewFlagSet("gat fetch", flag.ContinueOnError)
+	fs := flag.NewFlagSet("harvest fetch", flag.ContinueOnError)
 	fs.SetOutput(stderr)
 	delay := fs.Duration("delay", gat.DefaultDelay, "the shortest gap between two requests to one host, before the site's own Crawl-delay")
 	timeout := fs.Duration("timeout", 30*time.Second, "how long to wait for one request")
@@ -126,7 +126,7 @@ func runGatFetch(stdout, stderr io.Writer, args []string) int {
 	body := fs.Bool("body", false, "write the body to stdout instead of the summary")
 	warc := fs.String("warc", "", "also write every fetch to this WARC file, gzipped per record")
 	fs.Usage = func() {
-		fmt.Fprint(stderr, `usage: gao gat fetch [flags] URL [URL ...]
+		fmt.Fprint(stderr, `usage: gao harvest fetch [flags] URL [URL ...]
 
 Fetches each URL the way the crawler does: robots.txt first and once per host,
 the published User-Agent, a gap between requests that is the longer of ours and
@@ -167,7 +167,7 @@ flags:
 	if *warc != "" {
 		f, err := os.Create(*warc)
 		if err != nil {
-			fmt.Fprintf(stderr, "gao gat fetch: %v\n", err)
+			fmt.Fprintf(stderr, "gao harvest fetch: %v\n", err)
 			return 1
 		}
 		defer func() { _ = f.Close() }()
@@ -178,10 +178,10 @@ flags:
 			Agent:     gat.Agent(version),
 			Operator:  "gao",
 			Contact:   gat.Contact,
-			IsPartOf:  "gao gat fetch",
+			IsPartOf:  "gao harvest fetch",
 			Described: time.Now(),
 		})); err != nil {
-			fmt.Fprintf(stderr, "gao gat fetch: %v\n", err)
+			fmt.Fprintf(stderr, "gao harvest fetch: %v\n", err)
 			return 1
 		}
 	}
@@ -201,7 +201,7 @@ flags:
 		if w != nil {
 			for _, r := range gat.VisitRecords(v, time.Now(), gat.Agent(version)) {
 				if _, _, err := w.Write(r); err != nil {
-					fmt.Fprintf(stderr, "gao gat fetch: %v\n", err)
+					fmt.Fprintf(stderr, "gao harvest fetch: %v\n", err)
 					return 1
 				}
 			}
@@ -263,12 +263,12 @@ func describeReservation(r gat.Reservation) string {
 }
 
 func runGatPins(stdout, stderr io.Writer, args []string) int {
-	fs := flag.NewFlagSet("gat pins", flag.ContinueOnError)
+	fs := flag.NewFlagSet("harvest pins", flag.ContinueOnError)
 	fs.SetOutput(stderr)
 	source := fs.String("source", "", "print one source in full, by name")
 	files := fs.Bool("files", false, "list every pinned file with its size and digest")
 	fs.Usage = func() {
-		fmt.Fprint(stderr, `usage: gao gat pins [-source NAME] [-files]
+		fmt.Fprint(stderr, `usage: gao harvest pins [-source NAME] [-files]
 
 Prints the ingest manifest, which is every file gao downloads and the exact
 revision it downloads it at. Hub sources are pinned to a commit SHA and direct
@@ -290,7 +290,7 @@ flags:
 	if *source != "" {
 		p, ok := gat.Pin(doc.Source(*source))
 		if !ok {
-			fmt.Fprintf(stderr, "gao gat pins: %q is not a pinned source\n", *source)
+			fmt.Fprintf(stderr, "gao harvest pins: %q is not a pinned source\n", *source)
 			return 1
 		}
 		printPin(stdout, p, true)
@@ -331,7 +331,7 @@ flags:
 			p.Order, p.Source, repo, shortRevision(p.Revision), p.Config, len(p.Files), size, p.Class)
 	}
 	_ = tw.Flush()
-	fmt.Fprint(stdout, "\nrun 'gao gat pins -source NAME' for one source in full.\n")
+	fmt.Fprint(stdout, "\nrun 'gao harvest pins -source NAME' for one source in full.\n")
 	return 0
 }
 
@@ -391,11 +391,11 @@ func shortRevision(rev string) string {
 }
 
 func runGatDrift(stdout, stderr io.Writer, args []string) int {
-	fs := flag.NewFlagSet("gat drift", flag.ContinueOnError)
+	fs := flag.NewFlagSet("harvest drift", flag.ContinueOnError)
 	fs.SetOutput(stderr)
 	timeout := fs.Duration("timeout", 30*time.Second, "how long to wait for all the hosts together")
 	fs.Usage = func() {
-		fmt.Fprint(stderr, `usage: gao gat drift [-timeout DURATION]
+		fmt.Fprint(stderr, `usage: gao harvest drift [-timeout DURATION]
 
 Asks every host in the ingest manifest what revision it serves now and reports
 the ones that have moved since they were pinned. It reads the network and it
@@ -479,12 +479,12 @@ func reportDrift(stdout, stderr io.Writer, results []driftResult) int {
 // disk, and -uri is what an extraction bug looks like being fixed: the page comes
 // back out of the archive rather than off the site, which by then has changed.
 func runGatWARC(stdout, stderr io.Writer, args []string) int {
-	fs := flag.NewFlagSet("gat warc", flag.ContinueOnError)
+	fs := flag.NewFlagSet("harvest warc", flag.ContinueOnError)
 	fs.SetOutput(stderr)
 	uri := fs.String("uri", "", "write the body of this URL to stdout instead of the listing")
 	fields := fs.Bool("fields", false, "print every field of every record, not just the summary line")
 	fs.Usage = func() {
-		fmt.Fprint(stderr, `usage: gao gat warc [flags] FILE [FILE ...]
+		fmt.Fprint(stderr, `usage: gao harvest warc [flags] FILE [FILE ...]
 
 Reads a WARC written by this crawler, compressed or not, and prints what is in
 it: one line per record with its type, its status, its size and its URL.
@@ -510,13 +510,13 @@ flags:
 	for _, name := range fs.Args() {
 		f, err := os.Open(name)
 		if err != nil {
-			fmt.Fprintf(stderr, "gao gat warc: %v\n", err)
+			fmt.Fprintf(stderr, "gao harvest warc: %v\n", err)
 			return 1
 		}
 		r, err := gat.NewWARCReader(f)
 		if err != nil {
 			_ = f.Close()
-			fmt.Fprintf(stderr, "gao gat warc: %s: %v\n", name, err)
+			fmt.Fprintf(stderr, "gao harvest warc: %s: %v\n", name, err)
 			return 1
 		}
 
@@ -529,7 +529,7 @@ flags:
 			if err != nil {
 				_ = tw.Flush()
 				_ = f.Close()
-				fmt.Fprintf(stderr, "gao gat warc: %s: %v\n", name, err)
+				fmt.Fprintf(stderr, "gao harvest warc: %s: %v\n", name, err)
 				return 1
 			}
 			records++
@@ -545,14 +545,14 @@ flags:
 				resp, err := rec.Response()
 				if err != nil {
 					_ = f.Close()
-					fmt.Fprintf(stderr, "gao gat warc: %v\n", err)
+					fmt.Fprintf(stderr, "gao harvest warc: %v\n", err)
 					return 1
 				}
 				_, copyErr := io.Copy(stdout, resp.Body)
 				_ = resp.Body.Close()
 				if copyErr != nil {
 					_ = f.Close()
-					fmt.Fprintf(stderr, "gao gat warc: %v\n", copyErr)
+					fmt.Fprintf(stderr, "gao harvest warc: %v\n", copyErr)
 					return 1
 				}
 				continue
@@ -587,7 +587,7 @@ flags:
 
 	if *uri != "" {
 		if found == 0 {
-			fmt.Fprintf(stderr, "gao gat warc: no response for %s in %s\n", *uri, strings.Join(fs.Args(), ", "))
+			fmt.Fprintf(stderr, "gao harvest warc: no response for %s in %s\n", *uri, strings.Join(fs.Args(), ", "))
 			return 1
 		}
 		return 0

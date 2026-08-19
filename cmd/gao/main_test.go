@@ -90,3 +90,65 @@ func TestBadFlagExitsTwo(t *testing.T) {
 		t.Errorf("gao plan -nosuchflag: exit %d, want 2", code)
 	}
 }
+
+func TestEveryCommandNameAndAliasIsItsOwn(t *testing.T) {
+	// A name that collides with another command's alias is worse than a
+	// duplicate name, because the table still compiles and the dispatch quietly
+	// picks whichever row comes first.
+	taken := make(map[string]string)
+	for _, c := range commands() {
+		for _, n := range []string{c.name, c.alias} {
+			if n == "" {
+				continue
+			}
+			if owner, ok := taken[n]; ok {
+				t.Errorf("%q is claimed by both %s and %s", n, owner, c.name)
+			}
+			taken[n] = c.name
+		}
+	}
+}
+
+func TestEveryVerbHasAVietnameseName(t *testing.T) {
+	// version and help were always English and name nothing in the source tree,
+	// so they are the only two rows allowed to stand alone.
+	for _, c := range commands() {
+		if c.alias == "" && c.name != "version" && c.name != "help" {
+			t.Errorf("%s has no Vietnamese name", c.name)
+		}
+	}
+}
+
+func TestAnAliasRunsTheSameCommandAsItsName(t *testing.T) {
+	// Running every command would take a network and a corpus, so this asks the
+	// cheaper question the dispatch actually answers: both spellings reach a
+	// command, and neither is reported as unknown.
+	for _, c := range commands() {
+		if c.alias == "" {
+			continue
+		}
+		_, stderr, code := exec(t, c.alias, "-nosuchflag")
+		if code == 2 && strings.Contains(stderr, "unknown command") {
+			t.Errorf("gao %s was not dispatched, though gao %s is a command", c.alias, c.name)
+		}
+		_, stderr, code = exec(t, c.name, "-nosuchflag")
+		if code == 2 && strings.Contains(stderr, "unknown command") {
+			t.Errorf("gao %s was not dispatched", c.name)
+		}
+	}
+}
+
+func TestHelpPrintsBothNames(t *testing.T) {
+	out, _, code := exec(t, "help")
+	if code != 0 {
+		t.Fatalf("gao help: exit %d, want 0", code)
+	}
+	for _, c := range commands() {
+		if !strings.Contains(out, c.name) {
+			t.Errorf("help omitted %s", c.name)
+		}
+		if c.alias != "" && !strings.Contains(out, "("+c.alias+")") {
+			t.Errorf("help omitted the Vietnamese name of %s", c.name)
+		}
+	}
+}

@@ -116,7 +116,7 @@ type Run struct {
 	EvalBox  string `json:"eval_box"`
 
 	// Harness is the digest of the evaluation harness the scores came from,
-	// which gao chot fixes before any of this runs.
+	// which gao seal fixes before any of this runs.
 	Harness string `json:"harness"`
 
 	// Restarts is how many times the run was rolled back to a checkpoint.

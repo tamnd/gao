@@ -77,7 +77,7 @@ func newParts(dir string, docs *gat.Docs, box string, out io.Writer) *parts {
 // write is what the decoder emits into.
 func (p *parts) write(d *doc.Document) error {
 	if p.roll == nil {
-		return fmt.Errorf("gao gat hf: a document arrived with no file open, which is a bug in the sink")
+		return fmt.Errorf("gao harvest hf: a document arrived with no file open, which is a bug in the sink")
 	}
 	return p.roll.Append(d)
 }
@@ -106,7 +106,7 @@ func (p *parts) ConsumeAt(ctx context.Context, pin gat.Pinned, f gat.File, r io.
 func (p *parts) open(ctx context.Context, pin gat.Pinned, f gat.File) error {
 	i := pin.IndexOf(f)
 	if i < 0 {
-		return fmt.Errorf("gao gat hf: %s is not a file %s pins, so there is nowhere to write what is in it", f.Path, pin.Source)
+		return fmt.Errorf("gao harvest hf: %s is not a file %s pins, so there is nowhere to write what is in it", f.Path, pin.Source)
 	}
 	p.roll = &kho.Roll{
 		Dir:     p.dir,
@@ -185,7 +185,7 @@ func (p *parts) pushOne(ctx context.Context, f kho.PartFile) (kho.Pushed, error)
 		return sent, err
 	}
 	if err := os.Remove(local); err != nil {
-		return sent, fmt.Errorf("gao gat hf: %s is in the store and still here: %w", f.Path, err)
+		return sent, fmt.Errorf("gao harvest hf: %s is in the store and still here: %w", f.Path, err)
 	}
 	// The directory a file's parts sat in is empty once the last of them has
 	// gone, and this fails while it is not, which is the condition to check.

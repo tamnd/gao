@@ -251,7 +251,7 @@ func TestSoUsageErrors(t *testing.T) {
 
 	_, errOut, code := exec(t, "so", "-h")
 	if code != 2 {
-		t.Errorf("gao so -h: exit %d, want 2", code)
+		t.Errorf("gao compare -h: exit %d, want 2", code)
 	}
 	for _, want := range []string{
 		"or reading the layout",

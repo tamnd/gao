@@ -11,14 +11,14 @@ import (
 )
 
 func runGoi(stdout, stderr io.Writer, args []string) int {
-	fs := flag.NewFlagSet("goi", flag.ContinueOnError)
+	fs := flag.NewFlagSet("pack", flag.ContinueOnError)
 	fs.SetOutput(stderr)
 	asJSON := fs.Bool("json", false, "print JSON")
 	name := fs.String("name", "", "what to call the release, defaulting to the snapshot the shards are stamped with")
 	all := fs.Bool("loose", false, "name every shard outside the size band rather than the first few")
 	columns := fs.Bool("columns", false, "print every column rather than the ten that weigh the most")
 	fs.Usage = func() {
-		fmt.Fprint(stderr, `usage: gao goi [-name release] [-loose] [-json] shard.parquet...
+		fmt.Fprint(stderr, `usage: gao pack [-name release] [-loose] [-json] shard.parquet...
 
 Weigh a release: what it costs on disk, column by column and shard by shard.
 
@@ -55,7 +55,7 @@ flags:
 
 	r, err := goi.Weigh(*name, fs.Args())
 	if err != nil {
-		fmt.Fprintf(stderr, "gao goi: %v\n", err)
+		fmt.Fprintf(stderr, "gao pack: %v\n", err)
 		return 1
 	}
 	if r.Name == "" {

@@ -28,7 +28,7 @@ func TestDemIsInTheHelpAndHasItsOwnUsage(t *testing.T) {
 
 	_, errOut, code := exec(t, "dem")
 	if code != 2 {
-		t.Errorf("gao dem with no subcommand: exit %d, want 2", code)
+		t.Errorf("gao count with no subcommand: exit %d, want 2", code)
 	}
 	for _, want := range []string{"model", "counts", "keys", "overlap", "tokenizer"} {
 		if !strings.Contains(errOut, want) {
@@ -40,7 +40,7 @@ func TestDemIsInTheHelpAndHasItsOwnUsage(t *testing.T) {
 func TestDemRejectsAnUnknownSubcommand(t *testing.T) {
 	_, errOut, code := exec(t, "dem", "sift")
 	if code != 2 {
-		t.Errorf("gao dem sift: exit %d, want 2", code)
+		t.Errorf("gao count sift: exit %d, want 2", code)
 	}
 	if !strings.Contains(errOut, "sift") {
 		t.Errorf("the error does not name the subcommand:\n%s", errOut)
@@ -52,7 +52,7 @@ func TestDemRejectsAnUnknownSubcommand(t *testing.T) {
 func TestDemModelPrintsThePinAndDownloadsNothing(t *testing.T) {
 	out, _, code := exec(t, "dem", "model")
 	if code != 0 {
-		t.Fatalf("gao dem model: exit %d, want 0", code)
+		t.Fatalf("gao count model: exit %d, want 0", code)
 	}
 	for _, want := range []string{
 		dem.Gemma3.Digest,
@@ -69,14 +69,14 @@ func TestDemModelPrintsThePinAndDownloadsNothing(t *testing.T) {
 func TestDemCountsNeedsADirectory(t *testing.T) {
 	_, _, code := exec(t, "dem", "counts")
 	if code != 2 {
-		t.Errorf("gao dem counts with no directory: exit %d, want 2", code)
+		t.Errorf("gao count counts with no directory: exit %d, want 2", code)
 	}
 }
 
 func TestDemCountsSaysWhenADirectoryHasNoCounts(t *testing.T) {
 	_, errOut, code := exec(t, "dem", "counts", t.TempDir())
 	if code != 1 {
-		t.Errorf("gao dem counts on an empty directory: exit %d, want 1", code)
+		t.Errorf("gao count counts on an empty directory: exit %d, want 1", code)
 	}
 	if !strings.Contains(errOut, "no counts") {
 		t.Errorf("the error does not say the directory has no counts:\n%s", errOut)
@@ -107,7 +107,7 @@ func TestDemCountsPrintsWhatAnIngestCounted(t *testing.T) {
 
 	out, _, code := exec(t, "dem", "counts", dir)
 	if code != 0 {
-		t.Fatalf("gao dem counts: exit %d, want 0", code)
+		t.Fatalf("gao count counts: exit %d, want 0", code)
 	}
 	for _, want := range []string{
 		"counted on server1",
@@ -136,7 +136,7 @@ func TestDemCountsPrintsADashRatherThanZeroTokens(t *testing.T) {
 
 	out, _, code := exec(t, "dem", "counts", dir)
 	if code != 0 {
-		t.Fatalf("gao dem counts: exit %d, want 0", code)
+		t.Fatalf("gao count counts: exit %d, want 0", code)
 	}
 	if !strings.Contains(out, "no tokenizer") {
 		t.Errorf("an untokenized report should say so:\n%s", out)
@@ -170,7 +170,7 @@ func TestDemCountsAddsUpSeveralBoxes(t *testing.T) {
 
 	out, _, code := exec(t, "dem", "counts", one, two)
 	if code != 0 {
-		t.Fatalf("gao dem counts on two boxes: exit %d, want 0", code)
+		t.Fatalf("gao count counts on two boxes: exit %d, want 0", code)
 	}
 	if !strings.Contains(out, "server1, server2") {
 		t.Errorf("the header does not name both boxes:\n%s", out)
@@ -186,7 +186,7 @@ func TestDemCountsRefusesToAddUpTwoTokenizers(t *testing.T) {
 
 	_, errOut, code := exec(t, "dem", "counts", one, two)
 	if code != 1 {
-		t.Errorf("gao dem counts across two tokenizers: exit %d, want 1", code)
+		t.Errorf("gao count counts across two tokenizers: exit %d, want 1", code)
 	}
 	if !strings.Contains(errOut, "different tokenizers") {
 		t.Errorf("the error does not say why the sum is refused:\n%s", errOut)
@@ -208,7 +208,7 @@ func TestDemCountsSeparatesTheCorpusFromTheTotal(t *testing.T) {
 
 	out, _, code := exec(t, "dem", "counts", dir)
 	if code != 0 {
-		t.Fatalf("gao dem counts: exit %d, want 0", code)
+		t.Fatalf("gao count counts: exit %d, want 0", code)
 	}
 	for _, want := range []string{"corpus", "total", "never in a headline"} {
 		if !strings.Contains(out, want) {
@@ -236,9 +236,9 @@ func TestHFRefusesABadTokenizerBeforeItFetchesAnything(t *testing.T) {
 
 	_, errOut, code := exec(t, "gat", "hf", "-dir", dir, "-source", "glotcc", "-tokenizer", path)
 	if code != 1 {
-		t.Fatalf("gao gat hf with a bad tokenizer: exit %d, want 1", code)
+		t.Fatalf("gao harvest hf with a bad tokenizer: exit %d, want 1", code)
 	}
-	if !strings.Contains(errOut, "gao dem model") {
+	if !strings.Contains(errOut, "gao count model") {
 		t.Errorf("the error does not say how to get a tokenizer:\n%s", errOut)
 	}
 }
@@ -246,9 +246,9 @@ func TestHFRefusesABadTokenizerBeforeItFetchesAnything(t *testing.T) {
 func TestHFMentionsCountingInItsUsage(t *testing.T) {
 	_, errOut, code := exec(t, "gat", "hf", "-h")
 	if code != 2 && code != 0 {
-		t.Fatalf("gao gat hf -h: exit %d", code)
+		t.Fatalf("gao harvest hf -h: exit %d", code)
 	}
-	for _, want := range []string{"-tokenizer", "counts.json", "gao dem"} {
+	for _, want := range []string{"-tokenizer", "counts.json", "gao count"} {
 		if !strings.Contains(errOut, want) {
 			t.Errorf("the hf usage does not mention %q:\n%s", want, errOut)
 		}
@@ -276,7 +276,7 @@ func keyFile(t *testing.T, name string, texts ...string) string {
 func TestDemOverlapNeedsKeyFiles(t *testing.T) {
 	_, errOut, code := exec(t, "dem", "overlap")
 	if code != 2 {
-		t.Errorf("gao dem overlap with no files: exit %d, want 2", code)
+		t.Errorf("gao count overlap with no files: exit %d, want 2", code)
 	}
 	if !strings.Contains(errOut, "FILE") {
 		t.Errorf("the usage does not say what it wants:\n%s", errOut)
@@ -289,7 +289,7 @@ func TestDemOverlapPrintsWhatTheSourcesHaveInCommon(t *testing.T) {
 
 	out, errOut, code := exec(t, "dem", "overlap", a, b)
 	if code != 0 {
-		t.Fatalf("gao dem overlap: exit %d, want 0\n%s", code, errOut)
+		t.Fatalf("gao count overlap: exit %d, want 0\n%s", code, errOut)
 	}
 	for _, want := range []string{"glotcc", "fineweb2", "glotcc and fineweb2", "50.0%", "66.7%"} {
 		if !strings.Contains(out, want) {
@@ -306,7 +306,7 @@ func TestDemOverlapPrintsJSON(t *testing.T) {
 
 	out, errOut, code := exec(t, "dem", "overlap", "-json", a, b)
 	if code != 0 {
-		t.Fatalf("gao dem overlap -json: exit %d, want 0\n%s", code, errOut)
+		t.Fatalf("gao count overlap -json: exit %d, want 0\n%s", code, errOut)
 	}
 	var m dem.Matrix
 	if err := json.Unmarshal([]byte(out), &m); err != nil {
@@ -324,7 +324,7 @@ func TestDemOverlapSaysWhenAKeyFileIsNotOne(t *testing.T) {
 	}
 	_, errOut, code := exec(t, "dem", "overlap", path)
 	if code != 1 {
-		t.Errorf("gao dem overlap on a file that is not one: exit %d, want 1", code)
+		t.Errorf("gao count overlap on a file that is not one: exit %d, want 1", code)
 	}
 	if !strings.Contains(errOut, "key file") {
 		t.Errorf("the error does not say what is wrong:\n%s", errOut)
@@ -379,7 +379,7 @@ func TestPercentPrintsZeroAsZero(t *testing.T) {
 func TestDemKeysSaysWhenThereIsNoSuchRepo(t *testing.T) {
 	_, errOut, code := exec(t, "dem", "keys", "-repo", "vietnamese-nothing", "snapshot")
 	if code != 1 {
-		t.Errorf("gao dem keys on an unknown repo: exit %d, want 1", code)
+		t.Errorf("gao count keys on an unknown repo: exit %d, want 1", code)
 	}
 	if !strings.Contains(errOut, "vietnamese-nothing") {
 		t.Errorf("the error does not name the repo:\n%s", errOut)
@@ -389,7 +389,7 @@ func TestDemKeysSaysWhenThereIsNoSuchRepo(t *testing.T) {
 func TestDemKeysExplainsWhatItMovesAndWhatItDoesNot(t *testing.T) {
 	_, errOut, code := exec(t, "dem", "keys", "-h")
 	if code != 2 && code != 0 {
-		t.Errorf("gao dem keys -h: exit %d", code)
+		t.Errorf("gao count keys -h: exit %d", code)
 	}
 	for _, want := range []string{"doc_id", "resumable", "SNAPSHOT"} {
 		if !strings.Contains(errOut, want) {
@@ -414,7 +414,7 @@ func TestDemCountsSaysWhenARunHadNotFinished(t *testing.T) {
 
 	out, _, code := exec(t, "dem", "counts", dir)
 	if code != 0 {
-		t.Fatalf("gao dem counts: exit %d, want 0", code)
+		t.Fatalf("gao count counts: exit %d, want 0", code)
 	}
 	if !strings.Contains(out, "server2 was still running") {
 		t.Errorf("the report does not say the run had not ended:\n%s", out)
@@ -440,7 +440,7 @@ func TestDemCountsIsQuietAboutAFinishedRun(t *testing.T) {
 
 	out, _, code := exec(t, "dem", "counts", dir)
 	if code != 0 {
-		t.Fatalf("gao dem counts: exit %d, want 0", code)
+		t.Fatalf("gao count counts: exit %d, want 0", code)
 	}
 	if strings.Contains(out, "still running") {
 		t.Errorf("a finished run was reported as running:\n%s", out)
@@ -471,7 +471,7 @@ func TestDemCountsNamesEveryBoxThatWasStillGoing(t *testing.T) {
 
 	out, _, code := exec(t, "dem", "counts", done, going)
 	if code != 0 {
-		t.Fatalf("gao dem counts: exit %d, want 0", code)
+		t.Fatalf("gao count counts: exit %d, want 0", code)
 	}
 	if !strings.Contains(out, "server3 was still running") {
 		t.Errorf("the box that was still going is not named:\n%s", out)
@@ -488,7 +488,7 @@ func TestDemCountsNamesEveryBoxThatWasStillGoing(t *testing.T) {
 func TestDemVerifyIsInTheUsageAndSaysWhatItMoves(t *testing.T) {
 	_, errOut, code := exec(t, "dem")
 	if code != 2 {
-		t.Fatalf("gao dem with no subcommand: exit %d, want 2", code)
+		t.Fatalf("gao count with no subcommand: exit %d, want 2", code)
 	}
 	if !strings.Contains(errOut, "verify") {
 		t.Errorf("verify is not in the dem usage:\n%s", errOut)
@@ -505,7 +505,7 @@ func TestDemVerifyIsInTheUsageAndSaysWhatItMoves(t *testing.T) {
 func TestDemVerifyRejectsALevelThatIsNotOne(t *testing.T) {
 	_, errOut, code := exec(t, "dem", "verify", "-level", "everything")
 	if code != 2 {
-		t.Errorf("gao dem verify at an unknown level: exit %d, want 2", code)
+		t.Errorf("gao count verify at an unknown level: exit %d, want 2", code)
 	}
 	if !strings.Contains(errOut, "everything") {
 		t.Errorf("the error does not name the level asked for:\n%s", errOut)
@@ -515,7 +515,7 @@ func TestDemVerifyRejectsALevelThatIsNotOne(t *testing.T) {
 func TestDemVerifySaysWhenThereIsNoSuchRepo(t *testing.T) {
 	_, errOut, code := exec(t, "dem", "verify", "-repo", "vietnamese-nothing")
 	if code != 1 {
-		t.Errorf("gao dem verify on an unknown repo: exit %d, want 1", code)
+		t.Errorf("gao count verify on an unknown repo: exit %d, want 1", code)
 	}
 	if !strings.Contains(errOut, "vietnamese-nothing") {
 		t.Errorf("the error does not name the repo:\n%s", errOut)

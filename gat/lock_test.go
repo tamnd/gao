@@ -31,7 +31,7 @@ func writeLock(t *testing.T, dir string, h gat.Holder) {
 
 func TestLockingAnEmptyDirectorySucceedsAndSaysWhoHoldsIt(t *testing.T) {
 	dir := t.TempDir()
-	lock, err := gat.LockDir(dir, "gao gat hf")
+	lock, err := gat.LockDir(dir, "gao harvest hf")
 	if err != nil {
 		t.Fatalf("locking a fresh directory: %v", err)
 	}
@@ -47,7 +47,7 @@ func TestLockingAnEmptyDirectorySucceedsAndSaysWhoHoldsIt(t *testing.T) {
 	if h.Box != may.Label() {
 		t.Errorf("the lock names box %q, and this box is %q", h.Box, may.Label())
 	}
-	if h.Command != "gao gat hf" {
+	if h.Command != "gao harvest hf" {
 		t.Errorf("the lock names command %q, want the one that took it", h.Command)
 	}
 	if h.Started == "" {
@@ -59,7 +59,7 @@ func TestLockingAnEmptyDirectorySucceedsAndSaysWhoHoldsIt(t *testing.T) {
 // exist yet is the ordinary first run.
 func TestLockingCreatesTheDirectory(t *testing.T) {
 	dir := filepath.Join(t.TempDir(), "ingest")
-	lock, err := gat.LockDir(dir, "gao gat hf")
+	lock, err := gat.LockDir(dir, "gao harvest hf")
 	if err != nil {
 		t.Fatalf("locking a directory that does not exist yet: %v", err)
 	}
@@ -72,13 +72,13 @@ func TestLockingCreatesTheDirectory(t *testing.T) {
 
 func TestASecondIngestIsRefusedWhileTheFirstHoldsTheDirectory(t *testing.T) {
 	dir := t.TempDir()
-	first, err := gat.LockDir(dir, "gao gat hf")
+	first, err := gat.LockDir(dir, "gao harvest hf")
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer func() { _ = first.Release() }()
 
-	second, err := gat.LockDir(dir, "gao gat hf")
+	second, err := gat.LockDir(dir, "gao harvest hf")
 	if err == nil {
 		_ = second.Release()
 		t.Fatal("a second ingest took a directory the first one is holding")
@@ -92,17 +92,17 @@ func TestASecondIngestIsRefusedWhileTheFirstHoldsTheDirectory(t *testing.T) {
 // needs the box, the process, and the file to remove.
 func TestTheRefusalNamesTheHolderAndTheFileToRemove(t *testing.T) {
 	dir := t.TempDir()
-	lock, err := gat.LockDir(dir, "gao gat hf")
+	lock, err := gat.LockDir(dir, "gao harvest hf")
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer func() { _ = lock.Release() }()
 
-	_, err = gat.LockDir(dir, "gao gat hf")
+	_, err = gat.LockDir(dir, "gao harvest hf")
 	if err == nil {
 		t.Fatal("expected a refusal")
 	}
-	for _, want := range []string{may.Label(), "gao gat hf", gat.LockName} {
+	for _, want := range []string{may.Label(), "gao harvest hf", gat.LockName} {
 		if !strings.Contains(err.Error(), want) {
 			t.Errorf("the refusal does not mention %q: %v", want, err)
 		}
@@ -111,7 +111,7 @@ func TestTheRefusalNamesTheHolderAndTheFileToRemove(t *testing.T) {
 
 func TestReleasingLetsTheNextIngestIn(t *testing.T) {
 	dir := t.TempDir()
-	first, err := gat.LockDir(dir, "gao gat hf")
+	first, err := gat.LockDir(dir, "gao harvest hf")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -122,7 +122,7 @@ func TestReleasingLetsTheNextIngestIn(t *testing.T) {
 		t.Errorf("the lock file survived the release: %v", err)
 	}
 
-	second, err := gat.LockDir(dir, "gao gat hf")
+	second, err := gat.LockDir(dir, "gao harvest hf")
 	if err != nil {
 		t.Fatalf("locking after a release: %v", err)
 	}
@@ -133,7 +133,7 @@ func TestReleasingLetsTheNextIngestIn(t *testing.T) {
 
 func TestReleasingTwiceIsNotAnError(t *testing.T) {
 	dir := t.TempDir()
-	lock, err := gat.LockDir(dir, "gao gat hf")
+	lock, err := gat.LockDir(dir, "gao harvest hf")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -154,10 +154,10 @@ func TestALockLeftByADeadProcessOnThisBoxIsBroken(t *testing.T) {
 		Box:     may.Label(),
 		PID:     deadPID(t),
 		Started: "2026-08-04T03:14:53Z",
-		Command: "gao gat hf",
+		Command: "gao harvest hf",
 	})
 
-	lock, err := gat.LockDir(dir, "gao gat hf")
+	lock, err := gat.LockDir(dir, "gao harvest hf")
 	if err != nil {
 		t.Fatalf("locking over a dead holder: %v", err)
 	}
@@ -179,10 +179,10 @@ func TestALockHeldByALiveProcessIsNeverBroken(t *testing.T) {
 	dir := t.TempDir()
 	writeLock(t, dir, gat.Holder{
 		Box: may.Label(), PID: os.Getpid(),
-		Started: "2026-08-04T03:14:53Z", Command: "gao gat hf",
+		Started: "2026-08-04T03:14:53Z", Command: "gao harvest hf",
 	})
 
-	if _, err := gat.LockDir(dir, "gao gat hf"); !errors.Is(err, gat.ErrLocked) {
+	if _, err := gat.LockDir(dir, "gao harvest hf"); !errors.Is(err, gat.ErrLocked) {
 		t.Errorf("locking over a live holder gave %v, want ErrLocked", err)
 	}
 }
@@ -193,10 +193,10 @@ func TestALockFromAnotherBoxIsNeverBroken(t *testing.T) {
 	dir := t.TempDir()
 	writeLock(t, dir, gat.Holder{
 		Box: "some-other-box", PID: deadPID(t),
-		Started: "2026-08-04T03:14:53Z", Command: "gao gat hf",
+		Started: "2026-08-04T03:14:53Z", Command: "gao harvest hf",
 	})
 
-	_, err := gat.LockDir(dir, "gao gat hf")
+	_, err := gat.LockDir(dir, "gao harvest hf")
 	if !errors.Is(err, gat.ErrLocked) {
 		t.Fatalf("locking over another box gave %v, want ErrLocked", err)
 	}
@@ -213,7 +213,7 @@ func TestATruncatedLockFileStillLocksTheDirectory(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	_, err := gat.LockDir(dir, "gao gat hf")
+	_, err := gat.LockDir(dir, "gao harvest hf")
 	if !errors.Is(err, gat.ErrLocked) {
 		t.Fatalf("locking over an unreadable lock gave %v, want ErrLocked", err)
 	}
@@ -226,13 +226,13 @@ func TestATruncatedLockFileStillLocksTheDirectory(t *testing.T) {
 // was broken should not take the replacement down with it when it exits.
 func TestReleaseLeavesALockThatBelongsToSomebodyElse(t *testing.T) {
 	dir := t.TempDir()
-	lock, err := gat.LockDir(dir, "gao gat hf")
+	lock, err := gat.LockDir(dir, "gao harvest hf")
 	if err != nil {
 		t.Fatal(err)
 	}
 	writeLock(t, dir, gat.Holder{
 		Box: may.Label(), PID: os.Getpid() + 1,
-		Started: "2026-08-04T03:14:53Z", Command: "gao gat hf",
+		Started: "2026-08-04T03:14:53Z", Command: "gao harvest hf",
 	})
 
 	if err := lock.Release(); err == nil {
@@ -254,12 +254,12 @@ func TestReadHolderOnADirectoryWithNoLockIsNotAnError(t *testing.T) {
 }
 
 func TestAHolderPrintsAsOneLine(t *testing.T) {
-	h := gat.Holder{Box: "server1", PID: 4242, Started: "2026-08-04T03:14:53Z", Command: "gao gat hf"}
+	h := gat.Holder{Box: "server1", PID: 4242, Started: "2026-08-04T03:14:53Z", Command: "gao harvest hf"}
 	s := h.String()
 	if strings.Contains(s, "\n") {
 		t.Errorf("a holder printed over more than one line: %q", s)
 	}
-	for _, want := range []string{"server1", "4242", "gao gat hf", "2026-08-04T03:14:53Z"} {
+	for _, want := range []string{"server1", "4242", "gao harvest hf", "2026-08-04T03:14:53Z"} {
 		if !strings.Contains(s, want) {
 			t.Errorf("the holder line does not mention %q: %q", want, s)
 		}

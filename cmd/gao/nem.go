@@ -24,21 +24,21 @@ import (
 )
 
 func runNem(stdout, stderr io.Writer, args []string) int {
-	fs := flag.NewFlagSet("nem", flag.ContinueOnError)
+	fs := flag.NewFlagSet("taste", flag.ContinueOnError)
 	fs.SetOutput(stderr)
 	asJSON := fs.Bool("json", false, "print JSON")
 	source := fs.String("source", "", "the source being read, which is also the name it goes by in the ingest manifest")
-	seed := fs.String("seed", "", "the seed the shards are drawn with, the same one gao mau was run at")
-	layers := fs.String("layers", "", "the layer file, the same one gao tang reads")
+	seed := fs.String("seed", "", "the seed the shards are drawn with, the same one gao sample was run at")
+	layers := fs.String("layers", "", "the layer file, the same one gao layers reads")
 	want := fs.Int64("bytes", mau.Want, "how much to read off each unread layer")
 	tokenizer := fs.String("tokenizer", "", "count tokens with the tokenizer at this path")
-	out := fs.String("out", "", "write the layer file the reading produces here, for gao tang to read")
+	out := fs.String("out", "", "write the layer file the reading produces here, for gao layers to read")
 	fs.Usage = func() {
-		fmt.Fprint(stderr, `usage: gao nem -source name -seed s -layers layers.jsonl [-bytes N] [-tokenizer PATH] [-out FILE] [-json] files.jsonl
+		fmt.Fprint(stderr, `usage: gao taste -source name -seed s -layers layers.jsonl [-bytes N] [-tokenizer PATH] [-out FILE] [-json] files.jsonl
 
-Read the sample gao mau drew and say what a stored byte of each layer holds.
+Read the sample gao sample drew and say what a stored byte of each layer holds.
 
-The flags are gao mau's flags, and the plan is drawn here rather than handed
+The flags are gao sample's flags, and the plan is drawn here rather than handed
 over, so the digest this prints is the digest that command prints for the same
 inputs. What gets fetched is the front of each drawn shard, by range request,
 which is the only read a compressed stream allows and the reason the plan is
@@ -51,9 +51,9 @@ of them rather than only the same files.
 Without -tokenizer the token column is zero and the report says so. The pinned
 tokenizer runs at around 1 MB of text per second per core, which is hours
 against a corpus and minutes against a sample, so this is the one place in the
-pipeline where tokenizing is affordable. Run 'gao dem model -o PATH' to fetch it.
+pipeline where tokenizing is affordable. Run 'gao count model -o PATH' to fetch it.
 
-With -out the layer file goes where gao tang reads it, carrying every layer of
+With -out the layer file goes where gao layers reads it, carrying every layer of
 the plan whether it was read or not, since the layers nobody opened are what
 tang exists to bound.
 
@@ -74,29 +74,29 @@ flags:
 
 	kind, ok := nem.Source(*source)
 	if !ok {
-		fmt.Fprintf(stderr, "gao nem: %q is not a source gao ingests, so nothing here knows how to read its shards\n", *source)
+		fmt.Fprintf(stderr, "gao taste: %q is not a source gao ingests, so nothing here knows how to read its shards\n", *source)
 		return 2
 	}
 	decoder, ok := gat.DecoderFor(kind)
 	if !ok {
-		fmt.Fprintf(stderr, "gao nem: %s is read as whole files rather than as a stream, and a prefix of one is not a document\n", *source)
+		fmt.Fprintf(stderr, "gao taste: %s is read as whole files rather than as a stream, and a prefix of one is not a document\n", *source)
 		return 2
 	}
 
 	read, err := tang.ReadLayers(*layers)
 	if err != nil {
-		fmt.Fprintf(stderr, "gao nem: %v\n", err)
+		fmt.Fprintf(stderr, "gao taste: %v\n", err)
 		return 1
 	}
 	files, err := mau.ReadFiles(fs.Arg(0))
 	if err != nil {
-		fmt.Fprintf(stderr, "gao nem: %v\n", err)
+		fmt.Fprintf(stderr, "gao taste: %v\n", err)
 		return 1
 	}
 
 	p := mau.ReadPlan(*source, *seed, *want, read, files)
 	if why := p.Blocking(); len(why) > 0 {
-		fmt.Fprint(stderr, "gao nem: this is not a plan anybody can run, so no shard was fetched:\n")
+		fmt.Fprint(stderr, "gao taste: this is not a plan anybody can run, so no shard was fetched:\n")
 		for _, one := range why {
 			fmt.Fprintf(stderr, "  %s\n", one)
 		}
@@ -111,14 +111,14 @@ flags:
 	if *tokenizer != "" {
 		tok, err = dem.Open(dem.Gemma3, *tokenizer)
 		if err != nil {
-			fmt.Fprintf(stderr, "gao nem: %v\n", err)
-			fmt.Fprint(stderr, "run 'gao dem model -o PATH' to fetch the tokenizer gao counts with\n")
+			fmt.Fprintf(stderr, "gao taste: %v\n", err)
+			fmt.Fprint(stderr, "run 'gao count model -o PATH' to fetch the tokenizer gao counts with\n")
 			return 1
 		}
 	}
 	pin, err := pinnedFor(kind)
 	if err != nil {
-		fmt.Fprintf(stderr, "gao nem: %v\n", err)
+		fmt.Fprintf(stderr, "gao taste: %v\n", err)
 		return 1
 	}
 
@@ -141,7 +141,7 @@ flags:
 		for _, t := range r.Takes {
 			one, err := readTake(ctx, progress, fetcher, decoder, pin, r.Layer, t, tok)
 			if err != nil {
-				fmt.Fprintf(stderr, "gao nem: %v\n", err)
+				fmt.Fprintf(stderr, "gao taste: %v\n", err)
 				return 1
 			}
 			takes = append(takes, one)
@@ -159,10 +159,10 @@ flags:
 
 	if *out != "" {
 		if err := writeLayers(*out, s.Layers(read)); err != nil {
-			fmt.Fprintf(stderr, "gao nem: %v\n", err)
+			fmt.Fprintf(stderr, "gao taste: %v\n", err)
 			return 1
 		}
-		fmt.Fprintf(progress, "\n%s holds the reading, for gao tang to read.\n", *out)
+		fmt.Fprintf(progress, "\n%s holds the reading, for gao layers to read.\n", *out)
 	}
 
 	if *asJSON {

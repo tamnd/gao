@@ -11,12 +11,12 @@ import (
 )
 
 func runGhep(stdout, stderr io.Writer, args []string) int {
-	fs := flag.NewFlagSet("ghep", flag.ContinueOnError)
+	fs := flag.NewFlagSet("graft", flag.ContinueOnError)
 	fs.SetOutput(stderr)
 	asJSON := fs.Bool("json", false, "print JSON")
 	budget := fs.Int64("budget", 40_000_000_000, "the continued pretraining budget the recovery is a share of, in tokens")
 	fs.Usage = func() {
-		fmt.Fprint(stderr, `usage: gao ghep [-budget N] [-json] expansions.jsonl
+		fmt.Fprint(stderr, `usage: gao graft [-budget N] [-json] expansions.jsonl
 
 To graft: what adding Vietnamese tokens to a base vocabulary bought and cost.
 
@@ -55,7 +55,7 @@ flags:
 
 	t, err := ghep.ReadTrial(*budget, fs.Arg(0))
 	if err != nil {
-		fmt.Fprintf(stderr, "gao ghep: %v\n", err)
+		fmt.Fprintf(stderr, "gao graft: %v\n", err)
 		return 1
 	}
 

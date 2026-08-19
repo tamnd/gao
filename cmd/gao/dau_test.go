@@ -42,7 +42,7 @@ func dauSet(t *testing.T) (set string, items []dau.Item) {
 	set = filepath.Join(t.TempDir(), "vi-diacritic.jsonl")
 	args := append([]string{"dau", "build", "-o", set}, dauCorpus(t, dauPages)...)
 	if _, errOut, code := exec(t, args...); code != 0 {
-		t.Fatalf("gao dau build: exit %d\n%s", code, errOut)
+		t.Fatalf("gao mark build: exit %d\n%s", code, errOut)
 	}
 	b, err := os.ReadFile(set)
 	if err != nil {
@@ -99,7 +99,7 @@ func TestDauBuildSaysWhatItThrewAway(t *testing.T) {
 
 	out, errOut, code := exec(t, args...)
 	if code != 0 {
-		t.Fatalf("gao dau build: exit %d\n%s", code, errOut)
+		t.Fatalf("gao mark build: exit %d\n%s", code, errOut)
 	}
 	for _, want := range []string{"3 items from 5 documents", "typed without marks  1", "too short            1"} {
 		if !strings.Contains(out, want) {
@@ -114,7 +114,7 @@ func TestDauBuildOnNothingUsableIsAnError(t *testing.T) {
 
 	_, errOut, code := exec(t, args...)
 	if code != 1 {
-		t.Fatalf("gao dau build on unusable input: exit %d, want 1", code)
+		t.Fatalf("gao mark build on unusable input: exit %d, want 1", code)
 	}
 	if !strings.Contains(errOut, "nothing to hold out") {
 		t.Errorf("the error does not say why an empty set is useless:\n%s", errOut)
@@ -130,7 +130,7 @@ func TestDauBaselinePrintsBothFloors(t *testing.T) {
 
 	out, errOut, code := exec(t, append([]string{"dau", "baseline", "-items", set}, counting...)...)
 	if code != 0 {
-		t.Fatalf("gao dau baseline: exit %d\n%s", code, errOut)
+		t.Fatalf("gao mark baseline: exit %d\n%s", code, errOut)
 	}
 	for _, want := range []string{"answer with the question", "answer from a table", "marks restored", "syllables exact", "character accuracy"} {
 		if !strings.Contains(out, want) {
@@ -152,7 +152,7 @@ func TestDauGradeScoresAPerfectRunAndAnEmptyOne(t *testing.T) {
 	writeAnswers(t, perfect, items, func(it dau.Item) string { return it.Answer })
 	out, errOut, code := exec(t, "dau", "grade", "-items", set, perfect)
 	if code != 0 {
-		t.Fatalf("gao dau grade: exit %d\n%s", code, errOut)
+		t.Fatalf("gao mark grade: exit %d\n%s", code, errOut)
 	}
 	if !strings.Contains(out, "marks restored     1.000") {
 		t.Errorf("a perfect run did not restore every mark:\n%s", out)
@@ -165,7 +165,7 @@ func TestDauGradeScoresAPerfectRunAndAnEmptyOne(t *testing.T) {
 	writeAnswers(t, lazy, items, func(it dau.Item) string { return it.Prompt })
 	out, _, code = exec(t, "dau", "grade", "-items", set, lazy)
 	if code != 0 {
-		t.Fatalf("gao dau grade: exit %d", code)
+		t.Fatalf("gao mark grade: exit %d", code)
 	}
 	if !strings.Contains(out, "marks restored     0.000") {
 		t.Errorf("handing the question back was not scored as restoring nothing:\n%s", out)
@@ -182,7 +182,7 @@ func TestDauGradeCountsTheItemsWithNoAnswer(t *testing.T) {
 
 	out, _, code := exec(t, "dau", "grade", "-items", set, partial)
 	if code != 0 {
-		t.Fatalf("gao dau grade: exit %d", code)
+		t.Fatalf("gao mark grade: exit %d", code)
 	}
 	if !strings.Contains(out, "2 items had no answer") {
 		t.Errorf("the grade does not say how many items went unanswered:\n%s", out)
@@ -201,7 +201,7 @@ func TestDauGradeMarksAnAnswerThatRewroteTheText(t *testing.T) {
 
 	out, _, code := exec(t, "dau", "grade", "-items", set, rewritten)
 	if code != 0 {
-		t.Fatalf("gao dau grade: exit %d", code)
+		t.Fatalf("gao mark grade: exit %d", code)
 	}
 	if !strings.Contains(out, "unfaithful") {
 		t.Errorf("an answer that changed the letters was not reported as unfaithful:\n%s", out)
@@ -218,7 +218,7 @@ func TestDauGradePerItem(t *testing.T) {
 
 	out, _, code := exec(t, "dau", "grade", "-v", "-items", set, answers)
 	if code != 0 {
-		t.Fatalf("gao dau grade -v: exit %d", code)
+		t.Fatalf("gao mark grade -v: exit %d", code)
 	}
 	for _, it := range items {
 		if !strings.Contains(out, it.DocID.String()) {
@@ -255,21 +255,21 @@ func TestDauUsageErrors(t *testing.T) {
 func TestDauOnAFileThatIsNotThere(t *testing.T) {
 	missing := filepath.Join(t.TempDir(), "nope.txt")
 	if _, _, code := exec(t, "dau", "build", missing); code != 1 {
-		t.Errorf("gao dau build on a missing file: exit %d, want 1", code)
+		t.Errorf("gao mark build on a missing file: exit %d, want 1", code)
 	}
 	set, _ := dauSet(t)
 	if _, _, code := exec(t, "dau", "grade", "-items", set, missing); code != 1 {
-		t.Errorf("gao dau grade on a missing file: exit %d, want 1", code)
+		t.Errorf("gao mark grade on a missing file: exit %d, want 1", code)
 	}
 	if _, _, code := exec(t, "dau", "grade", "-items", missing, missing); code != 1 {
-		t.Errorf("gao dau grade with a missing set: exit %d, want 1", code)
+		t.Errorf("gao mark grade with a missing set: exit %d, want 1", code)
 	}
 }
 
 func TestDauHelpAndTheCommandList(t *testing.T) {
 	out, _, code := exec(t, "dau", "help")
 	if code != 0 {
-		t.Fatalf("gao dau help: exit %d", code)
+		t.Fatalf("gao mark help: exit %d", code)
 	}
 	for _, want := range []string{"build", "baseline", "grade", "vi-diacritic"} {
 		if !strings.Contains(out, want) {

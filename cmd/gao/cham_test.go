@@ -320,11 +320,11 @@ func TestChamIsInTheHelp(t *testing.T) {
 
 	out, _, code = exec(t, "cham", "help")
 	if code != 0 {
-		t.Fatalf("gao cham help: exit %d", code)
+		t.Fatalf("gao grade help: exit %d", code)
 	}
 	for _, sub := range []string{"roster", "dau", "trich"} {
 		if !strings.Contains(out, sub) {
-			t.Errorf("gao cham help does not mention %q", sub)
+			t.Errorf("gao grade help does not mention %q", sub)
 		}
 	}
 

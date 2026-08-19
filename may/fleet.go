@@ -29,12 +29,12 @@ import (
 //
 // This is the third reading. The first was 2026-08-03 and every free disk
 // number in it was wrong fifteen days later: server1 was up 70 GB, server3 down
-// 26.6, server2 up 11.8, gamingpc down 32. Run 'gao box check' on a box to be
+// 26.6, server2 up 11.8, gamingpc down 32. Run 'gao fleet check' on a box to be
 // told whether the record still describes it.
 //
 // The third was taken a day after the second, and only one number moved.
 // server3 went from 17.7 GB free to 43.7, which is 26.0 GB back and puts it
-// over the reserve for the first time. It moved because 'gao box check' was run
+// over the reserve for the first time. It moved because 'gao fleet check' was run
 // on all four boxes and said so, in the sentence the drift check was written
 // for: the fleet is larger than the plan thinks. Nothing on the fleet was
 // deleted to produce that number. server3 shares its disk with other work, and

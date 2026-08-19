@@ -35,14 +35,14 @@ func runDien(stdout, stderr io.Writer, args []string) int {
 		dienUsage(stdout)
 		return 0
 	default:
-		fmt.Fprintf(stderr, "gao dien: unknown subcommand %q\n", args[0])
+		fmt.Fprintf(stderr, "gao fill: unknown subcommand %q\n", args[0])
 		dienUsage(stderr)
 		return 2
 	}
 }
 
 func dienUsage(w io.Writer) {
-	fmt.Fprintf(w, `usage: gao dien <subcommand> [flags] [files...]
+	fmt.Fprintf(w, `usage: gao fill <subcommand> [flags] [files...]
 
 Builds and scores %s, the proxy the ablation slate is run against.
 
@@ -54,7 +54,7 @@ argmax over them, which is minutes on one card, and the answer key is the page
 the passage came off, so it costs nothing to build.
 
 A proxy is only worth running if it agrees with the thing it stands in for.
-'gao dien validate' measures that agreement and reports whether the slate can be
+'gao fill validate' measures that agreement and reports whether the slate can be
 presented as having chosen anything.
 
 subcommands:
@@ -65,12 +65,12 @@ subcommands:
 
 Files are Parquet parts or text files, and a text file is one document.
 
-run 'gao dien <subcommand> -h' for the flags of a single subcommand.
+run 'gao fill <subcommand> -h' for the flags of a single subcommand.
 `, dien.Name)
 }
 
 func runDienBuild(stdout, stderr io.Writer, args []string) int {
-	fs := flag.NewFlagSet("dien build", flag.ContinueOnError)
+	fs := flag.NewFlagSet("fill build", flag.ContinueOnError)
 	fs.SetOutput(stderr)
 	out := fs.String("o", "", "write the task set here as JSON lines, one item per line, instead of to stdout")
 	count := fs.String("count", "", "comma separated files to count the frequency ranking over, which must not be the files the items are built from")
@@ -81,7 +81,7 @@ func runDienBuild(stdout, stderr io.Writer, args []string) int {
 	function := fs.Int("function", 0, "how many of the commonest syllables are never blanked")
 	band := fs.Int("band", 0, "how far up and down the frequency ranking a wrong answer may be drawn from")
 	fs.Usage = func() {
-		fmt.Fprintf(stderr, `usage: gao dien build -count FILES [flags] <file...>
+		fmt.Fprintf(stderr, `usage: gao fill build -count FILES [flags] <file...>
 
 Turns documents into questions. Each item is a passage with one syllable taken
 out, four candidates for what it was, and the identity of the document it came
@@ -99,7 +99,7 @@ answers picked at random let a model win by always choosing the commonest
 candidate, so they are drawn from the ranks nearest the answer and the answer's
 own rank among them is spread evenly across the set. A candidate that is the
 answer with different marks turns the item into diacritic restoration, which is
-what 'gao dau' measures, so it is refused.
+what 'gao mark' measures, so it is refused.
 
 The rejections are printed per reason, because a builder that quietly drops nine
 documents in ten is a builder nobody can debug.
@@ -120,7 +120,7 @@ flags:
 	for _, name := range counted {
 		for _, from := range fs.Args() {
 			if name == from {
-				fmt.Fprintf(stderr, "gao dien build: %s is both counted and built from, and a ranking that saw the passage chose the wrong answers with the right one in view\n", name)
+				fmt.Fprintf(stderr, "gao fill build: %s is both counted and built from, and a ranking that saw the passage chose the wrong answers with the right one in view\n", name)
 				return 1
 			}
 		}
@@ -138,12 +138,12 @@ flags:
 			return nil
 		})
 		if err != nil {
-			fmt.Fprintf(stderr, "gao dien build: %s: %v\n", name, err)
+			fmt.Fprintf(stderr, "gao fill build: %s: %v\n", name, err)
 			return 1
 		}
 	}
 	if v.Size() == 0 {
-		fmt.Fprintln(stderr, "gao dien build: nothing was counted, so there is no ranking to draw wrong answers from")
+		fmt.Fprintln(stderr, "gao fill build: nothing was counted, so there is no ranking to draw wrong answers from")
 		return 1
 	}
 
@@ -159,7 +159,7 @@ flags:
 	if *out != "" {
 		f, err := os.Create(*out)
 		if err != nil {
-			fmt.Fprintf(stderr, "gao dien build: %v\n", err)
+			fmt.Fprintf(stderr, "gao fill build: %v\n", err)
 			return 1
 		}
 		defer func() { _ = f.Close() }()
@@ -189,7 +189,7 @@ flags:
 			break
 		}
 		if err != nil {
-			fmt.Fprintf(stderr, "gao dien build: %s: %v\n", name, err)
+			fmt.Fprintf(stderr, "gao fill build: %s: %v\n", name, err)
 			return 1
 		}
 	}
@@ -214,11 +214,11 @@ flags:
 }
 
 func runDienBaseline(stdout, stderr io.Writer, args []string) int {
-	fs := flag.NewFlagSet("dien baseline", flag.ContinueOnError)
+	fs := flag.NewFlagSet("fill baseline", flag.ContinueOnError)
 	fs.SetOutput(stderr)
-	items := fs.String("items", "", "the task set to score against, as written by 'gao dien build'")
+	items := fs.String("items", "", "the task set to score against, as written by 'gao fill build'")
 	fs.Usage = func() {
-		fmt.Fprintf(stderr, `usage: gao dien baseline -items SET <file...>
+		fmt.Fprintf(stderr, `usage: gao fill baseline -items SET <file...>
 
 Scores the answer a model has to beat before its own number means anything:
 pick the most common of the four candidates and never read the passage.
@@ -246,7 +246,7 @@ flags:
 
 	set, err := readDienItems(*items)
 	if err != nil {
-		fmt.Fprintf(stderr, "gao dien baseline: %v\n", err)
+		fmt.Fprintf(stderr, "gao fill baseline: %v\n", err)
 		return 1
 	}
 
@@ -257,12 +257,12 @@ flags:
 			return nil
 		})
 		if err != nil {
-			fmt.Fprintf(stderr, "gao dien baseline: %s: %v\n", name, err)
+			fmt.Fprintf(stderr, "gao fill baseline: %s: %v\n", name, err)
 			return 1
 		}
 	}
 	if v.Size() == 0 {
-		fmt.Fprintln(stderr, "gao dien baseline: nothing was counted, so there is no ranking to pick the commonest candidate from")
+		fmt.Fprintln(stderr, "gao fill baseline: nothing was counted, so there is no ranking to pick the commonest candidate from")
 		return 1
 	}
 
@@ -276,13 +276,13 @@ flags:
 }
 
 func runDienGrade(stdout, stderr io.Writer, args []string) int {
-	fs := flag.NewFlagSet("dien grade", flag.ContinueOnError)
+	fs := flag.NewFlagSet("fill grade", flag.ContinueOnError)
 	fs.SetOutput(stderr)
 	items := fs.String("items", "", "the task set the answers are against")
 	box := fs.String("box", may.Label(), "the box the run happened on, which is published with the score")
 	asJSON := fs.Bool("json", false, "print the report as JSON")
 	fs.Usage = func() {
-		fmt.Fprintf(stderr, `usage: gao dien grade -items SET <answers.jsonl>
+		fmt.Fprintf(stderr, `usage: gao fill grade -items SET <answers.jsonl>
 
 Scores a file of answers. Each line is a JSON object with a doc_id and either a
 choice, which is the index of the candidate the model picked, or an answer,
@@ -314,12 +314,12 @@ flags:
 
 	set, err := readDienItems(*items)
 	if err != nil {
-		fmt.Fprintf(stderr, "gao dien grade: %v\n", err)
+		fmt.Fprintf(stderr, "gao fill grade: %v\n", err)
 		return 1
 	}
 	answers, err := readDienAnswers(fs.Arg(0))
 	if err != nil {
-		fmt.Fprintf(stderr, "gao dien grade: %v\n", err)
+		fmt.Fprintf(stderr, "gao fill grade: %v\n", err)
 		return 1
 	}
 
@@ -347,11 +347,11 @@ flags:
 }
 
 func runDienValidate(stdout, stderr io.Writer, args []string) int {
-	fs := flag.NewFlagSet("dien validate", flag.ContinueOnError)
+	fs := flag.NewFlagSet("fill validate", flag.ContinueOnError)
 	fs.SetOutput(stderr)
 	asJSON := fs.Bool("json", false, "print the verdict as JSON")
 	fs.Usage = func() {
-		fmt.Fprintf(stderr, `usage: gao dien validate [-json] <recipes.json>
+		fmt.Fprintf(stderr, `usage: gao fill validate [-json] <recipes.json>
 
 Measures whether the proxy agrees with the benchmark it stands in for.
 
@@ -382,18 +382,18 @@ flags:
 
 	b, err := os.ReadFile(fs.Arg(0))
 	if err != nil {
-		fmt.Fprintf(stderr, "gao dien validate: %v\n", err)
+		fmt.Fprintf(stderr, "gao fill validate: %v\n", err)
 		return 1
 	}
 	var recipes []dien.Recipe
 	if err := json.Unmarshal(b, &recipes); err != nil {
-		fmt.Fprintf(stderr, "gao dien validate: %s: %v\n", fs.Arg(0), err)
+		fmt.Fprintf(stderr, "gao fill validate: %s: %v\n", fs.Arg(0), err)
 		return 1
 	}
 
 	v, err := dien.Validate(recipes)
 	if err != nil {
-		fmt.Fprintf(stderr, "gao dien validate: %v\n", err)
+		fmt.Fprintf(stderr, "gao fill validate: %v\n", err)
 		for _, p := range dien.CheckRecipes(recipes) {
 			fmt.Fprintf(stderr, "  %s\n", p)
 		}

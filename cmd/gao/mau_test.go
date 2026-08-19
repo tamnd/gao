@@ -252,7 +252,7 @@ func TestMauUsageErrors(t *testing.T) {
 
 	_, errOut, code := exec(t, "mau", "-h")
 	if code != 2 {
-		t.Errorf("gao mau -h: exit %d, want 2", code)
+		t.Errorf("gao sample -h: exit %d, want 2", code)
 	}
 	for _, want := range []string{
 		"cannot be entered in the middle",

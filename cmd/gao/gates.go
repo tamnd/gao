@@ -13,7 +13,7 @@ import (
 )
 
 func runDemGates(stdout, stderr io.Writer, args []string) int {
-	fs := flag.NewFlagSet("dem gates", flag.ContinueOnError)
+	fs := flag.NewFlagSet("count gates", flag.ContinueOnError)
 	fs.SetOutput(stderr)
 	model := fs.String("tokenizer", "", "the pinned tokenizer to put through the gates")
 	oneIn := fs.Int("one-in", 1, "check one document in this many, chosen by document identity so the run is reproducible")
@@ -21,7 +21,7 @@ func runDemGates(stdout, stderr io.Writer, args []string) int {
 	sample := fs.Int("sample", 5, "how many failing examples each gate names")
 	coverage := fs.Bool("coverage", false, "run the built in coverage set instead of files, which leaves no gate unrun")
 	fs.Usage = func() {
-		fmt.Fprint(stderr, `usage: gao dem gates -tokenizer PATH [flags] <file...>
+		fmt.Fprint(stderr, `usage: gao count gates -tokenizer PATH [flags] <file...>
 
 Runs the ten gates from doc 07 over a tokenizer and reports the fertility it
 gets on the same text.
@@ -75,7 +75,7 @@ flags:
 
 	tok, err := dem.Open(dem.Gemma3, *model)
 	if err != nil {
-		fmt.Fprintf(stderr, "gao dem gates: %v\n", err)
+		fmt.Fprintf(stderr, "gao count gates: %v\n", err)
 		return 1
 	}
 
@@ -95,7 +95,7 @@ flags:
 			return nil
 		})
 		if err != nil {
-			fmt.Fprintf(stderr, "gao dem gates: %s: %v\n", name, err)
+			fmt.Fprintf(stderr, "gao count gates: %s: %v\n", name, err)
 			return 1
 		}
 	}

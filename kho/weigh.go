@@ -89,7 +89,7 @@ func WeighPart(path string) (PartWeight, error) {
 	// A column is spread over one chunk per row group, so the chunks are summed
 	// by name rather than reported per row group. The name is the schema path
 	// joined the way the column list prints it, so a weight lines up with what
-	// gao kho columns says the file carries.
+	// gao store columns says the file carries.
 	byName := make(map[string]int)
 	for _, rg := range pf.Metadata().RowGroups {
 		for _, c := range rg.Columns {

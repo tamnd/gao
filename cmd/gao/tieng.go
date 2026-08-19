@@ -10,14 +10,14 @@ import (
 )
 
 func runTieng(stdout, stderr io.Writer, args []string) int {
-	fs := flag.NewFlagSet("tieng", flag.ContinueOnError)
+	fs := flag.NewFlagSet("syllable", flag.ContinueOnError)
 	fs.SetOutput(stderr)
 	asJSON := fs.Bool("json", false, "print JSON")
 	source := fs.String("source", "", "the text this reading was taken over")
 	slots := fs.Int("slots", tieng.Slots, "how many vocabulary slots the arm without the rule may spend on cross-syllable runs")
 	top := fs.Int("top", 12, "how many of those runs to print")
 	fs.Usage = func() {
-		fmt.Fprint(stderr, `usage: gao tieng -source name [-slots n] [-top n] [-json] file...
+		fmt.Fprint(stderr, `usage: gao syllable -source name [-slots n] [-top n] [-json] file...
 
 Measure what a syllable-atomic tokenizer would govern, and what it gives up,
 over real text and before anything is trained.
@@ -55,13 +55,13 @@ flags:
 		return 2
 	}
 	if *top < 0 {
-		fmt.Fprintf(stderr, "gao tieng: a table cannot hold %d rows\n", *top)
+		fmt.Fprintf(stderr, "gao syllable: a table cannot hold %d rows\n", *top)
 		return 2
 	}
 
 	docs, err := tieng.ReadDocs(fs.Args())
 	if err != nil {
-		fmt.Fprintf(stderr, "gao tieng: %v\n", err)
+		fmt.Fprintf(stderr, "gao syllable: %v\n", err)
 		return 1
 	}
 

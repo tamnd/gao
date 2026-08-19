@@ -24,15 +24,15 @@ func runGian(stdout, stderr io.Writer, args []string) int {
 		gianUsage(stdout)
 		return 0
 	default:
-		fmt.Fprintf(stderr, "gao gian: no subcommand named %s\n", args[0])
+		fmt.Fprintf(stderr, "gao stretch: no subcommand named %s\n", args[0])
 		gianUsage(stderr)
 		return 2
 	}
 }
 
 func gianUsage(w io.Writer) {
-	fmt.Fprint(w, `usage: gao gian ladder [-json]
-       gao gian pool [-name NAME] [-json] parts/*.parquet
+	fmt.Fprint(w, `usage: gao stretch ladder [-json]
+       gao stretch pool [-name NAME] [-json] parts/*.parquet
 
 The context extension ladder, and whether the corpus can climb it.
 
@@ -56,7 +56,7 @@ reading.
 Exits 1 when what was read is not a length distribution, and 2 when it is one the
 ladder cannot be climbed with.
 
-run 'gao gian <command> -h' for the flags of one of them.
+run 'gao stretch <command> -h' for the flags of one of them.
 `)
 }
 
@@ -71,11 +71,11 @@ type gianLadderReport struct {
 }
 
 func runGianLadder(stdout, stderr io.Writer, args []string) int {
-	fs := flag.NewFlagSet("gian ladder", flag.ContinueOnError)
+	fs := flag.NewFlagSet("stretch ladder", flag.ContinueOnError)
 	fs.SetOutput(stderr)
 	asJSON := fs.Bool("json", false, "print JSON")
 	fs.Usage = func() {
-		fmt.Fprint(stderr, "usage: gao gian ladder [-json]\n\nThe three rungs of the context extension, read off the curriculum.\n\nflags:\n")
+		fmt.Fprint(stderr, "usage: gao stretch ladder [-json]\n\nThe three rungs of the context extension, read off the curriculum.\n\nflags:\n")
 		fs.PrintDefaults()
 	}
 	if err := fs.Parse(args); err != nil {
@@ -147,12 +147,12 @@ type gianPoolReport struct {
 }
 
 func runGianPool(stdout, stderr io.Writer, args []string) int {
-	fs := flag.NewFlagSet("gian pool", flag.ContinueOnError)
+	fs := flag.NewFlagSet("stretch pool", flag.ContinueOnError)
 	fs.SetOutput(stderr)
 	asJSON := fs.Bool("json", false, "print JSON")
 	name := fs.String("name", "the parts read", "what the measurement is of, which is a snapshot or a slice")
 	fs.Usage = func() {
-		fmt.Fprint(stderr, "usage: gao gian pool [-name NAME] [-json] parts/*.parquet\n\nWhat a body of parts holds at each rung of the ladder.\n\nflags:\n")
+		fmt.Fprint(stderr, "usage: gao stretch pool [-name NAME] [-json] parts/*.parquet\n\nWhat a body of parts holds at each rung of the ladder.\n\nflags:\n")
 		fs.PrintDefaults()
 	}
 	if err := fs.Parse(args); err != nil {
@@ -165,7 +165,7 @@ func runGianPool(stdout, stderr io.Writer, args []string) int {
 
 	pool, err := gian.Measure(*name, fs.Args())
 	if err != nil {
-		fmt.Fprintf(stderr, "gao gian: %v\n", err)
+		fmt.Fprintf(stderr, "gao stretch: %v\n", err)
 		return 1
 	}
 

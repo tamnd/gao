@@ -13,14 +13,14 @@ import (
 )
 
 func runDoan(stdout, stderr io.Writer, args []string) int {
-	fs := flag.NewFlagSet("doan", flag.ContinueOnError)
+	fs := flag.NewFlagSet("predict", flag.ContinueOnError)
 	fs.SetOutput(stderr)
 	asJSON := fs.Bool("json", false, "print JSON")
 	results := fs.String("results", "", "a JSONL file of measurements to put on the register")
 	only := fs.String("slice", "", "print the predictions of one slice, S0 through S9")
 	all := fs.Bool("all", false, "print every prediction rather than the summary")
 	fs.Usage = func() {
-		fmt.Fprint(stderr, `usage: gao doan [-slice S1] [-all] [-results results.jsonl] [-json]
+		fmt.Fprint(stderr, `usage: gao predict [-slice S1] [-all] [-results results.jsonl] [-json]
 
 Print the predictions register: what this project said would happen, written
 down before any of it happened.
@@ -51,7 +51,7 @@ flags:
 	if *results != "" {
 		got, err := doan.ReadResults(*results)
 		if err != nil {
-			fmt.Fprintf(stderr, "gao doan: %v\n", err)
+			fmt.Fprintf(stderr, "gao predict: %v\n", err)
 			return 1
 		}
 		r, refused = r.Apply(got)

@@ -105,7 +105,7 @@ func TestKhoVerifyAcceptsAGoodSnapshot(t *testing.T) {
 
 	out, _, code := exec(t, "kho", "verify", "-key", pub, dir)
 	if code != 0 {
-		t.Fatalf("gao kho verify: exit %d, want 0\n%s", code, out)
+		t.Fatalf("gao store verify: exit %d, want 0\n%s", code, out)
 	}
 	for _, want := range []string{"snapshot 2026-09", "40", "ok"} {
 		if !strings.Contains(out, want) {
@@ -132,7 +132,7 @@ func TestKhoVerifyFailsOnACorruptedShard(t *testing.T) {
 
 	_, errOut, code := exec(t, "kho", "verify", "-key", pub, dir)
 	if code != 1 {
-		t.Fatalf("gao kho verify on a corrupted snapshot: exit %d, want 1", code)
+		t.Fatalf("gao store verify on a corrupted snapshot: exit %d, want 1", code)
 	}
 	if !strings.Contains(errOut, m.Shards[0].Name) {
 		t.Errorf("the error does not name the bad shard:\n%s", errOut)
@@ -147,7 +147,7 @@ func TestKhoVerifyRejectsTheWrongKey(t *testing.T) {
 	}
 	_, errOut, code := exec(t, "kho", "verify", "-key", fmt.Sprintf("%x", other), dir)
 	if code != 1 {
-		t.Fatalf("gao kho verify with the wrong key: exit %d, want 1", code)
+		t.Fatalf("gao store verify with the wrong key: exit %d, want 1", code)
 	}
 	if !strings.Contains(errOut, "signature") {
 		t.Errorf("the error does not mention the signature:\n%s", errOut)
@@ -161,7 +161,7 @@ func TestKhoVerifyTakesAKeyFile(t *testing.T) {
 		t.Fatal(err)
 	}
 	if _, errOut, code := exec(t, "kho", "verify", "-key", path, dir); code != 0 {
-		t.Fatalf("gao kho verify with a key file: exit %d, want 0\n%s", code, errOut)
+		t.Fatalf("gao store verify with a key file: exit %d, want 0\n%s", code, errOut)
 	}
 }
 
@@ -169,7 +169,7 @@ func TestKhoVerifyQuickSaysWhatItDidNotCheck(t *testing.T) {
 	dir, pub := buildSnapshot(t)
 	out, _, code := exec(t, "kho", "verify", "-quick", "-key", pub, dir)
 	if code != 0 {
-		t.Fatalf("gao kho verify -quick: exit %d, want 0\n%s", code, out)
+		t.Fatalf("gao store verify -quick: exit %d, want 0\n%s", code, out)
 	}
 	if !strings.Contains(out, "not checked") {
 		t.Errorf("a quick verification did not say the bytes went unchecked:\n%s", out)
@@ -184,7 +184,7 @@ func TestKhoVerifyVerboseListsEveryShard(t *testing.T) {
 	}
 	out, _, code := exec(t, "kho", "verify", "-v", "-key", pub, dir)
 	if code != 0 {
-		t.Fatalf("gao kho verify -v: exit %d, want 0\n%s", code, out)
+		t.Fatalf("gao store verify -v: exit %d, want 0\n%s", code, out)
 	}
 	for _, s := range m.Shards {
 		if !strings.Contains(out, s.Name) {
@@ -197,7 +197,7 @@ func TestKhoKeygenWritesAUsablePair(t *testing.T) {
 	prefix := filepath.Join(t.TempDir(), "keys", "gao")
 	out, errOut, code := exec(t, "kho", "keygen", "-out", prefix)
 	if code != 0 {
-		t.Fatalf("gao kho keygen: exit %d, want 0\n%s", code, errOut)
+		t.Fatalf("gao store keygen: exit %d, want 0\n%s", code, errOut)
 	}
 	if !strings.Contains(out, "public key ") {
 		t.Errorf("keygen did not print the public key:\n%s", out)
@@ -218,7 +218,7 @@ func TestKhoKeygenWritesAUsablePair(t *testing.T) {
 	// A second run must not quietly replace the key every published snapshot was
 	// signed with.
 	if _, _, code := exec(t, "kho", "keygen", "-out", prefix); code == 0 {
-		t.Fatal("gao kho keygen overwrote an existing key")
+		t.Fatal("gao store keygen overwrote an existing key")
 	}
 	again, err := kho.LoadPrivateKey(prefix + ".key")
 	if err != nil {
@@ -249,7 +249,7 @@ func TestKhoUsageErrors(t *testing.T) {
 func TestKhoHelpIsNotAnError(t *testing.T) {
 	out, _, code := exec(t, "kho", "help")
 	if code != 0 {
-		t.Fatalf("gao kho help: exit %d, want 0", code)
+		t.Fatalf("gao store help: exit %d, want 0", code)
 	}
 	for _, want := range []string{"verify", "keygen"} {
 		if !strings.Contains(out, want) {
@@ -261,22 +261,22 @@ func TestKhoHelpIsNotAnError(t *testing.T) {
 func TestKhoDatasetsPrintsEveryRepoAndHowToReadIt(t *testing.T) {
 	out, _, code := exec(t, "kho", "datasets")
 	if code != 0 {
-		t.Fatalf("gao kho datasets: exit %d, want 0", code)
+		t.Fatalf("gao store datasets: exit %d, want 0", code)
 	}
 	if !strings.Contains(out, kho.HubStore) {
-		t.Error("gao kho datasets did not print the store of record")
+		t.Error("gao store datasets did not print the store of record")
 	}
 	for _, d := range kho.Datasets() {
 		if !strings.Contains(out, d.Repo()) {
-			t.Errorf("gao kho datasets did not print %s", d.Repo())
+			t.Errorf("gao store datasets did not print %s", d.Repo())
 		}
 		if !strings.Contains(out, d.Holds) {
-			t.Errorf("gao kho datasets did not say what is in %s", d.Name)
+			t.Errorf("gao store datasets did not say what is in %s", d.Name)
 		}
 		// Every repo is public, so every repo gets the line somebody pastes to
 		// read it.
 		if q := d.Query("gao-v1.0"); !strings.Contains(out, q) {
-			t.Errorf("gao kho datasets printed no way to read %s, which is %s", d.Name, d.Tier)
+			t.Errorf("gao store datasets printed no way to read %s, which is %s", d.Name, d.Tier)
 		}
 	}
 }
@@ -284,13 +284,13 @@ func TestKhoDatasetsPrintsEveryRepoAndHowToReadIt(t *testing.T) {
 func TestKhoDatasetsTakesASnapshot(t *testing.T) {
 	out, _, code := exec(t, "kho", "datasets", "-snapshot", "gao-v0.2")
 	if code != 0 {
-		t.Fatalf("gao kho datasets -snapshot: exit %d, want 0", code)
+		t.Fatalf("gao store datasets -snapshot: exit %d, want 0", code)
 	}
 	if !strings.Contains(out, "/gao-v0.2/") {
-		t.Error("gao kho datasets ignored the snapshot it was given")
+		t.Error("gao store datasets ignored the snapshot it was given")
 	}
 	if strings.Contains(out, "/gao-v1.0/") {
-		t.Error("gao kho datasets printed the default snapshot as well as the one it was given")
+		t.Error("gao store datasets printed the default snapshot as well as the one it was given")
 	}
 }
 
@@ -301,34 +301,34 @@ func TestKhoDatasetsSaysWhenTheRunIsPointedElsewhere(t *testing.T) {
 	t.Setenv(may.StoreEnv, "file:///mnt/gao")
 	out, _, code := exec(t, "kho", "datasets")
 	if code != 0 {
-		t.Fatalf("gao kho datasets: exit %d, want 0", code)
+		t.Fatalf("gao store datasets: exit %d, want 0", code)
 	}
 	if !strings.Contains(out, "file:///mnt/gao") {
-		t.Error("gao kho datasets did not print the store this run is actually pointed at")
+		t.Error("gao store datasets did not print the store this run is actually pointed at")
 	}
 }
 
 func TestKhoDatasetsTakesNoArguments(t *testing.T) {
 	if _, _, code := exec(t, "kho", "datasets", "extra"); code != 2 {
-		t.Errorf("gao kho datasets extra: exit %d, want 2", code)
+		t.Errorf("gao store datasets extra: exit %d, want 2", code)
 	}
 }
 
 func TestKhoColumnsPrintsTheContract(t *testing.T) {
 	out, _, code := exec(t, "kho", "columns")
 	if code != 0 {
-		t.Fatalf("gao kho columns: exit %d, want 0", code)
+		t.Fatalf("gao store columns: exit %d, want 0", code)
 	}
 	d, ok := kho.Lookup("vietnamese-web-text")
 	if !ok {
 		t.Fatal("the default dataset is not in the table")
 	}
 	if !strings.Contains(out, d.Repo()) {
-		t.Error("gao kho columns did not say which repo it printed")
+		t.Error("gao store columns did not say which repo it printed")
 	}
 	for _, c := range kho.Columns(kho.SchemaFor(d)) {
 		if !strings.Contains(out, c) {
-			t.Errorf("gao kho columns left out %s", c)
+			t.Errorf("gao store columns left out %s", c)
 		}
 	}
 }
@@ -338,44 +338,44 @@ func TestKhoColumnsPrintsTheContract(t *testing.T) {
 func TestKhoColumnsShowsTheWithheldText(t *testing.T) {
 	out, _, code := exec(t, "kho", "columns", "-dataset", "vietnamese-web-urls")
 	if code != 0 {
-		t.Fatalf("gao kho columns -dataset: exit %d, want 0", code)
+		t.Fatalf("gao store columns -dataset: exit %d, want 0", code)
 	}
 	for _, line := range strings.Split(out, "\n") {
 		if strings.TrimSpace(line) == kho.TextColumn {
-			t.Error("gao kho columns listed text for a repo that withholds it")
+			t.Error("gao store columns listed text for a repo that withholds it")
 		}
 	}
 	if !strings.Contains(out, "absent and not empty") {
-		t.Error("gao kho columns did not say why the column is missing")
+		t.Error("gao store columns did not say why the column is missing")
 	}
 	if !strings.Contains(out, "url") {
-		t.Error("gao kho columns printed no columns at all")
+		t.Error("gao store columns printed no columns at all")
 	}
 }
 
 func TestKhoSchemaExplainsEveryColumn(t *testing.T) {
 	out, _, code := exec(t, "kho", "schema")
 	if code != 0 {
-		t.Fatalf("gao kho schema: exit %d, want 0", code)
+		t.Fatalf("gao store schema: exit %d, want 0", code)
 	}
 	for _, c := range kho.Schema() {
 		if !strings.Contains(out, c.Name) {
-			t.Errorf("gao kho schema left out %s", c.Name)
+			t.Errorf("gao store schema left out %s", c.Name)
 		}
 		if !strings.Contains(out, c.Meaning) {
-			t.Errorf("gao kho schema printed %s with nothing about what it means", c.Name)
+			t.Errorf("gao store schema printed %s with nothing about what it means", c.Name)
 		}
 	}
 	// The fields inside pii_spans are columns somebody has to read too.
 	if !strings.Contains(out, "pii_spans.start") {
-		t.Error("gao kho schema stopped at the top level")
+		t.Error("gao store schema stopped at the top level")
 	}
 }
 
 func TestKhoSchemaPrintsWhatParquetSees(t *testing.T) {
 	out, _, code := exec(t, "kho", "schema", "-parquet")
 	if code != 0 {
-		t.Fatalf("gao kho schema -parquet: exit %d, want 0", code)
+		t.Fatalf("gao store schema -parquet: exit %d, want 0", code)
 	}
 	if !strings.HasPrefix(out, "message document {") {
 		t.Errorf("the definition does not start where a parquet tool would print it:\n%s", out)
@@ -385,7 +385,7 @@ func TestKhoSchemaPrintsWhatParquetSees(t *testing.T) {
 	// where that is easiest to check.
 	out, _, code = exec(t, "kho", "schema", "-parquet", "-dataset", "vietnamese-web-urls")
 	if code != 0 {
-		t.Fatalf("gao kho schema -parquet -dataset: exit %d, want 0", code)
+		t.Fatalf("gao store schema -parquet -dataset: exit %d, want 0", code)
 	}
 	if strings.Contains(out, " text (STRING)") {
 		t.Error("the definition for a repo that withholds text has a text column in it")
@@ -397,35 +397,35 @@ func TestKhoSchemaPrintsWhatParquetSees(t *testing.T) {
 func TestKhoSchemaPrintsThePageThatShips(t *testing.T) {
 	out, _, code := exec(t, "kho", "schema", "-md")
 	if code != 0 {
-		t.Fatalf("gao kho schema -md: exit %d, want 0", code)
+		t.Fatalf("gao store schema -md: exit %d, want 0", code)
 	}
 	shipped, err := os.ReadFile(filepath.Join("..", "..", "SCHEMA.md"))
 	if err != nil {
 		t.Fatalf("reading SCHEMA.md: %v", err)
 	}
 	if out != string(shipped) {
-		t.Error("gao kho schema -md and SCHEMA.md are not the same page, run `make schema`")
+		t.Error("gao store schema -md and SCHEMA.md are not the same page, run `make schema`")
 	}
 }
 
 func TestKhoSchemaRefusesTwoOutputsAtOnce(t *testing.T) {
 	if _, _, code := exec(t, "kho", "schema", "-md", "-parquet"); code != 2 {
-		t.Error("gao kho schema -md -parquet did not say it could only do one")
+		t.Error("gao store schema -md -parquet did not say it could only do one")
 	}
 	if _, _, code := exec(t, "kho", "schema", "extra"); code != 2 {
-		t.Error("gao kho schema takes no arguments and accepted one")
+		t.Error("gao store schema takes no arguments and accepted one")
 	}
 }
 
 func TestKhoColumnsRefusesADatasetThatIsNotOne(t *testing.T) {
 	_, errOut, code := exec(t, "kho", "columns", "-dataset", "vietnamese-everything")
 	if code != 1 {
-		t.Fatalf("gao kho columns -dataset vietnamese-everything: exit %d, want 1", code)
+		t.Fatalf("gao store columns -dataset vietnamese-everything: exit %d, want 1", code)
 	}
 	if !strings.Contains(errOut, "vietnamese-everything") {
 		t.Error("the error does not name the dataset that was asked for")
 	}
-	if !strings.Contains(errOut, "gao kho datasets") {
+	if !strings.Contains(errOut, "gao store datasets") {
 		t.Error("the error does not say where the list of real ones is")
 	}
 }
@@ -456,11 +456,11 @@ func TestKhoColumnsReadsAFile(t *testing.T) {
 	// with the directory the part was written under.
 	out, errOut, code := exec(t, "kho", "columns", filepath.Join(dir, file.Path))
 	if code != 0 {
-		t.Fatalf("gao kho columns FILE: exit %d, want 0: %s", code, errOut)
+		t.Fatalf("gao store columns FILE: exit %d, want 0: %s", code, errOut)
 	}
 	for _, want := range []string{"gao-v1.0", "test@0.1.0", "server1", "doc_id", kho.TextColumn} {
 		if !strings.Contains(out, want) {
-			t.Errorf("gao kho columns FILE did not print %s", want)
+			t.Errorf("gao store columns FILE did not print %s", want)
 		}
 	}
 }
@@ -486,7 +486,7 @@ func TestKhoColumnsSaysWhenNothingCountedTheTokens(t *testing.T) {
 
 	out, errOut, code := exec(t, "kho", "columns", filepath.Join(dir, file.Path))
 	if code != 0 {
-		t.Fatalf("gao kho columns FILE: exit %d, want 0: %s", code, errOut)
+		t.Fatalf("gao store columns FILE: exit %d, want 0: %s", code, errOut)
 	}
 	if !strings.Contains(out, "no tokenizer ran") {
 		t.Errorf("a part nothing counted did not say so:\n%s", out)
@@ -502,13 +502,13 @@ func TestKhoColumnsRefusesAFileThatIsNotOne(t *testing.T) {
 		t.Fatal(err)
 	}
 	if _, _, code := exec(t, "kho", "columns", path); code != 1 {
-		t.Errorf("gao kho columns on a file that is not parquet: exit %d, want 1", code)
+		t.Errorf("gao store columns on a file that is not parquet: exit %d, want 1", code)
 	}
 }
 
 func TestKhoColumnsTakesOneFileAtMost(t *testing.T) {
 	if _, _, code := exec(t, "kho", "columns", "a.parquet", "b.parquet"); code != 2 {
-		t.Error("gao kho columns took two files")
+		t.Error("gao store columns took two files")
 	}
 }
 
@@ -534,7 +534,7 @@ func TestKhoPushSendsAFileAndSaysWhatItDid(t *testing.T) {
 	}
 	out, errOut, code := exec(t, "kho", "push", "-as", "README.md", path)
 	if code != 0 {
-		t.Fatalf("gao kho push: exit %d\n%s", code, errOut)
+		t.Fatalf("gao store push: exit %d\n%s", code, errOut)
 	}
 	if !strings.Contains(out, kho.Staging().Repo()) {
 		t.Errorf("the push does not say where the file went:\n%s", out)
@@ -565,7 +565,7 @@ func TestKhoPushSaysWhenThereIsNothingToDo(t *testing.T) {
 	}
 	out, errOut, code := exec(t, "kho", "push", "-as", "data/x.parquet", path)
 	if code != 0 {
-		t.Fatalf("gao kho push: exit %d\n%s", code, errOut)
+		t.Fatalf("gao store push: exit %d\n%s", code, errOut)
 	}
 	if !strings.Contains(out, "nothing moved") {
 		t.Errorf("a push with nothing to do does not say so:\n%s", out)
@@ -577,7 +577,7 @@ func TestKhoPushRefusesADatasetThatIsNotThere(t *testing.T) {
 	if code != 1 {
 		t.Fatalf("exit %d, want 1", code)
 	}
-	if !strings.Contains(errOut, "gao kho datasets") {
+	if !strings.Contains(errOut, "gao store datasets") {
 		t.Errorf("the error does not say how to find the list:\n%s", errOut)
 	}
 }
@@ -585,7 +585,7 @@ func TestKhoPushRefusesADatasetThatIsNotThere(t *testing.T) {
 func TestKhoPushIsInTheSubcommandList(t *testing.T) {
 	out, _, code := exec(t, "kho", "help")
 	if code != 0 {
-		t.Fatalf("gao kho help: exit %d", code)
+		t.Fatalf("gao store help: exit %d", code)
 	}
 	if !strings.Contains(out, "push") {
 		t.Errorf("the subcommand list does not mention push:\n%s", out)
@@ -597,7 +597,7 @@ func TestKhoPushIsInTheSubcommandList(t *testing.T) {
 func TestKhoCardPrintsTheCardForADataset(t *testing.T) {
 	out, errOut, code := exec(t, "kho", "card", "-dataset", "vietnamese-web-text")
 	if code != 0 {
-		t.Fatalf("gao kho card: exit %d\n%s", code, errOut)
+		t.Fatalf("gao store card: exit %d\n%s", code, errOut)
 	}
 	if !strings.HasPrefix(out, "---\n") {
 		t.Errorf("the card has no front matter:\n%s", out)
@@ -627,7 +627,7 @@ func TestKhoCardReadsTheCountsFromASnapshotManifest(t *testing.T) {
 
 	out, errOut, code := exec(t, "kho", "card", "-dataset", "vietnamese-web-text", "-from", dir)
 	if code != 0 {
-		t.Fatalf("gao kho card -from: exit %d\n%s", code, errOut)
+		t.Fatalf("gao store card -from: exit %d\n%s", code, errOut)
 	}
 	for _, want := range []string{"| documents | 7 |", "data/2026-09/", "not a release"} {
 		if !strings.Contains(out, want) {
@@ -652,7 +652,7 @@ func TestKhoCardPushesTheCardAndSaysWhereItWent(t *testing.T) {
 
 	out, errOut, code := exec(t, "kho", "card", "-dataset", kho.StageRepo, "-push")
 	if code != 0 {
-		t.Fatalf("gao kho card -push: exit %d\n%s", code, errOut)
+		t.Fatalf("gao store card -push: exit %d\n%s", code, errOut)
 	}
 	if !strings.Contains(out, "pushed the card") || !strings.Contains(out, kho.Staging().Repo()) {
 		t.Errorf("the push does not say what it did or where:\n%s", out)
@@ -664,7 +664,7 @@ func TestKhoCardRefusesADatasetThatIsNotThere(t *testing.T) {
 	if code != 1 {
 		t.Fatalf("exit %d, want 1", code)
 	}
-	if !strings.Contains(errOut, "gao kho datasets") {
+	if !strings.Contains(errOut, "gao store datasets") {
 		t.Errorf("the error does not say how to find the list:\n%s", errOut)
 	}
 }
@@ -673,14 +673,14 @@ func TestKhoCardRefusesADatasetThatIsNotThere(t *testing.T) {
 // would be putting the wrong repo's card on somebody's screen.
 func TestKhoCardNeedsADataset(t *testing.T) {
 	if _, _, code := exec(t, "kho", "card"); code != 2 {
-		t.Error("gao kho card ran without a dataset")
+		t.Error("gao store card ran without a dataset")
 	}
 }
 
 func TestKhoCardIsInTheSubcommandList(t *testing.T) {
 	out, _, code := exec(t, "kho", "help")
 	if code != 0 {
-		t.Fatalf("gao kho help: exit %d", code)
+		t.Fatalf("gao store help: exit %d", code)
 	}
 	if !strings.Contains(out, "card") {
 		t.Errorf("the subcommand list does not mention card:\n%s", out)
@@ -753,7 +753,7 @@ func TestKhoRemoveTakesADocumentOutAndSaysWhatItCost(t *testing.T) {
 		"-key", key, "-reason", "takedown", "-note", "request 118",
 		docs[7].DocID.String())
 	if code != 0 {
-		t.Fatalf("gao kho remove: exit %d, want 0\n%s\n%s", code, out, errOut)
+		t.Fatalf("gao store remove: exit %d, want 0\n%s\n%s", code, out, errOut)
 	}
 	for _, want := range []string{"2026-09-r1", "parent    2026-09", "removed   1", "39 remain", "ok"} {
 		if !strings.Contains(out, want) {
@@ -775,7 +775,7 @@ func TestKhoRemoveLeavesASnapshotThatVerifies(t *testing.T) {
 	if _, errOut, code := exec(t, "kho", "remove",
 		"-from", src, "-to", dst, "-snapshot", "2026-09-r1",
 		"-key", key, "-reason", "legal", docs[3].DocID.String()); code != 0 {
-		t.Fatalf("gao kho remove: exit %d\n%s", code, errOut)
+		t.Fatalf("gao store remove: exit %d\n%s", code, errOut)
 	}
 
 	pub, err := kho.LoadPrivateKey(key)
@@ -808,7 +808,7 @@ func TestKhoRemoveWillNotAnswerHalfARequest(t *testing.T) {
 		"-key", key, "-reason", "takedown",
 		docs[1].DocID.String(), missing.String())
 	if code != 1 {
-		t.Fatalf("gao kho remove: exit %d, want 1\n%s\n%s", code, out, errOut)
+		t.Fatalf("gao store remove: exit %d, want 1\n%s\n%s", code, out, errOut)
 	}
 	if !strings.Contains(errOut, missing.String()) {
 		t.Errorf("the error does not name the identity that was not found:\n%s", errOut)
@@ -833,7 +833,7 @@ func TestKhoRemoveOnAnIdentityThatIsNotThereWritesNothing(t *testing.T) {
 		"-key", key, "-reason", "takedown",
 		doc.SumString("not in the corpus").String())
 	if code != 1 {
-		t.Fatalf("gao kho remove: exit %d, want 1\n%s", code, errOut)
+		t.Fatalf("gao store remove: exit %d, want 1\n%s", code, errOut)
 	}
 	if _, err := os.Stat(filepath.Join(dst, "manifest.toml")); err == nil {
 		t.Fatal("a removal that found nothing still signed a snapshot")
@@ -857,7 +857,7 @@ func TestKhoRemoveReadsAListOfIdentities(t *testing.T) {
 		"-from", src, "-to", dst, "-snapshot", "2026-09-r1",
 		"-key", key, "-reason", "privacy", "-list", list)
 	if code != 0 {
-		t.Fatalf("gao kho remove -list: exit %d, want 0\n%s\n%s", code, out, errOut)
+		t.Fatalf("gao store remove -list: exit %d, want 0\n%s\n%s", code, out, errOut)
 	}
 	if !strings.Contains(out, "removed   3") {
 		t.Errorf("the list was not read as three documents:\n%s", out)
@@ -901,7 +901,7 @@ func TestKhoRemoveVerboseAccountsForEveryShard(t *testing.T) {
 		"-from", src, "-to", dst, "-snapshot", "2026-09-r1",
 		"-key", key, "-reason", "takedown", docs[0].DocID.String())
 	if code != 0 {
-		t.Fatalf("gao kho remove -v: exit %d\n%s", code, errOut)
+		t.Fatalf("gao store remove -v: exit %d\n%s", code, errOut)
 	}
 	for _, s := range m.Shards {
 		if !strings.Contains(out, s.Name) {
@@ -921,7 +921,7 @@ func TestKhoRemoveWillNotWriteOverASnapshot(t *testing.T) {
 		"-from", src, "-to", other, "-snapshot", "2026-09-r1",
 		"-key", key, "-reason", "takedown", docs[0].DocID.String())
 	if code != 1 {
-		t.Fatalf("gao kho remove: exit %d, want 1", code)
+		t.Fatalf("gao store remove: exit %d, want 1", code)
 	}
 	if !strings.Contains(errOut, "already holds a snapshot") {
 		t.Errorf("the error does not say the destination is taken:\n%s", errOut)
@@ -937,7 +937,7 @@ func TestKhoRemoveWantsAReasonItKnows(t *testing.T) {
 			"-from", src, "-to", dst, "-snapshot", "2026-09-r1",
 			"-key", key, "-reason", reason, docs[0].DocID.String())
 		if code != 2 {
-			t.Fatalf("gao kho remove -reason %q: exit %d, want 2", reason, code)
+			t.Fatalf("gao store remove -reason %q: exit %d, want 2", reason, code)
 		}
 		for _, want := range kho.Reasons() {
 			if !strings.Contains(errOut, want) {
@@ -972,7 +972,7 @@ func TestKhoRemoveUsageErrors(t *testing.T) {
 func TestKhoRemoveIsInTheSubcommandList(t *testing.T) {
 	out, _, code := exec(t, "kho", "help")
 	if code != 0 {
-		t.Fatalf("gao kho help: exit %d", code)
+		t.Fatalf("gao store help: exit %d", code)
 	}
 	if !strings.Contains(out, "remove") {
 		t.Errorf("the subcommand list does not mention remove:\n%s", out)

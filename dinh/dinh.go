@@ -29,7 +29,7 @@
 // and the run does not fit on the machine that produces it. The images stream
 // to the store and the box keeps a window. This package reports what is still
 // resident and refuses a batch that leaves too much of itself behind. Whether
-// the drain keeps up with the write is a rate, and rates are what gao don
+// the drain keeps up with the write is a rate, and rates are what gao clear
 // measures. What is asked here is the smaller question that has to be true
 // first, which is whether anything is being left behind at all.
 package dinh

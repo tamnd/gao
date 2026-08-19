@@ -18,29 +18,29 @@ import (
 func TestGatPinsPrintsEverySourceAndItsRevision(t *testing.T) {
 	out, _, code := exec(t, "gat", "pins")
 	if code != 0 {
-		t.Fatalf("gao gat pins: exit %d, want 0", code)
+		t.Fatalf("gao harvest pins: exit %d, want 0", code)
 	}
 	for _, p := range gat.Sources() {
 		if !strings.Contains(out, string(p.Source)) {
-			t.Errorf("gao gat pins omitted %s", p.Source)
+			t.Errorf("gao harvest pins omitted %s", p.Source)
 		}
 		if !strings.Contains(out, p.Repo) {
-			t.Errorf("gao gat pins omitted the repo for %s", p.Source)
+			t.Errorf("gao harvest pins omitted the repo for %s", p.Source)
 		}
 		// The point of a pin is the revision, so an abbreviation short enough to
 		// be ambiguous would defeat the command.
 		if !strings.Contains(out, shortRevision(p.Revision)) {
-			t.Errorf("gao gat pins omitted the revision for %s", p.Source)
+			t.Errorf("gao harvest pins omitted the revision for %s", p.Source)
 		}
 		if !strings.Contains(out, p.Class.String()) {
-			t.Errorf("gao gat pins omitted the license class for %s", p.Source)
+			t.Errorf("gao harvest pins omitted the license class for %s", p.Source)
 		}
 	}
 	if !strings.Contains(out, gat.PinnedOn()) {
-		t.Error("gao gat pins does not say when the manifest was pinned")
+		t.Error("gao harvest pins does not say when the manifest was pinned")
 	}
 	if !strings.Contains(out, may.GB(gat.TotalBytes())) {
-		t.Error("gao gat pins does not say how large the download is")
+		t.Error("gao harvest pins does not say how large the download is")
 	}
 }
 
@@ -49,17 +49,17 @@ func TestGatPinsPrintsEverySourceAndItsRevision(t *testing.T) {
 func TestGatPinsSaysWhichSourceIsGated(t *testing.T) {
 	out, _, code := exec(t, "gat", "pins")
 	if code != 0 {
-		t.Fatalf("gao gat pins: exit %d, want 0", code)
+		t.Fatalf("gao harvest pins: exit %d, want 0", code)
 	}
 	if !strings.Contains(out, "gated") {
-		t.Error("gao gat pins does not mark the gated source")
+		t.Error("gao harvest pins does not mark the gated source")
 	}
 }
 
 func TestGatPinsPrintsOneSourceInFull(t *testing.T) {
 	out, _, code := exec(t, "gat", "pins", "-source", "hplt3")
 	if code != 0 {
-		t.Fatalf("gao gat pins -source hplt3: exit %d, want 0", code)
+		t.Fatalf("gao harvest pins -source hplt3: exit %d, want 0", code)
 	}
 	p, ok := gat.Pin("hplt3")
 	if !ok {
@@ -81,7 +81,7 @@ func TestGatPinsPrintsOneSourceInFull(t *testing.T) {
 
 	_, errOut, code := exec(t, "gat", "pins", "-source", "nothing")
 	if code == 0 {
-		t.Error("gao gat pins accepted a source that is not pinned")
+		t.Error("gao harvest pins accepted a source that is not pinned")
 	}
 	if !strings.Contains(errOut, "nothing") {
 		t.Errorf("the error does not name the source asked for: %q", errOut)
@@ -91,7 +91,7 @@ func TestGatPinsPrintsOneSourceInFull(t *testing.T) {
 func TestGatPinsListsEveryFileOnRequest(t *testing.T) {
 	out, _, code := exec(t, "gat", "pins", "-files")
 	if code != 0 {
-		t.Fatalf("gao gat pins -files: exit %d, want 0", code)
+		t.Fatalf("gao harvest pins -files: exit %d, want 0", code)
 	}
 	var missing int
 	for _, p := range gat.Sources() {
@@ -102,10 +102,10 @@ func TestGatPinsListsEveryFileOnRequest(t *testing.T) {
 		}
 	}
 	if missing > 0 {
-		t.Errorf("gao gat pins -files omitted %d of %d files", missing, gat.Files())
+		t.Errorf("gao harvest pins -files omitted %d of %d files", missing, gat.Files())
 	}
 	if !strings.Contains(out, "held back") {
-		t.Error("gao gat pins -files does not say what the manifest holds back")
+		t.Error("gao harvest pins -files does not say what the manifest holds back")
 	}
 }
 
@@ -129,11 +129,11 @@ func TestGatRejectsWhatItCannotDo(t *testing.T) {
 	}
 	out, _, code := exec(t, "gat", "help")
 	if code != 0 {
-		t.Fatalf("gao gat help: exit %d, want 0", code)
+		t.Fatalf("gao harvest help: exit %d, want 0", code)
 	}
 	for _, sub := range []string{"pins", "drift", "hf", "ledger"} {
 		if !strings.Contains(out, sub) {
-			t.Errorf("gao gat help omits %s", sub)
+			t.Errorf("gao harvest help omits %s", sub)
 		}
 	}
 }
@@ -319,38 +319,38 @@ func TestTheDefaultPlanLeavesOutADroppedSource(t *testing.T) {
 func TestGatAgentPrintsTheTokenAndTheHeaderSeparately(t *testing.T) {
 	out, _, code := exec(t, "gat", "agent")
 	if code != 0 {
-		t.Fatalf("gao gat agent: exit %d\n%s", code, out)
+		t.Fatalf("gao harvest agent: exit %d\n%s", code, out)
 	}
 
 	for _, want := range []string{gat.Bot, gat.Contact, "User-agent: " + gat.Bot, "Disallow: /"} {
 		if !strings.Contains(out, want) {
-			t.Errorf("gao gat agent does not print %q:\n%s", want, out)
+			t.Errorf("gao harvest agent does not print %q:\n%s", want, out)
 		}
 	}
 	// The header carries the version and the token does not, and printing them
 	// on one line would lose exactly that distinction.
 	if !strings.Contains(out, gat.Agent(version)) {
-		t.Errorf("gao gat agent does not print the header it sends:\n%s", out)
+		t.Errorf("gao harvest agent does not print the header it sends:\n%s", out)
 	}
 }
 
 func TestGatAgentTakesNoArguments(t *testing.T) {
 	if _, _, code := exec(t, "gat", "agent", "extra"); code != 2 {
-		t.Errorf("gao gat agent with an argument: exit %d, want 2", code)
+		t.Errorf("gao harvest agent with an argument: exit %d, want 2", code)
 	}
 }
 
 func TestGatAgentIsInTheSubcommandList(t *testing.T) {
 	out, _, code := exec(t, "gat", "help")
 	if code != 0 {
-		t.Fatalf("gao gat help: exit %d", code)
+		t.Fatalf("gao harvest help: exit %d", code)
 	}
 	if !strings.Contains(out, "agent") {
 		t.Errorf("agent is not in the gat subcommand list:\n%s", out)
 	}
 }
 
-// gao gat fetch is the crawler doing one page, and what it has to print is the
+// gao harvest fetch is the crawler doing one page, and what it has to print is the
 // part of that a person cannot see in the page itself.
 func fetchSite(t *testing.T, routes map[string]http.HandlerFunc) *httptest.Server {
 	t.Helper()
@@ -380,17 +380,17 @@ func TestGatFetchPrintsTheDecisionAndNotJustThePage(t *testing.T) {
 
 	out, errOut, code := exec(t, "gat", "fetch", "-delay", "1ms", s.URL+"/bai-viet")
 	if code != 0 {
-		t.Fatalf("gao gat fetch: exit %d\n%s\n%s", code, out, errOut)
+		t.Fatalf("gao harvest fetch: exit %d\n%s\n%s", code, out, errOut)
 	}
 	for _, want := range []string{"robots", "status", "200", "mining", "next"} {
 		if !strings.Contains(out, want) {
-			t.Errorf("gao gat fetch does not print %q:\n%s", want, out)
+			t.Errorf("gao harvest fetch does not print %q:\n%s", want, out)
 		}
 	}
 	// The page itself is not the output. A summary that quietly included the
 	// body would be a summary nobody could read.
 	if strings.Contains(out, "xin chào") {
-		t.Errorf("gao gat fetch printed the page instead of what happened to it:\n%s", out)
+		t.Errorf("gao harvest fetch printed the page instead of what happened to it:\n%s", out)
 	}
 }
 
@@ -421,23 +421,23 @@ func TestGatFetchWithBodyWritesTheBytesAndNothingElse(t *testing.T) {
 
 	out, _, code := exec(t, "gat", "fetch", "-delay", "1ms", "-body", s.URL+"/bai-viet")
 	if code != 0 {
-		t.Fatalf("gao gat fetch -body: exit %d", code)
+		t.Fatalf("gao harvest fetch -body: exit %d", code)
 	}
 	if out != page {
-		t.Errorf("gao gat fetch -body wrote %q, want %q", out, page)
+		t.Errorf("gao harvest fetch -body wrote %q, want %q", out, page)
 	}
 }
 
 func TestGatFetchNeedsSomethingToFetch(t *testing.T) {
 	if _, _, code := exec(t, "gat", "fetch"); code != 2 {
-		t.Errorf("gao gat fetch with no URL: exit %d, want 2", code)
+		t.Errorf("gao harvest fetch with no URL: exit %d, want 2", code)
 	}
 }
 
 func TestGatFetchIsInTheSubcommandList(t *testing.T) {
 	out, _, code := exec(t, "gat", "help")
 	if code != 0 {
-		t.Fatalf("gao gat help: exit %d", code)
+		t.Fatalf("gao harvest help: exit %d", code)
 	}
 	if !strings.Contains(out, "fetch") {
 		t.Errorf("fetch is not in the gat subcommand list:\n%s", out)
@@ -446,7 +446,7 @@ func TestGatFetchIsInTheSubcommandList(t *testing.T) {
 
 // A WARC is the difference between an extraction bug that costs a rerun of the
 // parser and one that costs a rerun of the crawl. These tests are about the two
-// halves of that being connected: what -warc writes, gao gat warc reads.
+// halves of that being connected: what -warc writes, gao harvest warc reads.
 func TestAFetchWritesAWARCThatComesBackOut(t *testing.T) {
 	const page = "<p>xin chào, đây là bài viết</p>"
 	s := fetchSite(t, map[string]http.HandlerFunc{
@@ -457,12 +457,12 @@ func TestAFetchWritesAWARCThatComesBackOut(t *testing.T) {
 
 	out, errOut, code := exec(t, "gat", "fetch", "-delay", "1ms", "-warc", path, s.URL+"/bai-viet")
 	if code != 0 {
-		t.Fatalf("gao gat fetch -warc: exit %d\n%s\n%s", code, out, errOut)
+		t.Fatalf("gao harvest fetch -warc: exit %d\n%s\n%s", code, out, errOut)
 	}
 
 	out, errOut, code = exec(t, "gat", "warc", "-uri", s.URL+"/bai-viet", path)
 	if code != 0 {
-		t.Fatalf("gao gat warc -uri: exit %d\n%s\n%s", code, out, errOut)
+		t.Fatalf("gao harvest warc -uri: exit %d\n%s\n%s", code, out, errOut)
 	}
 	if out != page {
 		t.Errorf("the page came back out as %q, want %q", out, page)
@@ -478,12 +478,12 @@ func TestTheListingSaysWhatIsInTheFile(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "gao.warc.gz")
 
 	if _, errOut, code := exec(t, "gat", "fetch", "-delay", "1ms", "-warc", path, s.URL+"/mot", s.URL+"/hai"); code != 0 {
-		t.Fatalf("gao gat fetch -warc: exit %d\n%s", code, errOut)
+		t.Fatalf("gao harvest fetch -warc: exit %d\n%s", code, errOut)
 	}
 
 	out, _, code := exec(t, "gat", "warc", path)
 	if code != 0 {
-		t.Fatalf("gao gat warc: exit %d\n%s", code, out)
+		t.Fatalf("gao harvest warc: exit %d\n%s", code, out)
 	}
 	// A warcinfo, and a request and a response for each of the two pages.
 	if !strings.Contains(out, "warcinfo") {
@@ -514,12 +514,12 @@ func TestTheFieldsCarryWhatTheSummaryWouldHaveLost(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "gao.warc.gz")
 
 	if _, errOut, code := exec(t, "gat", "fetch", "-delay", "1ms", "-warc", path, s.URL+"/tin/mot"); code != 0 {
-		t.Fatalf("gao gat fetch -warc: exit %d\n%s", code, errOut)
+		t.Fatalf("gao harvest fetch -warc: exit %d\n%s", code, errOut)
 	}
 
 	out, _, code := exec(t, "gat", "warc", "-fields", path)
 	if code != 0 {
-		t.Fatalf("gao gat warc -fields: exit %d\n%s", code, out)
+		t.Fatalf("gao harvest warc -fields: exit %d\n%s", code, out)
 	}
 	for _, want := range []string{
 		"WARC-Payload-Digest",
@@ -542,7 +542,7 @@ func TestAskingForAPageTheCrawlNeverFetched(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "gao.warc.gz")
 
 	if _, errOut, code := exec(t, "gat", "fetch", "-delay", "1ms", "-warc", path, s.URL+"/mot"); code != 0 {
-		t.Fatalf("gao gat fetch -warc: exit %d\n%s", code, errOut)
+		t.Fatalf("gao harvest fetch -warc: exit %d\n%s", code, errOut)
 	}
 
 	out, errOut, code := exec(t, "gat", "warc", "-uri", s.URL+"/hai", path)
@@ -570,7 +570,7 @@ func TestReadingSomethingThatIsNotAWARC(t *testing.T) {
 
 func TestGatWARCNeedsAFile(t *testing.T) {
 	if _, _, code := exec(t, "gat", "warc"); code != 2 {
-		t.Error("gao gat warc with no file did not report the usage")
+		t.Error("gao harvest warc with no file did not report the usage")
 	}
 	if _, errOut, code := exec(t, "gat", "warc", filepath.Join(t.TempDir(), "khong-co")); code != 1 {
 		t.Errorf("a file that does not exist: exit %d, want 1: %s", code, errOut)
@@ -580,7 +580,7 @@ func TestGatWARCNeedsAFile(t *testing.T) {
 func TestGatWARCIsInTheSubcommandList(t *testing.T) {
 	out, _, code := exec(t, "gat", "help")
 	if code != 0 {
-		t.Fatalf("gao gat help: exit %d", code)
+		t.Fatalf("gao harvest help: exit %d", code)
 	}
 	if !strings.Contains(out, "warc") {
 		t.Errorf("warc is not in the gat subcommand list:\n%s", out)

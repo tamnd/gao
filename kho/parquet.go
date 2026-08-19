@@ -372,7 +372,7 @@ type Stamp struct {
 	// document, which is what the column type allows and is not what a reader
 	// sees: a query over 500000 real documents came back with 500000 documents
 	// and 0 tokens, and nothing in the file said the difference between nobody
-	// counting and a count of none. 'gao dem counts' had the answer all along,
+	// counting and a count of none. 'gao count counts' had the answer all along,
 	// because counts.json carries the tokenizer beside the numbers, but a part
 	// on the Hub travels without counts.json and has to say it itself.
 	Tokenizer string

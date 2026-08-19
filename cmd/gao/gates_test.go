@@ -210,7 +210,7 @@ func TestDemGatesUsageErrors(t *testing.T) {
 func TestDemGatesIsInTheSubcommandList(t *testing.T) {
 	out, _, code := exec(t, "dem", "help")
 	if code != 0 {
-		t.Fatalf("gao dem help: exit %d", code)
+		t.Fatalf("gao count help: exit %d", code)
 	}
 	if !strings.Contains(out, "gates") {
 		t.Errorf("gates is not in the dem subcommand list:\n%s", out)
@@ -218,7 +218,7 @@ func TestDemGatesIsInTheSubcommandList(t *testing.T) {
 
 	_, errOut, code := exec(t, "dem", "gates", "-h")
 	if code != 2 {
-		t.Errorf("gao dem gates -h: exit %d, want 2", code)
+		t.Errorf("gao count gates -h: exit %d, want 2", code)
 	}
 	for _, want := range []string{"diacritic atomicity", "100.000%", "an audit rather than a threshold", "a sample of the corpus"} {
 		if !strings.Contains(errOut, want) {

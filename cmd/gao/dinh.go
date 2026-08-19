@@ -11,13 +11,13 @@ import (
 )
 
 func runDinh(stdout, stderr io.Writer, args []string) int {
-	fs := flag.NewFlagSet("dinh", flag.ContinueOnError)
+	fs := flag.NewFlagSet("attach", flag.ContinueOnError)
 	fs.SetOutput(stderr)
 	asJSON := fs.Bool("json", false, "print JSON")
 	name := fs.String("name", "gao-pdf-2026-09", "the artifact these pages are going into")
 	free := fs.Int64("free", 0, "bytes free on the box that made the renders, if it has less than the window")
 	fs.Usage = func() {
-		fmt.Fprint(stderr, `usage: gao dinh [-name artifact] [-free bytes] [-json] pages.jsonl
+		fmt.Fprint(stderr, `usage: gao attach [-name artifact] [-free bytes] [-json] pages.jsonl
 
 Check that page images are still attached to the text that came off them, and
 that the box which made them is not filling up.
@@ -38,7 +38,7 @@ carrying two thousand characters is refused.
 Disk is the other half. gamingpc has 307 GB free and a page at 300 dpi is most
 of a megabyte, so the run does not fit on the machine that produces it. The
 images stream to the store and the box keeps a window. Whether the drain keeps
-up with the write is a rate and gao don measures rates. What is asked here is
+up with the write is a rate and gao clear measures rates. What is asked here is
 whether anything is being left behind at all.
 
 Exits 1 when the pages are not joined to their documents, and 2 when they are
@@ -58,7 +58,7 @@ flags:
 
 	b, err := dinh.ReadBatch(*name, fs.Arg(0))
 	if err != nil {
-		fmt.Fprintf(stderr, "gao dinh: %v\n", err)
+		fmt.Fprintf(stderr, "gao attach: %v\n", err)
 		return 1
 	}
 

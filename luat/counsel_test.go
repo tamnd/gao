@@ -7,7 +7,7 @@ import (
 
 // The point of the agenda is that no question blocks the work, so the property
 // worth asserting is not that the questions are good, it is that every one of
-// them has a position gao can act on today.
+// them has a position gao weigh act on today.
 func TestEveryQuestionHasSomethingToActOn(t *testing.T) {
 	for _, q := range Questions() {
 		if q.ID == "" {

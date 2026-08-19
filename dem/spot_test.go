@@ -337,13 +337,13 @@ func TestTheTokenColumnIsCheckedWhenThereIsATokenizerToCheckItWith(t *testing.T)
 }
 
 // tokenizer loads the pinned model, which is not in the repository: it is 4.7 MB
-// of somebody else's protobuf and `gao dem model` fetches it. A skip here is a
+// of somebody else's protobuf and `gao count model` fetches it. A skip here is a
 // real gap in what was tested rather than a formality, so it says how to close it.
 func tokenizer(t *testing.T) *Tokenizer {
 	t.Helper()
 	path := os.Getenv("GAO_TOKENIZER")
 	if path == "" {
-		t.Skip("no tokenizer: run `gao dem model -o tokenizer.model` and set GAO_TOKENIZER to it")
+		t.Skip("no tokenizer: run `gao count model -o tokenizer.model` and set GAO_TOKENIZER to it")
 	}
 	tok, err := Open(Gemma3, path)
 	if err != nil {

@@ -241,7 +241,7 @@ func TestSietUsageIsPrintedForWhatItCannotDo(t *testing.T) {
 	if code != 0 {
 		t.Fatalf("help exits %d", code)
 	}
-	if !strings.Contains(out, "gao siet recipe") || !strings.Contains(out, "gao siet read") {
+	if !strings.Contains(out, "gao tighten recipe") || !strings.Contains(out, "gao tighten read") {
 		t.Errorf("help does not list the subcommands:\n%s", out)
 	}
 
@@ -256,7 +256,7 @@ func TestSietUsageIsPrintedForWhatItCannotDo(t *testing.T) {
 		if code != 2 {
 			t.Errorf("%v exits %d", args, code)
 		}
-		if !strings.Contains(errOut, "usage: gao siet") {
+		if !strings.Contains(errOut, "usage: gao tighten") {
 			t.Errorf("%v does not print usage: %s", args, errOut)
 		}
 	}

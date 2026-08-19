@@ -11,7 +11,7 @@ import (
 )
 
 func runChe(stdout, stderr io.Writer, args []string) int {
-	fs := flag.NewFlagSet("che", flag.ContinueOnError)
+	fs := flag.NewFlagSet("cover", flag.ContinueOnError)
 	fs.SetOutput(stderr)
 	level := fs.String("level", "L1", "how much to cover: L0 records only, L1 covers identifiers, L2 also covers names and addresses")
 	report := fs.Bool("report", false, "print what was found instead of the covered text")
@@ -19,12 +19,12 @@ func runChe(stdout, stderr io.Writer, args []string) int {
 	asJSON := fs.Bool("json", false, "with -report or -recall, print JSON")
 	recall := fs.Bool("recall", false, "measure the detectors against the labeled set built into this binary")
 	fs.Usage = func() {
-		fmt.Fprint(stderr, `usage: gao che [-level L0|L1|L2] [-report [-spans] [-json]] [file...]
-       gao che -recall [-json]
+		fmt.Fprint(stderr, `usage: gao cover [-level L0|L1|L2] [-report [-spans] [-json]] [file...]
+       gao cover -recall [-json]
 
 Cover the personal data in a document. With no file it reads standard input,
 and the covered text goes to standard output, so this is a filter in the same
-way gao phoi is.
+way gao normalize is.
 
 What is covered is a level. L0 finds everything and covers nothing, which is
 what a source is measured with before anybody decides what to do about it. L1
@@ -64,22 +64,22 @@ flags:
 	}
 	if *recall {
 		if *report || *spans {
-			fmt.Fprintln(stderr, "gao che: -recall measures the labeled set built into this binary, so it has nothing to report on")
+			fmt.Fprintln(stderr, "gao cover: -recall measures the labeled set built into this binary, so it has nothing to report on")
 			return 2
 		}
 		if len(fs.Args()) > 0 {
-			fmt.Fprintln(stderr, "gao che: -recall reads the labeled set built into this binary rather than a file")
+			fmt.Fprintln(stderr, "gao cover: -recall reads the labeled set built into this binary rather than a file")
 			return 2
 		}
 		return runCheRecall(stdout, stderr, *asJSON)
 	}
 	lv, ok := che.ParseLevel(*level)
 	if !ok {
-		fmt.Fprintf(stderr, "gao che: %q is not a level. The levels are L0, L1 and L2\n", *level)
+		fmt.Fprintf(stderr, "gao cover: %q is not a level. The levels are L0, L1 and L2\n", *level)
 		return 2
 	}
 	if !*report && (*asJSON || *spans) {
-		fmt.Fprintln(stderr, "gao che: -json and -spans only mean something with -report")
+		fmt.Fprintln(stderr, "gao cover: -json and -spans only mean something with -report")
 		return 2
 	}
 
@@ -95,25 +95,25 @@ flags:
 	for _, name := range files {
 		if !*report {
 			if filepath.Ext(name) == ".parquet" {
-				fmt.Fprintf(stderr, "gao che: %s holds many documents, and covering them onto one stream loses where each one ended. Use -report\n", name)
+				fmt.Fprintf(stderr, "gao cover: %s holds many documents, and covering them onto one stream loses where each one ended. Use -report\n", name)
 				return 2
 			}
 			text, err := readDocument(name)
 			if err != nil {
-				fmt.Fprintf(stderr, "gao che: %v\n", err)
+				fmt.Fprintf(stderr, "gao cover: %v\n", err)
 				return 1
 			}
 			covered, found := che.Redact(string(text), lv)
 			tally.Add(lv, found)
 			if _, err := io.WriteString(stdout, covered); err != nil {
-				fmt.Fprintf(stderr, "gao che: %v\n", err)
+				fmt.Fprintf(stderr, "gao cover: %v\n", err)
 				return 1
 			}
 			continue
 		}
 		texts, err := readDocuments(name)
 		if err != nil {
-			fmt.Fprintf(stderr, "gao che: %v\n", err)
+			fmt.Fprintf(stderr, "gao cover: %v\n", err)
 			return 1
 		}
 		for i, text := range texts {
@@ -140,7 +140,7 @@ flags:
 func runCheRecall(stdout, stderr io.Writer, asJSON bool) int {
 	set, err := che.Labeled()
 	if err != nil {
-		fmt.Fprintf(stderr, "gao che: %v\n", err)
+		fmt.Fprintf(stderr, "gao cover: %v\n", err)
 		return 1
 	}
 	s := che.Measure(set)

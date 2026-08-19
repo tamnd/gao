@@ -13,12 +13,12 @@ import (
 )
 
 func runChia(stdout, stderr io.Writer, args []string) int {
-	fs := flag.NewFlagSet("chia", flag.ContinueOnError)
+	fs := flag.NewFlagSet("route", flag.ContinueOnError)
 	fs.SetOutput(stderr)
 	long := fs.Bool("why", false, "print the reason and the measurements for each document")
 	box := fs.String("box", "", "the box this ran on, defaulting to the one it is running on")
 	fs.Usage = func() {
-		fmt.Fprint(stderr, `usage: gao chia [-why] [-box name] file.pdf...
+		fmt.Fprint(stderr, `usage: gao route [-why] [-box name] file.pdf...
 
 Divides PDFs three ways before any of them is extracted: T for a born digital
 text layer, L for a text layer in a legacy Vietnamese font encoding, and O for a
@@ -56,7 +56,7 @@ flags:
 	for _, name := range fs.Args() {
 		b, err := os.ReadFile(name)
 		if err != nil {
-			fmt.Fprintf(stderr, "gao chia: %v\n", err)
+			fmt.Fprintf(stderr, "gao route: %v\n", err)
 			failed = true
 			continue
 		}

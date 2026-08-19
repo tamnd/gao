@@ -18,7 +18,7 @@
 //
 // The second is that the answer sits in one span. A question whose answer is a
 // contiguous stretch of the document is a retrieval question, and retrieval in a
-// long context is what gao kim already measures with a needle. A long document
+// long context is what gao needle already measures with a needle. A long document
 // question has to need more than one place in the document, which means the
 // spans are part of the record and the count of them is checked. Two spans a
 // paragraph apart are still one span for this purpose, so the spread between the
@@ -65,7 +65,7 @@ const MinRung = 0.20
 const MinTokens = 32_000
 
 // MinSpans is how many places in the document the answer has to need. One is
-// retrieval and gao kim measures retrieval.
+// retrieval and gao needle measures retrieval.
 const MinSpans = 2
 
 // MinReach is how much of the document has to sit between the first span the

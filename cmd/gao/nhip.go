@@ -11,13 +11,13 @@ import (
 )
 
 func runNhip(stdout, stderr io.Writer, args []string) int {
-	fs := flag.NewFlagSet("nhip", flag.ContinueOnError)
+	fs := flag.NewFlagSet("throughput", flag.ContinueOnError)
 	fs.SetOutput(stderr)
 	asJSON := fs.Bool("json", false, "print JSON")
 	docs := fs.Int64("docs", nhip.Corpus, "how many documents the pipeline is costed over, which every hours figure is linear in")
 	counted := fs.Bool("counted", false, "the document count came off an ingest rather than off the plan estimate")
 	fs.Usage = func() {
-		fmt.Fprint(stderr, `usage: gao nhip [-docs N] [-counted] [-json] stages.jsonl
+		fmt.Fprint(stderr, `usage: gao throughput [-docs N] [-counted] [-json] stages.jsonl
 
 The beat: what each pipeline stage runs at, with the box on every number.
 
@@ -60,7 +60,7 @@ flags:
 
 	p, err := nhip.ReadPipeline(*docs, *counted, fs.Arg(0))
 	if err != nil {
-		fmt.Fprintf(stderr, "gao nhip: %v\n", err)
+		fmt.Fprintf(stderr, "gao throughput: %v\n", err)
 		return 1
 	}
 

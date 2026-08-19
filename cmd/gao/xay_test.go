@@ -54,7 +54,7 @@ func TestXayCountsTheCopiesAndTheDocumentsLeft(t *testing.T) {
 
 	var stdout, stderr bytes.Buffer
 	if code := runXay(&stdout, &stderr, append([]string{"-json"}, files...)); code != 0 {
-		t.Fatalf("gao xay -json = %d, want 0\n%s", code, stderr.String())
+		t.Fatalf("gao mill -json = %d, want 0\n%s", code, stderr.String())
 	}
 	var got xayRun
 	if err := json.Unmarshal(stdout.Bytes(), &got); err != nil {
@@ -82,7 +82,7 @@ func TestXaySaysWhatItRanAt(t *testing.T) {
 
 	var stdout, stderr bytes.Buffer
 	if code := runXay(&stdout, &stderr, files); code != 0 {
-		t.Fatalf("gao xay = %d, want 0\n%s", code, stderr.String())
+		t.Fatalf("gao mill = %d, want 0\n%s", code, stderr.String())
 	}
 	out := stdout.String()
 	for _, want := range []string{"documents", "exact", "near", "kept", "retention", "clusters"} {
@@ -131,7 +131,7 @@ func TestXayReadsAParquetPart(t *testing.T) {
 
 	var stdout, stderr bytes.Buffer
 	if code := runXay(&stdout, &stderr, []string{"-json", filepath.Join(dir, file.Path)}); code != 0 {
-		t.Fatalf("gao xay PART = %d, want 0\n%s", code, stderr.String())
+		t.Fatalf("gao mill PART = %d, want 0\n%s", code, stderr.String())
 	}
 	var got xayRun
 	if err := json.Unmarshal(stdout.Bytes(), &got); err != nil {
@@ -160,7 +160,7 @@ func TestXayPrintsTheAblationCurve(t *testing.T) {
 
 	var stdout, stderr bytes.Buffer
 	if code := runXay(&stdout, &stderr, append([]string{"-curve", "-json"}, files...)); code != 0 {
-		t.Fatalf("gao xay -curve = %d, want 0\n%s", code, stderr.String())
+		t.Fatalf("gao mill -curve = %d, want 0\n%s", code, stderr.String())
 	}
 	var got xayCurve
 	if err := json.Unmarshal(stdout.Bytes(), &got); err != nil {
@@ -192,7 +192,7 @@ func TestXayPrintsTheCurveAsATable(t *testing.T) {
 
 	var stdout, stderr bytes.Buffer
 	if code := runXay(&stdout, &stderr, append([]string{"-curve"}, files...)); code != 0 {
-		t.Fatalf("gao xay -curve = %d, want 0\n%s", code, stderr.String())
+		t.Fatalf("gao mill -curve = %d, want 0\n%s", code, stderr.String())
 	}
 	out := stdout.String()
 	for _, want := range []string{"threshold", "0.50", "0.95", "retention"} {
@@ -210,7 +210,7 @@ func TestXayRefusesAThresholdThatIsNotASimilarity(t *testing.T) {
 	for _, bad := range []string{"-threshold=70", "-threshold=-0.1"} {
 		var stdout, stderr bytes.Buffer
 		if code := runXay(&stdout, &stderr, []string{bad, path}); code != 2 {
-			t.Errorf("gao xay %s = %d, want 2", bad, code)
+			t.Errorf("gao mill %s = %d, want 2", bad, code)
 		}
 		if !strings.Contains(stderr.String(), "between 0 and 1") {
 			t.Errorf("the error for %s does not say what a threshold is: %q", bad, stderr.String())
@@ -221,7 +221,7 @@ func TestXayRefusesAThresholdThatIsNotASimilarity(t *testing.T) {
 func TestXaySaysWhenItWasGivenNothingToRead(t *testing.T) {
 	var stdout, stderr bytes.Buffer
 	if code := runXay(&stdout, &stderr, nil); code != 2 {
-		t.Fatalf("gao xay with no files = %d, want 2", code)
+		t.Fatalf("gao mill with no files = %d, want 2", code)
 	}
 	if !strings.Contains(stderr.String(), "parquet parts or text files") {
 		t.Errorf("the error does not say what it wants: %q", stderr.String())
@@ -231,7 +231,7 @@ func TestXaySaysWhenItWasGivenNothingToRead(t *testing.T) {
 func TestXaySaysWhichFileItCouldNotRead(t *testing.T) {
 	var stdout, stderr bytes.Buffer
 	if code := runXay(&stdout, &stderr, []string{filepath.Join(t.TempDir(), "gone.txt")}); code != 1 {
-		t.Fatalf("gao xay = %d, want 1", code)
+		t.Fatalf("gao mill = %d, want 1", code)
 	}
 	if !strings.Contains(stderr.String(), "gone.txt") {
 		t.Errorf("the error does not name the file: %q", stderr.String())

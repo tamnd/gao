@@ -10,11 +10,11 @@ import (
 )
 
 func runSo(stdout, stderr io.Writer, args []string) int {
-	fs := flag.NewFlagSet("so", flag.ContinueOnError)
+	fs := flag.NewFlagSet("compare", flag.ContinueOnError)
 	fs.SetOutput(stderr)
 	asJSON := fs.Bool("json", false, "print JSON")
 	fs.Usage = func() {
-		fmt.Fprint(stderr, `usage: gao so [-json] pairs.jsonl
+		fmt.Fprint(stderr, `usage: gao compare [-json] pairs.jsonl
 
 Read a human evaluation back and say whether the raters were reading the answers
 or reading the layout.
@@ -53,7 +53,7 @@ flags:
 
 	pairs, err := so.ReadPairs(fs.Arg(0))
 	if err != nil {
-		fmt.Fprintf(stderr, "gao so: %v\n", err)
+		fmt.Fprintf(stderr, "gao compare: %v\n", err)
 		return 1
 	}
 

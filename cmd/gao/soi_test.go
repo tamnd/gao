@@ -28,7 +28,7 @@ func TestSoiReportsBothRates(t *testing.T) {
 
 	var stdout, stderr bytes.Buffer
 	if code := runSoi(&stdout, &stderr, []string{page, read}); code != 0 {
-		t.Fatalf("gao soi = %d, want 0\n%s", code, stderr.String())
+		t.Fatalf("gao inspect = %d, want 0\n%s", code, stderr.String())
 	}
 	out := stdout.String()
 	for _, want := range []string{"cer", "der", "tone lost", "đ and d"} {
@@ -51,7 +51,7 @@ func TestSoiGateFailsALossyReading(t *testing.T) {
 
 	var stdout, stderr bytes.Buffer
 	if code := runSoi(&stdout, &stderr, []string{"-gate", page, bad}); code != 1 {
-		t.Fatalf("gao soi -gate on a reading with no marks = %d, want 1", code)
+		t.Fatalf("gao inspect -gate on a reading with no marks = %d, want 1", code)
 	}
 	if !strings.Contains(stderr.String(), "diacritic error rate") {
 		t.Errorf("the failure does not name the rate that failed:\n%s", stderr.String())
@@ -60,7 +60,7 @@ func TestSoiGateFailsALossyReading(t *testing.T) {
 	stdout.Reset()
 	stderr.Reset()
 	if code := runSoi(&stdout, &stderr, []string{"-gate", page, good}); code != 0 {
-		t.Fatalf("gao soi -gate on a perfect reading = %d, want 0\n%s", code, stderr.String())
+		t.Fatalf("gao inspect -gate on a perfect reading = %d, want 0\n%s", code, stderr.String())
 	}
 
 	// Without -gate the numbers still print and the command still succeeds,
@@ -68,7 +68,7 @@ func TestSoiGateFailsALossyReading(t *testing.T) {
 	stdout.Reset()
 	stderr.Reset()
 	if code := runSoi(&stdout, &stderr, []string{page, bad}); code != 0 {
-		t.Fatalf("gao soi without -gate on a bad reading = %d, want 0\n%s", code, stderr.String())
+		t.Fatalf("gao inspect without -gate on a bad reading = %d, want 0\n%s", code, stderr.String())
 	}
 }
 
@@ -81,7 +81,7 @@ func TestSoiPrintsTheToneConfusionMatrix(t *testing.T) {
 
 	var stdout, stderr bytes.Buffer
 	if code := runSoi(&stdout, &stderr, []string{"-matrix", page, read}); code != 0 {
-		t.Fatalf("gao soi -matrix = %d, want 0\n%s", code, stderr.String())
+		t.Fatalf("gao inspect -matrix = %d, want 0\n%s", code, stderr.String())
 	}
 	out := stdout.String()
 	for _, tone := range []string{"ngang", "huyền", "sắc", "hỏi", "ngã", "nặng"} {
@@ -96,7 +96,7 @@ func TestSoiPrintsTheToneConfusionMatrix(t *testing.T) {
 	// ngã read as hỏi, which is the one thing that changed.
 	var stdoutNoMatrix bytes.Buffer
 	if code := runSoi(&stdoutNoMatrix, &stderr, []string{page, read}); code != 0 {
-		t.Fatalf("gao soi = %d", code)
+		t.Fatalf("gao inspect = %d", code)
 	}
 	if strings.Contains(stdoutNoMatrix.String(), "rows are the page") {
 		t.Errorf("the matrix printed without -matrix:\n%s", stdoutNoMatrix.String())
@@ -114,7 +114,7 @@ func TestSoiScoresASetAsOneNumber(t *testing.T) {
 
 	var stdout, stderr bytes.Buffer
 	if code := runSoi(&stdout, &stderr, []string{"-json", one, oneRead, two, twoRead}); code != 0 {
-		t.Fatalf("gao soi -json = %d, want 0\n%s", code, stderr.String())
+		t.Fatalf("gao inspect -json = %d, want 0\n%s", code, stderr.String())
 	}
 
 	var got struct {
@@ -170,7 +170,7 @@ func TestSoiWantsPairs(t *testing.T) {
 	} {
 		var stdout, stderr bytes.Buffer
 		if code := runSoi(&stdout, &stderr, args); code != 2 {
-			t.Errorf("gao soi with %d files = %d, want 2", len(args), code)
+			t.Errorf("gao inspect with %d files = %d, want 2", len(args), code)
 		}
 		if !strings.Contains(stderr.String(), "pairs") {
 			t.Errorf("the error does not say the files are read as pairs:\n%s", stderr.String())
@@ -179,10 +179,10 @@ func TestSoiWantsPairs(t *testing.T) {
 
 	var stdout, stderr bytes.Buffer
 	if code := runSoi(&stdout, &stderr, nil); code != 2 {
-		t.Errorf("gao soi with no files = %d, want 2", code)
+		t.Errorf("gao inspect with no files = %d, want 2", code)
 	}
 	if !strings.Contains(stderr.String(), "usage:") {
-		t.Errorf("gao soi with no files does not print its usage:\n%s", stderr.String())
+		t.Errorf("gao inspect with no files does not print its usage:\n%s", stderr.String())
 	}
 }
 
@@ -194,9 +194,9 @@ func TestSoiOnAFileThatIsNotThere(t *testing.T) {
 
 	var stdout, stderr bytes.Buffer
 	if code := runSoi(&stdout, &stderr, []string{page, dir + "/nowhere.txt"}); code != 1 {
-		t.Fatalf("gao soi on a missing reading = %d, want 1", code)
+		t.Fatalf("gao inspect on a missing reading = %d, want 1", code)
 	}
-	if !strings.Contains(stderr.String(), "gao soi:") {
+	if !strings.Contains(stderr.String(), "gao inspect:") {
 		t.Errorf("the error is not named:\n%s", stderr.String())
 	}
 }
@@ -211,7 +211,7 @@ func TestSoiSeparatesTheDamageThatShowsFromTheDamageThatDoesNot(t *testing.T) {
 
 	var stdout, stderr bytes.Buffer
 	if code := runSoi(&stdout, &stderr, []string{page, tonesOnly}); code != 0 {
-		t.Fatalf("gao soi = %d, want 0\n%s", code, stderr.String())
+		t.Fatalf("gao inspect = %d, want 0\n%s", code, stderr.String())
 	}
 	out := stdout.String()
 	if !strings.Contains(out, "of the characters came through as themselves, and") {

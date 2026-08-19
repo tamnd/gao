@@ -25,15 +25,15 @@ func runDon(stdout, stderr io.Writer, args []string) int {
 		donUsage(stdout)
 		return 0
 	default:
-		fmt.Fprintf(stderr, "gao don: no subcommand named %s\n\n", args[0])
+		fmt.Fprintf(stderr, "gao clear: no subcommand named %s\n\n", args[0])
 		donUsage(stderr)
 		return 2
 	}
 }
 
 func donUsage(w io.Writer) {
-	fmt.Fprint(w, `usage: gao don fit  [-uplink BYTES] [-fetches N] [-confirm DURATION] [-json]
-       gao don read rotation.jsonl [-json]
+	fmt.Fprint(w, `usage: gao clear fit  [-uplink BYTES] [-fetches N] [-confirm DURATION] [-json]
+       gao clear read rotation.jsonl [-json]
 
 Clear away: whether the bytes leave the box faster than they arrive on it.
 
@@ -64,7 +64,7 @@ flags:
 func runDonFit(stdout, stderr io.Writer, args []string) int {
 	r := don.Target()
 
-	fs := flag.NewFlagSet("don fit", flag.ContinueOnError)
+	fs := flag.NewFlagSet("clear fit", flag.ContinueOnError)
 	fs.SetOutput(stderr)
 	asJSON := fs.Bool("json", false, "print JSON")
 	box := fs.String("box", r.Box.Name, "the box the rotation runs on")
@@ -84,7 +84,7 @@ func runDonFit(stdout, stderr io.Writer, args []string) int {
 
 	b, ok := may.Lookup(*box)
 	if !ok {
-		fmt.Fprintf(stderr, "gao don: %s is not on the fleet inventory\n", *box)
+		fmt.Fprintf(stderr, "gao clear: %s is not on the fleet inventory\n", *box)
 		return 2
 	}
 	r.Box, r.Uplink, r.Fetches, r.Record, r.Volume, r.Confirm = b, *uplink, *fetches, *record, *volume, *confirm
@@ -169,7 +169,7 @@ func printDonFit(w io.Writer, r don.Rotation) {
 }
 
 func runDonRead(stdout, stderr io.Writer, args []string) int {
-	fs := flag.NewFlagSet("don read", flag.ContinueOnError)
+	fs := flag.NewFlagSet("clear read", flag.ContinueOnError)
 	fs.SetOutput(stderr)
 	asJSON := fs.Bool("json", false, "print JSON")
 	files := fs.Bool("files", false, "print every file rather than the totals")
@@ -184,7 +184,7 @@ func runDonRead(stdout, stderr io.Writer, args []string) int {
 
 	events, err := don.ReadLog(fs.Arg(0))
 	if err != nil {
-		fmt.Fprintf(stderr, "gao don: %v\n", err)
+		fmt.Fprintf(stderr, "gao clear: %v\n", err)
 		return 1
 	}
 	l := don.Read(events)

@@ -9,7 +9,7 @@ import (
 	"time"
 )
 
-// xoaRun runs a gao xoa command against a register written for the test, and
+// xoaRun runs a gao takedown command against a register written for the test, and
 // pins the clock, because a report about response times that changes answer
 // depending on the day the tests run is a report that gets ignored.
 func xoaRun(t *testing.T, register string, args ...string) (string, string, int) {
@@ -180,7 +180,7 @@ func TestXoaURLLeavesAStrangerAlone(t *testing.T) {
 
 func TestXoaURLWantsAURL(t *testing.T) {
 	if _, _, code := xoaRun(t, filed, "url"); code != 2 {
-		t.Errorf("gao xoa url with nothing to check exited %d", code)
+		t.Errorf("gao takedown url with nothing to check exited %d", code)
 	}
 }
 
@@ -198,10 +198,10 @@ func TestXoaOnARegisterThatIsNotThere(t *testing.T) {
 func TestXoaIsInTheCommandList(t *testing.T) {
 	var stdout, stderr bytes.Buffer
 	if code := run(&stdout, &stderr, []string{"xoa"}); code != 2 {
-		t.Errorf("gao xoa with no subcommand exited %d", code)
+		t.Errorf("gao takedown with no subcommand exited %d", code)
 	}
 	if !strings.Contains(stderr.String(), "status") {
-		t.Errorf("gao xoa did not print its subcommands:\n%s", stderr.String())
+		t.Errorf("gao takedown did not print its subcommands:\n%s", stderr.String())
 	}
 
 	stdout.Reset()

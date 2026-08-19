@@ -14,7 +14,7 @@ import (
 )
 
 func runXay(stdout, stderr io.Writer, args []string) int {
-	fs := flag.NewFlagSet("xay", flag.ContinueOnError)
+	fs := flag.NewFlagSet("mill", flag.ContinueOnError)
 	fs.SetOutput(stderr)
 	threshold := fs.Float64("threshold", xay.DefaultThreshold, "the similarity at which two documents are copies of each other")
 	curve := fs.Bool("curve", false, "print what every threshold would retain instead of what one of them does")
@@ -24,10 +24,10 @@ func runXay(stdout, stderr io.Writer, args []string) int {
 	hosts := fs.Int("hosts", 20, "with -boiler, how many hosts to print")
 	asJSON := fs.Bool("json", false, "print JSON")
 	fs.Usage = func() {
-		fmt.Fprint(stderr, `usage: gao xay [-threshold t] [-curve] [-json] file...
-       gao xay -overlap [-threshold t] [-json] part...
-       gao xay -boiler [-hosts n] [-json] part...
-       gao xay -choose runs.json [-json]
+		fmt.Fprint(stderr, `usage: gao mill [-threshold t] [-curve] [-json] file...
+       gao mill -overlap [-threshold t] [-json] part...
+       gao mill -boiler [-hosts n] [-json] part...
+       gao mill -choose runs.json [-json]
 
 Find the documents a corpus holds more than one copy of. A file is either a
 parquet part written by the ingest, in which case every row in it is a document,
@@ -71,7 +71,7 @@ flags:
 		return 2
 	}
 	if *threshold < 0 || *threshold > 1 {
-		fmt.Fprintf(stderr, "gao xay: a threshold is a similarity between 0 and 1, not %v\n", *threshold)
+		fmt.Fprintf(stderr, "gao mill: a threshold is a similarity between 0 and 1, not %v\n", *threshold)
 		return 2
 	}
 	modes := 0
@@ -81,19 +81,19 @@ flags:
 		}
 	}
 	if modes > 1 {
-		fmt.Fprintln(stderr, "gao xay: -curve, -overlap, -boiler and -choose are four different measurements. Run one of them")
+		fmt.Fprintln(stderr, "gao mill: -curve, -overlap, -boiler and -choose are four different measurements. Run one of them")
 		return 2
 	}
 	if *choose != "" {
 		return runChoose(stdout, stderr, *choose, *asJSON)
 	}
 	if *hosts < 1 {
-		fmt.Fprintf(stderr, "gao xay: -hosts is how many hosts to print, so it is at least 1, not %d\n", *hosts)
+		fmt.Fprintf(stderr, "gao mill: -hosts is how many hosts to print, so it is at least 1, not %d\n", *hosts)
 		return 2
 	}
 	files := fs.Args()
 	if len(files) == 0 {
-		fmt.Fprintln(stderr, "gao xay: nothing to read. Give it parquet parts or text files")
+		fmt.Fprintln(stderr, "gao mill: nothing to read. Give it parquet parts or text files")
 		return 2
 	}
 	if *boiler {
@@ -109,12 +109,12 @@ flags:
 	}
 	index, err := xay.New(banding)
 	if err != nil {
-		fmt.Fprintf(stderr, "gao xay: %v\n", err)
+		fmt.Fprintf(stderr, "gao mill: %v\n", err)
 		return 1
 	}
 	for _, name := range files {
 		if err := readInto(index, name); err != nil {
-			fmt.Fprintf(stderr, "gao xay: %v\n", err)
+			fmt.Fprintf(stderr, "gao mill: %v\n", err)
 			return 1
 		}
 	}
@@ -147,18 +147,18 @@ func runOverlap(stdout, stderr io.Writer, files []string, threshold float64, asJ
 	// measured at the operating banding understates itself quietly.
 	o, err := xay.NewOverlap(xay.Wide())
 	if err != nil {
-		fmt.Fprintf(stderr, "gao xay: %v\n", err)
+		fmt.Fprintf(stderr, "gao mill: %v\n", err)
 		return 1
 	}
 	for _, name := range files {
 		if filepath.Ext(name) != ".parquet" {
 			text, err := os.ReadFile(name)
 			if err != nil {
-				fmt.Fprintf(stderr, "gao xay: %v\n", err)
+				fmt.Fprintf(stderr, "gao mill: %v\n", err)
 				return 1
 			}
 			if _, err := o.Add(filepath.Base(name), string(text)); err != nil {
-				fmt.Fprintf(stderr, "gao xay: %v\n", err)
+				fmt.Fprintf(stderr, "gao mill: %v\n", err)
 				return 1
 			}
 			continue
@@ -172,7 +172,7 @@ func runOverlap(stdout, stderr io.Writer, files []string, threshold float64, asJ
 			return err
 		})
 		if err != nil {
-			fmt.Fprintf(stderr, "gao xay: %v\n", err)
+			fmt.Fprintf(stderr, "gao mill: %v\n", err)
 			return 1
 		}
 	}
@@ -193,21 +193,21 @@ func runOverlap(stdout, stderr io.Writer, files []string, threshold float64, asJ
 func runChoose(stdout, stderr io.Writer, path string, asJSON bool) int {
 	b, err := os.ReadFile(path)
 	if err != nil {
-		fmt.Fprintf(stderr, "gao xay: %v\n", err)
+		fmt.Fprintf(stderr, "gao mill: %v\n", err)
 		return 1
 	}
 	var runs []xay.Ablation
 	if err := json.Unmarshal(b, &runs); err != nil {
-		fmt.Fprintf(stderr, "gao xay: %s: %v\n", path, err)
+		fmt.Fprintf(stderr, "gao mill: %s: %v\n", path, err)
 		return 1
 	}
 	c, err := xay.Choose(runs)
 	if err != nil {
 		for _, problem := range xay.CheckAblations(runs) {
-			fmt.Fprintf(stderr, "gao xay: %s\n", problem)
+			fmt.Fprintf(stderr, "gao mill: %s\n", problem)
 		}
 		if len(runs) == 0 {
-			fmt.Fprintf(stderr, "gao xay: %v\n", err)
+			fmt.Fprintf(stderr, "gao mill: %v\n", err)
 		}
 		return 1
 	}
@@ -228,7 +228,7 @@ func runChoose(stdout, stderr io.Writer, path string, asJSON bool) int {
 func runBoiler(stdout, stderr io.Writer, files []string, hosts int, asJSON bool) int {
 	for _, name := range files {
 		if filepath.Ext(name) != ".parquet" {
-			fmt.Fprintf(stderr, "gao xay: %s is not a part, and boilerplate is found per host, which a text file does not carry\n", name)
+			fmt.Fprintf(stderr, "gao mill: %s is not a part, and boilerplate is found per host, which a text file does not carry\n", name)
 			return 2
 		}
 	}
@@ -239,7 +239,7 @@ func runBoiler(stdout, stderr io.Writer, files []string, hosts int, asJSON bool)
 			b.Count(r.Host, r.Text)
 			return nil
 		}); err != nil {
-			fmt.Fprintf(stderr, "gao xay: %v\n", err)
+			fmt.Fprintf(stderr, "gao mill: %v\n", err)
 			return 1
 		}
 	}
@@ -256,7 +256,7 @@ func runBoiler(stdout, stderr io.Writer, files []string, hosts int, asJSON bool)
 			}
 			return nil
 		}); err != nil {
-			fmt.Fprintf(stderr, "gao xay: %v\n", err)
+			fmt.Fprintf(stderr, "gao mill: %v\n", err)
 			return 1
 		}
 	}

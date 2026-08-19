@@ -11,12 +11,12 @@ import (
 )
 
 func runCho(stdout, stderr io.Writer, args []string) int {
-	fs := flag.NewFlagSet("cho", flag.ContinueOnError)
+	fs := flag.NewFlagSet("wait", flag.ContinueOnError)
 	fs.SetOutput(stderr)
 	asJSON := fs.Bool("json", false, "print JSON")
 	crawl := fs.String("crawl", "gao-crawl-2026-09", "the crawl the readings were taken off")
 	fs.Usage = func() {
-		fmt.Fprint(stderr, `usage: gao cho [-crawl NAME] [-json] hosts.jsonl
+		fmt.Fprint(stderr, `usage: gao wait [-crawl NAME] [-json] hosts.jsonl
 
 To wait: what the crawl actually left between requests to one host.
 
@@ -56,7 +56,7 @@ flags:
 
 	r, err := cho.ReadRun(*crawl, fs.Arg(0))
 	if err != nil {
-		fmt.Fprintf(stderr, "gao cho: %v\n", err)
+		fmt.Fprintf(stderr, "gao wait: %v\n", err)
 		return 1
 	}
 

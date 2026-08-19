@@ -127,7 +127,7 @@ func TestIngestionFitsServer1sBudget(t *testing.T) {
 //
 // server3 fetched three GlotCC files of about 2.1 GB each on 2026-08-18,
 // decoded each one to Parquet, pushed the twelve parts and deleted them. The
-// trace 'gao gat hf -watch' wrote peaked at 0.5 GB, which is one part in flight
+// trace 'gao harvest hf -watch' wrote peaked at 0.5 GB, which is one part in flight
 // and not one file. So the arithmetic here overstates what a streaming stage holds:
 // PeakBytes says two 512 MB shards per worker and the run held closer to one.
 //

@@ -55,7 +55,7 @@ func TestSangKeepsTheArticleAndSaysWhyItDroppedTheRest(t *testing.T) {
 
 	var stdout, stderr bytes.Buffer
 	if code := runSang(&stdout, &stderr, append([]string{"-json"}, files...)); code != 0 {
-		t.Fatalf("gao sang -json = %d, want 0\n%s", code, stderr.String())
+		t.Fatalf("gao sift -json = %d, want 0\n%s", code, stderr.String())
 	}
 	var got sangReport
 	if err := json.Unmarshal(stdout.Bytes(), &got); err != nil {
@@ -83,7 +83,7 @@ func TestSangSaysWhichNumberDroppedEachDocument(t *testing.T) {
 
 	var stdout, stderr bytes.Buffer
 	if code := runSang(&stdout, &stderr, append([]string{"-json"}, files...)); code != 0 {
-		t.Fatalf("gao sang = %d, want 0\n%s", code, stderr.String())
+		t.Fatalf("gao sift = %d, want 0\n%s", code, stderr.String())
 	}
 	var got sangReport
 	if err := json.Unmarshal(stdout.Bytes(), &got); err != nil {
@@ -113,7 +113,7 @@ func TestSangPutsTheMeasurementsOnTheRow(t *testing.T) {
 
 	var stdout, stderr bytes.Buffer
 	if code := runSang(&stdout, &stderr, []string{"-json", path}); code != 0 {
-		t.Fatalf("gao sang = %d, want 0\n%s", code, stderr.String())
+		t.Fatalf("gao sift = %d, want 0\n%s", code, stderr.String())
 	}
 	var got sangReport
 	if err := json.Unmarshal(stdout.Bytes(), &got); err != nil {
@@ -145,7 +145,7 @@ func TestSangFilesAnotherLanguageUnderLanguage(t *testing.T) {
 
 	var stdout, stderr bytes.Buffer
 	if code := runSang(&stdout, &stderr, []string{"-json", path}); code != 0 {
-		t.Fatalf("gao sang = %d, want 0\n%s", code, stderr.String())
+		t.Fatalf("gao sift = %d, want 0\n%s", code, stderr.String())
 	}
 	var got sangReport
 	if err := json.Unmarshal(stdout.Bytes(), &got); err != nil {
@@ -172,7 +172,7 @@ func TestSangPutsTheLanguageSharesOnTheRow(t *testing.T) {
 
 	var stdout, stderr bytes.Buffer
 	if code := runSang(&stdout, &stderr, append([]string{"-json"}, files...)); code != 0 {
-		t.Fatalf("gao sang = %d, want 0\n%s", code, stderr.String())
+		t.Fatalf("gao sift = %d, want 0\n%s", code, stderr.String())
 	}
 	var got sangReport
 	if err := json.Unmarshal(stdout.Bytes(), &got); err != nil {
@@ -228,7 +228,7 @@ func TestSangReadsAParquetPart(t *testing.T) {
 
 	var stdout, stderr bytes.Buffer
 	if code := runSang(&stdout, &stderr, []string{"-json", filepath.Join(dir, file.Path)}); code != 0 {
-		t.Fatalf("gao sang PART = %d, want 0\n%s", code, stderr.String())
+		t.Fatalf("gao sift PART = %d, want 0\n%s", code, stderr.String())
 	}
 	var got sangReport
 	if err := json.Unmarshal(stdout.Bytes(), &got); err != nil {
@@ -261,7 +261,7 @@ func TestSangPrintsTheMeasurementsAsATable(t *testing.T) {
 
 	var stdout, stderr bytes.Buffer
 	if code := runSang(&stdout, &stderr, files); code != 0 {
-		t.Fatalf("gao sang = %d, want 0\n%s", code, stderr.String())
+		t.Fatalf("gao sift = %d, want 0\n%s", code, stderr.String())
 	}
 	out := stdout.String()
 	for _, want := range []string{"syllables", "mean", "vietnamese", "diacritics", "boilerplate", "next stage"} {
@@ -278,7 +278,7 @@ func TestSangLetsTheLengthFloorBeMoved(t *testing.T) {
 
 	var stdout, stderr bytes.Buffer
 	if code := runSang(&stdout, &stderr, []string{"-json", path}); code != 0 {
-		t.Fatalf("gao sang = %d, want 0\n%s", code, stderr.String())
+		t.Fatalf("gao sift = %d, want 0\n%s", code, stderr.String())
 	}
 	var atDefault sangReport
 	if err := json.Unmarshal(stdout.Bytes(), &atDefault); err != nil {
@@ -291,7 +291,7 @@ func TestSangLetsTheLengthFloorBeMoved(t *testing.T) {
 	stdout.Reset()
 	stderr.Reset()
 	if code := runSang(&stdout, &stderr, []string{"-min-syllables=5", "-json", path}); code != 0 {
-		t.Fatalf("gao sang -min-syllables=5 = %d, want 0\n%s", code, stderr.String())
+		t.Fatalf("gao sift -min-syllables=5 = %d, want 0\n%s", code, stderr.String())
 	}
 	var lowered sangReport
 	if err := json.Unmarshal(stdout.Bytes(), &lowered); err != nil {
@@ -307,7 +307,7 @@ func TestSangRefusesALengthFloorThatIsNotALength(t *testing.T) {
 
 	var stdout, stderr bytes.Buffer
 	if code := runSang(&stdout, &stderr, []string{"-min-syllables=-1", path}); code != 2 {
-		t.Fatalf("gao sang -min-syllables=-1 = %d, want 2", code)
+		t.Fatalf("gao sift -min-syllables=-1 = %d, want 2", code)
 	}
 	if !strings.Contains(stderr.String(), "shorter than no syllables") {
 		t.Errorf("the error does not say what is wrong with it: %q", stderr.String())
@@ -317,7 +317,7 @@ func TestSangRefusesALengthFloorThatIsNotALength(t *testing.T) {
 func TestSangSaysWhenItWasGivenNothingToRead(t *testing.T) {
 	var stdout, stderr bytes.Buffer
 	if code := runSang(&stdout, &stderr, nil); code != 2 {
-		t.Fatalf("gao sang with no files = %d, want 2", code)
+		t.Fatalf("gao sift with no files = %d, want 2", code)
 	}
 	if !strings.Contains(stderr.String(), "parquet parts or text files") {
 		t.Errorf("the error does not say what it wants: %q", stderr.String())
@@ -327,7 +327,7 @@ func TestSangSaysWhenItWasGivenNothingToRead(t *testing.T) {
 func TestSangSaysWhichFileItCouldNotRead(t *testing.T) {
 	var stdout, stderr bytes.Buffer
 	if code := runSang(&stdout, &stderr, []string{filepath.Join(t.TempDir(), "gone.txt")}); code != 1 {
-		t.Fatalf("gao sang = %d, want 1", code)
+		t.Fatalf("gao sift = %d, want 1", code)
 	}
 	if !strings.Contains(stderr.String(), "gone.txt") {
 		t.Errorf("the error does not name the file: %q", stderr.String())

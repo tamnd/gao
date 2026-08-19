@@ -110,7 +110,7 @@ type Peak struct {
 	// different numbers and this command spent its first three real traces
 	// printing one under the name of the other. [PeakBytes] prices a box running
 	// every worker it has threads for, which is what the fleet plan hands out.
-	// A run holds what its own workers hold. gao gat hf ingests with one worker,
+	// A run holds what its own workers hold. gao harvest hf ingests with one worker,
 	// so a complete FinePDFs run on a 32 thread box measured 0.6 GB against a
 	// PeakBytes of 32.8 and was reported as a smaller run than the ceiling is
 	// about, when what it was is a full run of a single worker stage.

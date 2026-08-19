@@ -29,13 +29,13 @@ func runChot(stdout, stderr io.Writer, args []string) int {
 		chotUsage(stdout)
 		return 0
 	}
-	fmt.Fprintf(stderr, "gao chot: unknown subcommand %q\n", args[0])
+	fmt.Fprintf(stderr, "gao seal: unknown subcommand %q\n", args[0])
 	chotUsage(stderr)
 	return 2
 }
 
 func chotUsage(w io.Writer) {
-	fmt.Fprint(w, `usage: gao chot <harness | digest | audit> [flags]
+	fmt.Fprint(w, `usage: gao seal <harness | digest | audit> [flags]
 
 The evaluation harness, closed before any result exists.
 
@@ -55,18 +55,18 @@ subcommands:
   digest    print the digest every result has to carry
   audit     check a set of results against the harness they claim to come from
 
-run 'gao chot <subcommand> -h' for the flags of one.
+run 'gao seal <subcommand> -h' for the flags of one.
 `)
 }
 
 func runChotHarness(stdout, stderr io.Writer, args []string) int {
-	fs := flag.NewFlagSet("chot harness", flag.ContinueOnError)
+	fs := flag.NewFlagSet("seal harness", flag.ContinueOnError)
 	fs.SetOutput(stderr)
 	asJSON := fs.Bool("json", false, "print JSON")
 	prompts := fs.Bool("prompts", false, "print each task's prompt, which is part of the measurement")
 	path := fs.String("harness", "", "read the harness from a file instead of the one in the repository")
 	fs.Usage = func() {
-		fmt.Fprint(stderr, "usage: gao chot harness [-prompts] [-json] [-harness file]\n\nPrints the closed harness.\n\nflags:\n")
+		fmt.Fprint(stderr, "usage: gao seal harness [-prompts] [-json] [-harness file]\n\nPrints the closed harness.\n\nflags:\n")
 		fs.PrintDefaults()
 	}
 	if err := fs.Parse(args); err != nil {
@@ -79,7 +79,7 @@ func runChotHarness(stdout, stderr io.Writer, args []string) int {
 	}
 	roster, err := nhat.Rostered()
 	if err != nil {
-		fmt.Fprintf(stderr, "gao chot: %v\n", err)
+		fmt.Fprintf(stderr, "gao seal: %v\n", err)
 		return 1
 	}
 
@@ -138,11 +138,11 @@ func runChotHarness(stdout, stderr io.Writer, args []string) int {
 }
 
 func runChotDigest(stdout, stderr io.Writer, args []string) int {
-	fs := flag.NewFlagSet("chot digest", flag.ContinueOnError)
+	fs := flag.NewFlagSet("seal digest", flag.ContinueOnError)
 	fs.SetOutput(stderr)
 	path := fs.String("harness", "", "read the harness from a file instead of the one in the repository")
 	fs.Usage = func() {
-		fmt.Fprint(stderr, "usage: gao chot digest [-harness file]\n\nPrints the digest every result produced under this harness has to carry.\n\nflags:\n")
+		fmt.Fprint(stderr, "usage: gao seal digest [-harness file]\n\nPrints the digest every result produced under this harness has to carry.\n\nflags:\n")
 		fs.PrintDefaults()
 	}
 	if err := fs.Parse(args); err != nil {
@@ -157,12 +157,12 @@ func runChotDigest(stdout, stderr io.Writer, args []string) int {
 }
 
 func runChotAudit(stdout, stderr io.Writer, args []string) int {
-	fs := flag.NewFlagSet("chot audit", flag.ContinueOnError)
+	fs := flag.NewFlagSet("seal audit", flag.ContinueOnError)
 	fs.SetOutput(stderr)
 	asJSON := fs.Bool("json", false, "print JSON")
 	path := fs.String("harness", "", "read the harness from a file instead of the one in the repository")
 	fs.Usage = func() {
-		fmt.Fprint(stderr, `usage: gao chot audit [-json] [-harness file] results.json
+		fmt.Fprint(stderr, `usage: gao seal audit [-json] [-harness file] results.json
 
 Check a set of results against the harness they claim to come from.
 
@@ -191,7 +191,7 @@ flags:
 	}
 	results, err := readChotResults(fs.Arg(0))
 	if err != nil {
-		fmt.Fprintf(stderr, "gao chot: %v\n", err)
+		fmt.Fprintf(stderr, "gao seal: %v\n", err)
 		return 1
 	}
 
@@ -220,14 +220,14 @@ func readChotHarness(stderr io.Writer, path string) (chot.Harness, int) {
 	if path == "" {
 		h, err := chot.Fixed()
 		if err != nil {
-			fmt.Fprintf(stderr, "gao chot: %v\n", err)
+			fmt.Fprintf(stderr, "gao seal: %v\n", err)
 			return chot.Harness{}, 1
 		}
 		return h, 0
 	}
 	h, err := chot.Read(path)
 	if err != nil {
-		fmt.Fprintf(stderr, "gao chot: %v\n", err)
+		fmt.Fprintf(stderr, "gao seal: %v\n", err)
 		return chot.Harness{}, 1
 	}
 	return h, 0

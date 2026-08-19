@@ -10,7 +10,7 @@ import (
 )
 
 func runVot(stdout, stderr io.Writer, args []string) int {
-	fs := flag.NewFlagSet("vot", flag.ContinueOnError)
+	fs := flag.NewFlagSet("spike", flag.ContinueOnError)
 	fs.SetOutput(stderr)
 	asJSON := fs.Bool("json", false, "print JSON")
 	run := fs.String("run", "", "the run this log came off")
@@ -18,7 +18,7 @@ func runVot(stdout, stderr io.Writer, args []string) int {
 	every := fs.Int("checkpoint", 0, "how often the run takes a checkpoint, in steps")
 	top := fs.Int("top", 10, "how many spikes to print")
 	fs.Usage = func() {
-		fmt.Fprint(stderr, `usage: gao vot -run name -total n -checkpoint n [-top n] [-json] log.jsonl
+		fmt.Fprint(stderr, `usage: gao spike -run name -total n -checkpoint n [-top n] [-json] log.jsonl
 
 Read a training log back and say whether it spiked, what the response would have
 cost, and whether the log could have held the answer at all.
@@ -62,13 +62,13 @@ flags:
 		return 2
 	}
 	if *top < 0 {
-		fmt.Fprintf(stderr, "gao vot: a table cannot hold %d rows\n", *top)
+		fmt.Fprintf(stderr, "gao spike: a table cannot hold %d rows\n", *top)
 		return 2
 	}
 
 	steps, err := vot.ReadSteps(fs.Arg(0))
 	if err != nil {
-		fmt.Fprintf(stderr, "gao vot: %v\n", err)
+		fmt.Fprintf(stderr, "gao spike: %v\n", err)
 		return 1
 	}
 

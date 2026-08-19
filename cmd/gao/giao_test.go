@@ -21,7 +21,7 @@ func giaoReadings(t *testing.T, lines ...string) string {
 }
 
 // giaoFleet is the readings taken off the S1 ingest runs on 2026-08-18, checked
-// in as the file 'gao giao read' produced on each box.
+// in as the file 'gao assign read' produced on each box.
 //
 // All three boxes can be handed work as the inventory reads on 2026-08-19.
 // server3 was under the reserve for one inventory and drew nothing while
@@ -41,7 +41,7 @@ func giaoFleet(t *testing.T) string {
 func TestGiaoPlanPricesTheWholeIngestAgainstOneBox(t *testing.T) {
 	out, errOut, code := exec(t, "giao", "plan", giaoFleet(t))
 	if code != 0 {
-		t.Fatalf("gao giao plan: exit %d, %s", code, errOut)
+		t.Fatalf("gao assign plan: exit %d, %s", code, errOut)
 	}
 
 	for _, want := range []string{
@@ -79,7 +79,7 @@ func TestAPlanDropsABoxWithItsNumbersRatherThanQuietly(t *testing.T) {
 	)
 	out, errOut, code := exec(t, "giao", "plan", path)
 	if code != 0 {
-		t.Fatalf("gao giao plan: exit %d, %s", code, errOut)
+		t.Fatalf("gao assign plan: exit %d, %s", code, errOut)
 	}
 
 	for _, want := range []string{
@@ -102,7 +102,7 @@ func TestAPlanDropsABoxWithItsNumbersRatherThanQuietly(t *testing.T) {
 func TestGiaoFilesNamesTheBoxForEveryFile(t *testing.T) {
 	out, errOut, code := exec(t, "giao", "files", giaoFleet(t))
 	if code != 0 {
-		t.Fatalf("gao giao files: exit %d, %s", code, errOut)
+		t.Fatalf("gao assign files: exit %d, %s", code, errOut)
 	}
 
 	var files int
@@ -129,11 +129,11 @@ func TestGiaoFilesNamesTheBoxForEveryFile(t *testing.T) {
 
 // One box's share, in the form the fetcher takes. Everything that makes the
 // table readable is left out on purpose, because this output is read by
-// 'gao gat hf -only' rather than by a person.
+// 'gao harvest hf -only' rather than by a person.
 func TestGiaoFilesWritesOneBoxsListAndNothingElse(t *testing.T) {
 	out, errOut, code := exec(t, "giao", "files", "-box", "server3", giaoFleet(t))
 	if code != 0 {
-		t.Fatalf("gao giao files -box server3: exit %d, %s", code, errOut)
+		t.Fatalf("gao assign files -box server3: exit %d, %s", code, errOut)
 	}
 
 	lines := strings.Split(strings.TrimSpace(out), "\n")
@@ -158,7 +158,7 @@ func TestGiaoFilesWritesOneBoxsListAndNothingElse(t *testing.T) {
 	// handing to a box.
 	table, _, code := exec(t, "giao", "files", giaoFleet(t))
 	if code != 0 {
-		t.Fatalf("gao giao files: exit %d", code)
+		t.Fatalf("gao assign files: exit %d", code)
 	}
 	var counted int
 	for _, line := range strings.Split(table, "\n") {
@@ -282,7 +282,7 @@ func TestOnlyGiaoFilesCarriesTheJobsInItsJSON(t *testing.T) {
 func TestGiaoPrintsTheSamePlanAsJSON(t *testing.T) {
 	out, errOut, code := exec(t, "giao", "plan", "-json", giaoFleet(t))
 	if code != 0 {
-		t.Fatalf("gao giao plan -json: exit %d, %s", code, errOut)
+		t.Fatalf("gao assign plan -json: exit %d, %s", code, errOut)
 	}
 
 	var got struct {
@@ -320,11 +320,11 @@ func TestGiaoPrintsTheSamePlanAsJSON(t *testing.T) {
 }
 
 func TestGiaoRefusesReadingsThatAreNotASchedule(t *testing.T) {
-	path := giaoReadings(t, `{"box":"server2","bytes":4200000000,"seconds":2266,"measured_on":"2026-08-03","how":"gao dem count over one shard"}`)
+	path := giaoReadings(t, `{"box":"server2","bytes":4200000000,"seconds":2266,"measured_on":"2026-08-03","how":"gao count count over one shard"}`)
 
 	out, _, code := exec(t, "giao", "plan", path)
 	if code != 1 {
-		t.Fatalf("gao giao plan on a box that may not hold corpus bytes: exit %d, want 1", code)
+		t.Fatalf("gao assign plan on a box that may not hold corpus bytes: exit %d, want 1", code)
 	}
 	if !strings.Contains(out, "nowhere for the ingest to land") {
 		t.Errorf("the refusal does not say why:\n%s", out)
@@ -340,13 +340,13 @@ func TestGiaoExitsTwoOnAScheduleThatShouldNotBeRun(t *testing.T) {
 	// It has to be a box that may hold corpus bytes, since one that may not is
 	// idle rather than at fault, and that is now two of the four.
 	path := giaoReadings(t,
-		`{"box":"gamingpc","bytes":4200000000,"seconds":2266,"measured_on":"2026-08-18","how":"gao dem count over one shard"}`,
-		`{"box":"server1","bytes":4200000000,"seconds":136000000,"measured_on":"2026-08-18","how":"gao dem count over one shard"}`,
+		`{"box":"gamingpc","bytes":4200000000,"seconds":2266,"measured_on":"2026-08-18","how":"gao count count over one shard"}`,
+		`{"box":"server1","bytes":4200000000,"seconds":136000000,"measured_on":"2026-08-18","how":"gao count count over one shard"}`,
 	)
 
 	out, _, code := exec(t, "giao", "plan", path)
 	if code != 2 {
-		t.Fatalf("gao giao plan on a box that draws nothing: exit %d, want 2", code)
+		t.Fatalf("gao assign plan on a box that draws nothing: exit %d, want 2", code)
 	}
 	if !strings.Contains(out, "This is not the schedule to run") || !strings.Contains(out, "server1 draws no files") {
 		t.Errorf("the plan does not name the fault:\n%s", out)
@@ -355,13 +355,13 @@ func TestGiaoExitsTwoOnAScheduleThatShouldNotBeRun(t *testing.T) {
 
 func TestGiaoSaysWhichLineOfTheReadingsIsWrong(t *testing.T) {
 	path := giaoReadings(t,
-		`{"box":"gamingpc","bytes":4200000000,"seconds":2266,"measured_on":"2026-08-03","how":"gao dem count over one shard"}`,
+		`{"box":"gamingpc","bytes":4200000000,"seconds":2266,"measured_on":"2026-08-03","how":"gao count count over one shard"}`,
 		`{"box":"server1","bytes":4200000000,"seconds":2266,"measured_on":"2026-08-03","cores":4}`,
 	)
 
 	_, errOut, code := exec(t, "giao", "plan", path)
 	if code != 1 {
-		t.Fatalf("gao giao plan on a readings file it cannot read: exit %d, want 1", code)
+		t.Fatalf("gao assign plan on a readings file it cannot read: exit %d, want 1", code)
 	}
 	if !strings.Contains(errOut, ":2:") || !strings.Contains(errOut, "cores") {
 		t.Errorf("the error does not say which line or which field: %q", errOut)
@@ -388,7 +388,7 @@ func TestGiaoWithoutASubcommandSaysWhatItTakes(t *testing.T) {
 func TestGiaoHelpSaysWhatAReadingIs(t *testing.T) {
 	out, _, code := exec(t, "giao", "help")
 	if code != 0 {
-		t.Fatalf("gao giao help: exit %d", code)
+		t.Fatalf("gao assign help: exit %d", code)
 	}
 	// A schedule off a link speed is the mistake this command exists to stop,
 	// so the help has to say so before anybody writes a readings file.
@@ -417,7 +417,7 @@ func TestGiaoReadTurnsALedgerIntoAReading(t *testing.T) {
 
 	out, errOut, code := exec(t, "giao", "read", "-dir", dir)
 	if code != 0 {
-		t.Fatalf("gao giao read: exit %d, %s", code, errOut)
+		t.Fatalf("gao assign read: exit %d, %s", code, errOut)
 	}
 
 	var r struct {
@@ -447,12 +447,12 @@ func TestGiaoReadPrintsALineThatPlanAccepts(t *testing.T) {
 	)
 	out, _, code := exec(t, "giao", "read", "-dir", dir)
 	if code != 0 {
-		t.Fatalf("gao giao read: exit %d", code)
+		t.Fatalf("gao assign read: exit %d", code)
 	}
 
 	path := giaoReadings(t, strings.TrimSpace(out))
 	if _, errOut, code := exec(t, "giao", "plan", path); code != 0 {
-		t.Fatalf("gao giao plan refused a reading gao giao read produced: exit %d, %s", code, errOut)
+		t.Fatalf("gao assign plan refused a reading gao assign read produced: exit %d, %s", code, errOut)
 	}
 }
 

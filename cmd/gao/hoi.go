@@ -11,13 +11,13 @@ import (
 )
 
 func runHoi(stdout, stderr io.Writer, args []string) int {
-	fs := flag.NewFlagSet("hoi", flag.ContinueOnError)
+	fs := flag.NewFlagSet("ask", flag.ContinueOnError)
 	fs.SetOutput(stderr)
 	asJSON := fs.Bool("json", false, "print JSON")
 	name := fs.String("name", "vi-longdoc-qa-1.0", "the benchmark these questions compose")
 	rejects := fs.Bool("rejects", false, "print every question that did not survive its checks, and why")
 	fs.Usage = func() {
-		fmt.Fprint(stderr, `usage: gao hoi [-name set] [-rejects] [-json] questions.jsonl
+		fmt.Fprint(stderr, `usage: gao ask [-name set] [-rejects] [-json] questions.jsonl
 
 Check that a long document question set measures reading a long document.
 
@@ -29,7 +29,7 @@ answered it anyway, and how many people read the question and agreed.
 Three things go wrong when a set like this is built, and all three are invisible
 once it is finished. A question that can be answered with no document measures
 what the pretraining corpus held. A question whose answer sits in one span is
-retrieval, which gao kim already measures with a needle. And a set whose
+retrieval, which gao needle already measures with a needle. And a set whose
 documents are all around forty thousand tokens says nothing about whether the
 extension to 131k worked, since nothing in it lives up there.
 
@@ -55,7 +55,7 @@ flags:
 
 	s, err := hoi.ReadSet(*name, fs.Arg(0))
 	if err != nil {
-		fmt.Fprintf(stderr, "gao hoi: %v\n", err)
+		fmt.Fprintf(stderr, "gao ask: %v\n", err)
 		return 1
 	}
 

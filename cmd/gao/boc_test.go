@@ -151,7 +151,7 @@ func TestBocWithoutAPageIsAUsageError(t *testing.T) {
 	if code != 2 {
 		t.Fatalf("exit %d, want 2: %s\n%s", code, out, errOut)
 	}
-	if !strings.Contains(errOut, "usage: gao boc") {
+	if !strings.Contains(errOut, "usage: gao husk") {
 		t.Errorf("no usage printed: %s", errOut)
 	}
 }
@@ -161,7 +161,7 @@ func TestAMissingPageIsAFailure(t *testing.T) {
 	if code != 1 {
 		t.Fatalf("exit %d, want 1: %s", code, errOut)
 	}
-	if !strings.Contains(errOut, "gao boc:") {
+	if !strings.Contains(errOut, "gao husk:") {
 		t.Errorf("the failure was not attributed: %s", errOut)
 	}
 }

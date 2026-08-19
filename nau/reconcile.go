@@ -11,7 +11,7 @@ package nau
 //
 // A disagreement is not a bug in the code, it is a decision nobody has made
 // yet, so it is recorded as a question with the component it is about. What
-// `gao nau check` enforces is that every gap is written down: a component the
+// `gao cook check` enforces is that every gap is written down: a component the
 // curriculum spends at a different rate than the budget buys it, with nobody
 // having said which of the two moves, fails. So does a question about a gap
 // that has since closed, because a register of open questions that still lists

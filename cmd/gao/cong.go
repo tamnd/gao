@@ -11,12 +11,12 @@ import (
 )
 
 func runCong(stdout, stderr io.Writer, args []string) int {
-	fs := flag.NewFlagSet("cong", flag.ContinueOnError)
+	fs := flag.NewFlagSet("total", flag.ContinueOnError)
 	fs.SetOutput(stderr)
 	asJSON := fs.Bool("json", false, "print JSON")
 	release := fs.String("release", "gao-v1.0", "the release these counts are for")
 	fs.Usage = func() {
-		fmt.Fprint(stderr, `usage: gao cong [-release name] [-json] counts.jsonl
+		fmt.Fprint(stderr, `usage: gao total [-release name] [-json] counts.jsonl
 
 Add up a release and state what the headline number is a count of.
 
@@ -55,7 +55,7 @@ flags:
 
 	s, err := cong.ReadSheet(*release, fs.Arg(0))
 	if err != nil {
-		fmt.Fprintf(stderr, "gao cong: %v\n", err)
+		fmt.Fprintf(stderr, "gao total: %v\n", err)
 		return 1
 	}
 

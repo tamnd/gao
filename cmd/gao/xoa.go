@@ -31,14 +31,14 @@ func runXoa(stdout, stderr io.Writer, args []string) int {
 		xoaUsage(stdout)
 		return 0
 	default:
-		fmt.Fprintf(stderr, "gao xoa: unknown subcommand %q\n", args[0])
+		fmt.Fprintf(stderr, "gao takedown: unknown subcommand %q\n", args[0])
 		xoaUsage(stderr)
 		return 2
 	}
 }
 
 func xoaUsage(w io.Writer) {
-	fmt.Fprint(w, `usage: gao xoa <subcommand> [flags]
+	fmt.Fprint(w, `usage: gao takedown <subcommand> [flags]
 
 subcommands:
   status  what has been filed, what is still open, and how long each one took
@@ -48,7 +48,7 @@ subcommands:
 The register is `+xoa.Name+` at the root of the repository, and every
 subcommand reads it from there unless -file says otherwise.
 
-run 'gao xoa <subcommand> -h' for the flags of a single subcommand.
+run 'gao takedown <subcommand> -h' for the flags of a single subcommand.
 `)
 }
 
@@ -58,7 +58,7 @@ run 'gao xoa <subcommand> -h' for the flags of a single subcommand.
 func load(stderr io.Writer, cmd, path string) (*xoa.Register, bool) {
 	g, err := xoa.Load(path)
 	if err != nil {
-		fmt.Fprintf(stderr, "gao xoa %s: %v\n", cmd, err)
+		fmt.Fprintf(stderr, "gao takedown %s: %v\n", cmd, err)
 		return nil, false
 	}
 	return g, true
@@ -70,13 +70,13 @@ func load(stderr io.Writer, cmd, path string) (*xoa.Register, bool) {
 // request nobody has acted on turns into a failing build rather than a line in
 // a file nobody is reading.
 func runXoaStatus(stdout, stderr io.Writer, args []string) int {
-	fs := flag.NewFlagSet("xoa status", flag.ContinueOnError)
+	fs := flag.NewFlagSet("takedown status", flag.ContinueOnError)
 	fs.SetOutput(stderr)
 	file := fs.String("file", xoa.Name, "the register to read")
 	crawled := fs.Int("crawled", 0, "how many hosts have been crawled, to report the objection rate")
 	all := fs.Bool("all", false, "print every request rather than only the ones still open")
 	fs.Usage = func() {
-		fmt.Fprint(stderr, `usage: gao xoa status [flags]
+		fmt.Fprint(stderr, `usage: gao takedown status [flags]
 
 Prints what has been filed, what is still open, and how long each honored
 request took to stop.
@@ -126,7 +126,7 @@ flags:
 	if *crawled > 0 {
 		rate, err := g.Rate(*crawled)
 		if err != nil {
-			fmt.Fprintf(stderr, "gao xoa status: %v\n", err)
+			fmt.Fprintf(stderr, "gao takedown status: %v\n", err)
 			return 1
 		}
 		// P03-8 is a gate on this number: under 0.5 percent is the prediction
@@ -175,11 +175,11 @@ func took(d time.Duration, err error) string {
 // has just been asked to take something down, which is the worst moment to be
 // getting a date field the right way round.
 func runXoaCheck(stdout, stderr io.Writer, args []string) int {
-	fs := flag.NewFlagSet("xoa check", flag.ContinueOnError)
+	fs := flag.NewFlagSet("takedown check", flag.ContinueOnError)
 	fs.SetOutput(stderr)
 	file := fs.String("file", xoa.Name, "the register to read")
 	fs.Usage = func() {
-		fmt.Fprint(stderr, `usage: gao xoa check [flags]
+		fmt.Fprint(stderr, `usage: gao takedown check [flags]
 
 Reads the register for entries that cannot be true: a request stopped before it
 was asked, a scope that is neither stop nor erase, an issue number that appears
@@ -215,12 +215,12 @@ flags:
 // runXoaURL answers the two questions the register exists to answer, which are
 // not the same question and do not have the same answer.
 func runXoaURL(stdout, stderr io.Writer, args []string) int {
-	fs := flag.NewFlagSet("xoa url", flag.ContinueOnError)
+	fs := flag.NewFlagSet("takedown url", flag.ContinueOnError)
 	fs.SetOutput(stderr)
 	file := fs.String("file", xoa.Name, "the register to read")
 	fetched := fs.String("fetched", "", "when the document was fetched, as 2006-01-02, for the question about the store")
 	fs.Usage = func() {
-		fmt.Fprint(stderr, `usage: gao xoa url [flags] URL [URL ...]
+		fmt.Fprint(stderr, `usage: gao takedown url [flags] URL [URL ...]
 
 Says what the register does to each URL. There are two gates and they bind at
 different times, so there are two answers.
@@ -252,7 +252,7 @@ flags:
 		var err error
 		when, err = time.Parse(time.DateOnly, *fetched)
 		if err != nil {
-			fmt.Fprintf(stderr, "gao xoa url: -fetched wants a date like 2026-03-15: %v\n", err)
+			fmt.Fprintf(stderr, "gao takedown url: -fetched wants a date like 2026-03-15: %v\n", err)
 			return 2
 		}
 	}

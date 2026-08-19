@@ -52,14 +52,14 @@ func runKho(stdout, stderr io.Writer, args []string) int {
 		khoUsage(stdout)
 		return 0
 	default:
-		fmt.Fprintf(stderr, "gao kho: unknown subcommand %q\n", args[0])
+		fmt.Fprintf(stderr, "gao store: unknown subcommand %q\n", args[0])
 		khoUsage(stderr)
 		return 2
 	}
 }
 
 func khoUsage(w io.Writer) {
-	fmt.Fprint(w, `usage: gao kho <subcommand> [flags]
+	fmt.Fprint(w, `usage: gao store <subcommand> [flags]
 
 subcommands:
   verify    check a snapshot against its manifest
@@ -75,18 +75,18 @@ subcommands:
   move      re-lay a dataset repo into another one without the bytes traveling
   order     what sorting a shard by host buys, and what holding it resident costs
 
-run 'gao kho <subcommand> -h' for the flags of a single subcommand.
+run 'gao store <subcommand> -h' for the flags of a single subcommand.
 `)
 }
 
 func runKhoVerify(stdout, stderr io.Writer, args []string) int {
-	fs := flag.NewFlagSet("kho verify", flag.ContinueOnError)
+	fs := flag.NewFlagSet("store verify", flag.ContinueOnError)
 	fs.SetOutput(stderr)
 	key := fs.String("key", "", "the public key to require, as hex or as a path to a key file")
 	quick := fs.Bool("quick", false, "check the manifest, the root, and the signature, and skip the shard bytes")
 	verbose := fs.Bool("v", false, "print each shard as it is checked")
 	fs.Usage = func() {
-		fmt.Fprint(stderr, `usage: gao kho verify [-key KEY] [-quick] [-v] <dir>
+		fmt.Fprint(stderr, `usage: gao store verify [-key KEY] [-quick] [-v] <dir>
 
 Checks that a snapshot is what its manifest says it is: the manifest is
 complete, the merkle root matches the shard hashes, the signature verifies, and
@@ -114,7 +114,7 @@ flags:
 	if *key != "" {
 		pub, err := loadVerifyKey(*key)
 		if err != nil {
-			fmt.Fprintf(stderr, "gao kho verify: %v\n", err)
+			fmt.Fprintf(stderr, "gao store verify: %v\n", err)
 			return 1
 		}
 		opts = append(opts, kho.TrustKey(pub))
@@ -134,7 +134,7 @@ flags:
 
 	report, err := kho.Verify(dir, opts...)
 	if err != nil {
-		fmt.Fprintf(stderr, "gao kho verify: %v\n", err)
+		fmt.Fprintf(stderr, "gao store verify: %v\n", err)
 		return 1
 	}
 
@@ -167,7 +167,7 @@ func loadVerifyKey(s string) (ed25519.PublicKey, error) {
 }
 
 func runKhoRemove(stdout, stderr io.Writer, args []string) int {
-	fs := flag.NewFlagSet("kho remove", flag.ContinueOnError)
+	fs := flag.NewFlagSet("store remove", flag.ContinueOnError)
 	fs.SetOutput(stderr)
 	from := fs.String("from", "", "the snapshot to remove from, which is not modified")
 	to := fs.String("to", "", "the directory to write the new snapshot to, which must not already hold one")
@@ -178,7 +178,7 @@ func runKhoRemove(stdout, stderr io.Writer, args []string) int {
 	list := fs.String("list", "", "read document ids from a file, one per line, instead of from the arguments")
 	verbose := fs.Bool("v", false, "print each shard as it is dealt with")
 	fs.Usage = func() {
-		fmt.Fprint(stderr, `usage: gao kho remove -from DIR -to DIR -snapshot NAME -key FILE -reason REASON [flags] [docid...]
+		fmt.Fprint(stderr, `usage: gao store remove -from DIR -to DIR -snapshot NAME -key FILE -reason REASON [flags] [docid...]
 
 Takes documents out of a published snapshot. This is the one command here that
 destroys data on purpose, so it is worth knowing exactly what it does.
@@ -220,23 +220,23 @@ flags:
 		return 2
 	}
 	if !slices.Contains(kho.Reasons(), *reason) {
-		fmt.Fprintf(stderr, "gao kho remove: -reason must be one of %s\n", strings.Join(kho.Reasons(), ", "))
+		fmt.Fprintf(stderr, "gao store remove: -reason must be one of %s\n", strings.Join(kho.Reasons(), ", "))
 		return 2
 	}
 
 	ids, err := removalIDs(fs.Args(), *list)
 	if err != nil {
-		fmt.Fprintf(stderr, "gao kho remove: %v\n", err)
+		fmt.Fprintf(stderr, "gao store remove: %v\n", err)
 		return 2
 	}
 	if len(ids) == 0 {
-		fmt.Fprintln(stderr, "gao kho remove: no documents named, so there is nothing to remove")
+		fmt.Fprintln(stderr, "gao store remove: no documents named, so there is nothing to remove")
 		return 2
 	}
 
 	key, err := kho.LoadPrivateKey(*keyPath)
 	if err != nil {
-		fmt.Fprintf(stderr, "gao kho remove: %v\n", err)
+		fmt.Fprintf(stderr, "gao store remove: %v\n", err)
 		return 1
 	}
 
@@ -262,14 +262,14 @@ flags:
 		// rather than run together in one line, because the next thing anybody
 		// does is go and look for the one they mistyped.
 		if report != nil && len(report.NotFound) > 0 {
-			fmt.Fprintf(stderr, "gao kho remove: %d of the identities given are not in %s:\n", len(report.NotFound), report.Parent)
+			fmt.Fprintf(stderr, "gao store remove: %d of the identities given are not in %s:\n", len(report.NotFound), report.Parent)
 			for _, id := range report.NotFound {
 				fmt.Fprintf(stderr, "  %s\n", id)
 			}
 			fmt.Fprintln(stderr, "nothing was written, because a removal that answers for some of a request and not the rest is the outcome everybody reads as done")
 			return 1
 		}
-		fmt.Fprintf(stderr, "gao kho remove: %v\n", err)
+		fmt.Fprintf(stderr, "gao store remove: %v\n", err)
 		return 1
 	}
 
@@ -285,7 +285,7 @@ flags:
 	// The new snapshot is checked here as well as sealed, because the only thing
 	// worse than a takedown that did not happen is one everybody believes did.
 	if _, err := kho.Verify(*to, kho.TrustKey(key.Public().(ed25519.PublicKey))); err != nil {
-		fmt.Fprintf(stderr, "gao kho remove: the snapshot was written and does not verify: %v\n", err)
+		fmt.Fprintf(stderr, "gao store remove: the snapshot was written and does not verify: %v\n", err)
 		return 1
 	}
 
@@ -331,11 +331,11 @@ func removalIDs(args []string, list string) ([]doc.Hash, error) {
 }
 
 func runKhoKeygen(stdout, stderr io.Writer, args []string) int {
-	fs := flag.NewFlagSet("kho keygen", flag.ContinueOnError)
+	fs := flag.NewFlagSet("store keygen", flag.ContinueOnError)
 	fs.SetOutput(stderr)
 	out := fs.String("out", "gao", "prefix for the key files, written as PREFIX.key and PREFIX.pub")
 	fs.Usage = func() {
-		fmt.Fprint(stderr, `usage: gao kho keygen [-out PREFIX]
+		fmt.Fprint(stderr, `usage: gao store keygen [-out PREFIX]
 
 Generates an ed25519 snapshot signing key. The private key is written to
 PREFIX.key with mode 0600 and the public key to PREFIX.pub, both as one line of
@@ -358,25 +358,25 @@ flags:
 	pubPath := *out + ".pub"
 	if dir := filepath.Dir(privPath); dir != "." {
 		if err := os.MkdirAll(dir, 0o755); err != nil {
-			fmt.Fprintf(stderr, "gao kho keygen: %v\n", err)
+			fmt.Fprintf(stderr, "gao store keygen: %v\n", err)
 			return 1
 		}
 	}
 
 	pub, priv, err := kho.GenerateKey()
 	if err != nil {
-		fmt.Fprintf(stderr, "gao kho keygen: %v\n", err)
+		fmt.Fprintf(stderr, "gao store keygen: %v\n", err)
 		return 1
 	}
 	if err := kho.WritePrivateKey(privPath, priv); err != nil {
-		fmt.Fprintf(stderr, "gao kho keygen: %v\n", err)
+		fmt.Fprintf(stderr, "gao store keygen: %v\n", err)
 		return 1
 	}
 	if err := kho.WritePublicKey(pubPath, pub); err != nil {
 		// The private key is on disk and the public key is not, which is a state
 		// nobody should have to reason about. Take the private key back out.
 		_ = os.Remove(privPath)
-		fmt.Fprintf(stderr, "gao kho keygen: %v\n", err)
+		fmt.Fprintf(stderr, "gao store keygen: %v\n", err)
 		return 1
 	}
 
@@ -387,11 +387,11 @@ flags:
 }
 
 func runKhoDatasets(stdout, stderr io.Writer, args []string) int {
-	fs := flag.NewFlagSet("kho datasets", flag.ContinueOnError)
+	fs := flag.NewFlagSet("store datasets", flag.ContinueOnError)
 	fs.SetOutput(stderr)
 	snapshot := fs.String("snapshot", "gao-v1.0", "the snapshot to print read queries for")
 	fs.Usage = func() {
-		fmt.Fprint(stderr, "usage: gao kho datasets [-snapshot NAME]\n\nPrints the dataset repos processed data is written to, what each one holds, and\nthe query that reads one snapshot of it straight off the Hub.\n\nflags:\n")
+		fmt.Fprint(stderr, "usage: gao store datasets [-snapshot NAME]\n\nPrints the dataset repos processed data is written to, what each one holds, and\nthe query that reads one snapshot of it straight off the Hub.\n\nflags:\n")
 		fs.PrintDefaults()
 	}
 	if err := fs.Parse(args); err != nil {
@@ -418,11 +418,11 @@ func runKhoDatasets(stdout, stderr io.Writer, args []string) int {
 }
 
 func runKhoColumns(stdout, stderr io.Writer, args []string) int {
-	fs := flag.NewFlagSet("kho columns", flag.ContinueOnError)
+	fs := flag.NewFlagSet("store columns", flag.ContinueOnError)
 	fs.SetOutput(stderr)
 	name := fs.String("dataset", "vietnamese-web-text", "the dataset repo whose columns to print")
 	fs.Usage = func() {
-		fmt.Fprint(stderr, `usage: gao kho columns [-dataset NAME] [file.parquet]
+		fmt.Fprint(stderr, `usage: gao store columns [-dataset NAME] [file.parquet]
 
 Prints the columns a parquet file in that repo carries, which is the contract a
 reader gets to depend on. Adding a column is a minor version and removing or
@@ -454,8 +454,8 @@ flags:
 
 	d, ok := kho.Lookup(*name)
 	if !ok {
-		fmt.Fprintf(stderr, "gao kho columns: no dataset named %q\n", *name)
-		fmt.Fprintln(stderr, "run 'gao kho datasets' for the list")
+		fmt.Fprintf(stderr, "gao store columns: no dataset named %q\n", *name)
+		fmt.Fprintln(stderr, "run 'gao store datasets' for the list")
 		return 1
 	}
 
@@ -472,16 +472,16 @@ flags:
 }
 
 func runKhoSchema(stdout, stderr io.Writer, args []string) int {
-	fs := flag.NewFlagSet("kho schema", flag.ContinueOnError)
+	fs := flag.NewFlagSet("store schema", flag.ContinueOnError)
 	fs.SetOutput(stderr)
 	md := fs.Bool("md", false, "print the schema page that ships as SCHEMA.md")
 	def := fs.Bool("parquet", false, "print the parquet message definition")
 	name := fs.String("dataset", "vietnamese-web-text", "the dataset repo whose definition to print, with -parquet")
 	fs.Usage = func() {
-		fmt.Fprint(stderr, `usage: gao kho schema [-md] [-parquet [-dataset NAME]]
+		fmt.Fprint(stderr, `usage: gao store schema [-md] [-parquet [-dataset NAME]]
 
 Prints every column of the published record, its type, the stage that fills it,
-and what it holds. Where 'gao kho columns' answers what a file carries, this
+and what it holds. Where 'gao store columns' answers what a file carries, this
 answers what the columns mean, which is the question somebody who did not build
 the corpus has to have answered before they can use it.
 
@@ -510,8 +510,8 @@ flags:
 	case *def:
 		d, ok := kho.Lookup(*name)
 		if !ok {
-			fmt.Fprintf(stderr, "gao kho schema: no dataset named %q\n", *name)
-			fmt.Fprintln(stderr, "run 'gao kho datasets' for the list")
+			fmt.Fprintf(stderr, "gao store schema: no dataset named %q\n", *name)
+			fmt.Fprintln(stderr, "run 'gao store datasets' for the list")
 			return 1
 		}
 		fmt.Fprintln(stdout, kho.Definition(d))
@@ -528,12 +528,12 @@ flags:
 }
 
 func runKhoPush(stdout, stderr io.Writer, args []string) int {
-	fs := flag.NewFlagSet("kho push", flag.ContinueOnError)
+	fs := flag.NewFlagSet("store push", flag.ContinueOnError)
 	fs.SetOutput(stderr)
 	name := fs.String("dataset", kho.StageRepo, "the dataset repo to push to")
 	as := fs.String("as", "", "the path inside the repo, which defaults to the path given")
 	fs.Usage = func() {
-		fmt.Fprint(stderr, `usage: gao kho push [-dataset NAME] [-as PATH] <file>
+		fmt.Fprint(stderr, `usage: gao store push [-dataset NAME] [-as PATH] <file>
 
 Uploads one file to a dataset repo. An ingest pushes its own parts as it writes
 them, so this is for the files that are not parts: a dataset card, a manifest, or
@@ -565,8 +565,8 @@ flags:
 
 	d, ok := kho.Lookup(*name)
 	if !ok {
-		fmt.Fprintf(stderr, "gao kho push: no dataset named %q\n", *name)
-		fmt.Fprintln(stderr, "run 'gao kho datasets' for the list")
+		fmt.Fprintf(stderr, "gao store push: no dataset named %q\n", *name)
+		fmt.Fprintln(stderr, "run 'gao store datasets' for the list")
 		return 1
 	}
 	path := *as
@@ -577,12 +577,12 @@ flags:
 	p := &kho.Pusher{Repo: d.Repo(), Token: may.Token(), API: pushAPI()}
 	ctx := context.Background()
 	if err := p.EnsureRepo(ctx, d); err != nil {
-		fmt.Fprintf(stderr, "gao kho push: %v\n", err)
+		fmt.Fprintf(stderr, "gao store push: %v\n", err)
 		return 1
 	}
 	sent, err := p.Push(ctx, local, path)
 	if err != nil {
-		fmt.Fprintf(stderr, "gao kho push: %v\n", err)
+		fmt.Fprintf(stderr, "gao store push: %v\n", err)
 		return 1
 	}
 
@@ -599,14 +599,14 @@ flags:
 }
 
 func runKhoCard(stdout, stderr io.Writer, args []string) int {
-	fs := flag.NewFlagSet("kho card", flag.ContinueOnError)
+	fs := flag.NewFlagSet("store card", flag.ContinueOnError)
 	fs.SetOutput(stderr)
 	name := fs.String("dataset", "", "the dataset repo the card is for")
 	from := fs.String("from", "", "the snapshot directory holding the manifest the card is generated from")
 	index := fs.String("index", "", "the parts index the card's counts come from, for a repo with no manifest")
 	push := fs.Bool("push", false, "put the card on the repo instead of printing it")
 	fs.Usage = func() {
-		fmt.Fprint(stderr, `usage: gao kho card -dataset NAME [-from DIR] [-index PATH] [-push]
+		fmt.Fprint(stderr, `usage: gao store card -dataset NAME [-from DIR] [-index PATH] [-push]
 
 Generates the dataset card for a repo and prints it. Every number in it comes
 out of the manifest of the snapshot named by -from: the counts, the breakdown by
@@ -614,7 +614,7 @@ source, the stages that produced it and the versions they ran at, the merkle roo
 and who signed it.
 
 A working repo never gets a manifest, so its card is generated from the parts
-index instead. Pass one with -index, or let `+"`gao kho index -push`"+` do both at
+index instead. Pass one with -index, or let `+"`gao store index -push`"+` do both at
 once, which is what the pipeline runs. With neither the card is the one a repo
 carries before it holds anything, which says so rather than printing zeros.
 
@@ -641,8 +641,8 @@ flags:
 
 	d, ok := kho.Lookup(*name)
 	if !ok {
-		fmt.Fprintf(stderr, "gao kho card: no dataset named %q\n", *name)
-		fmt.Fprintln(stderr, "run 'gao kho datasets' for the list")
+		fmt.Fprintf(stderr, "gao store card: no dataset named %q\n", *name)
+		fmt.Fprintln(stderr, "run 'gao store datasets' for the list")
 		return 1
 	}
 
@@ -650,7 +650,7 @@ flags:
 	if *from != "" {
 		loaded, err := kho.ReadManifest(*from)
 		if err != nil {
-			fmt.Fprintf(stderr, "gao kho card: %v\n", err)
+			fmt.Fprintf(stderr, "gao store card: %v\n", err)
 			return 1
 		}
 		m = loaded
@@ -660,13 +660,13 @@ flags:
 	if *index != "" {
 		f, err := os.Open(*index) //nolint:gosec // the path is one the operator named
 		if err != nil {
-			fmt.Fprintf(stderr, "gao kho card: %v\n", err)
+			fmt.Fprintf(stderr, "gao store card: %v\n", err)
 			return 1
 		}
 		x, err = kho.ReadIndex(f)
 		_ = f.Close()
 		if err != nil {
-			fmt.Fprintf(stderr, "gao kho card: %v\n", err)
+			fmt.Fprintf(stderr, "gao store card: %v\n", err)
 			return 1
 		}
 	}
@@ -679,12 +679,12 @@ flags:
 	p := &kho.Pusher{Repo: d.Repo(), Token: may.Token(), API: pushAPI()}
 	ctx := context.Background()
 	if err := p.EnsureRepo(ctx, d); err != nil {
-		fmt.Fprintf(stderr, "gao kho card: %v\n", err)
+		fmt.Fprintf(stderr, "gao store card: %v\n", err)
 		return 1
 	}
 	sent, err := p.PushCard(ctx, d, m, x)
 	if err != nil {
-		fmt.Fprintf(stderr, "gao kho card: %v\n", err)
+		fmt.Fprintf(stderr, "gao store card: %v\n", err)
 		return 1
 	}
 	if sent.Skipped() {
@@ -715,12 +715,12 @@ func pushAPI() string {
 func printFileColumns(stdout, stderr io.Writer, path string) int {
 	columns, err := kho.PartColumns(path)
 	if err != nil {
-		fmt.Fprintf(stderr, "gao kho columns: %v\n", err)
+		fmt.Fprintf(stderr, "gao store columns: %v\n", err)
 		return 1
 	}
 	meta, err := kho.PartMetadata(path)
 	if err != nil {
-		fmt.Fprintf(stderr, "gao kho columns: %v\n", err)
+		fmt.Fprintf(stderr, "gao store columns: %v\n", err)
 		return 1
 	}
 
@@ -769,13 +769,13 @@ func printDatasets(w io.Writer, tier kho.Tier, snapshot string) {
 }
 
 func runKhoOrder(stdout, stderr io.Writer, args []string) int {
-	fs := flag.NewFlagSet("kho order", flag.ContinueOnError)
+	fs := flag.NewFlagSet("store order", flag.ContinueOnError)
 	fs.SetOutput(stderr)
 	asJSON := fs.Bool("json", false, "print JSON")
 	target := fs.Int64("target", may.ShardBytes, "the compressed size each shard is aimed at, in bytes")
 	text := fs.Int64("text", 0, "the size of the corpus in bytes of extracted text, for the shard count")
 	fs.Usage = func() {
-		fmt.Fprint(stderr, `usage: gao kho order [-json] [-target bytes] [-text bytes] readings.jsonl
+		fmt.Fprint(stderr, `usage: gao store order [-json] [-target bytes] [-text bytes] readings.jsonl
 
 What sorting a shard by host buys, measured rather than assumed.
 
@@ -808,7 +808,7 @@ flags:
 
 	readings, err := kho.ReadReadings(fs.Arg(0))
 	if err != nil {
-		fmt.Fprintf(stderr, "gao kho: %v\n", err)
+		fmt.Fprintf(stderr, "gao store: %v\n", err)
 		return 1
 	}
 

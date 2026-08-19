@@ -58,7 +58,7 @@ func Fixed() Slate {
 
 	// Deduplication. The baseline is MinHash at 0.85 Jaccard, which is the number
 	// the literature uses and nobody has checked on Vietnamese. The sweep is the
-	// only evidence `gao xay -choose` will ever have.
+	// only evidence `gao mill -choose` will ever have.
 	dedup := "what deduplication throws away that was worth keeping, and what it keeps that was not"
 	run("D01", "dedup", "0.70", dedup, "the near duplicate threshold")
 	run("D02", "dedup", "0.75", dedup, "the near duplicate threshold")

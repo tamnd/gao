@@ -30,7 +30,7 @@ func TestCheCoversIdentifiersByDefault(t *testing.T) {
 
 	var stdout, stderr bytes.Buffer
 	if code := runChe(&stdout, &stderr, []string{path}); code != 0 {
-		t.Fatalf("gao che = %d, want 0\n%s", code, stderr.String())
+		t.Fatalf("gao cover = %d, want 0\n%s", code, stderr.String())
 	}
 	out := stdout.String()
 	for _, gone := range []string{"0912 345 678", "minh.nguyen@gmail.com"} {
@@ -56,7 +56,7 @@ func TestCheAtLevelTwoCoversTheNameAndTheAddress(t *testing.T) {
 
 	var stdout, stderr bytes.Buffer
 	if code := runChe(&stdout, &stderr, []string{"-level", "L2", path}); code != 0 {
-		t.Fatalf("gao che -level L2 = %d, want 0\n%s", code, stderr.String())
+		t.Fatalf("gao cover -level L2 = %d, want 0\n%s", code, stderr.String())
 	}
 	out := stdout.String()
 	if strings.Contains(out, "Nguyễn Văn Minh") {
@@ -75,7 +75,7 @@ func TestCheLeavesANewsStoryAlone(t *testing.T) {
 
 	var stdout, stderr bytes.Buffer
 	if code := runChe(&stdout, &stderr, []string{"-level", "L2", path}); code != 0 {
-		t.Fatalf("gao che = %d, want 0\n%s", code, stderr.String())
+		t.Fatalf("gao cover = %d, want 0\n%s", code, stderr.String())
 	}
 	if stdout.String() != cheArticle {
 		t.Errorf("the article came back changed:\n%s", stdout.String())
@@ -102,7 +102,7 @@ func TestCheReportsWhatEachLevelWouldCover(t *testing.T) {
 		var stdout, stderr bytes.Buffer
 		args := append([]string{"-report", "-json", "-level", c.level}, files...)
 		if code := runChe(&stdout, &stderr, args); code != 0 {
-			t.Fatalf("gao che -level %s = %d, want 0\n%s", c.level, code, stderr.String())
+			t.Fatalf("gao cover -level %s = %d, want 0\n%s", c.level, code, stderr.String())
 		}
 		var got cheReport
 		if err := json.Unmarshal(stdout.Bytes(), &got); err != nil {
@@ -132,7 +132,7 @@ func TestCheCountsTheSameSpansAtEveryLevel(t *testing.T) {
 
 	var stdout, stderr bytes.Buffer
 	if code := runChe(&stdout, &stderr, []string{"-report", "-json", "-level", "L0", path}); code != 0 {
-		t.Fatalf("gao che -level L0 = %d, want 0\n%s", code, stderr.String())
+		t.Fatalf("gao cover -level L0 = %d, want 0\n%s", code, stderr.String())
 	}
 	var got cheReport
 	if err := json.Unmarshal(stdout.Bytes(), &got); err != nil {
@@ -153,7 +153,7 @@ func TestCheListsTheMatchesWhenAsked(t *testing.T) {
 
 	var stdout, stderr bytes.Buffer
 	if code := runChe(&stdout, &stderr, []string{"-report", "-spans", "-level", "L2", path}); code != 0 {
-		t.Fatalf("gao che -spans = %d, want 0\n%s", code, stderr.String())
+		t.Fatalf("gao cover -spans = %d, want 0\n%s", code, stderr.String())
 	}
 	out := stdout.String()
 	for _, want := range []string{"0912 345 678", "Nguyễn Văn Minh", "minh.nguyen@gmail.com"} {
@@ -171,7 +171,7 @@ func TestCheSaysWhatTheLevelDid(t *testing.T) {
 
 	var stdout, stderr bytes.Buffer
 	if code := runChe(&stdout, &stderr, []string{"-report", path}); code != 0 {
-		t.Fatalf("gao che -report = %d, want 0\n%s", code, stderr.String())
+		t.Fatalf("gao cover -report = %d, want 0\n%s", code, stderr.String())
 	}
 	out := stdout.String()
 	if !strings.Contains(out, "L1 covers 2 of the 4") {
@@ -187,7 +187,7 @@ func TestCheSaysWhatTheLevelDid(t *testing.T) {
 func TestCheRefusesALevelItDoesNotHave(t *testing.T) {
 	var stdout, stderr bytes.Buffer
 	if code := runChe(&stdout, &stderr, []string{"-level", "L3"}); code != 2 {
-		t.Fatalf("gao che -level L3 = %d, want 2", code)
+		t.Fatalf("gao cover -level L3 = %d, want 2", code)
 	}
 	if !strings.Contains(stderr.String(), "L0, L1 and L2") {
 		t.Errorf("the error does not name the levels: %q", stderr.String())
@@ -203,7 +203,7 @@ func TestCheRefusesReportFlagsWithoutTheReport(t *testing.T) {
 	for _, flag := range []string{"-json", "-spans"} {
 		var stdout, stderr bytes.Buffer
 		if code := runChe(&stdout, &stderr, []string{flag}); code != 2 {
-			t.Fatalf("gao che %s = %d, want 2", flag, code)
+			t.Fatalf("gao cover %s = %d, want 2", flag, code)
 		}
 		if !strings.Contains(stderr.String(), "only mean something with -report") {
 			t.Errorf("the error for %s does not say why: %q", flag, stderr.String())
@@ -217,7 +217,7 @@ func TestCheRefusesReportFlagsWithoutTheReport(t *testing.T) {
 func TestCheMeasuresItselfAgainstTheLabeledSet(t *testing.T) {
 	var stdout, stderr bytes.Buffer
 	if code := runChe(&stdout, &stderr, []string{"-recall"}); code != 0 {
-		t.Fatalf("gao che -recall = %d, want 0\n%s", code, stderr.String())
+		t.Fatalf("gao cover -recall = %d, want 0\n%s", code, stderr.String())
 	}
 	out := stdout.String()
 	for _, want := range []string{"detector", "marked", "covered", "recall", "precision", "documents, marked by hand"} {
@@ -241,7 +241,7 @@ func TestCheMeasuresItselfAgainstTheLabeledSet(t *testing.T) {
 func TestCheReportsTheRecallAsJSON(t *testing.T) {
 	var stdout, stderr bytes.Buffer
 	if code := runChe(&stdout, &stderr, []string{"-recall", "-json"}); code != 0 {
-		t.Fatalf("gao che -recall -json = %d, want 0\n%s", code, stderr.String())
+		t.Fatalf("gao cover -recall -json = %d, want 0\n%s", code, stderr.String())
 	}
 	var got che.Score
 	if err := json.Unmarshal(stdout.Bytes(), &got); err != nil {
@@ -271,7 +271,7 @@ func TestCheRecallTakesNoFiles(t *testing.T) {
 	for _, args := range [][]string{{"-recall", path}, {"-recall", "-report"}, {"-recall", "-spans"}} {
 		var stdout, stderr bytes.Buffer
 		if code := runChe(&stdout, &stderr, args); code != 2 {
-			t.Fatalf("gao che %s = %d, want 2", strings.Join(args, " "), code)
+			t.Fatalf("gao cover %s = %d, want 2", strings.Join(args, " "), code)
 		}
 		if !strings.Contains(stderr.String(), "built into this binary") {
 			t.Errorf("the error for %s does not say what -recall measures: %q", strings.Join(args, " "), stderr.String())
@@ -287,7 +287,7 @@ func TestCheRefusesToCoverAPartOntoOneStream(t *testing.T) {
 
 	var stdout, stderr bytes.Buffer
 	if code := runChe(&stdout, &stderr, []string{path}); code != 2 {
-		t.Fatalf("gao che part.parquet = %d, want 2\n%s", code, stderr.String())
+		t.Fatalf("gao cover part.parquet = %d, want 2\n%s", code, stderr.String())
 	}
 	if !strings.Contains(stderr.String(), "Use -report") {
 		t.Errorf("the error does not say what to do instead: %q", stderr.String())

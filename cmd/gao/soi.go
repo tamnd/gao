@@ -13,14 +13,14 @@ func runSoi(stdout, stderr io.Writer, args []string) int {
 	if len(args) > 0 && args[0] == "field" {
 		return runSoiField(stdout, stderr, args[1:])
 	}
-	fs := flag.NewFlagSet("soi", flag.ContinueOnError)
+	fs := flag.NewFlagSet("inspect", flag.ContinueOnError)
 	fs.SetOutput(stderr)
 	asJSON := fs.Bool("json", false, "print JSON")
 	matrix := fs.Bool("matrix", false, "print the tone confusion matrix")
 	gate := fs.Bool("gate", false, "exit non zero if the reading fails the S4 gate")
 	fs.Usage = func() {
-		fmt.Fprint(stderr, `usage: gao soi [-matrix] [-gate] [-json] page reading [page reading...]
-       gao soi field [-pages N] [-json] engines.jsonl
+		fmt.Fprint(stderr, `usage: gao inspect [-matrix] [-gate] [-json] page reading [page reading...]
+       gao inspect field [-pages N] [-json] engines.jsonl
 
 Measure a machine's reading of Vietnamese against what the page actually says.
 
@@ -57,7 +57,7 @@ flags:
 		return 2
 	}
 	if len(files)%2 != 0 {
-		fmt.Fprintf(stderr, "gao soi: %d files, and they are read as pairs of a page and a reading of it\n", len(files))
+		fmt.Fprintf(stderr, "gao inspect: %d files, and they are read as pairs of a page and a reading of it\n", len(files))
 		return 2
 	}
 
@@ -66,12 +66,12 @@ flags:
 	for i := 0; i < len(files); i += 2 {
 		ref, err := readDocument(files[i])
 		if err != nil {
-			fmt.Fprintf(stderr, "gao soi: %v\n", err)
+			fmt.Fprintf(stderr, "gao inspect: %v\n", err)
 			return 1
 		}
 		read, err := readDocument(files[i+1])
 		if err != nil {
-			fmt.Fprintf(stderr, "gao soi: %v\n", err)
+			fmt.Fprintf(stderr, "gao inspect: %v\n", err)
 			return 1
 		}
 		s := soi.Measure(string(ref), string(read))

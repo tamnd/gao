@@ -23,14 +23,14 @@ func runTin(stdout, stderr io.Writer, args []string) int {
 		tinUsage(stdout)
 		return 0
 	default:
-		fmt.Fprintf(stderr, "gao tin: no subcommand named %s\n", args[0])
+		fmt.Fprintf(stderr, "gao trust: no subcommand named %s\n", args[0])
 		tinUsage(stderr)
 		return 2
 	}
 }
 
 func tinUsage(w io.Writer) {
-	fmt.Fprint(w, `usage: gao tin <subcommand> [flags] [file]
+	fmt.Fprint(w, `usage: gao trust <subcommand> [flags] [file]
 
 subcommands:
   study  print what the validity study is, and the bars it is read against
@@ -73,7 +73,7 @@ type tinReadReport struct {
 // runTinStudy prints what is being measured and what it is read against, which
 // has to be readable before any of it has run.
 func runTinStudy(stdout, stderr io.Writer, args []string) int {
-	fs := flag.NewFlagSet("tin study", flag.ContinueOnError)
+	fs := flag.NewFlagSet("trust study", flag.ContinueOnError)
 	fs.SetOutput(stderr)
 	asJSON := fs.Bool("json", false, "print the study as JSON")
 	if err := fs.Parse(args); err != nil {
@@ -115,7 +115,7 @@ Nothing has been scored at either scale yet.
 
 // runTinRead reads the paired scores and says whether the proxy can be believed.
 func runTinRead(stdout, stderr io.Writer, args []string) int {
-	fs := flag.NewFlagSet("tin read", flag.ContinueOnError)
+	fs := flag.NewFlagSet("trust read", flag.ContinueOnError)
 	fs.SetOutput(stderr)
 	asJSON := fs.Bool("json", false, "print the whole score as JSON")
 	missed := fs.Bool("missed", false, "print every comparison the proxy called backwards")
@@ -129,7 +129,7 @@ func runTinRead(stdout, stderr io.Writer, args []string) int {
 
 	pairs, err := tin.ReadPairs(fs.Arg(0))
 	if err != nil {
-		fmt.Fprintf(stderr, "gao tin: %v\n", err)
+		fmt.Fprintf(stderr, "gao trust: %v\n", err)
 		return 1
 	}
 

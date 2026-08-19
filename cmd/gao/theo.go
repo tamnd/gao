@@ -23,14 +23,14 @@ func runTheo(stdout, stderr io.Writer, args []string) int {
 		theoUsage(stdout)
 		return 0
 	default:
-		fmt.Fprintf(stderr, "gao theo: no subcommand named %s\n", args[0])
+		fmt.Fprintf(stderr, "gao follow: no subcommand named %s\n", args[0])
 		theoUsage(stderr)
 		return 2
 	}
 }
 
 func theoUsage(w io.Writer) {
-	fmt.Fprint(w, `usage: gao theo <command> [flags]
+	fmt.Fprint(w, `usage: gao follow <command> [flags]
 
 vi-adherence: whether the answer follows the question into the language it was
 asked in.
@@ -54,13 +54,13 @@ commands:
 }
 
 func runTheoItems(stdout, stderr io.Writer, args []string) int {
-	fs := flag.NewFlagSet("theo items", flag.ContinueOnError)
+	fs := flag.NewFlagSet("follow items", flag.ContinueOnError)
 	fs.SetOutput(stderr)
 	asJSON := fs.Bool("json", false, "print JSON")
 	prompts := fs.Bool("prompts", false, "print the prompts themselves rather than a line per kind")
 	path := fs.String("set", "", "read the set from a file instead of the one this build ships")
 	fs.Usage = func() {
-		fmt.Fprint(stderr, "usage: gao theo items [-prompts] [-json] [-set file]\n\nflags:\n")
+		fmt.Fprint(stderr, "usage: gao follow items [-prompts] [-json] [-set file]\n\nflags:\n")
 		fs.PrintDefaults()
 	}
 	if err := fs.Parse(args); err != nil {
@@ -97,12 +97,12 @@ func runTheoItems(stdout, stderr io.Writer, args []string) int {
 }
 
 func runTheoGrade(stdout, stderr io.Writer, args []string) int {
-	fs := flag.NewFlagSet("theo grade", flag.ContinueOnError)
+	fs := flag.NewFlagSet("follow grade", flag.ContinueOnError)
 	fs.SetOutput(stderr)
 	asJSON := fs.Bool("json", false, "print JSON")
 	path := fs.String("set", "", "read the set from a file instead of the one this build ships")
 	fs.Usage = func() {
-		fmt.Fprint(stderr, `usage: gao theo grade [-json] [-set file] replies.jsonl
+		fmt.Fprint(stderr, `usage: gao follow grade [-json] [-set file] replies.jsonl
 
 Score a model's replies against the set.
 
@@ -132,7 +132,7 @@ flags:
 	}
 	replies, err := theo.ReadReplies(fs.Arg(0))
 	if err != nil {
-		fmt.Fprintf(stderr, "gao theo: %v\n", err)
+		fmt.Fprintf(stderr, "gao follow: %v\n", err)
 		return 1
 	}
 
@@ -168,7 +168,7 @@ func readTheoSet(stderr io.Writer, path string) (theo.Set, int) {
 	}
 	s, err := theo.ReadSet(path)
 	if err != nil {
-		fmt.Fprintf(stderr, "gao theo: %v\n", err)
+		fmt.Fprintf(stderr, "gao follow: %v\n", err)
 		return theo.Set{}, 1
 	}
 	return s, 0
@@ -195,7 +195,7 @@ func printTheoKinds(w io.Writer, s theo.Set) {
 	_ = tw.Flush()
 
 	fmt.Fprintf(w, "\ndigest %s, published as %s\n", s.Digest(), theo.Repo)
-	fmt.Fprintf(w, "Run 'gao theo items -prompts' for the prompts themselves.\n")
+	fmt.Fprintf(w, "Run 'gao follow items -prompts' for the prompts themselves.\n")
 }
 
 func printTheoPrompts(w io.Writer, s theo.Set) {

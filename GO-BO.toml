@@ -7,7 +7,7 @@
 # times that only the operator can audit is a promise nobody can check.
 #
 # Nothing has been filed yet, because nothing has been crawled yet. That is not
-# the same as a takedown path that works, and `gao xoa status` says so rather
+# the same as a takedown path that works, and `gao takedown status` says so rather
 # than reporting a perfect record over zero requests.
 #
 # One block per request. Fields:
@@ -23,7 +23,7 @@
 #   note      anything a reader would otherwise have to guess at
 #
 # The dates are RFC 3339 and unquoted, which is what TOML wants for a timestamp.
-# `gao xoa check` reads this file for entries that cannot be true, and CI runs
+# `gao takedown check` reads this file for entries that cannot be true, and CI runs
 # it, because a register edited by hand under time pressure is a register with
 # the dates the wrong way round in it.
 #

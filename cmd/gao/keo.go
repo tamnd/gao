@@ -11,13 +11,13 @@ import (
 )
 
 func runKeo(stdout, stderr io.Writer, args []string) int {
-	fs := flag.NewFlagSet("keo", flag.ContinueOnError)
+	fs := flag.NewFlagSet("pull", flag.ContinueOnError)
 	fs.SetOutput(stderr)
 	asJSON := fs.Bool("json", false, "print JSON")
 	run := fs.String("run", "com-8B-cpt-gao", "the run the resumes were recorded on")
 	params := fs.Int64("params", 8_000_000_000, "the model's parameter count, which a checkpoint size is read against")
 	fs.Usage = func() {
-		fmt.Fprint(stderr, `usage: gao keo [-run NAME] [-params N] [-json] resumes.jsonl
+		fmt.Fprint(stderr, `usage: gao pull [-run NAME] [-params N] [-json] resumes.jsonl
 
 To pull: what it costs to get back into a run once the host is gone.
 
@@ -55,7 +55,7 @@ flags:
 
 	d, err := keo.ReadDrill(*run, *params, fs.Arg(0))
 	if err != nil {
-		fmt.Fprintf(stderr, "gao keo: %v\n", err)
+		fmt.Fprintf(stderr, "gao pull: %v\n", err)
 		return 1
 	}
 

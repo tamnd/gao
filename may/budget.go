@@ -78,7 +78,7 @@ type Budget struct {
 	// working set limit and it is what a stage's concurrency has to respect.
 	//
 	// It is counted out of scratch and not out of free disk. It was the second
-	// until 'gao box' printed 581 shards on a line above a table that said 542
+	// until 'gao fleet' printed 581 shards on a line above a table that said 542
 	// on the same box, which is the reserve being spent by one number and left
 	// alone by the other.
 	ShardsResident int

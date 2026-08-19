@@ -32,14 +32,14 @@ func runDau(stdout, stderr io.Writer, args []string) int {
 		dauUsage(stdout)
 		return 0
 	default:
-		fmt.Fprintf(stderr, "gao dau: unknown subcommand %q\n", args[0])
+		fmt.Fprintf(stderr, "gao mark: unknown subcommand %q\n", args[0])
 		dauUsage(stderr)
 		return 2
 	}
 }
 
 func dauUsage(w io.Writer) {
-	fmt.Fprintf(w, `usage: gao dau <subcommand> [flags] [files...]
+	fmt.Fprintf(w, `usage: gao mark <subcommand> [flags] [files...]
 
 Builds and scores %s, the diacritic restoration task set. Taking the
 marks off a page of Vietnamese is a function and putting them back is not, so
@@ -53,12 +53,12 @@ subcommands:
 
 Files are Parquet parts or text files, and a text file is one document.
 
-run 'gao dau <subcommand> -h' for the flags of a single subcommand.
+run 'gao mark <subcommand> -h' for the flags of a single subcommand.
 `, dau.Name)
 }
 
 func runDauBuild(stdout, stderr io.Writer, args []string) int {
-	fs := flag.NewFlagSet("dau build", flag.ContinueOnError)
+	fs := flag.NewFlagSet("mark build", flag.ContinueOnError)
 	fs.SetOutput(stderr)
 	out := fs.String("o", "", "write the task set here as JSON lines, one item per line, instead of to stdout")
 	oneIn := fs.Int("one-in", 1, "keep one document in this many, chosen by document identity so the build is reproducible")
@@ -67,7 +67,7 @@ func runDauBuild(stdout, stderr io.Writer, args []string) int {
 	maxChars := fs.Int("max-chars", 0, "the longest answer to accept, cut at a boundary")
 	minMarked := fs.Float64("min-marked", 0, "the floor on the share of characters carrying a mark")
 	fs.Usage = func() {
-		fmt.Fprintf(stderr, `usage: gao dau build [flags] <file...>
+		fmt.Fprintf(stderr, `usage: gao mark build [flags] <file...>
 
 Turns documents into questions. Each item is a page of Vietnamese with its marks
 taken off, the page itself as the answer, and the identity of the document it
@@ -108,7 +108,7 @@ flags:
 	if *out != "" {
 		f, err := os.Create(*out)
 		if err != nil {
-			fmt.Fprintf(stderr, "gao dau build: %v\n", err)
+			fmt.Fprintf(stderr, "gao mark build: %v\n", err)
 			return 1
 		}
 		defer func() { _ = f.Close() }()
@@ -125,7 +125,7 @@ flags:
 			return enc.Encode(it)
 		})
 		if err != nil {
-			fmt.Fprintf(stderr, "gao dau build: %s: %v\n", name, err)
+			fmt.Fprintf(stderr, "gao mark build: %s: %v\n", name, err)
 			return 1
 		}
 	}
@@ -148,11 +148,11 @@ flags:
 }
 
 func runDauBaseline(stdout, stderr io.Writer, args []string) int {
-	fs := flag.NewFlagSet("dau baseline", flag.ContinueOnError)
+	fs := flag.NewFlagSet("mark baseline", flag.ContinueOnError)
 	fs.SetOutput(stderr)
-	items := fs.String("items", "", "the task set to score against, as written by 'gao dau build'")
+	items := fs.String("items", "", "the task set to score against, as written by 'gao mark build'")
 	fs.Usage = func() {
-		fmt.Fprint(stderr, `usage: gao dau baseline -items SET <file...>
+		fmt.Fprint(stderr, `usage: gao mark baseline -items SET <file...>
 
 Scores the two answers a model has to beat before its own number means anything.
 
@@ -186,7 +186,7 @@ flags:
 
 	set, err := readItems(*items)
 	if err != nil {
-		fmt.Fprintf(stderr, "gao dau baseline: %v\n", err)
+		fmt.Fprintf(stderr, "gao mark baseline: %v\n", err)
 		return 1
 	}
 
@@ -202,7 +202,7 @@ flags:
 			return nil
 		})
 		if err != nil {
-			fmt.Fprintf(stderr, "gao dau baseline: %s: %v\n", name, err)
+			fmt.Fprintf(stderr, "gao mark baseline: %s: %v\n", name, err)
 			return 1
 		}
 	}
@@ -223,12 +223,12 @@ flags:
 }
 
 func runDauGrade(stdout, stderr io.Writer, args []string) int {
-	fs := flag.NewFlagSet("dau grade", flag.ContinueOnError)
+	fs := flag.NewFlagSet("mark grade", flag.ContinueOnError)
 	fs.SetOutput(stderr)
 	items := fs.String("items", "", "the task set the answers are against")
 	perItem := fs.Bool("v", false, "print a line per item as well as the total")
 	fs.Usage = func() {
-		fmt.Fprint(stderr, `usage: gao dau grade -items SET <answers.jsonl>
+		fmt.Fprint(stderr, `usage: gao mark grade -items SET <answers.jsonl>
 
 Scores a file of answers. Each line is a JSON object with a doc_id and an
 answer, matching an item in the task set. An item with no answer is scored as
@@ -259,12 +259,12 @@ flags:
 
 	set, err := readItems(*items)
 	if err != nil {
-		fmt.Fprintf(stderr, "gao dau grade: %v\n", err)
+		fmt.Fprintf(stderr, "gao mark grade: %v\n", err)
 		return 1
 	}
 	answers, err := readAnswers(fs.Arg(0))
 	if err != nil {
-		fmt.Fprintf(stderr, "gao dau grade: %v\n", err)
+		fmt.Fprintf(stderr, "gao mark grade: %v\n", err)
 		return 1
 	}
 

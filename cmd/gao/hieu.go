@@ -30,17 +30,17 @@ func runHieu(stdout, stderr io.Writer, args []string) int {
 		hieuUsage(stdout)
 		return 0
 	default:
-		fmt.Fprintf(stderr, "gao hieu: no subcommand named %s\n\n", args[0])
+		fmt.Fprintf(stderr, "gao efficiency: no subcommand named %s\n\n", args[0])
 		hieuUsage(stderr)
 		return 2
 	}
 }
 
 func hieuUsage(w io.Writer) {
-	fmt.Fprint(w, `usage: gao hieu model [-json]
-       gao hieu plan  [-instance NAME] [-precision fp8|bf16] [-gpus N] [-mfu F] [-seq N] [-json]
-       gao hieu read  steps.jsonl [-windows N] [-json]
-       gao hieu spot  [-mean D] [-restart D] [-confirm D] [-rate GB/s] [-free GB] [-json]
+	fmt.Fprint(w, `usage: gao efficiency model [-json]
+       gao efficiency plan  [-instance NAME] [-precision fp8|bf16] [-gpus N] [-mfu F] [-seq N] [-json]
+       gao efficiency read  steps.jsonl [-windows N] [-json]
+       gao efficiency spot  [-mean D] [-restart D] [-confirm D] [-rate GB/s] [-free GB] [-json]
 
 The effect: what fraction of the hardware a training run turns into gradient.
 
@@ -68,7 +68,7 @@ flags:
 }
 
 func runHieuModel(stdout, stderr io.Writer, args []string) int {
-	fs := flag.NewFlagSet("hieu model", flag.ContinueOnError)
+	fs := flag.NewFlagSet("efficiency model", flag.ContinueOnError)
 	fs.SetOutput(stderr)
 	asJSON := fs.Bool("json", false, "print JSON")
 	fs.Usage = func() { hieuUsage(stderr); fs.PrintDefaults() }
@@ -137,7 +137,7 @@ type hieuModelReport struct {
 }
 
 func runHieuPlan(stdout, stderr io.Writer, args []string) int {
-	fs := flag.NewFlagSet("hieu plan", flag.ContinueOnError)
+	fs := flag.NewFlagSet("efficiency plan", flag.ContinueOnError)
 	fs.SetOutput(stderr)
 	asJSON := fs.Bool("json", false, "print JSON")
 	name := fs.String("instance", "h100-sxm", "the accelerator the run is booked on")
@@ -157,7 +157,7 @@ func runHieuPlan(stdout, stderr io.Writer, args []string) int {
 
 	i, ok := hieu.Lookup(*name)
 	if !ok {
-		fmt.Fprintf(stderr, "gao hieu: %s is not hardware this project has priced, and the ones it has are %s\n", *name, named())
+		fmt.Fprintf(stderr, "gao efficiency: %s is not hardware this project has priced, and the ones it has are %s\n", *name, named())
 		return 2
 	}
 	p := hieu.Precision(*precision)
@@ -165,7 +165,7 @@ func runHieuPlan(stdout, stderr io.Writer, args []string) int {
 
 	hours, ok := hieu.Hours(m, i, p, *tokens, *seq, *mfu)
 	if !ok {
-		fmt.Fprintf(stderr, "gao hieu: %s has no %s hardware, so a run planned at that precision does not run slowly, it does not run\n", i.GPU, p)
+		fmt.Fprintf(stderr, "gao efficiency: %s has no %s hardware, so a run planned at that precision does not run slowly, it does not run\n", i.GPU, p)
 		return 1
 	}
 	days, _ := hieu.Days(m, i, p, *tokens, *seq, *mfu, *gpus)
@@ -205,7 +205,7 @@ func runHieuPlan(stdout, stderr io.Writer, args []string) int {
 }
 
 func runHieuSpot(stdout, stderr io.Writer, args []string) int {
-	fs := flag.NewFlagSet("hieu spot", flag.ContinueOnError)
+	fs := flag.NewFlagSet("efficiency spot", flag.ContinueOnError)
 	fs.SetOutput(stderr)
 	asJSON := fs.Bool("json", false, "print JSON")
 	mean := fs.Duration("mean", 4*time.Hour, "mean time between preemptions on the capacity being bought")
@@ -223,7 +223,7 @@ func runHieuSpot(stdout, stderr io.Writer, args []string) int {
 		return 2
 	}
 	if *rate <= 0 || *mean <= 0 {
-		fmt.Fprint(stderr, "gao hieu: the write rate and the time between preemptions are what the interval is computed from, and neither can be zero\n")
+		fmt.Fprint(stderr, "gao efficiency: the write rate and the time between preemptions are what the interval is computed from, and neither can be zero\n")
 		return 2
 	}
 
@@ -326,7 +326,7 @@ type hieuPlanReport struct {
 }
 
 func runHieuRead(stdout, stderr io.Writer, args []string) int {
-	fs := flag.NewFlagSet("hieu read", flag.ContinueOnError)
+	fs := flag.NewFlagSet("efficiency read", flag.ContinueOnError)
 	fs.SetOutput(stderr)
 	asJSON := fs.Bool("json", false, "print JSON")
 	windows := fs.Int("windows", hieu.WindowCount, "how many pieces the run is cut into")
@@ -341,7 +341,7 @@ func runHieuRead(stdout, stderr io.Writer, args []string) int {
 
 	steps, err := hieu.ReadLog(fs.Arg(0))
 	if err != nil {
-		fmt.Fprintf(stderr, "gao hieu: %v\n", err)
+		fmt.Fprintf(stderr, "gao efficiency: %v\n", err)
 		return 1
 	}
 	r := hieu.Read(hieu.Com(), steps)

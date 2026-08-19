@@ -112,7 +112,7 @@ func TestWatchOverAnEmptyRun(t *testing.T) {
 // take longer than the gap between two ticks. A time.Ticker drops a tick nobody
 // is waiting on, so the slow walk was costing the next reading rather than its
 // own: server1's six hour FineWeb2 trace came back with 26 gaps that were
-// multiples of the ten second period, up to 1m10s, and gao box peak refused the
+// multiples of the ten second period, up to 1m10s, and gao fleet peak refused the
 // whole run over it.
 func TestASlowSampleDoesNotCostTheNextOne(t *testing.T) {
 	old := watchEvery

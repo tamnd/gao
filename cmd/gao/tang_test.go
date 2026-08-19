@@ -131,7 +131,7 @@ func TestTangHoldsWhenEveryLayerWasRead(t *testing.T) {
 
 // The real reading, run through the command the way somebody publishing the
 // number would run it. Six buckets of HPLT v3 vie_Latn at seed s1, which is the
-// file gao nem wrote and the file this project's estimate now rests on.
+// file gao taste wrote and the file this project's estimate now rests on.
 func TestTangOverTheRealReadingOfEveryBucket(t *testing.T) {
 	out, errOut, code := exec(t, "tang", "-source", "hplt3", filepath.Join("..", "..", "tang", "testdata", "hplt3-vie_Latn-s1.jsonl"))
 
@@ -258,7 +258,7 @@ func TestTangUsageErrors(t *testing.T) {
 
 	_, errOut, code := exec(t, "tang", "-h")
 	if code != 2 {
-		t.Errorf("gao tang -h: exit %d, want 2", code)
+		t.Errorf("gao layers -h: exit %d, want 2", code)
 	}
 	for _, want := range []string{"not a sampling interval", "sit below every layer that was read", "194B"} {
 		if !strings.Contains(errOut, want) {

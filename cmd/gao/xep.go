@@ -25,14 +25,14 @@ func runXep(stdout, stderr io.Writer, args []string) int {
 		xepUsage(stdout)
 		return 0
 	default:
-		fmt.Fprintf(stderr, "gao xep: no subcommand named %s\n", args[0])
+		fmt.Fprintf(stderr, "gao place: no subcommand named %s\n", args[0])
 		xepUsage(stderr)
 		return 2
 	}
 }
 
 func xepUsage(w io.Writer) {
-	fmt.Fprint(w, `usage: gao xep <command> [flags]
+	fmt.Fprint(w, `usage: gao place <command> [flags]
 
 The reference set gao-refset is labeled against: which documents get drawn,
 which bands they get placed in, and what decides which.
@@ -56,13 +56,13 @@ commands:
 }
 
 func runXepFrame(stdout, stderr io.Writer, args []string) int {
-	fs := flag.NewFlagSet("xep frame", flag.ContinueOnError)
+	fs := flag.NewFlagSet("place frame", flag.ContinueOnError)
 	fs.SetOutput(stderr)
 	asJSON := fs.Bool("json", false, "print JSON")
 	rubric := fs.Bool("rubric", false, "print the rubric in full rather than a line per band")
 	path := fs.String("frame", "", "read the frame from a file instead of the one this build ships")
 	fs.Usage = func() {
-		fmt.Fprint(stderr, "usage: gao xep frame [-rubric] [-json] [-frame file]\n\nflags:\n")
+		fmt.Fprint(stderr, "usage: gao place frame [-rubric] [-json] [-frame file]\n\nflags:\n")
 		fs.PrintDefaults()
 	}
 	if err := fs.Parse(args); err != nil {
@@ -99,12 +99,12 @@ func runXepFrame(stdout, stderr io.Writer, args []string) int {
 }
 
 func runXepRead(stdout, stderr io.Writer, args []string) int {
-	fs := flag.NewFlagSet("xep read", flag.ContinueOnError)
+	fs := flag.NewFlagSet("place read", flag.ContinueOnError)
 	fs.SetOutput(stderr)
 	asJSON := fs.Bool("json", false, "print JSON")
 	path := fs.String("frame", "", "read the frame from a file instead of the one this build ships")
 	fs.Usage = func() {
-		fmt.Fprint(stderr, `usage: gao xep read [-json] [-frame file] labels.jsonl
+		fmt.Fprint(stderr, `usage: gao place read [-json] [-frame file] labels.jsonl
 
 Read a labeling back against the frame it was drawn from.
 
@@ -137,7 +137,7 @@ flags:
 	}
 	labels, err := xep.ReadLabels(fs.Arg(0))
 	if err != nil {
-		fmt.Fprintf(stderr, "gao xep: %v\n", err)
+		fmt.Fprintf(stderr, "gao place: %v\n", err)
 		return 1
 	}
 
@@ -173,7 +173,7 @@ func readXepFrame(stderr io.Writer, path string) (xep.Frame, int) {
 	}
 	f, err := xep.ReadFrame(path)
 	if err != nil {
-		fmt.Fprintf(stderr, "gao xep: %v\n", err)
+		fmt.Fprintf(stderr, "gao place: %v\n", err)
 		return xep.Frame{}, 1
 	}
 	return f, 0
@@ -202,7 +202,7 @@ func printXepFrame(w io.Writer, f xep.Frame) {
 	_ = bw.Flush()
 
 	fmt.Fprintf(w, "\ndigest %s, published as %s\n", f.Digest(), xep.Repo)
-	fmt.Fprint(w, "Run 'gao xep frame -rubric' for what puts a document in each band.\n")
+	fmt.Fprint(w, "Run 'gao place frame -rubric' for what puts a document in each band.\n")
 }
 
 func printXepRubric(w io.Writer, f xep.Frame) {
@@ -271,12 +271,12 @@ func printXepScore(w io.Writer, f xep.Frame, out xepReadReport) {
 }
 
 func runXepAgree(stdout, stderr io.Writer, args []string) int {
-	fs := flag.NewFlagSet("xep agree", flag.ContinueOnError)
+	fs := flag.NewFlagSet("place agree", flag.ContinueOnError)
 	fs.SetOutput(stderr)
 	asJSON := fs.Bool("json", false, "print JSON")
 	path := fs.String("frame", "", "read the frame from a file instead of the one this build ships")
 	fs.Usage = func() {
-		fmt.Fprint(stderr, `usage: gao xep agree [-json] [-frame file] labels.jsonl
+		fmt.Fprint(stderr, `usage: gao place agree [-json] [-frame file] labels.jsonl
 
 Measure agreement between labelers over the documents that were placed twice.
 
@@ -314,7 +314,7 @@ flags:
 	}
 	labels, err := xep.ReadLabels(fs.Arg(0))
 	if err != nil {
-		fmt.Fprintf(stderr, "gao xep: %v\n", err)
+		fmt.Fprintf(stderr, "gao place: %v\n", err)
 		return 1
 	}
 

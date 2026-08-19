@@ -32,14 +32,14 @@ func runBien(stdout, stderr io.Writer, args []string) int {
 		bienUsage(stdout)
 		return 0
 	default:
-		fmt.Fprintf(stderr, "gao bien: unknown subcommand %q\n", args[0])
+		fmt.Fprintf(stderr, "gao frontier: unknown subcommand %q\n", args[0])
 		bienUsage(stderr)
 		return 2
 	}
 }
 
 func bienUsage(w io.Writer) {
-	fmt.Fprint(w, `usage: gao bien <subcommand> [flags] [url ...]
+	fmt.Fprint(w, `usage: gao frontier <subcommand> [flags] [url ...]
 
 subcommands:
   canon  print the canonical form of each URL, and what merged with what
@@ -51,7 +51,7 @@ canon, shape and budget read URLs one per line from standard input when there
 are none on the command line. fit reads no URLs, because it is the check that
 runs before the first fetch rather than one that runs over a list.
 
-run 'gao bien <subcommand> -h' for the flags of a single subcommand.
+run 'gao frontier <subcommand> -h' for the flags of a single subcommand.
 `)
 }
 
@@ -59,7 +59,7 @@ run 'gao bien <subcommand> -h' for the flags of a single subcommand.
 // only way to see two links merge before a crawl has spent the fetch on finding
 // out that they did not.
 func runBienCanon(stdout, stderr io.Writer, args []string) int {
-	fs := flag.NewFlagSet("bien canon", flag.ContinueOnError)
+	fs := flag.NewFlagSet("frontier canon", flag.ContinueOnError)
 	fs.SetOutput(stderr)
 	merged := fs.Bool("merged", false, "print only the URLs that merged with an earlier one")
 	if err := fs.Parse(args); err != nil {
@@ -68,7 +68,7 @@ func runBienCanon(stdout, stderr io.Writer, args []string) int {
 
 	urls, err := readURLs(fs.Args(), stdin)
 	if err != nil {
-		fmt.Fprintf(stderr, "gao bien canon: %v\n", err)
+		fmt.Fprintf(stderr, "gao frontier canon: %v\n", err)
 		return 1
 	}
 
@@ -104,7 +104,7 @@ func runBienCanon(stdout, stderr io.Writer, args []string) int {
 // runBienShape prints the template a URL came from, which is what a budget
 // counts and what a trap is detected in.
 func runBienShape(stdout, stderr io.Writer, args []string) int {
-	fs := flag.NewFlagSet("bien shape", flag.ContinueOnError)
+	fs := flag.NewFlagSet("frontier shape", flag.ContinueOnError)
 	fs.SetOutput(stderr)
 	count := fs.Bool("count", false, "print each template once with how many URLs it covered")
 	if err := fs.Parse(args); err != nil {
@@ -113,7 +113,7 @@ func runBienShape(stdout, stderr io.Writer, args []string) int {
 
 	urls, err := readURLs(fs.Args(), stdin)
 	if err != nil {
-		fmt.Fprintf(stderr, "gao bien shape: %v\n", err)
+		fmt.Fprintf(stderr, "gao frontier shape: %v\n", err)
 		return 1
 	}
 
@@ -165,7 +165,7 @@ func runBienShape(stdout, stderr io.Writer, args []string) int {
 // cannot know what came back, so what this measures is the structural half of
 // the decision rather than the earned half.
 func runBienBudget(stdout, stderr io.Writer, args []string) int {
-	fs := flag.NewFlagSet("bien budget", flag.ContinueOnError)
+	fs := flag.NewFlagSet("frontier budget", flag.ContinueOnError)
 	fs.SetOutput(stderr)
 	refused := fs.Bool("refused", false, "print only the URLs the budget would not ask for")
 	shapes := fs.Bool("shapes", false, "print what every template on every host spent")
@@ -175,7 +175,7 @@ func runBienBudget(stdout, stderr io.Writer, args []string) int {
 
 	urls, err := readURLs(fs.Args(), stdin)
 	if err != nil {
-		fmt.Fprintf(stderr, "gao bien budget: %v\n", err)
+		fmt.Fprintf(stderr, "gao frontier budget: %v\n", err)
 		return 1
 	}
 
@@ -257,7 +257,7 @@ type bienFitReport struct {
 // arithmetic runs first, it runs against a named box rather than against a
 // number somebody remembers, and it exits non zero when the answer is no.
 func runBienFit(stdout, stderr io.Writer, args []string) int {
-	fs := flag.NewFlagSet("bien fit", flag.ContinueOnError)
+	fs := flag.NewFlagSet("frontier fit", flag.ContinueOnError)
 	fs.SetOutput(stderr)
 	p := bien.Frontier()
 	name := fs.String("box", "server1", "the box in the fleet the frontier has to fit on")
@@ -273,7 +273,7 @@ func runBienFit(stdout, stderr io.Writer, args []string) int {
 		return 2
 	}
 	if fs.NArg() > 0 {
-		fmt.Fprintf(stderr, "gao bien fit: %s takes no URLs, since it runs before there are any\n", fs.Name())
+		fmt.Fprintf(stderr, "gao frontier fit: %s takes no URLs, since it runs before there are any\n", fs.Name())
 		bienUsage(stderr)
 		return 2
 	}
@@ -284,7 +284,7 @@ func runBienFit(stdout, stderr io.Writer, args []string) int {
 		for _, b := range may.Boxes {
 			names = append(names, b.Name)
 		}
-		fmt.Fprintf(stderr, "gao bien fit: no box named %q in the fleet, which is %s\n", *name, strings.Join(names, ", "))
+		fmt.Fprintf(stderr, "gao frontier fit: no box named %q in the fleet, which is %s\n", *name, strings.Join(names, ", "))
 		return 2
 	}
 

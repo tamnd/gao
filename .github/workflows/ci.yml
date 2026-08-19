@@ -137,9 +137,9 @@ jobs:
       # a sentence in a file nobody reads: check fails on a row that cannot be
       # true, and status fails on a request that is past the promise.
       - name: The register reads
-        run: go run ./cmd/gao xoa check
+        run: go run ./cmd/gao takedown check
       - name: Nothing is past the response time we promised
-        run: go run ./cmd/gao xoa status
+        run: go run ./cmd/gao takedown status
 
   plan:
     name: training plan
@@ -155,7 +155,7 @@ jobs:
       # of thousands of dollars. This job finds it on the pull request that
       # introduces it instead.
       - name: The budget adds up and the curriculum spends it
-        run: go run ./cmd/gao nau check
+        run: go run ./cmd/gao cook check
 
   ci-complete:
     name: ci-complete

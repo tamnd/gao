@@ -20,13 +20,13 @@ import (
 )
 
 func runKhoMove(stdout, stderr io.Writer, args []string) int {
-	fs := flag.NewFlagSet("kho move", flag.ContinueOnError)
+	fs := flag.NewFlagSet("store move", flag.ContinueOnError)
 	fs.SetOutput(stderr)
 	name := fs.String("dataset", kho.StageRepo, "the dataset repo to re-lay")
 	run := fs.Bool("run", false, "do it, rather than printing what it would do")
 	sweep := fs.Bool("sweep", false, "delete the old paths, which is only safe once the new ones have been read")
 	fs.Usage = func() {
-		fmt.Fprint(stderr, `usage: gao kho move [-dataset NAME] [-run] [-sweep]
+		fmt.Fprint(stderr, `usage: gao store move [-dataset NAME] [-run] [-sweep]
 
 Puts every part in a repo at the path the current layout puts it at, without the
 bytes traveling.
@@ -70,8 +70,8 @@ flags:
 
 	d, ok := kho.Lookup(*name)
 	if !ok {
-		fmt.Fprintf(stderr, "gao kho move: no dataset named %q\n", *name)
-		fmt.Fprintln(stderr, "run 'gao kho datasets' for the list")
+		fmt.Fprintf(stderr, "gao store move: no dataset named %q\n", *name)
+		fmt.Fprintln(stderr, "run 'gao store datasets' for the list")
 		return 1
 	}
 
@@ -89,7 +89,7 @@ flags:
 		fmt.Fprintf(stdout, "%d/%d  %s\n", done, of, batch[len(batch)-1].To)
 	})
 	if err != nil {
-		fmt.Fprintf(stderr, "gao kho move: %v\n", err)
+		fmt.Fprintf(stderr, "gao store move: %v\n", err)
 		return 1
 	}
 
@@ -104,7 +104,7 @@ flags:
 	if *sweep {
 		gone, err := sweepOld(ctx, p, report)
 		if err != nil {
-			fmt.Fprintf(stderr, "gao kho move: %v\n", err)
+			fmt.Fprintf(stderr, "gao store move: %v\n", err)
 			return 1
 		}
 		fmt.Fprintf(stdout, "\nswept %s off the old layout, and the objects they pointed at are still there under the new one\n",
@@ -140,7 +140,7 @@ func sweepOld(ctx context.Context, p *kho.Pusher, report kho.MoveReport) (int, e
 func printMovePlan(stdout, stderr io.Writer, ctx context.Context, p *kho.Pusher) int {
 	files, err := p.List(ctx, kho.DataDir)
 	if err != nil {
-		fmt.Fprintf(stderr, "gao kho move: %v\n", err)
+		fmt.Fprintf(stderr, "gao store move: %v\n", err)
 		return 1
 	}
 
@@ -218,13 +218,13 @@ func restage(path string) (string, bool) {
 }
 
 func runKhoIndex(stdout, stderr io.Writer, args []string) int {
-	fs := flag.NewFlagSet("kho index", flag.ContinueOnError)
+	fs := flag.NewFlagSet("store index", flag.ContinueOnError)
 	fs.SetOutput(stderr)
 	name := fs.String("dataset", kho.StageRepo, "the dataset repo to index")
 	out := fs.String("o", "", "write the index here as well as printing the summary")
 	push := fs.Bool("push", false, "put the index and the card it generates on the repo")
 	fs.Usage = func() {
-		fmt.Fprint(stderr, `usage: gao kho index [-dataset NAME] [-o PATH] [-push]
+		fmt.Fprint(stderr, `usage: gao store index [-dataset NAME] [-o PATH] [-push]
 
 Reads the footer of every part in a repo and writes `+kho.IndexName+`, which is
 one row per part: the source, the snapshot, the input file and part it came
@@ -263,8 +263,8 @@ flags:
 
 	d, ok := kho.Lookup(*name)
 	if !ok {
-		fmt.Fprintf(stderr, "gao kho index: no dataset named %q\n", *name)
-		fmt.Fprintln(stderr, "run 'gao kho datasets' for the list")
+		fmt.Fprintf(stderr, "gao store index: no dataset named %q\n", *name)
+		fmt.Fprintln(stderr, "run 'gao store datasets' for the list")
 		return 1
 	}
 
@@ -277,18 +277,18 @@ flags:
 	})
 	fmt.Fprint(stderr, "\r\033[K")
 	if err != nil {
-		fmt.Fprintf(stderr, "gao kho index: %v\n", err)
+		fmt.Fprintf(stderr, "gao store index: %v\n", err)
 		return 1
 	}
 
 	var body strings.Builder
 	if err := kho.WriteIndex(&body, report.Rows); err != nil {
-		fmt.Fprintf(stderr, "gao kho index: %v\n", err)
+		fmt.Fprintf(stderr, "gao store index: %v\n", err)
 		return 1
 	}
 	if *out != "" {
 		if err := os.WriteFile(*out, []byte(body.String()), 0o600); err != nil {
-			fmt.Fprintf(stderr, "gao kho index: %v\n", err)
+			fmt.Fprintf(stderr, "gao store index: %v\n", err)
 			return 1
 		}
 	}
@@ -308,7 +308,7 @@ flags:
 		} {
 			sent, pErr := p.PushText(ctx, w.what, w.body)
 			if pErr != nil {
-				fmt.Fprintf(stderr, "gao kho index: %v\n", pErr)
+				fmt.Fprintf(stderr, "gao store index: %v\n", pErr)
 				return 1
 			}
 			if sent.Skipped() {

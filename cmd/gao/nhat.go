@@ -11,7 +11,7 @@ import (
 )
 
 func runNhat(stdout, stderr io.Writer, args []string) int {
-	fs := flag.NewFlagSet("nhat", flag.ContinueOnError)
+	fs := flag.NewFlagSet("pick", flag.ContinueOnError)
 	fs.SetOutput(stderr)
 	list := fs.String("list", "", "the benchmark list, which is the roster with every item's text filled in")
 	roster := fs.String("roster", "", "check the list against this roster instead of the one in the repository")
@@ -19,8 +19,8 @@ func runNhat(stdout, stderr io.Writer, args []string) int {
 	show := fs.Int("show", 0, "list this many of the documents that were flagged")
 	asJSON := fs.Bool("json", false, "print JSON")
 	fs.Usage = func() {
-		fmt.Fprint(stderr, `usage: gao nhat -benchmarks [-roster file] [-json]
-       gao nhat -list file [-roster file] [-show n] [-json] file...
+		fmt.Fprint(stderr, `usage: gao pick -benchmarks [-roster file] [-json]
+       gao pick -list file [-roster file] [-show n] [-json] file...
 
 Decontaminate: find the documents that hold the text of a benchmark gao is
 judged on. A model trained on a corpus holding its own test set scores well and
@@ -58,19 +58,19 @@ flags:
 		return 2
 	}
 	if *show < 0 {
-		fmt.Fprintf(stderr, "gao nhat: -show is how many flagged documents to list, so it is not %d\n", *show)
+		fmt.Fprintf(stderr, "gao pick: -show is how many flagged documents to list, so it is not %d\n", *show)
 		return 2
 	}
 
 	ros, err := readRoster(*roster)
 	if err != nil {
-		fmt.Fprintf(stderr, "gao nhat: %v\n", err)
+		fmt.Fprintf(stderr, "gao pick: %v\n", err)
 		return 1
 	}
 
 	if *benchmarks {
 		if *list != "" || len(fs.Args()) > 0 {
-			fmt.Fprintln(stderr, "gao nhat: -benchmarks prints the roster and stops, so it takes no list and no files")
+			fmt.Fprintln(stderr, "gao pick: -benchmarks prints the roster and stops, so it takes no list and no files")
 			return 2
 		}
 		if *asJSON {
@@ -81,29 +81,29 @@ flags:
 	}
 
 	if *list == "" {
-		fmt.Fprintln(stderr, "gao nhat: nothing to check against. Give it -list, or -benchmarks to see the roster")
+		fmt.Fprintln(stderr, "gao pick: nothing to check against. Give it -list, or -benchmarks to see the roster")
 		return 2
 	}
 	files := fs.Args()
 	if len(files) == 0 {
-		fmt.Fprintln(stderr, "gao nhat: nothing to check. Give it parquet parts or text files")
+		fmt.Fprintln(stderr, "gao pick: nothing to check. Give it parquet parts or text files")
 		return 2
 	}
 
 	l, err := nhat.ReadList(*list)
 	if err != nil {
-		fmt.Fprintf(stderr, "gao nhat: %v\n", err)
+		fmt.Fprintf(stderr, "gao pick: %v\n", err)
 		return 1
 	}
 	// Before the scan rather than after it, because a list missing a benchmark
 	// produces exactly the report a clean benchmark produces.
 	if err := l.Covers(ros); err != nil {
-		fmt.Fprintf(stderr, "gao nhat: %v\n", err)
+		fmt.Fprintf(stderr, "gao pick: %v\n", err)
 		return 1
 	}
 	x, err := nhat.NewIndex(l)
 	if err != nil {
-		fmt.Fprintf(stderr, "gao nhat: %v\n", err)
+		fmt.Fprintf(stderr, "gao pick: %v\n", err)
 		return 1
 	}
 
@@ -120,7 +120,7 @@ flags:
 			i++
 			return nil
 		}); err != nil {
-			fmt.Fprintf(stderr, "gao nhat: %v\n", err)
+			fmt.Fprintf(stderr, "gao pick: %v\n", err)
 			return 1
 		}
 	}

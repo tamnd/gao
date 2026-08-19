@@ -372,7 +372,7 @@ func TestTheVerdictSaysWhatWentUnreadAndThatMoreReadingOfTheRestWillNotFixIt(t *
 	}
 }
 
-// The real reading. tang/testdata holds the layer file gao nem wrote against
+// The real reading. tang/testdata holds the layer file gao taste wrote against
 // HPLT v3 vie_Latn at seed s1, which is six buckets read at 40 MB each off
 // twelve shards, and everything below is checked against that rather than
 // against the shape somebody assumed the corpus had.
