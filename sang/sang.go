@@ -56,6 +56,7 @@ package sang
 import (
 	"strings"
 	"unicode"
+	"unicode/utf8"
 )
 
 // Result is what one document measures. Every field is a count or a ratio taken
@@ -361,22 +362,92 @@ func isBullet(line string) bool {
 }
 
 func measureGrams(r *Result, syllables []string) {
-	total := 0
-	for _, s := range syllables {
-		total += len([]rune(s))
-	}
-	if total == 0 {
+	g := newGrams(syllables)
+	if g.total == 0 {
 		return
 	}
 	for i, n := range TopGramSizes {
-		r.Top[i] = topGram(syllables, n, total)
+		r.Top[i] = g.top(n)
 	}
 	for i, n := range RepeatGramSizes {
-		r.Repeat[i] = repeatGram(syllables, n, total)
+		r.Repeat[i] = g.repeat(n)
 	}
 }
 
-// topGram is the share of the document covered by the most frequent gram of n
+// grams is the document as gram identifiers rather than as gram strings.
+//
+// The straightforward way to count grams is to join each one into a string and
+// count the strings, and that is what this used to do. It is also, on a corpus
+// of a hundred million documents, most of the cost of the sift: six gram sizes,
+// the longest of them seventeen syllables, each joined twice over every position
+// in the document. On a real GlotCC part it was a fifth of the whole cleaning
+// line and the joins alone were an eighth of it.
+//
+// So a gram is an integer here. Each distinct syllable gets an identifier, each
+// distinct pair of identifiers gets one, and a gram of any length is folded down
+// to a single identifier a pair at a time. Two grams have the same identifier
+// exactly when they are the same sequence of syllables, so the counting is the
+// counting it always was, with no strings built and nothing hashed twice.
+type grams struct {
+	syllables []string
+
+	// id is the identifier of the syllable at each position, and runes is its
+	// length, which coverage would otherwise recount for every gram size.
+	id    []int32
+	runes []int32
+	total int
+
+	word map[string]int32
+	pair map[uint64]int32
+	next int32
+
+	// buf is reused across gram sizes, since only one size is in flight.
+	buf []int32
+}
+
+func newGrams(syllables []string) *grams {
+	g := &grams{
+		syllables: syllables,
+		id:        make([]int32, len(syllables)),
+		runes:     make([]int32, len(syllables)),
+		word:      make(map[string]int32, len(syllables)),
+		pair:      make(map[uint64]int32, len(syllables)),
+	}
+	for i, s := range syllables {
+		id, ok := g.word[s]
+		if !ok {
+			id = g.next
+			g.next++
+			g.word[s] = id
+		}
+		g.id[i] = id
+		g.runes[i] = int32(utf8.RuneCountInString(s))
+		g.total += int(g.runes[i])
+	}
+	return g
+}
+
+// ids fills buf with the identifier of the gram of n syllables starting at each
+// position, and returns it.
+func (g *grams) ids(n int) []int32 {
+	count := len(g.id) - n + 1
+	g.buf = append(g.buf[:0], g.id[:count]...)
+	for j := 1; j < n; j++ {
+		for i := range count {
+			key := uint64(uint32(g.buf[i]))<<32 | uint64(uint32(g.id[i+j]))
+			id, ok := g.pair[key]
+			if !ok {
+				id = g.next
+				g.next++
+				g.pair[key] = id
+			}
+			g.buf[i] = id
+		}
+	}
+	return g.buf
+}
+
+// top is the share of the document covered by the most frequent gram of n
 // syllables, and zero when nothing repeats.
 //
 // Two departures from Gopher, both because the number has to mean what it says.
@@ -387,58 +458,67 @@ func measureGrams(r *Result, syllables []string) {
 // caption comes back at a quarter of itself with nothing repeated in it at all.
 // Gopher never sees that because it filters on length first. This package does
 // too, and the measure still should not lie when read on its own.
-func topGram(syllables []string, n, total int) float64 {
-	if len(syllables) < n {
+func (g *grams) top(n int) float64 {
+	if len(g.syllables) < n {
 		return 0
 	}
-	counts := make(map[string]int, len(syllables))
-	for i := 0; i+n <= len(syllables); i++ {
-		counts[strings.Join(syllables[i:i+n], " ")]++
+	ids := g.ids(n)
+	counts := make(map[int32]int, len(ids))
+	for _, id := range ids {
+		counts[id]++
 	}
-	best, bestCount, bestRunes := "", 0, 0
-	for gram, c := range counts {
-		runes := len([]rune(strings.ReplaceAll(gram, " ", "")))
-		if c > bestCount || (c == bestCount && runes > bestRunes) {
-			best, bestCount, bestRunes = gram, c, runes
+
+	// Walked in document order rather than in map order, so that two grams tied
+	// on both count and length resolve to the first one in the document instead
+	// of to whichever one the map happened to yield.
+	best, bestCount, bestRunes := int32(-1), 0, int32(0)
+	for i, id := range ids {
+		var runes int32
+		for j := i; j < i+n; j++ {
+			runes += g.runes[j]
+		}
+		if c := counts[id]; c > bestCount || (c == bestCount && runes > bestRunes) {
+			best, bestCount, bestRunes = id, c, runes
 		}
 	}
 	if bestCount < 2 {
 		return 0
 	}
-	return coverage(syllables, n, total, func(gram string) bool { return gram == best })
+	return g.coverage(n, ids, func(id int32) bool { return id == best })
 }
 
-// repeatGram is the share of the document sitting inside a gram of n syllables
-// that occurs more than once. A syllable covered by two repeated grams is
-// counted once, so the result is a share of the text rather than a count of
+// repeat is the share of the document sitting inside a gram of n syllables that
+// occurs more than once. A syllable covered by two repeated grams is counted
+// once, so the result is a share of the text rather than a count of
 // coincidences.
-func repeatGram(syllables []string, n, total int) float64 {
-	if len(syllables) < n {
+func (g *grams) repeat(n int) float64 {
+	if len(g.syllables) < n {
 		return 0
 	}
-	counts := make(map[string]int, len(syllables))
-	for i := 0; i+n <= len(syllables); i++ {
-		counts[strings.Join(syllables[i:i+n], " ")]++
+	ids := g.ids(n)
+	counts := make(map[int32]int, len(ids))
+	for _, id := range ids {
+		counts[id]++
 	}
-	return coverage(syllables, n, total, func(gram string) bool { return counts[gram] > 1 })
+	return g.coverage(n, ids, func(id int32) bool { return counts[id] > 1 })
 }
 
 // coverage is how much of the text sits inside a gram the predicate accepts,
 // counting every syllable once however many grams cover it.
-func coverage(syllables []string, n, total int, want func(string) bool) float64 {
-	covered := make([]bool, len(syllables))
-	for i := 0; i+n <= len(syllables); i++ {
-		if want(strings.Join(syllables[i:i+n], " ")) {
+func (g *grams) coverage(n int, ids []int32, want func(int32) bool) float64 {
+	covered := make([]bool, len(g.syllables))
+	for i, id := range ids {
+		if want(id) {
 			for j := i; j < i+n; j++ {
 				covered[j] = true
 			}
 		}
 	}
-	runes := 0
+	var runes int32
 	for i, ok := range covered {
 		if ok {
-			runes += len([]rune(syllables[i]))
+			runes += g.runes[i]
 		}
 	}
-	return float64(runes) / float64(total)
+	return float64(runes) / float64(g.total)
 }

@@ -181,6 +181,85 @@ func RowOf(d *doc.Document) Row {
 	}
 }
 
+// DocumentOf converts a row back into a document.
+//
+// It exists because a working repo is an input as well as an output. A cleaning
+// stage reads what the ingest wrote, changes the text and most of the score
+// columns, and writes the result somewhere else, and the alternative to a
+// conversion here is every such stage building a document out of column names
+// by hand.
+//
+// It is the inverse of [RowOf] and there is a test that runs a document through
+// both and compares, because the useful property of an inverse is that it stays
+// one after somebody adds a column to the record.
+//
+// A class name the record does not know reads as [doc.LicenseUnknown] rather
+// than failing. The parse cannot fail on anything gao wrote, and a row that
+// came from somewhere else with a class nobody recognizes is a document whose
+// class is not known, which is a value this schema has.
+func DocumentOf(r Row) *doc.Document {
+	spans := make([]doc.PIISpan, len(r.PIISpans))
+	for i, s := range r.PIISpans {
+		spans[i] = doc.PIISpan{Start: s.Start, Len: s.Len, Type: s.Type}
+	}
+	class, err := doc.ParseLicenseClass(r.LicenseClass)
+	if err != nil {
+		class = doc.LicenseUnknown
+	}
+	d := &doc.Document{
+		DocID:         r.DocID,
+		RawID:         r.RawID,
+		Text:          r.Text,
+		SchemaVersion: r.SchemaVersion,
+	}
+	d.Source = doc.Source(r.Source)
+	d.SourceLocator = r.SourceLocator
+	d.URL = r.URL
+	d.Host = r.Host
+	d.URLTemplate = r.URLTemplate
+	d.FetchedAt = r.FetchedAt
+	d.MediaType = r.MediaType
+	d.Extractor = r.Extractor
+	d.PipelineVersion = r.PipelineVersion
+
+	d.HTTPStatus = r.HTTPStatus
+	d.RobotsDecision = r.RobotsDecision
+	d.RobotsRule = r.RobotsRule
+	d.RobotsHash = r.RobotsHash
+	d.TDMSignals = r.TDMSignals
+	d.Consent = doc.Consent(r.Consent)
+
+	d.Lang = r.Lang
+	d.LangScore = r.LangScore
+	d.Diacritics = r.Diacritics
+	d.Translated = r.Translated
+
+	d.GaoQual = r.GaoQual
+	d.GaoEdu = r.GaoEdu
+	d.HPLTBucket = r.HPLTBucket
+	d.Register = r.Register
+	d.Heuristics = r.Heuristics
+
+	d.DupCluster = r.DupCluster
+	d.DupClusterSize = r.DupClusterSize
+	d.IsRepresentative = r.IsRepresentative
+
+	d.PIILevel = doc.RedactionLevel(r.PIILevel)
+	d.PIITypes = r.PIITypes
+	d.PIISpans = spans
+
+	d.LicenseClass = class
+	d.LicenseEvidence = r.LicenseEvidence
+
+	d.Structure = r.Structure
+	d.NChars = r.NChars
+	d.NSyllables = r.NSyllables
+	d.NTokens = r.NTokens
+	d.ContamFlags = r.ContamFlags
+	d.UpstreamFields = r.UpstreamFields
+	return d
+}
+
 // TextColumn is the column a repo withholds when it does not carry text.
 const TextColumn = "text"
 

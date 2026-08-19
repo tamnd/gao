@@ -115,7 +115,7 @@ func cardSources(b *strings.Builder, x []Indexed) {
 // A card that stops at the schema has told a reader what the columns are called
 // and left them to work out that the host column is a domain corpus, that the
 // duplicates being left in is the point rather than an oversight, and that the
-// diacritics column is a labelled training set for a task nobody else publishes
+// diacritics column is a labeled training set for a task nobody else publishes
 // one for. Each of these is a query, and each query here was run.
 func cardUses(b *strings.Builder, d Dataset, m *Manifest, x []Indexed) {
 	by := BySource(x)
@@ -143,7 +143,7 @@ func cardUses(b *strings.Builder, d Dataset, m *Manifest, x []Indexed) {
 		},
 	})
 	b.WriteString("Vietnamese is written in syllables and counted here in them, because a syllable count is a property of the text and a token count is a property of somebody's tokenizer. Across the tokenizers we have measured on this corpus a syllable costs between 1.25 and 1.32 tokens, so a syllable budget converts to a token budget by multiplying, and it does not go stale when the tokenizer changes.\n\n")
-	b.WriteString("For continued pretraining of a model that already speaks some Vietnamese, take one source rather than all of them. The four were built by different projects with different filters, so they fail differently, and a run that only ever sees one of them is a cleaner experiment than a run that sees a blend nobody has characterised.\n\n")
+	b.WriteString("For continued pretraining of a model that already speaks some Vietnamese, take one source rather than all of them. The four were built by different projects with different filters, so they fail differently, and a run that only ever sees one of them is a cleaner experiment than a run that sees a blend nobody has characterized.\n\n")
 
 	b.WriteString("### A corpus for one domain\n\n")
 	b.WriteString("`host` is on every row and it is dictionary encoded, so grouping by it across a whole source is a column scan rather than a text read. This is how the legal corpus, the finance corpus and the health corpus come out of a general one.\n\n")
@@ -193,7 +193,7 @@ func cardUses(b *strings.Builder, d Dataset, m *Manifest, x []Indexed) {
 	b.WriteString("`dup_cluster` and `is_representative` are in the schema for the stage that will do this properly, and they are zero in every row here.\n\n")
 
 	b.WriteString("### Diacritic restoration, and language identification\n\n")
-	b.WriteString("Vietnamese loses its diacritics constantly, in search boxes, in filenames, in chat, and restoring them is a real task with almost no labelled data published for it. The `diacritics` column labels every document as present, absent or mixed at ingest, which makes this corpus a training set for that task rather than only a source of text for it.\n\n")
+	b.WriteString("Vietnamese loses its diacritics constantly, in search boxes, in filenames, in chat, and restoring them is a real task with almost no labeled data published for it. The `diacritics` column labels every document as present, absent or mixed at ingest, which makes this corpus a training set for that task rather than only a source of text for it.\n\n")
 	b.WriteString("```sql\n")
 	b.WriteString("SELECT diacritics, count(*) AS documents, round(avg(lang_score), 3) AS mean_score\n")
 	fmt.Fprintf(b, "FROM read_parquet('%s')\n", glob)
@@ -389,7 +389,7 @@ func cardCaveats(b *strings.Builder, x []Indexed) {
 
 	b.WriteString("**It is not quality filtered.** `gao_qual` and `gao_edu` are zero in every row, boilerplate has not been stripped beyond what each upstream corpus did, and no classifier has been run. What the upstream projects removed is removed, and they do not agree about what that is.\n\n")
 
-	b.WriteString("**The language identification is inherited.** `lang` and `lang_score` come from whichever identifier the source used, and the sources used different ones. Documents that are mostly Vietnamese with English or Chinese passages in them are in here labelled Vietnamese, and so are some that are not Vietnamese at all.\n\n")
+	b.WriteString("**The language identification is inherited.** `lang` and `lang_score` come from whichever identifier the source used, and the sources used different ones. Documents that are mostly Vietnamese with English or Chinese passages in them are in here labeled Vietnamese, and so are some that are not Vietnamese at all.\n\n")
 
 	b.WriteString("**Personal information has not been removed.** `pii_level`, `pii_types` and `pii_spans` are in the schema and are empty, because the stage that fills them has not run on this repo. Names, phone numbers, addresses and email addresses that were on a public page are in the text as they were on the page. If that matters for what you are building, filter before you train rather than after.\n\n")
 
