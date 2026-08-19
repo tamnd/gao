@@ -9,6 +9,7 @@ import (
 
 	"github.com/tamnd/gao/doc"
 	"github.com/tamnd/gao/luat"
+	"github.com/tamnd/gao/may"
 )
 
 // released is a manifest with every field a card reads filled in, which is a
@@ -75,7 +76,7 @@ func published(t *testing.T) Dataset {
 }
 
 func TestACardCarriesTheCountsFromTheManifestRatherThanFromAnybodysMemory(t *testing.T) {
-	card := Card(published(t), released(t))
+	card := Card(published(t), released(t), nil)
 
 	for _, want := range []string{
 		"412000000",     // documents
@@ -94,7 +95,7 @@ func TestACardCarriesTheCountsFromTheManifestRatherThanFromAnybodysMemory(t *tes
 }
 
 func TestACardBreaksTheCountDownBySourceLargestFirst(t *testing.T) {
-	card := Card(published(t), released(t))
+	card := Card(published(t), released(t), nil)
 
 	order := []string{"glotcc", "fineweb2", "culturax"}
 	at := make([]int, len(order))
@@ -112,7 +113,7 @@ func TestACardBreaksTheCountDownBySourceLargestFirst(t *testing.T) {
 }
 
 func TestACardNamesTheStagesAndTheVersionsTheyRanAt(t *testing.T) {
-	card := Card(published(t), released(t))
+	card := Card(published(t), released(t), nil)
 
 	// The version is the point. Two documents cleaned by different versions of
 	// the same stage are not comparable, so a card that said "sang" without
@@ -126,7 +127,7 @@ func TestACardNamesTheStagesAndTheVersionsTheyRanAt(t *testing.T) {
 
 func TestACardSaysWhoSealedTheSnapshotAndWhen(t *testing.T) {
 	m := released(t)
-	card := Card(published(t), m)
+	card := Card(published(t), m, nil)
 
 	if !strings.Contains(card, m.Signature.PublicKey[:16]) {
 		t.Error("the card does not say which key sealed the snapshot")
@@ -143,14 +144,14 @@ func TestAnUnsignedSnapshotIsNotDescribedAsARelease(t *testing.T) {
 	m := released(t)
 	m.Signature = Signature{}
 
-	card := Card(published(t), m)
+	card := Card(published(t), m, nil)
 	if !strings.Contains(card, "not a release") {
 		t.Error("an unsigned snapshot is described as though somebody had signed it")
 	}
 }
 
 func TestACardWithNoSnapshotSaysSoRatherThanPrintingZeros(t *testing.T) {
-	card := Card(published(t), nil)
+	card := Card(published(t), nil, nil)
 
 	if !strings.Contains(card, "No snapshot has been sealed here yet") {
 		t.Error("a repo with no snapshot does not say so")
@@ -174,7 +175,7 @@ func TestACardWithNoSnapshotSaysSoRatherThanPrintingZeros(t *testing.T) {
 
 func TestACardPointsAtTheSnapshotItDescribes(t *testing.T) {
 	m := released(t)
-	card := Card(published(t), m)
+	card := Card(published(t), m, nil)
 
 	want := SnapshotDir(m.Snapshot) + "/*" + ParquetExt
 	if !strings.Contains(card, want) {
@@ -190,7 +191,7 @@ func TestACardOnlyClaimsToShipTextThatShips(t *testing.T) {
 	// than over one example, so a repo added later cannot quietly claim more
 	// than its classes allow.
 	for _, d := range Datasets() {
-		card := Card(d, released(t))
+		card := Card(d, released(t), nil)
 		for _, c := range d.Classes {
 			row := "| " + c.String() + " |"
 			i := strings.Index(card, row)
@@ -213,7 +214,7 @@ func TestAWorkingRepoSaysItIsNotARelease(t *testing.T) {
 	// It ships the same way a release does, so it carries the same table. What
 	// it has to say on top of that is that nothing here is covered by a signed
 	// manifest, which is the only thing a reader loses by reading it.
-	card := Card(Staging(), nil)
+	card := Card(Staging(), nil, nil)
 
 	if !strings.Contains(card, "## What ships") {
 		t.Error("a working repo is published and does not say what it ships")
@@ -225,7 +226,7 @@ func TestAWorkingRepoSaysItIsNotARelease(t *testing.T) {
 
 func TestEveryDatasetRendersACardWithATitleAndAWayToReadIt(t *testing.T) {
 	for _, d := range Datasets() {
-		card := Card(d, nil)
+		card := Card(d, nil, nil)
 		if !strings.HasPrefix(card, "---\n") || !strings.Contains(card, "\n---\n\n# ") {
 			t.Errorf("%s: the card has no front matter followed by a title", d.Name)
 		}
@@ -246,9 +247,9 @@ func TestACardIsTheSameCardEveryTimeTheDataIsTheSame(t *testing.T) {
 	// so a map iterating in a different order would commit an identical card as
 	// a new one and make the repo history unreadable.
 	d, m := published(t), released(t)
-	first := Card(d, m)
+	first := Card(d, m, nil)
 	for range 20 {
-		if Card(d, m) != first {
+		if Card(d, m, nil) != first {
 			t.Fatal("two renderings of the same snapshot differ")
 		}
 	}
@@ -299,7 +300,7 @@ func TestALicenseNameIsSomethingTheHubWillAccept(t *testing.T) {
 // that carried one would load as something other than what it says.
 func TestNoFrontMatterValueCarriesAColon(t *testing.T) {
 	for _, d := range Datasets() {
-		card := Card(d, released(t))
+		card := Card(d, released(t), nil)
 		front, _, ok := strings.Cut(strings.TrimPrefix(card, "---\n"), "\n---\n")
 		if !ok {
 			t.Fatalf("%s: the card has no front matter", d.Name)
@@ -316,11 +317,160 @@ func TestNoFrontMatterValueCarriesAColon(t *testing.T) {
 	}
 }
 
+// The whole reason the index exists is that a working repo can carry real
+// numbers on its card instead of a promise that there will be numbers later.
+func TestAWorkingRepoCardCarriesTheCountsFromTheIndex(t *testing.T) {
+	card := Card(Staging(), nil, indexRows())
+
+	documents, bytes := Total(indexRows())
+	for _, want := range []string{
+		cardCommas(documents), // the headline
+		may.Size(bytes),
+		"| `glotcc` |",
+		"| `hplt3` |",
+		cardCommas(350535), // glotcc summed over its three parts
+		IndexName,
+	} {
+		if !strings.Contains(card, want) {
+			t.Errorf("the card does not carry %q", want)
+		}
+	}
+	if strings.Contains(card, "No snapshot has been sealed here yet") {
+		t.Error("a repo with an index says it has no numbers anyway")
+	}
+}
+
+// Without a configs block the Hub's viewer says the repo has no data, which on
+// a quarter of a terabyte is the single most expensive line the card can omit.
+func TestAWorkingRepoCardGivesTheViewerAConfigPerSourceAndOneForAllOfThem(t *testing.T) {
+	front, _, ok := strings.Cut(strings.TrimPrefix(Card(Staging(), nil, indexRows()), "---\n"), "\n---\n")
+	if !ok {
+		t.Fatal("the card has no front matter")
+	}
+	if !strings.Contains(front, "configs:\n") {
+		t.Fatalf("the front matter carries no configs block:\n%s", front)
+	}
+	for _, want := range []string{
+		"config_name: default",
+		"path: " + DataDir + "/*/*" + ParquetExt,
+		"config_name: glotcc",
+		"path: " + DataDir + "/glotcc/*" + ParquetExt,
+		"config_name: hplt3",
+	} {
+		if !strings.Contains(front, want) {
+			t.Errorf("the front matter is missing %q:\n%s", want, front)
+		}
+	}
+	// The viewer opens whichever config is listed first, so a repo whose first
+	// config is one source of two opens showing half of what it holds.
+	if i, j := strings.Index(front, "config_name: default"), strings.Index(front, "config_name: glotcc"); i > j {
+		t.Error("a source config is listed ahead of the default one")
+	}
+}
+
+// A source pinned again lands in the repo under a second revision, and until the
+// old parts are swept every document in it is counted twice. That is the one
+// state where the totals above are wrong in a way a reader cannot see.
+func TestACardSaysSoWhenASourceIsInTheRepoTwice(t *testing.T) {
+	rows := append(indexRows(), Indexed{
+		Source: "glotcc", Snapshot: "glotcc-0000deadbeef", File: 3, Part: 0,
+		Path: "data/glotcc/glotcc-0000deadbeef-00003-00000.parquet", Documents: 116631, Bytes: 524202221,
+	})
+	card := Card(Staging(), nil, rows)
+	if !strings.Contains(card, "more than one revision") {
+		t.Error("the card counts a source twice without saying it does")
+	}
+	if strings.Contains(Card(Staging(), nil, indexRows()), "more than one revision") {
+		t.Error("a repo with one revision per source is warned about anyway")
+	}
+}
+
+// Every snippet on the card was run against the live repo before it went on,
+// and what this checks is the part that rots on its own: the paths in them.
+func TestTheSnippetsOnACardPointAtPathsThatExist(t *testing.T) {
+	card := Card(Staging(), nil, indexRows())
+
+	for _, want := range []string{
+		"INSTALL httpfs",
+		"read_parquet",
+		"hf://datasets/" + Staging().Repo() + "/" + DataDir,
+		IndexName,
+		"load_dataset",
+		"snapshot_download",
+	} {
+		if !strings.Contains(card, want) {
+			t.Errorf("the card does not carry %q", want)
+		}
+	}
+	// The smallest one, because the snippet it goes in reads the text column
+	// and the difference is minutes of waiting for whoever pasted it.
+	if !strings.Contains(card, indexRows()[0].Path) {
+		t.Error("the sample query does not name the smallest part in the index")
+	}
+}
+
+// The output blocks on the card claim to be what DuckDB printed, so they have to
+// be what DuckDB prints. This is the box v1.5.5 returned for the query the card
+// shows, pasted from a terminal and diffed against the generated one.
+func TestAnOutputBlockIsPaddedTheWayDuckDBPadsOne(t *testing.T) {
+	want := "```\n" +
+		"┌──────────┬───────┬───────────┬────────┐\n" +
+		"│  source  │ parts │ documents │   gb   │\n" +
+		"│ varchar  │ int64 │  int128   │ double │\n" +
+		"├──────────┼───────┼───────────┼────────┤\n" +
+		"│ hplt3    │   265 │  81290050 │  125.1 │\n" +
+		"│ fineweb2 │   117 │  20941000 │   53.1 │\n" +
+		"│ glotcc   │   110 │  12858086 │   52.4 │\n" +
+		"│ finepdfs │    54 │   1218257 │   26.9 │\n" +
+		"└──────────┴───────┴───────────┴────────┘\n" +
+		"```\n\n"
+
+	var b strings.Builder
+	cardIndexOutput(&b, []SourceIndex{
+		{Source: "hplt3", Parts: 265, Documents: 81_290_050, Bytes: 125_140_000_000},
+		{Source: "fineweb2", Parts: 117, Documents: 20_941_000, Bytes: 53_060_000_000},
+		{Source: "glotcc", Parts: 110, Documents: 12_858_086, Bytes: 52_440_000_000},
+		{Source: "finepdfs", Parts: 54, Documents: 1_218_257, Bytes: 26_860_000_000},
+	})
+	if got := b.String(); got != want {
+		t.Errorf("the card renders\n%s\nand DuckDB renders\n%s", got, want)
+	}
+}
+
+// A column wider than its heading is the case the hand padded version got wrong,
+// and a box whose rules do not line up with its cells reads as a broken card.
+func TestAnOutputBlockWidensToWhatIsInIt(t *testing.T) {
+	var b strings.Builder
+	cardBox(&b, []cardColumn{
+		{Head: "n", Type: "int64", Right: true, Cells: []string{"1", "1000000000000"}},
+		{Head: "source", Type: "varchar", Cells: []string{"a-very-long-source-name", "b"}},
+	})
+	lines := strings.Split(strings.TrimSpace(strings.Trim(b.String(), "`\n")), "\n")
+	width := len([]rune(lines[0]))
+	for _, line := range lines {
+		if len([]rune(line)) != width {
+			t.Errorf("the box is %d wide and this line is %d:\n%s", width, len([]rune(line)), b.String())
+		}
+	}
+}
+
+// A reader deciding whether the corpus is worth 250 GB of their disk is deciding
+// on the columns, and a schema they have to download the data to see is a schema
+// they will not read.
+func TestACardDescribesEveryColumnItShips(t *testing.T) {
+	card := Card(Staging(), nil, indexRows())
+	for _, c := range Schema() {
+		if !strings.Contains(card, "| `"+c.Name+"` |") {
+			t.Errorf("the card does not describe the %s column", c.Name)
+		}
+	}
+}
+
 // The card is what a reader sees before deciding to download 400 GB, so the
 // number that belongs on it is how much of the corpus they actually get.
 func TestTheCardSaysHowMuchOfTheCorpusShips(t *testing.T) {
 	m := licensed(released(t))
-	card := Card(published(t), m)
+	card := Card(published(t), m, nil)
 	for _, want := range []string{"What of it ships", "restricted", "withheld", "published"} {
 		if !strings.Contains(card, want) {
 			t.Errorf("the card does not mention %q", want)

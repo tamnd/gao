@@ -2,6 +2,7 @@ package kho
 
 import (
 	"fmt"
+	"path"
 	"strings"
 	"testing"
 
@@ -150,7 +151,12 @@ func TestTheNamesDescribeTheDataRatherThanTheCode(t *testing.T) {
 				t.Errorf("%s is named after the code rather than the data", d.Name)
 			}
 		}
-		if !strings.HasPrefix(d.Name, "vietnamese-") {
+		// The language has to be in the name, because it is the first thing
+		// anybody filters on and the second thing they read after the org. Spelled
+		// out is the usual form and is what every published repo uses. A coinage
+		// gets to carry it as the prefix instead, which is the whole reason vitco
+		// is spelled the way it is.
+		if !strings.HasPrefix(d.Name, "vietnamese-") && !strings.HasPrefix(d.Name, "vi") {
 			t.Errorf("%s does not say what language it is, which is the first thing anybody filters on", d.Name)
 		}
 	}
@@ -204,18 +210,18 @@ func TestADataPathRoundTrips(t *testing.T) {
 func TestADataPathRejectsWhatIsNotOne(t *testing.T) {
 	for _, path := range []string{
 		"",
-		"data/snapshot=gao-v1.0/part-00001-of-00774.jsonl.zst",
-		"data/snapshot=gao-v1.0/part-00001.parquet",
+		"data/gao-v1.0/part-00001-of-00774.jsonl.zst",
+		"data/gao-v1.0/part-00001.parquet",
 		"data/part-00001-of-00774.parquet",
-		"snapshot=gao-v1.0/part-00001-of-00774.parquet",
-		"data/snapshot=/part-00001-of-00774.parquet",
-		"data/snapshot=gao-v1.0/part-001-of-774.parquet",
+		"gao-v1.0/part-00001-of-00774.parquet",
+		"data//part-00001-of-00774.parquet",
+		"data/gao-v1.0/part-001-of-774.parquet",
 		// The index has to be inside the count. This one is a file somebody
 		// wrote with the wrong shard count and it must not read as valid.
-		"data/snapshot=gao-v1.0/part-00800-of-00774.parquet",
-		"data/snapshot=gao-v1.0/part-00000-of-00000.parquet",
-		"../data/snapshot=gao-v1.0/part-00001-of-00774.parquet",
-		"data/snapshot=gao-v1.0/nested/part-00001-of-00774.parquet",
+		"data/gao-v1.0/part-00800-of-00774.parquet",
+		"data/gao-v1.0/part-00000-of-00000.parquet",
+		"../data/gao-v1.0/part-00001-of-00774.parquet",
+		"data/gao-v1.0/nested/part-00001-of-00774.parquet",
 	} {
 		if _, _, _, ok := ParseDataPath(path); ok {
 			t.Errorf("ParseDataPath(%q) accepted it", path)
@@ -232,7 +238,7 @@ func TestASnapshotIsOnePrefix(t *testing.T) {
 	if !strings.Contains(q, "hf://datasets/"+d.Repo()) {
 		t.Errorf("the query does not read from the repo: %s", q)
 	}
-	if !strings.Contains(q, "snapshot=gao-v1.0") {
+	if !strings.Contains(q, "/gao-v1.0/") {
 		t.Errorf("the query does not name the snapshot: %s", q)
 	}
 	prefix := strings.TrimSuffix(q[strings.Index(q, "hf://"):], "/*.parquet')")
@@ -311,16 +317,16 @@ func TestAStagePathRoundTrips(t *testing.T) {
 func TestAStagePathRejectsWhatIsNotOne(t *testing.T) {
 	for _, path := range []string{
 		"",
-		"data/snapshot=glotcc-9ad140b6be3a/file=00003/part-00000.jsonl.zst",
-		"data/snapshot=glotcc-9ad140b6be3a/part-00000.parquet",
-		"data/file=00003/part-00000.parquet",
-		"data/snapshot=/file=00003/part-00000.parquet",
-		"data/snapshot=glotcc-9ad140b6be3a/file=3/part-0.parquet",
-		"../data/snapshot=glotcc-9ad140b6be3a/file=00003/part-00000.parquet",
-		"data/snapshot=glotcc-9ad140b6be3a/file=00003/nested/part-00000.parquet",
+		"data/glotcc/glotcc-9ad140b6be3a-00003-00000.jsonl.zst",
+		"data/glotcc/glotcc-9ad140b6be3a-00000.parquet",
+		"data/glotcc-9ad140b6be3a-00003-00000.parquet",
+		"data//glotcc-9ad140b6be3a-00003-00000.parquet",
+		"data/glotcc/glotcc-9ad140b6be3a-3-0.parquet",
+		"../data/glotcc/glotcc-9ad140b6be3a-00003-00000.parquet",
+		"data/glotcc/nested/glotcc-9ad140b6be3a-00003-00000.parquet",
 		// A published path is not a staging path. They are different layouts
 		// for different tiers and neither should read as the other.
-		"data/snapshot=gao-v1.0/part-00001-of-00774.parquet",
+		"data/gao-v1.0/part-00001-of-00774.parquet",
 	} {
 		if _, _, _, ok := ParseStagePath(path); ok {
 			t.Errorf("ParseStagePath(%q) accepted it", path)
@@ -343,19 +349,45 @@ func TestTheTwoLayoutsDoNotReadAsEachOther(t *testing.T) {
 }
 
 // Everything an ingest writes for one source sits under one prefix, which is
-// what lets a resumed run list what is already there without listing the repo.
+// what lets a resumed run list what is already there without listing the repo,
+// and what lets the card offer the source as a config somebody can name.
 func TestOneSourceIsOnePrefix(t *testing.T) {
 	const snapshot = "glotcc-9ad140b6be3a"
-	prefix := "data/snapshot=" + snapshot + "/"
+	prefix := "data/glotcc/"
 	for _, path := range []string{
 		StagePath(snapshot, 0, 0),
 		StagePath(snapshot, 26, 7),
+		StagePath("glotcc-0000000000aa", 0, 0),
 	} {
 		if !strings.HasPrefix(path, prefix) {
 			t.Errorf("%s is not under %s", path, prefix)
 		}
 	}
-	if strings.HasPrefix(StagePath("glotcc-0000000000aa", 0, 0), prefix) {
-		t.Error("a different revision writes under the same prefix, so two revisions mix in one directory")
+}
+
+// Re-pinning a source has to leave the config name alone and still keep the two
+// revisions apart, which is the whole reason the revision is in the file name
+// rather than in the directory.
+func TestTwoRevisionsShareADirectoryAndNotAName(t *testing.T) {
+	old, new := StagePath("glotcc-9ad140b6be3a", 3, 0), StagePath("glotcc-0000000000aa", 3, 0)
+	if path.Dir(old) != path.Dir(new) {
+		t.Errorf("re-pinning moved the source from %s to %s, so every config naming it breaks", path.Dir(old), path.Dir(new))
+	}
+	if old == new {
+		t.Errorf("two revisions of glotcc both write %s, so one overwrites the other", old)
+	}
+	for want, p := range map[string]string{"glotcc-9ad140b6be3a": old, "glotcc-0000000000aa": new} {
+		got, file, part, ok := ParseStagePath(p)
+		if !ok || got != want || file != 3 || part != 0 {
+			t.Errorf("%s parsed as (%q, %d, %d, %v)", p, got, file, part, ok)
+		}
+	}
+}
+
+// A part whose directory disagrees with its name is not a part. Reading it as
+// one would put a glotcc document into a query that asked for hplt3.
+func TestAPartFiledUnderTheWrongSourceIsNotAPart(t *testing.T) {
+	if _, _, _, ok := ParseStagePath("data/hplt3/glotcc-9ad140b6be3a-00003-00000.parquet"); ok {
+		t.Error("a part filed under the wrong source parsed as a good one")
 	}
 }

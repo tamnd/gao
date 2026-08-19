@@ -93,6 +93,12 @@ type Dataset struct {
 	// Tier is whether it outlives the run.
 	Tier Tier
 
+	// Pretty is the title on the card, for a repo whose name does not make one.
+	// Most of these are words with hyphens between them and title casing the
+	// name is the right answer. A name that is a coinage is not: capitalizing
+	// vitco gives Vitco, which reads as a typo rather than as a name.
+	Pretty string
+
 	// Holds is what is in it, in a sentence, and it is the first line of the
 	// dataset card.
 	Holds string
@@ -183,8 +189,9 @@ var datasets = []Dataset{
 		},
 	},
 	{
-		Name:    "vietnamese-source-text",
+		Name:    "vitco",
 		Tier:    Working,
+		Pretty:  "ViTco",
 		Holds:   "the pinned public Vietnamese corpora as gao read them, every source put to one contract and one schema, before any cleaning",
 		Text:    true,
 		Classes: []doc.LicenseClass{doc.LicenseOpen, doc.LicensePermissiveAttribution},
@@ -202,7 +209,7 @@ func Datasets() []Dataset {
 // built. It is named here rather than passed around, because every stage writes
 // to the same place and a stage that took the repo as an argument is a stage
 // somebody can point at a published one by mistake.
-const StageRepo = "vietnamese-source-text"
+const StageRepo = "vitco"
 
 // Staging returns that repo. It panics if the table does not have it, which is
 // a broken build rather than a runtime condition, since the table is a constant.
@@ -228,11 +235,20 @@ func Lookup(name string) (Dataset, bool) {
 
 // The layout inside a repo.
 //
-// One Parquet file per shard per snapshot, under a Hive style partition on the
-// snapshot, which is what lets a query name one release and lets DuckDB skip the
-// rest by path instead of by reading them. It is also what makes an upload
-// idempotent: the path is a function of the snapshot and the shard, so pushing
-// the same shard twice overwrites rather than duplicates.
+// One Parquet file per shard per snapshot, in one directory per snapshot, which
+// is what lets a query name one release and lets DuckDB skip the rest by path
+// instead of by reading them. It is also what makes an upload idempotent: the
+// path is a function of the snapshot and the shard, so pushing the same shard
+// twice overwrites rather than duplicates.
+//
+// The directories are named plainly rather than Hive style, which is a small
+// choice with two consequences worth the words. A Hive path spells the directory
+// snapshot=gao-v1.0, and every reader who globs the repo then gets a snapshot
+// column in their result set that is in no file, sitting beside a source column
+// that is, so the first thing the layout teaches them is a distinction they did
+// not ask for. The second is that the Hub's viewer takes its splits from the
+// configs the card declares, and a config already names the directory, so the
+// partition is doing work that is being done anyway.
 const (
 	// DataDir is the top level directory every dataset puts its files under,
 	// which is what the Hub's own dataset viewer expects.
@@ -245,19 +261,19 @@ const (
 )
 
 var dataPathPattern = regexp.MustCompile(
-	`^` + DataDir + `/snapshot=([A-Za-z0-9][A-Za-z0-9._-]*)/part-(\d{5,})-of-(\d{5,})\` + ParquetExt + `$`)
+	`^` + DataDir + `/([A-Za-z0-9][A-Za-z0-9._-]*)/part-(\d{5,})-of-(\d{5,})\` + ParquetExt + `$`)
 
 // SnapshotDir is the directory one snapshot's parts live under.
 //
 // The layout partitions by snapshot, so this doubles as the prefix that lists
 // one snapshot and nothing else.
 func SnapshotDir(snapshot string) string {
-	return DataDir + "/snapshot=" + snapshot
+	return DataDir + "/" + snapshot
 }
 
 // DataPath returns the path inside a dataset repo for one shard of one snapshot.
 //
-//	data/snapshot=gao-v1.0/part-00001-of-00774.parquet
+//	data/gao-v1.0/part-00001-of-00774.parquet
 func DataPath(snapshot string, i, n int) string {
 	return fmt.Sprintf("%s/part-%05d-of-%05d%s", SnapshotDir(snapshot), i, n, ParquetExt)
 }
@@ -294,41 +310,67 @@ func ParseDataPath(path string) (snapshot string, i, n int, ok bool) {
 // either guessing it or renaming every part at the end, and both of those are
 // worse than a layout that does not claim to know.
 //
-// What the path does carry is the input file it came from, as its own Hive
-// partition, which makes an upload idempotent. The same input file decoded
-// twice with the same part size produces the same parts at the same paths, so
-// a retry after a dropped connection overwrites rather than duplicates, and a
-// resumed ingest skips a file whose parts are already there.
+// So the directory is the source and the file name is everything else: the
+// snapshot, which is the source and the revision it was pinned at, then the
+// input file the part came out of, then the part. The same input file decoded
+// twice with the same part size produces the same name, so a retry after a
+// dropped connection overwrites rather than duplicates, and a resumed ingest
+// skips a file whose parts are already there.
+//
+// The directory is the source and not the snapshot because a directory in a
+// working repo is a config in the card, and a config is a name somebody writes
+// in a load_dataset call. Re-pinning a source has to be able to happen without
+// breaking that name, and it does: the revision moves inside the file name, the
+// two revisions sit side by side in the one directory, and the card says which
+// of them is current. A reader who wants one revision globs for it.
 var stagePathPattern = regexp.MustCompile(
-	`^` + DataDir + `/snapshot=([A-Za-z0-9][A-Za-z0-9._-]*)/file=(\d{5,})/part-(\d{5,})\` + ParquetExt + `$`)
+	`^` + DataDir + `/([a-z0-9][a-z0-9-]*)/(.+)-(\d{5,})-(\d{5,})\` + ParquetExt + `$`)
+
+// SourceDir is the directory one source's parts live under, whatever revision
+// they were ingested at. It is the prefix that lists a source and nothing else,
+// and it is the path a config in the card globs.
+func SourceDir(snapshot string) string {
+	return DataDir + "/" + Source(snapshot)
+}
+
+// Source is the source name a working snapshot was taken from, which is the
+// snapshot with its revision cut off.
+func Source(snapshot string) string {
+	if source, _, ok := strings.Cut(snapshot, "-"); ok {
+		return source
+	}
+	return snapshot
+}
 
 // StagePath returns the path inside a working repo for one part of one input
 // file.
 //
-//	data/snapshot=glotcc-9ad140b6be3a/file=00003/part-00000.parquet
-//
-// The snapshot names the source and the revision it was pinned at, so that
-// re-pinning a source writes a new snapshot rather than mixing two revisions
-// into one directory.
+//	data/glotcc/glotcc-9ad140b6be3a-00003-00000.parquet
 func StagePath(snapshot string, file, part int) string {
-	return fmt.Sprintf("%s/file=%05d/part-%05d%s", SnapshotDir(snapshot), file, part, ParquetExt)
+	return fmt.Sprintf("%s/%s-%05d-%05d%s", SourceDir(snapshot), snapshot, file, part, ParquetExt)
 }
 
-// ParseStagePath is the inverse of [StagePath].
+// ParseStagePath is the inverse of [StagePath]. It reports false for a path
+// whose directory is not the source its file name claims, since a part that
+// says glotcc under hplt3 is a part somebody wrote with the wrong snapshot and
+// a reader globbing one source would pick it up as the other.
 func ParseStagePath(path string) (snapshot string, file, part int, ok bool) {
 	m := stagePathPattern.FindStringSubmatch(path)
 	if m == nil {
 		return "", 0, 0, false
 	}
-	file, err := strconv.Atoi(m[2])
+	if Source(m[2]) != m[1] {
+		return "", 0, 0, false
+	}
+	file, err := strconv.Atoi(m[3])
 	if err != nil {
 		return "", 0, 0, false
 	}
-	part, err = strconv.Atoi(m[3])
+	part, err = strconv.Atoi(m[4])
 	if err != nil {
 		return "", 0, 0, false
 	}
-	return m[1], file, part, true
+	return m[2], file, part, true
 }
 
 // carries reports whether a dataset is allowed to hold documents of a class.

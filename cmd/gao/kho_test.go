@@ -286,10 +286,10 @@ func TestKhoDatasetsTakesASnapshot(t *testing.T) {
 	if code != 0 {
 		t.Fatalf("gao kho datasets -snapshot: exit %d, want 0", code)
 	}
-	if !strings.Contains(out, "snapshot=gao-v0.2") {
+	if !strings.Contains(out, "/gao-v0.2/") {
 		t.Error("gao kho datasets ignored the snapshot it was given")
 	}
-	if strings.Contains(out, "snapshot=gao-v1.0") {
+	if strings.Contains(out, "/gao-v1.0/") {
 		t.Error("gao kho datasets printed the default snapshot as well as the one it was given")
 	}
 }
@@ -629,7 +629,7 @@ func TestKhoCardReadsTheCountsFromASnapshotManifest(t *testing.T) {
 	if code != 0 {
 		t.Fatalf("gao kho card -from: exit %d\n%s", code, errOut)
 	}
-	for _, want := range []string{"| documents | 7 |", "snapshot=2026-09", "not a release"} {
+	for _, want := range []string{"| documents | 7 |", "data/2026-09/", "not a release"} {
 		if !strings.Contains(out, want) {
 			t.Errorf("the card does not carry %q:\n%s", want, out)
 		}

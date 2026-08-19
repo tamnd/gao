@@ -49,7 +49,7 @@ type hub struct {
 	srv *httptest.Server
 }
 
-const testRepo = Org + "/vietnamese-source-text"
+const testRepo = Org + "/vitco"
 
 func newHub(t *testing.T) *hub {
 	t.Helper()
@@ -269,10 +269,10 @@ func (h *hub) commit(w http.ResponseWriter, r *http.Request) {
 		h.t.Fatalf("reading the commit: %v", err)
 	}
 	lines := strings.Split(strings.TrimSpace(string(body)), "\n")
-	if len(lines) != 2 {
-		h.t.Fatalf("the commit has %d lines, want a header and a file:\n%s", len(lines), body)
+	if len(lines) < 2 {
+		h.t.Fatalf("the commit has %d lines, want a header and at least one file:\n%s", len(lines), body)
 	}
-	var head, op struct {
+	var head struct {
 		Key   string         `json:"key"`
 		Value map[string]any `json:"value"`
 	}
@@ -282,33 +282,42 @@ func (h *hub) commit(w http.ResponseWriter, r *http.Request) {
 	if head.Key != "header" {
 		h.t.Errorf("the commit starts with %q rather than a header", head.Key)
 	}
-	if err := json.Unmarshal([]byte(lines[1]), &op); err != nil {
-		h.t.Fatalf("the commit file: %v", err)
-	}
 
-	path, _ := op.Value["path"].(string)
 	h.mu.Lock()
 	defer h.mu.Unlock()
 	h.commits = append(h.commits, fmt.Sprint(head.Value["summary"]))
-	switch op.Key {
-	case "lfsFile":
-		oid, _ := op.Value["oid"].(string)
-		if _, ok := h.objects[oid]; !ok {
-			h.t.Errorf("%s was committed against %s, which storage does not have", path, oid)
+	for _, line := range lines[1:] {
+		var op struct {
+			Key   string         `json:"key"`
+			Value map[string]any `json:"value"`
 		}
-		h.files[path] = oid
-		h.linked[path] = true
-	case "file":
-		content, _ := op.Value["content"].(string)
-		raw, err := base64.StdEncoding.DecodeString(content)
-		if err != nil {
-			h.t.Errorf("the inline content is not base64: %v", err)
+		if err := json.Unmarshal([]byte(line), &op); err != nil {
+			h.t.Fatalf("the commit file: %v", err)
 		}
-		h.objects[hex.EncodeToString(sha256sum(raw))] = raw
-		h.files[path] = gitBlobID(raw)
-		h.linked[path] = false
-	default:
-		h.t.Errorf("the commit carries a %q, which is not a file", op.Key)
+		path, _ := op.Value["path"].(string)
+		switch op.Key {
+		case "lfsFile":
+			oid, _ := op.Value["oid"].(string)
+			if _, ok := h.objects[oid]; !ok {
+				h.t.Errorf("%s was committed against %s, which storage does not have", path, oid)
+			}
+			h.files[path] = oid
+			h.linked[path] = true
+		case "file":
+			content, _ := op.Value["content"].(string)
+			raw, err := base64.StdEncoding.DecodeString(content)
+			if err != nil {
+				h.t.Errorf("the inline content is not base64: %v", err)
+			}
+			h.objects[hex.EncodeToString(sha256sum(raw))] = raw
+			h.files[path] = gitBlobID(raw)
+			h.linked[path] = false
+		case "deletedFile":
+			delete(h.files, path)
+			delete(h.linked, path)
+		default:
+			h.t.Errorf("the commit carries a %q, which is not a file", op.Key)
+		}
 	}
 	w.WriteHeader(http.StatusOK)
 }
@@ -398,7 +407,7 @@ func TestAPushPutsTheBytesInStorageAndPointsThePathAtThem(t *testing.T) {
 			t.Errorf("%s went to the hub without the token", step)
 		}
 	}
-	if len(h.commits) != 1 || !strings.Contains(h.commits[0], "part-00000") {
+	if len(h.commits) != 1 || !strings.Contains(h.commits[0], path) {
 		t.Errorf("the commit message does not name the file: %v", h.commits)
 	}
 }
@@ -703,7 +712,7 @@ func TestACardGoesUpAsTheReadme(t *testing.T) {
 	h := newHub(t)
 	d := Staging()
 
-	sent, err := h.pusher().PushCard(t.Context(), d, nil)
+	sent, err := h.pusher().PushCard(t.Context(), d, nil, nil)
 	if err != nil {
 		t.Fatalf("PushCard: %v", err)
 	}
@@ -721,7 +730,7 @@ func TestACardGoesUpAsTheReadme(t *testing.T) {
 		t.Error("the card went through lfs")
 	}
 
-	if body := h.stored(CardName); string(body) != Card(d, nil) {
+	if body := h.stored(CardName); string(body) != Card(d, nil, nil) {
 		t.Errorf("what landed is not the card:\n%s", body)
 	}
 }
@@ -731,10 +740,10 @@ func TestACardThatSaysTheSameThingIsNotCommittedAgain(t *testing.T) {
 	d := Staging()
 	p := h.pusher()
 
-	if _, err := p.PushCard(t.Context(), d, nil); err != nil {
+	if _, err := p.PushCard(t.Context(), d, nil, nil); err != nil {
 		t.Fatalf("PushCard: %v", err)
 	}
-	sent, err := p.PushCard(t.Context(), d, nil)
+	sent, err := p.PushCard(t.Context(), d, nil, nil)
 	if err != nil {
 		t.Fatalf("PushCard again: %v", err)
 	}
@@ -750,11 +759,11 @@ func TestACardWithNewCountsReplacesTheOneUpThere(t *testing.T) {
 	h := newHub(t)
 	d, p := published(t), h.pusher()
 
-	if _, err := p.PushCard(t.Context(), d, nil); err != nil {
+	if _, err := p.PushCard(t.Context(), d, nil, nil); err != nil {
 		t.Fatalf("PushCard: %v", err)
 	}
 	m := released(t)
-	if _, err := p.PushCard(t.Context(), d, m); err != nil {
+	if _, err := p.PushCard(t.Context(), d, m, nil); err != nil {
 		t.Fatalf("PushCard with a snapshot: %v", err)
 	}
 
