@@ -96,7 +96,7 @@ func TestLineKeepsAnArticleAndStampsIt(t *testing.T) {
 func TestLineMovesIdentityWithTheText(t *testing.T) {
 	// A page typed with a soft hyphen and a full width digit, which is what a
 	// lot of this corpus looks like before phoi runs.
-	dirty := strings.Replace(article, "39 độ C", "3​9 độ C", 1)
+	dirty := strings.Replace(article, "39 độ C", "3\u200b9 độ C", 1)
 	l := New(1024)
 	d := raw(dirty)
 	before := d.DocID

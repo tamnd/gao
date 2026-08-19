@@ -303,7 +303,7 @@ func (p *Pass) part(ctx context.Context, line *Line, from kho.Stored, done bool)
 		return c, t, err
 	}
 
-	c.Documents = int64(t.phoi.Documents)
+	c.Documents = t.phoi.Documents
 	c.Kept = int64(out.Documents())
 	c.Text = out.Text()
 

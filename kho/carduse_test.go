@@ -8,7 +8,7 @@ import (
 
 func TestTheContentsLinkToHeadingsThatAreOnTheCard(t *testing.T) {
 	// A table of contents is the one part of a card that fails silently. The
-	// links render, they are the right colour, and clicking one does nothing,
+	// links render, they are the right color, and clicking one does nothing,
 	// which is worse than not having them.
 	card := Card(Staging(), nil, indexRows())
 
