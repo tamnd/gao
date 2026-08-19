@@ -264,14 +264,17 @@ func cardOverlap(b *strings.Builder, d Dataset, by []SourceIndex) {
 	b.WriteString("  USING (url);\n")
 	b.WriteString("```\n\n")
 
-	if counts[left] != 12858086 || counts[right] != 20941000 {
-		return
-	}
 	cardBox(b, []cardColumn{{
 		Head: "shared_urls", Type: "int64", Right: true,
 		Cells: []string{"1399167"},
 	}})
-	b.WriteString("Two corpora built by different projects from overlapping crawls, sharing 1.4 million urls out of the 33.8 million documents they have here between them. That is the number a training run pays for if nobody looks, and it is the number a dedup paper wants to explain.\n\n")
+
+	// This one says what it was measured on rather than being dropped when the
+	// repo moves past it, which is what the other measured outputs do. Both of
+	// its sources are still being ingested, so a count guard would mean the most
+	// interesting number on this card never appears. A number that carries the
+	// state it was taken in stays true after that state has changed.
+	b.WriteString("That was measured while the repo held 12,858,086 `glotcc` documents and 20,941,000 `fineweb2` ones. Two corpora built by different projects from overlapping crawls, sharing 1.4 million urls out of the 33.8 million documents they had here between them. That is the number a training run pays for if nobody looks, and it is the number a dedup paper wants to explain. Both sources are still growing, so run it again rather than quoting it.\n\n")
 }
 
 // cardSourceGlob is one named source, for a query that compares two of them and
