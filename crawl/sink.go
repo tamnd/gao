@@ -31,6 +31,7 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -241,30 +242,51 @@ func OpenSink(o SinkOptions) (*Sink, error) {
 // hold a gigabyte ends up holding all of it. server2 had four volumes and 7 GB
 // of headroom when this was found.
 //
+// Every snapshot's volumes are collected and not only this one's. Keep means how
+// many volumes may sit on the disk, and counting per snapshot means a box set to
+// keep two keeps two of each snapshot it has ever run, which is unbounded in the
+// number of snapshots rather than in anything about the disk. That is not
+// theoretical: a run started under a new snapshot to measure a frontier change
+// left every box over its limit within a day, server1 holding eight volumes
+// against a keep of four and server2 five against two.
+//
 // Only this shard's volumes are collected. A box crawling shard 1 that deleted a
 // file named for shard 2 would be deleting another box's archive, and one
 // directory shared by two shards is a mistake worth surviving rather than
-// compounding.
+// compounding. So the shard is matched and the snapshot is not, which is why
+// this reads the name apart rather than taking a prefix: the snapshot sits in
+// front of the shard and a prefix cannot skip it.
 func (s *Sink) found() error {
 	dir := filepath.Join(s.o.Dir, "warc")
 	ents, err := os.ReadDir(dir)
 	if err != nil {
 		return fmt.Errorf("crawl: reading the volume directory: %w", err)
 	}
-	prefix := fmt.Sprintf("%s-%05d-", s.o.Snapshot, s.o.Shard)
+	shard := fmt.Sprintf("%05d", s.o.Shard)
 	var names []string
 	for _, e := range ents {
 		if e.IsDir() {
 			continue
 		}
 		n := e.Name()
-		if strings.HasPrefix(n, prefix) && strings.HasSuffix(n, ".warc.gz") {
-			names = append(names, "warc/"+n)
+		if !strings.HasSuffix(n, ".warc.gz") {
+			continue
 		}
+		// snapshot-shard-volume.warc.gz, and the snapshot may hold dashes of its
+		// own, so the shard is counted back from the end rather than forward
+		// from the start.
+		f := strings.Split(strings.TrimSuffix(n, ".warc.gz"), "-")
+		if len(f) < 3 || f[len(f)-2] != shard {
+			continue
+		}
+		names = append(names, "warc/"+n)
 	}
-	// The volume number is zero padded and fixed width, so the names sort in the
-	// order they were written and the oldest is the one that goes first.
-	sort.Strings(names)
+	// Sorted on the volume number alone, which is a counter kept on the box and
+	// carries on across snapshots, so it is the order the volumes were written
+	// and the oldest goes first. Sorting the whole name would sort on the
+	// snapshot first, and a snapshot named for anything other than a date would
+	// then put an old volume after a new one and delete the wrong file.
+	sort.Slice(names, func(i, j int) bool { return volumeOf(names[i]) < volumeOf(names[j]) })
 	s.done = names
 	return s.age()
 }
@@ -582,4 +604,19 @@ func (s *Sink) save() error {
 		return fmt.Errorf("crawl: writing %s: %w", stateFile, err)
 	}
 	return nil
+}
+
+// volumeOf is the volume number in a WARC file name, or -1 when the name does
+// not carry one. It is the last field, zero padded, and the only part of the
+// name that orders volumes across snapshots.
+func volumeOf(name string) int {
+	f := strings.Split(strings.TrimSuffix(filepath.Base(name), ".warc.gz"), "-")
+	if len(f) < 3 {
+		return -1
+	}
+	n, err := strconv.Atoi(f[len(f)-1])
+	if err != nil {
+		return -1
+	}
+	return n
 }
