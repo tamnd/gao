@@ -150,14 +150,10 @@ func (s *Store) open(ctx context.Context, part kho.Stored, window, windows int) 
 // SourceOf returns the source a working snapshot was ingested from.
 //
 // A snapshot is the source and the revision it was pinned at, joined by a
-// hyphen, and the source names have no hyphen in them.
-func SourceOf(snapshot string) string {
-	name, _, ok := strings.Cut(snapshot, "-")
-	if !ok {
-		return snapshot
-	}
-	return name
-}
+// hyphen, and the source names have no hyphen in them. It is the same answer
+// the layout needs, since the source is the directory a part is filed under,
+// and having it in one place is what keeps the two from drifting.
+func SourceOf(snapshot string) string { return kho.Source(snapshot) }
 
 // Progress is called after each part with what the pass has read so far.
 type Progress func(part kho.Stored, i, of int, keys Keys, moved int64)
