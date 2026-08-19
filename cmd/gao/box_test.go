@@ -8,20 +8,20 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/tamnd/gao/may"
+	"github.com/tamnd/gao/fleet"
 )
 
 func TestBoxListsEveryMachineAndTheBudget(t *testing.T) {
-	out, _, code := exec(t, "box")
+	out, _, code := exec(t, "fleet")
 	if code != 0 {
 		t.Fatalf("gao fleet: exit %d, want 0", code)
 	}
-	for _, b := range may.Boxes {
+	for _, b := range fleet.Boxes {
 		if !strings.Contains(out, b.Name) {
 			t.Errorf("gao fleet did not mention %s", b.Name)
 		}
 	}
-	if !strings.Contains(out, may.MeasuredOn) {
+	if !strings.Contains(out, fleet.MeasuredOn) {
 		t.Error("gao fleet did not print the measurement date, so a stale inventory reads as a current one")
 	}
 	// The conclusion is the point of the command, not the table.
@@ -31,8 +31,8 @@ func TestBoxListsEveryMachineAndTheBudget(t *testing.T) {
 }
 
 func TestBoxLabelPrintsOnlyTheLabel(t *testing.T) {
-	t.Setenv(may.BoxEnv, "server3")
-	out, _, code := exec(t, "box", "-label")
+	t.Setenv(fleet.BoxEnv, "server3")
+	out, _, code := exec(t, "fleet", "-label")
 	if code != 0 {
 		t.Fatalf("gao fleet -label: exit %d, want 0", code)
 	}
@@ -47,7 +47,7 @@ func TestBoxLabelPrintsOnlyTheLabel(t *testing.T) {
 func TestBoxTakesATokenCount(t *testing.T) {
 	// A smaller corpus does fit, and the command has to say so rather than
 	// printing the same conclusion whatever it is given.
-	out, _, code := exec(t, "box", "-tokens", "10000000000")
+	out, _, code := exec(t, "fleet", "-tokens", "10000000000")
 	if code != 0 {
 		t.Fatalf("gao fleet -tokens: exit %d, want 0", code)
 	}
@@ -57,7 +57,7 @@ func TestBoxTakesATokenCount(t *testing.T) {
 }
 
 func TestBoxPrintsWhatEachBoxCanRun(t *testing.T) {
-	out, _, code := exec(t, "box")
+	out, _, code := exec(t, "fleet")
 	if code != 0 {
 		t.Fatalf("gao fleet: exit %d, want 0", code)
 	}
@@ -72,8 +72,8 @@ func TestBoxPrintsWhatEachBoxCanRun(t *testing.T) {
 }
 
 func TestBoxPrintsTheStoreOfRecord(t *testing.T) {
-	t.Setenv(may.StoreEnv, "")
-	out, _, code := exec(t, "box")
+	t.Setenv(fleet.StoreEnv, "")
+	out, _, code := exec(t, "fleet")
 	if code != 0 {
 		t.Fatalf("gao fleet: exit %d, want 0", code)
 	}
@@ -81,8 +81,8 @@ func TestBoxPrintsTheStoreOfRecord(t *testing.T) {
 		t.Errorf("gao fleet did not say the store of record is unset:\n%s", out)
 	}
 
-	t.Setenv(may.StoreEnv, "s3://gao-store")
-	out, _, code = exec(t, "box")
+	t.Setenv(fleet.StoreEnv, "s3://gao-store")
+	out, _, code = exec(t, "fleet")
 	if code != 0 {
 		t.Fatalf("gao fleet: exit %d, want 0", code)
 	}
@@ -115,7 +115,7 @@ func diskTrace(t *testing.T, ran, every, hold, spike int64) string {
 }
 
 func TestPeakDiskIsMeasuredRatherThanTrustedFromTheArithmetic(t *testing.T) {
-	out, errOut, code := exec(t, "box", "peak", "-run", "hplt-v3", "-ran", "6h",
+	out, errOut, code := exec(t, "fleet", "peak", "-run", "hplt-v3", "-ran", "6h",
 		diskTrace(t, 21600, 20, 3_000_000_000, 11_200_000_000))
 	if code != 0 {
 		t.Fatalf("exit %d: %s\n%s", code, out, errOut)
@@ -133,7 +133,7 @@ func TestPeakDiskIsMeasuredRatherThanTrustedFromTheArithmetic(t *testing.T) {
 // Two is a gate that failed, which is what the rest of gao exits on a
 // measurement that came in over its limit.
 func TestARunOverTheCeilingExitsTwo(t *testing.T) {
-	out, _, code := exec(t, "box", "peak", "-ran", "6h",
+	out, _, code := exec(t, "fleet", "peak", "-ran", "6h",
 		diskTrace(t, 21600, 20, 80_000_000_000, 104_000_000_000))
 	if code != 2 {
 		t.Fatalf("exit %d, want 2:\n%s", code, out)
@@ -147,7 +147,7 @@ func TestARunOverTheCeilingExitsTwo(t *testing.T) {
 // with a different fix, and the two shared a code until a real run made the
 // difference visible.
 func TestATraceThatCannotSupportAPeakExitsOne(t *testing.T) {
-	out, _, code := exec(t, "box", "peak", "-ran", "6h",
+	out, _, code := exec(t, "fleet", "peak", "-ran", "6h",
 		diskTrace(t, 21600, 300, 3_000_000_000, 80_000_000_000))
 	if code != 1 {
 		t.Fatalf("exit %d, want 1:\n%s", code, out)
@@ -160,7 +160,7 @@ func TestATraceThatCannotSupportAPeakExitsOne(t *testing.T) {
 // A peak sampled every five minutes off a run that allocates a quarter of a
 // gigabyte a second is not a peak, because the ceiling is inside the gap.
 func TestAGapThatCouldHaveHiddenTheCeilingIsRefused(t *testing.T) {
-	out, _, code := exec(t, "box", "peak", "-ran", "6h",
+	out, _, code := exec(t, "fleet", "peak", "-ran", "6h",
 		diskTrace(t, 21600, 300, 3_000_000_000, 80_000_000_000))
 	if code != 1 {
 		t.Fatalf("exit %d, want 1:\n%s", code, out)
@@ -176,7 +176,7 @@ func TestAGapThatCouldHaveHiddenTheCeilingIsRefused(t *testing.T) {
 // more than a gigabyte behind it against a ceiling ninety times that. Refusing
 // it was a gate about seconds standing in for a gate about disk.
 func TestAGapTooNarrowToHideTheCeilingIsReadAsARange(t *testing.T) {
-	out, _, code := exec(t, "box", "peak", "-ran", "6h",
+	out, _, code := exec(t, "fleet", "peak", "-ran", "6h",
 		diskTrace(t, 21600, 300, 3_000_000_000, 11_200_000_000))
 	if code != 0 {
 		t.Fatalf("exit %d, want 0:\n%s", code, out)
@@ -190,7 +190,7 @@ func TestAGapTooNarrowToHideTheCeilingIsReadAsARange(t *testing.T) {
 }
 
 func TestThePeakIsAlsoMachineReadable(t *testing.T) {
-	out, _, code := exec(t, "box", "peak", "-json", "-ran", "6h",
+	out, _, code := exec(t, "fleet", "peak", "-json", "-ran", "6h",
 		diskTrace(t, 21600, 20, 3_000_000_000, 11_200_000_000))
 	if code != 0 {
 		t.Fatalf("exit %d:\n%s", code, out)
@@ -204,17 +204,17 @@ func TestThePeakIsAlsoMachineReadable(t *testing.T) {
 	if err := json.Unmarshal([]byte(out), &got); err != nil {
 		t.Fatalf("%v:\n%s", err, out)
 	}
-	if got.Box != "server1" || got.Held != 11_200_000_000 || got.Ceiling != may.Ceiling {
+	if got.Box != "server1" || got.Held != 11_200_000_000 || got.Ceiling != fleet.Ceiling {
 		t.Errorf("%+v", got)
 	}
-	if got.Predicted != may.PeakBytes(mustBox(t, "server1")) {
+	if got.Predicted != fleet.PeakBytes(mustBox(t, "server1")) {
 		t.Errorf("the prediction came back as %d", got.Predicted)
 	}
 }
 
-func mustBox(t *testing.T, name string) may.Box {
+func mustBox(t *testing.T, name string) fleet.Box {
 	t.Helper()
-	b, ok := may.Lookup(name)
+	b, ok := fleet.Lookup(name)
 	if !ok {
 		t.Fatalf("%s is not on the fleet", name)
 	}
@@ -222,13 +222,13 @@ func mustBox(t *testing.T, name string) may.Box {
 }
 
 func TestPeakRefusesWhatItCannotRead(t *testing.T) {
-	if _, _, code := exec(t, "box", "peak"); code != 2 {
+	if _, _, code := exec(t, "fleet", "peak"); code != 2 {
 		t.Errorf("a peak with no trace exited %d, want 2", code)
 	}
-	if _, _, code := exec(t, "box", "peak", "a.jsonl", "b.jsonl"); code != 2 {
+	if _, _, code := exec(t, "fleet", "peak", "a.jsonl", "b.jsonl"); code != 2 {
 		t.Errorf("two traces exited %d, want 2", code)
 	}
-	if _, _, code := exec(t, "box", "peak", filepath.Join(t.TempDir(), "gone.jsonl")); code != 1 {
+	if _, _, code := exec(t, "fleet", "peak", filepath.Join(t.TempDir(), "gone.jsonl")); code != 1 {
 		t.Errorf("a missing trace exited %d, want 1", code)
 	}
 }
@@ -238,7 +238,7 @@ func TestPeakRefusesWhatItCannotRead(t *testing.T) {
 // reading and the one thing that is true everywhere: the numbers are the box's
 // own rather than the record's.
 func TestBoxCheckMeasuresThisMachine(t *testing.T) {
-	out, errOut, code := exec(t, "box", "check", "-dir", t.TempDir(), "-json")
+	out, errOut, code := exec(t, "fleet", "check", "-dir", t.TempDir(), "-json")
 	if code != 0 && code != 1 {
 		t.Fatalf("gao fleet check: exit %d, %s", code, errOut)
 	}
@@ -260,8 +260,8 @@ func TestBoxCheckMeasuresThisMachine(t *testing.T) {
 	if c.Free <= 0 || c.Threads <= 0 {
 		t.Errorf("measured %d bytes free and %d threads on a directory that exists", c.Free, c.Threads)
 	}
-	if c.Taken != may.MeasuredOn {
-		t.Errorf("the reading is against an inventory taken on %q, want %q", c.Taken, may.MeasuredOn)
+	if c.Taken != fleet.MeasuredOn {
+		t.Errorf("the reading is against an inventory taken on %q, want %q", c.Taken, fleet.MeasuredOn)
 	}
 	if c.Holds != (len(c.Drift) == 0) {
 		t.Errorf("it holds %v with %d sentences of drift", c.Holds, len(c.Drift))
@@ -276,7 +276,7 @@ func TestBoxCheckMeasuresThisMachine(t *testing.T) {
 // is itself a drift, so this asserts the pairing rather than the exit code
 // alone.
 func TestBoxCheckExitsOnDrift(t *testing.T) {
-	out, _, code := exec(t, "box", "check", "-dir", t.TempDir())
+	out, _, code := exec(t, "fleet", "check", "-dir", t.TempDir())
 	drifted := strings.Contains(out, "the record has moved")
 	if drifted && code != 1 {
 		t.Errorf("exit %d after reporting drift, want 1", code)
@@ -287,7 +287,7 @@ func TestBoxCheckExitsOnDrift(t *testing.T) {
 }
 
 func TestBoxCheckTakesNoArguments(t *testing.T) {
-	if _, _, code := exec(t, "box", "check", "disk.jsonl"); code != 2 {
+	if _, _, code := exec(t, "fleet", "check", "disk.jsonl"); code != 2 {
 		t.Errorf("exit %d, want 2 for an argument the command does not take", code)
 	}
 }

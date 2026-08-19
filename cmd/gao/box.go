@@ -7,7 +7,7 @@ import (
 	"text/tabwriter"
 	"time"
 
-	"github.com/tamnd/gao/may"
+	"github.com/tamnd/gao/fleet"
 )
 
 func runBox(stdout, stderr io.Writer, args []string) int {
@@ -20,7 +20,7 @@ func runBox(stdout, stderr io.Writer, args []string) int {
 	fs := flag.NewFlagSet("fleet", flag.ContinueOnError)
 	fs.SetOutput(stderr)
 	label := fs.Bool("label", false, "print only the provenance label for this machine")
-	tokens := fs.Int64("tokens", may.TargetTokens, "token count to compute the disk budget for")
+	tokens := fs.Int64("tokens", fleet.TargetTokens, "token count to compute the disk budget for")
 	fs.Usage = func() {
 		fmt.Fprint(stderr, "usage: gao fleet [-label] [-tokens N]\n       gao fleet peak [-ran duration] disk.jsonl\n       gao fleet check [-dir DIR] [-json]\n\nPrints the fleet inventory and the disk budget a corpus of the given size needs.\nThe inventory is measured, not specified, and it carries the date it was taken.\n\nThe peak subcommand reads a watcher's disk trace from a run and grades it\nagainst the ceiling, and against the arithmetic the ceiling was written over.\n\nThe check subcommand measures this box and says how far the record has drifted\nfrom it, which is the thing nobody notices until a plan is built on it.\n\nflags:\n")
 		fs.PrintDefaults()
@@ -30,43 +30,43 @@ func runBox(stdout, stderr io.Writer, args []string) int {
 	}
 
 	if *label {
-		fmt.Fprintln(stdout, may.Label())
+		fmt.Fprintln(stdout, fleet.Label())
 		return 0
 	}
 
-	fmt.Fprintf(stdout, "fleet as measured on %s\n\n", may.MeasuredOn)
+	fmt.Fprintf(stdout, "fleet as measured on %s\n\n", fleet.MeasuredOn)
 	tw := tabwriter.NewWriter(stdout, 0, 0, 2, ' ', 0)
 	fmt.Fprint(tw, "box\tos\tcores\tmemory\tfree disk\tgpu\n")
-	for _, b := range may.Boxes {
+	for _, b := range fleet.Boxes {
 		gpu := b.GPU
 		if gpu == "" {
 			gpu = "none"
 		} else {
-			gpu = fmt.Sprintf("%s, %s", gpu, may.GB(b.GPUMemory))
+			gpu = fmt.Sprintf("%s, %s", gpu, fleet.GB(b.GPUMemory))
 		}
 		fmt.Fprintf(tw, "%s\t%s\t%d/%d\t%s\t%s\t%s\n",
-			b.Name, b.OS, b.Cores, b.Threads, may.GB(b.Memory), may.GB(b.FreeDisk), gpu)
+			b.Name, b.OS, b.Cores, b.Threads, fleet.GB(b.Memory), fleet.GB(b.FreeDisk), gpu)
 	}
-	t := may.Total()
+	t := fleet.Total()
 	fmt.Fprintf(tw, "total\t\t%d/%d\t%s\t%s\t%d\n",
-		t.Cores, t.Threads, may.GB(t.Memory), may.GB(t.FreeDisk), t.GPUs)
+		t.Cores, t.Threads, fleet.GB(t.Memory), fleet.GB(t.FreeDisk), t.GPUs)
 	_ = tw.Flush()
 
 	fmt.Fprint(stdout, "\nroles\n")
-	for _, b := range may.Boxes {
+	for _, b := range fleet.Boxes {
 		fmt.Fprintf(stdout, "  %s: %s\n", b.Name, b.Role)
 	}
 
-	p := may.Plan(*tokens)
+	p := fleet.Plan(*tokens)
 	fmt.Fprintf(stdout, "\ndisk budget for %.0fB natural tokens\n", float64(p.Tokens)/1e9)
 	// Tabbed rather than padded by hand. The labels were padded to line up with
 	// "compressed at 3.0x", and the ratio being measured rather than assumed made
 	// it "compressed at 2.07x", which pushed one number out of the column.
 	tw = tabwriter.NewWriter(stdout, 0, 0, 1, ' ', 0)
-	fmt.Fprintf(tw, "  extracted text\t%s\n", may.GB(p.Text))
-	fmt.Fprintf(tw, "  compressed at %.2fx\t%s in %d shards\n", may.Compression, may.GB(p.Compressed), p.Shards)
-	fmt.Fprintf(tw, "  fleet free disk\t%s across %d boxes\n", may.GB(p.FleetFree), t.Boxes)
-	fmt.Fprintf(tw, "  largest single box\t%s on %s\n", may.GB(p.Largest.FreeDisk), p.Largest.Name)
+	fmt.Fprintf(tw, "  extracted text\t%s\n", fleet.GB(p.Text))
+	fmt.Fprintf(tw, "  compressed at %.2fx\t%s in %d shards\n", fleet.Compression, fleet.GB(p.Compressed), p.Shards)
+	fmt.Fprintf(tw, "  fleet free disk\t%s across %d boxes\n", fleet.GB(p.FleetFree), t.Boxes)
+	fmt.Fprintf(tw, "  largest single box\t%s on %s\n", fleet.GB(p.Largest.FreeDisk), p.Largest.Name)
 	if !p.Resident {
 		fmt.Fprintf(tw, "  working set\t%d shards at a time on %s, after the reserve\n", p.ShardsResident, p.Largest.Name)
 	}
@@ -81,27 +81,27 @@ func runBox(stdout, stderr io.Writer, args []string) int {
 	}
 
 	fmt.Fprint(stdout, "\nwhat each box can run, after leaving ")
-	fmt.Fprintf(stdout, "%s of reserve alone\n", may.GB(may.ReserveBytes))
+	fmt.Fprintf(stdout, "%s of reserve alone\n", fleet.GB(fleet.ReserveBytes))
 	tw = tabwriter.NewWriter(stdout, 0, 0, 2, ' ', 0)
 	fmt.Fprint(tw, "box\tscratch\tshards\tworkers\n")
-	for _, pl := range may.Placements() {
+	for _, pl := range fleet.Placements() {
 		if !pl.Holds {
-			fmt.Fprintf(tw, "%s\t%s\tnone\tno corpus bytes land here\n", pl.Box.Name, may.GB(pl.Scratch))
+			fmt.Fprintf(tw, "%s\t%s\tnone\tno corpus bytes land here\n", pl.Box.Name, fleet.GB(pl.Scratch))
 			continue
 		}
-		fmt.Fprintf(tw, "%s\t%s\t%d\t%d\n", pl.Box.Name, may.GB(pl.Scratch), pl.Shards, pl.Workers)
+		fmt.Fprintf(tw, "%s\t%s\t%d\t%d\n", pl.Box.Name, fleet.GB(pl.Scratch), pl.Shards, pl.Workers)
 	}
-	fmt.Fprintf(tw, "fleet\t\t\t%d\n", may.FleetWorkers())
+	fmt.Fprintf(tw, "fleet\t\t\t%d\n", fleet.FleetWorkers())
 	_ = tw.Flush()
 
-	fmt.Fprintf(stdout, "\nstore of record: public dataset repos on the Hugging Face Hub, from %s\n", may.StoreEnv)
-	if store, ok := may.Store(); ok {
+	fmt.Fprintf(stdout, "\nstore of record: public dataset repos on the Hugging Face Hub, from %s\n", fleet.StoreEnv)
+	if store, ok := fleet.Store(); ok {
 		fmt.Fprintf(stdout, "  %s\n", store)
 	} else {
 		fmt.Fprintf(stdout, "  unset, so no stage would know where to write\n")
 	}
 
-	fmt.Fprintf(stdout, "\nthis process is running on %s\n", may.Label())
+	fmt.Fprintf(stdout, "\nthis process is running on %s\n", fleet.Label())
 	return 0
 }
 
@@ -111,7 +111,7 @@ func runBoxPeak(stdout, stderr io.Writer, args []string) int {
 	asJSON := fs.Bool("json", false, "print JSON")
 	name := fs.String("run", "ingest", "what the run was")
 	ran := fs.Duration("ran", 0, "how long the run lasted, which is not how long the watcher watched")
-	ceiling := fs.Int64("ceiling", may.Ceiling, "the most disk the run may hold, in bytes")
+	ceiling := fs.Int64("ceiling", fleet.Ceiling, "the most disk the run may hold, in bytes")
 	fs.Usage = func() {
 		fmt.Fprint(stderr, `usage: gao fleet peak [-run name] [-ran duration] [-ceiling bytes] [-json] disk.jsonl
 
@@ -157,12 +157,12 @@ flags:
 		return 2
 	}
 
-	samples, err := may.ReadTrace(fs.Arg(0))
+	samples, err := fleet.ReadTrace(fs.Arg(0))
 	if err != nil {
 		fmt.Fprintf(stderr, "gao fleet peak: %v\n", err)
 		return 1
 	}
-	p := may.Measure(*name, *ran, *ceiling, samples)
+	p := fleet.Measure(*name, *ran, *ceiling, samples)
 
 	if *asJSON {
 		if code := printJSON(stdout, stderr, p); code != 0 {
@@ -184,13 +184,13 @@ flags:
 	return 0
 }
 
-func printPeak(w io.Writer, p may.Peak) {
+func printPeak(w io.Writer, p fleet.Peak) {
 	tw := tabwriter.NewWriter(w, 0, 0, 2, ' ', 0)
 	fmt.Fprintf(tw, "run\t%s\ton %s, %s of wall clock\n", p.Run, p.Box, p.Ran)
-	fmt.Fprintf(tw, "peak\t%s\tat %s, during %s\n", may.GB(p.Held), (time.Duration(p.At) * time.Second).String(), p.During)
-	fmt.Fprintf(tw, "ceiling\t%s\t%s of it left\n", may.GB(p.Ceiling), may.GB(p.Headroom()))
+	fmt.Fprintf(tw, "peak\t%s\tat %s, during %s\n", fleet.GB(p.Held), (time.Duration(p.At) * time.Second).String(), p.During)
+	fmt.Fprintf(tw, "ceiling\t%s\t%s of it left\n", fleet.GB(p.Ceiling), fleet.GB(p.Headroom()))
 	if p.Predicted > 0 {
-		fmt.Fprintf(tw, "predicted\t%s\ttwo shards each for the %s this run had going\n", may.GB(p.Predicted), plural(p.Workers, "worker"))
+		fmt.Fprintf(tw, "predicted\t%s\ttwo shards each for the %s this run had going\n", fleet.GB(p.Predicted), plural(p.Workers, "worker"))
 		if p.Ratio() > 0 {
 			fmt.Fprintf(tw, "drift\t%.1fx\tthe measurement over the arithmetic\n", p.Ratio())
 		}
@@ -205,17 +205,17 @@ func printPeak(w io.Writer, p may.Peak) {
 	// single worker ingest on a 32 thread box got reported as a run too small to
 	// mean anything.
 	if p.Planned > 0 {
-		fmt.Fprintf(tw, "plan allows\t%s\tif a stage used every worker %s has threads for\n", may.GB(p.Planned), p.Box)
+		fmt.Fprintf(tw, "plan allows\t%s\tif a stage used every worker %s has threads for\n", fleet.GB(p.Planned), p.Box)
 	}
 	fmt.Fprintf(tw, "watched\t%s\tacross %s, widest gap %s\n", plural(p.Samples, "reading"), p.Watched, p.Widest)
 	// Only where the gap is wide enough to be worth pricing. On a trace the
 	// watcher kept up with, the blind window is narrower than the resolution and
 	// the line is noise.
-	if p.Widest > may.Resolution {
+	if p.Widest > fleet.Resolution {
 		fmt.Fprintf(tw, "blind spot\t%s\tthe most a %s gap hides at the %s a second this run was measured allocating\n",
-			may.GB(p.Hidden), p.Widest, may.Size(p.Rise))
+			fleet.GB(p.Hidden), p.Widest, fleet.Size(p.Rise))
 	}
-	fmt.Fprintf(tw, "free\t%s\ton %s\n", may.GB(p.Free), p.Box)
+	fmt.Fprintf(tw, "free\t%s\ton %s\n", fleet.GB(p.Free), p.Box)
 	_ = tw.Flush()
 
 	if refused := p.Blocking(); len(refused) > 0 {
@@ -284,18 +284,18 @@ flags:
 		return 2
 	}
 
-	live, err := may.Now(*dir)
+	live, err := fleet.Now(*dir)
 	if err != nil {
 		fmt.Fprintf(stderr, "gao fleet check: %v\n", err)
 		return 1
 	}
 	recorded := int64(0)
-	if b, ok := may.Lookup(live.Box); ok {
+	if b, ok := fleet.Lookup(live.Box); ok {
 		recorded = b.FreeDisk
 	}
 	c := boxCheck{
 		Box: live.Box, Path: live.Path, Free: live.Free, Recorded: recorded,
-		Threads: live.Threads, Taken: may.MeasuredOn,
+		Threads: live.Threads, Taken: fleet.MeasuredOn,
 		Drift: live.Drift(), Holds: live.Holds(), Verdict: live.Verdict(),
 	}
 
@@ -306,8 +306,8 @@ flags:
 	} else {
 		tw := tabwriter.NewWriter(stdout, 0, 0, 2, ' ', 0)
 		fmt.Fprintf(tw, "box\t%s\n", c.Box)
-		fmt.Fprintf(tw, "measured on\t%s\t%s\n", c.Path, may.GB(c.Free))
-		fmt.Fprintf(tw, "recorded\t%s\t%s\n", c.Taken, may.GB(c.Recorded))
+		fmt.Fprintf(tw, "measured on\t%s\t%s\n", c.Path, fleet.GB(c.Free))
+		fmt.Fprintf(tw, "recorded\t%s\t%s\n", c.Taken, fleet.GB(c.Recorded))
 		fmt.Fprintf(tw, "threads\t%d\n", c.Threads)
 		_ = tw.Flush()
 

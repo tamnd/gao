@@ -9,15 +9,15 @@ import (
 	"time"
 
 	"github.com/tamnd/gao/doc"
-	"github.com/tamnd/gao/kho"
-	"github.com/tamnd/gao/phoi"
+	"github.com/tamnd/gao/normalize"
+	"github.com/tamnd/gao/store"
 )
 
 // prose is a page of real Vietnamese as the cleaning stages would leave it: long
 // enough to clear sang's length floor, varied enough to clear its repetition
 // bound, and put through phoi so that phoi run again over it changes nothing.
 func prose(i int) string {
-	return phoi.Normalize(fmt.Sprintf("%s Đây là tài liệu số %d trong bộ.", dauPages[i%len(dauPages)], i)).Text
+	return normalize.Normalize(fmt.Sprintf("%s Đây là tài liệu số %d trong bộ.", markPages[i%len(markPages)], i)).Text
 }
 
 // rebuildable is [removableSnapshot] with the stage list under the test's
@@ -26,18 +26,18 @@ func rebuildable(t *testing.T, n, shards int, stages []string, text func(i int) 
 	t.Helper()
 	dir := t.TempDir()
 
-	set, err := kho.NewShardSet[*doc.Document](dir, shards, func(d *doc.Document) doc.Hash { return d.DocID })
+	set, err := store.NewShardSet[*doc.Document](dir, shards, func(d *doc.Document) doc.Hash { return d.DocID })
 	if err != nil {
 		t.Fatalf("NewShardSet: %v", err)
 	}
-	m := &kho.Manifest{
+	m := &store.Manifest{
 		Snapshot:  "2026-09",
 		CreatedAt: time.Date(2026, 9, 30, 12, 0, 0, 0, time.UTC),
 		Pipeline:  "0.1.0",
 		Box:       "server1",
 	}
 	for _, s := range stages {
-		m.Stages = append(m.Stages, kho.Stage{Name: s, ConfigHash: doc.SumString(s + " config")})
+		m.Stages = append(m.Stages, store.Stage{Name: s, ConfigHash: doc.SumString(s + " config")})
 	}
 	m.Counts.BySource = map[string]int64{}
 	for i := range n {
@@ -65,23 +65,23 @@ func rebuildable(t *testing.T, n, shards int, stages []string, text func(i int) 
 		t.Fatalf("Close: %v", err)
 	}
 
-	_, priv, err := kho.GenerateKey()
+	_, priv, err := store.GenerateKey()
 	if err != nil {
 		t.Fatal(err)
 	}
 	if err := m.Seal(priv, m.CreatedAt); err != nil {
 		t.Fatalf("Seal: %v", err)
 	}
-	if err := kho.WriteManifest(dir, m); err != nil {
+	if err := store.WriteManifest(dir, m); err != nil {
 		t.Fatalf("WriteManifest: %v", err)
 	}
 	return dir
 }
 
-func TestKhoReproduceRebuildsASnapshotAndSaysWhatItRanOn(t *testing.T) {
+func TestStoreReproduceRebuildsASnapshotAndSaysWhatItRanOn(t *testing.T) {
 	dir := rebuildable(t, 40, 3, []string{"gat@0.1.0"}, nil)
 
-	out, errOut, code := exec(t, "kho", "reproduce", dir)
+	out, errOut, code := exec(t, "store", "reproduce", dir)
 	if code != 0 {
 		t.Fatalf("gao store reproduce: exit %d\n%s\n%s", code, out, errOut)
 	}
@@ -101,10 +101,10 @@ func TestKhoReproduceRebuildsASnapshotAndSaysWhatItRanOn(t *testing.T) {
 // build would write. That is what a settings change or a compressor upgrade
 // looks like, and it is the only failure a rebuild sees that verification does
 // not, since a corrupted shard cannot be read back at all.
-func TestKhoReproduceOnASnapshotWrittenWithOtherSettings(t *testing.T) {
+func TestStoreReproduceOnASnapshotWrittenWithOtherSettings(t *testing.T) {
 	dir := rebuildable(t, 30, 2, []string{"gat@0.1.0"}, nil)
 
-	out, errOut, code := exec(t, "kho", "reproduce", "-frame-bytes", "2048", dir)
+	out, errOut, code := exec(t, "store", "reproduce", "-frame-bytes", "2048", dir)
 	if code != 1 {
 		t.Fatalf("gao store reproduce at the wrong frame size: exit %d\n%s", code, out)
 	}
@@ -119,14 +119,14 @@ func TestKhoReproduceOnASnapshotWrittenWithOtherSettings(t *testing.T) {
 	}
 }
 
-func TestKhoReproduceVerboseAccountsForEveryShard(t *testing.T) {
+func TestStoreReproduceVerboseAccountsForEveryShard(t *testing.T) {
 	dir := rebuildable(t, 30, 3, []string{"gat@0.1.0"}, nil)
-	m, err := kho.ReadManifest(dir)
+	m, err := store.ReadManifest(dir)
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	out, _, code := exec(t, "kho", "reproduce", "-v", dir)
+	out, _, code := exec(t, "store", "reproduce", "-v", dir)
 	if code != 0 {
 		t.Fatalf("exit %d\n%s", code, out)
 	}
@@ -137,10 +137,10 @@ func TestKhoReproduceVerboseAccountsForEveryShard(t *testing.T) {
 	}
 }
 
-func TestKhoReproduceStopsAtTheFirstFailureWhenAsked(t *testing.T) {
+func TestStoreReproduceStopsAtTheFirstFailureWhenAsked(t *testing.T) {
 	dir := rebuildable(t, 40, 4, []string{"gat@0.1.0"}, nil)
 
-	out, _, code := exec(t, "kho", "reproduce", "-stop", "-frame-bytes", "2048", "-v", dir)
+	out, _, code := exec(t, "store", "reproduce", "-stop", "-frame-bytes", "2048", "-v", dir)
 	if code != 1 {
 		t.Fatalf("exit %d, want 1\n%s", code, out)
 	}
@@ -152,10 +152,10 @@ func TestKhoReproduceStopsAtTheFirstFailureWhenAsked(t *testing.T) {
 // The stages this binary knows how to re-run are run. Normalizing an already
 // normalized document, and classifying an already accepted one, are the same
 // check twice: a stage that is a function has to leave its own output alone.
-func TestKhoReproduceRerunsTheStagesItKnows(t *testing.T) {
+func TestStoreReproduceRerunsTheStagesItKnows(t *testing.T) {
 	dir := rebuildable(t, 20, 2, []string{"phoi@0.1.0", "sang@0.1.0"}, prose)
 
-	out, errOut, code := exec(t, "kho", "reproduce", dir)
+	out, errOut, code := exec(t, "store", "reproduce", dir)
 	if code != 0 {
 		t.Fatalf("exit %d\n%s\n%s", code, out, errOut)
 	}
@@ -169,7 +169,7 @@ func TestKhoReproduceRerunsTheStagesItKnows(t *testing.T) {
 	}
 }
 
-func TestKhoReproduceCatchesDocumentsAStageWouldNotProduce(t *testing.T) {
+func TestStoreReproduceCatchesDocumentsAStageWouldNotProduce(t *testing.T) {
 	// Text with a no-break space and a decomposed syllable in it, which is
 	// exactly what a snapshot normalized by an older phoi looks like.
 	dir := rebuildable(t, 12, 2, []string{"phoi@0.1.0"}, func(i int) string {
@@ -178,7 +178,7 @@ func TestKhoReproduceCatchesDocumentsAStageWouldNotProduce(t *testing.T) {
 			"Nội dung của tài liệu này đủ dài để vượt qua ngưỡng tối thiểu của hợp đồng nhập liệu."
 	})
 
-	out, errOut, code := exec(t, "kho", "reproduce", dir)
+	out, errOut, code := exec(t, "store", "reproduce", dir)
 	if code != 1 {
 		t.Fatalf("a snapshot phoi would rewrite was accepted: exit %d\n%s", code, out)
 	}
@@ -201,10 +201,10 @@ func TestKhoReproduceCatchesDocumentsAStageWouldNotProduce(t *testing.T) {
 
 // Most stages will never have a check. Saying so is the point, because a report
 // that lists only what it checked reads as a report that checked everything.
-func TestKhoReproduceSaysWhichStagesItCouldNotCheck(t *testing.T) {
+func TestStoreReproduceSaysWhichStagesItCouldNotCheck(t *testing.T) {
 	dir := rebuildable(t, 10, 1, []string{"gat@0.1.0", "xay@0.2.0"}, nil)
 
-	out, _, code := exec(t, "kho", "reproduce", dir)
+	out, _, code := exec(t, "store", "reproduce", dir)
 	if code != 0 {
 		t.Fatalf("exit %d\n%s", code, out)
 	}
@@ -215,21 +215,21 @@ func TestKhoReproduceSaysWhichStagesItCouldNotCheck(t *testing.T) {
 	}
 }
 
-func TestKhoReproduceRefusesASnapshotThatDoesNotVerify(t *testing.T) {
+func TestStoreReproduceRefusesASnapshotThatDoesNotVerify(t *testing.T) {
 	dir := rebuildable(t, 10, 1, []string{"gat@0.1.0"}, nil)
-	m, err := kho.ReadManifest(dir)
+	m, err := store.ReadManifest(dir)
 	if err != nil {
 		t.Fatal(err)
 	}
 	m.Snapshot = "2026-10"
-	if err := os.Remove(filepath.Join(dir, kho.ManifestName)); err != nil {
+	if err := os.Remove(filepath.Join(dir, store.ManifestName)); err != nil {
 		t.Fatal(err)
 	}
-	if err := kho.WriteManifest(dir, m); err != nil {
+	if err := store.WriteManifest(dir, m); err != nil {
 		t.Fatal(err)
 	}
 
-	_, errOut, code := exec(t, "kho", "reproduce", dir)
+	_, errOut, code := exec(t, "store", "reproduce", dir)
 	if code != 1 {
 		t.Fatalf("exit %d, want 1", code)
 	}
@@ -238,22 +238,22 @@ func TestKhoReproduceRefusesASnapshotThatDoesNotVerify(t *testing.T) {
 	}
 }
 
-func TestKhoReproduceUsageErrors(t *testing.T) {
+func TestStoreReproduceUsageErrors(t *testing.T) {
 	dir := rebuildable(t, 5, 1, []string{"gat@0.1.0"}, nil)
 
-	if _, _, code := exec(t, "kho", "reproduce"); code != 2 {
+	if _, _, code := exec(t, "store", "reproduce"); code != 2 {
 		t.Errorf("no snapshot: exit %d, want 2", code)
 	}
-	if _, _, code := exec(t, "kho", "reproduce", dir, dir); code != 2 {
+	if _, _, code := exec(t, "store", "reproduce", dir, dir); code != 2 {
 		t.Errorf("two snapshots: exit %d, want 2", code)
 	}
-	if _, _, code := exec(t, "kho", "reproduce", filepath.Join(t.TempDir(), "nope")); code != 1 {
+	if _, _, code := exec(t, "store", "reproduce", filepath.Join(t.TempDir(), "nope")); code != 1 {
 		t.Errorf("a snapshot that is not there: exit %d, want 1", code)
 	}
 }
 
-func TestKhoReproduceIsInTheSubcommandList(t *testing.T) {
-	out, _, code := exec(t, "kho", "help")
+func TestStoreReproduceIsInTheSubcommandList(t *testing.T) {
+	out, _, code := exec(t, "store", "help")
 	if code != 0 {
 		t.Fatalf("gao store help: exit %d", code)
 	}

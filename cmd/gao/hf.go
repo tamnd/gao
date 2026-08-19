@@ -13,15 +13,15 @@ import (
 	"text/tabwriter"
 	"time"
 
-	"github.com/tamnd/gao/dem"
+	"github.com/tamnd/gao/count"
 	"github.com/tamnd/gao/doc"
-	"github.com/tamnd/gao/gat"
-	"github.com/tamnd/gao/kho"
-	"github.com/tamnd/gao/may"
-	"github.com/tamnd/gao/vo"
+	"github.com/tamnd/gao/fleet"
+	"github.com/tamnd/gao/harvest"
+	"github.com/tamnd/gao/reject"
+	"github.com/tamnd/gao/store"
 )
 
-func runGatHF(stdout, stderr io.Writer, args []string) int {
+func runHarvestHF(stdout, stderr io.Writer, args []string) int {
 	fs := flag.NewFlagSet("harvest hf", flag.ContinueOnError)
 	fs.SetOutput(stderr)
 	dir := fs.String("dir", "", "the ingest directory, which is where the ledger lives")
@@ -122,7 +122,7 @@ Counting happens here rather than in a later pass because the largest source is
 around 700 GB of text, and a design where ingestion writes documents and
 something else reads them back to count is a design that moves 700 GB twice.
 
-Gated sources need a token in `+may.TokenEnv+`, and CulturaX is the gated one.
+Gated sources need a token in `+fleet.TokenEnv+`, and CulturaX is the gated one.
 
 There is no default for -dir. A command that starts a 513.6 GB download into
 whichever directory it happened to be run from is a command that will do it once
@@ -175,9 +175,9 @@ flags:
 	// Loaded before anything is fetched. The tokenizer is 4.7 MB and the ingest
 	// that follows it is measured in days, so finding out that the path was
 	// wrong should not cost a download.
-	var tok *dem.Tokenizer
+	var tok *count.Tokenizer
 	if *tokenizer != "" {
-		tok, err = dem.Open(dem.Gemma3, *tokenizer)
+		tok, err = count.Open(count.Gemma3, *tokenizer)
 		if err != nil {
 			fmt.Fprintf(stderr, "gao harvest hf: %v\n", err)
 			fmt.Fprint(stderr, "run 'gao count model -o PATH' to fetch the tokenizer gao counts with\n")
@@ -185,8 +185,8 @@ flags:
 		}
 	}
 	if *decode {
-		if ok, missing := gat.Decodable(sources); !ok {
-			fmt.Fprintf(stderr, "gao harvest hf: %v: %s\n", gat.ErrNoDecoder, sourceList(missing))
+		if ok, missing := harvest.Decodable(sources); !ok {
+			fmt.Fprintf(stderr, "gao harvest hf: %v: %s\n", harvest.ErrNoDecoder, sourceList(missing))
 			fmt.Fprint(stderr, "pick a source with -source, or drop -decode to fetch and count the bytes\n")
 			return 1
 		}
@@ -197,7 +197,7 @@ flags:
 	// and takes no lock, so the plan stays readable while an ingest is running,
 	// which is when somebody most wants to read it.
 	if !*plan {
-		lock, err := gat.LockDir(*dir, "gao harvest hf")
+		lock, err := harvest.LockDir(*dir, "gao harvest hf")
 		if err != nil {
 			fmt.Fprintf(stderr, "gao harvest hf: %v\n", err)
 			return 1
@@ -209,7 +209,7 @@ flags:
 		}()
 	}
 
-	ledger, err := gat.OpenLedger(*dir)
+	ledger, err := harvest.OpenLedger(*dir)
 	if err != nil {
 		fmt.Fprintf(stderr, "gao harvest hf: %v\n", err)
 		return 1
@@ -226,7 +226,7 @@ flags:
 	}
 	if *limit > 0 && *limit < len(todo) {
 		todo = todo[:*limit]
-		fmt.Fprintf(stdout, "stopping after %d files, %s\n", len(todo), may.GB(gat.Remaining(todo)))
+		fmt.Fprintf(stdout, "stopping after %d files, %s\n", len(todo), fleet.GB(harvest.Remaining(todo)))
 	}
 	if *plan {
 		return 0
@@ -235,15 +235,15 @@ flags:
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
 
-	in := &gat.Ingest{
-		Fetcher: &gat.Fetcher{Token: may.Token()},
+	in := &harvest.Ingest{
+		Fetcher: &harvest.Fetcher{Token: fleet.Token()},
 		Ledger:  ledger,
-		Box:     may.Label(),
+		Box:     fleet.Label(),
 	}
 
-	var tally dem.Tally
-	var seeded dem.Counts
-	var docs *gat.Docs
+	var tally count.Tally
+	var seeded count.Counts
+	var docs *harvest.Docs
 	var written *parts
 	if *decode {
 		var closeRejects func() error
@@ -274,7 +274,7 @@ flags:
 			// Before the first byte is fetched. Finding out that the token is
 			// wrong should cost a second rather than the twenty minutes it
 			// takes to fill the first part.
-			written.push = &kho.Pusher{Repo: written.dataset.Repo(), Token: may.Token()}
+			written.push = &store.Pusher{Repo: written.dataset.Repo(), Token: fleet.Token()}
 			if err := written.push.EnsureRepo(ctx, written.dataset); err != nil {
 				fmt.Fprintf(stderr, "gao harvest hf: %v\n", err)
 				return 1
@@ -324,7 +324,7 @@ flags:
 	// names a source, and nothing about it says it describes a run that ended
 	// yesterday. The first write happens before any bytes are fetched, so the
 	// stale file is gone from the first second.
-	in.Progress = func(r gat.Report) {
+	in.Progress = func(r harvest.Report) {
 		printFetched(stdout, r)
 		if !*decode {
 			return
@@ -339,7 +339,7 @@ flags:
 
 	n, err := in.Run(ctx, todo)
 	stopWatch()
-	fmt.Fprintf(stdout, "\n%d of %d files fetched, %s in the ledger\n", n, len(todo), may.GB(ledger.Bytes()))
+	fmt.Fprintf(stdout, "\n%d of %d files fetched, %s in the ledger\n", n, len(todo), fleet.GB(ledger.Bytes()))
 	printAdmitted(stdout, docs)
 	if written != nil {
 		written.summary(stdout)
@@ -379,7 +379,7 @@ flags:
 //
 // A name that is pinned and already in the ledger is not an error. That is a
 // resumed run, which is the ordinary case for a list this long.
-func readOnly(path string, sources []gat.Pinned) (map[string]bool, error) {
+func readOnly(path string, sources []harvest.Pinned) (map[string]bool, error) {
 	b, err := os.ReadFile(path)
 	if err != nil {
 		return nil, err
@@ -432,15 +432,15 @@ func readOnly(path string, sources []gat.Pinned) (map[string]bool, error) {
 // 19 files with none of them left is a finished hand, and it reads differently
 // from a list that matched nothing, which readOnly has already refused by the
 // time this runs.
-func keepOnly(stdout io.Writer, todo []gat.Work, want map[string]bool, path string) []gat.Work {
-	kept := make([]gat.Work, 0, len(todo))
+func keepOnly(stdout io.Writer, todo []harvest.Work, want map[string]bool, path string) []harvest.Work {
+	kept := make([]harvest.Work, 0, len(todo))
 	for _, w := range todo {
 		if want[workName(string(w.Pin.Source), w.File.Path)] {
 			kept = append(kept, w)
 		}
 	}
 	fmt.Fprintf(stdout, "%s names %s, %d left to fetch, %s to move\n",
-		path, plural(len(want), "file"), len(kept), may.GB(gat.Remaining(kept)))
+		path, plural(len(want), "file"), len(kept), fleet.GB(harvest.Remaining(kept)))
 	return kept
 }
 
@@ -461,7 +461,7 @@ func workName(source, path string) string {
 // is underneath that. gamingpc read most of a 25.2 GB HPLT shard before hitting
 // a record that does not parse, and its counts.json came out 17683770 documents
 // over once the shard was read properly.
-func settle(t *dem.Tally, r gat.Report) {
+func settle(t *count.Tally, r harvest.Report) {
 	if r.Err != nil {
 		t.Drop()
 		return
@@ -487,26 +487,26 @@ func settle(t *dem.Tally, r gat.Report) {
 // counts. That was a claim rather than a mechanism until gamingpc read most of a
 // 25.2 GB shard, failed on a bad record, and left its documents in the counts
 // file for the next run to add to.
-func seedCounts(stdout io.Writer, dir string, ledger *gat.Ledger, tally *dem.Tally) (dem.Counts, error) {
+func seedCounts(stdout io.Writer, dir string, ledger *harvest.Ledger, tally *count.Tally) (count.Counts, error) {
 	if len(ledger.Entries()) == 0 {
-		return dem.Counts{}, nil
+		return count.Counts{}, nil
 	}
-	r, err := dem.ReadReport(dir)
-	if errors.Is(err, dem.ErrNoReport) {
-		return dem.Counts{}, nil
+	r, err := count.ReadReport(dir)
+	if errors.Is(err, count.ErrNoReport) {
+		return count.Counts{}, nil
 	}
 	if err != nil {
-		return dem.Counts{}, err
+		return count.Counts{}, err
 	}
 	if err := tally.Seed(r); err != nil {
-		return dem.Counts{}, err
+		return count.Counts{}, err
 	}
 	c := r.Natural
 	if c.Documents == 0 {
-		return dem.Counts{}, nil
+		return count.Counts{}, nil
 	}
 	fmt.Fprintf(stdout, "carrying %d documents and %s of text forward from the files already in the ledger\n",
-		c.Documents, may.GB(c.Bytes))
+		c.Documents, fleet.GB(c.Bytes))
 	return c, nil
 }
 
@@ -516,7 +516,7 @@ func seedCounts(stdout io.Writer, dir string, ledger *gat.Ledger, tally *dem.Tal
 // measurement of a download that is already paid for, and losing the download
 // because the directory went read only would be the wrong trade in both
 // directions.
-func saveCounts(stderr io.Writer, dir, box string, tally *dem.Tally, complete bool) {
+func saveCounts(stderr io.Writer, dir, box string, tally *count.Tally, complete bool) {
 	r := tally.Report(box, time.Now())
 	r.Complete = complete
 	if err := r.Write(dir); err != nil {
@@ -532,24 +532,24 @@ func saveCounts(stderr io.Writer, dir, box string, tally *dem.Tally, complete bo
 // server3 resumed a GlotCC directory and finished with "1500000 documents
 // admitted" above "37.9 GB of text", which are three files and nine files, and
 // nothing on either line said so.
-func printTally(w io.Writer, tally *dem.Tally, seeded dem.Counts) {
+func printTally(w io.Writer, tally *count.Tally, seeded count.Counts) {
 	c := tally.Natural()
 	if c.Documents == 0 {
 		return
 	}
 	if c.Tokens == 0 {
 		fmt.Fprintf(w, "%s of text, %d characters, %d syllables, counted in %s\n",
-			may.GB(c.Bytes), c.Chars, c.Syllables, dem.File)
+			fleet.GB(c.Bytes), c.Chars, c.Syllables, count.File)
 	} else {
 		fmt.Fprintf(w, "%s of text, %d characters, %d syllables, %d %s tokens at %.2f characters each, counted in %s\n",
-			may.GB(c.Bytes), c.Chars, c.Syllables, c.Tokens, tally.Tokenizer, c.CharsPerToken(), dem.File)
+			fleet.GB(c.Bytes), c.Chars, c.Syllables, c.Tokens, tally.Tokenizer, c.CharsPerToken(), count.File)
 	}
 	if seeded.Documents > 0 {
 		// Size rather than GB, because a run that resumed and then fetched one
 		// small file is exactly when somebody reads this line, and "0.0 GB was
 		// read by this one" is not an answer to what it read.
 		fmt.Fprintf(w, "of which %s came off earlier runs and %s was read by this one\n",
-			may.Size(seeded.Bytes), may.Size(c.Bytes-seeded.Bytes))
+			fleet.Size(seeded.Bytes), fleet.Size(c.Bytes-seeded.Bytes))
 	}
 }
 
@@ -557,9 +557,9 @@ func printTally(w io.Writer, tally *dem.Tally, seeded dem.Counts) {
 // under it. The returned function closes both the segment and the file, in that
 // order, because a segment that is not closed has no index and a reject store
 // with no index cannot be read.
-func openDocs(path string, sample float64) (*gat.Docs, func() error, error) {
+func openDocs(path string, sample float64) (*harvest.Docs, func() error, error) {
 	if path == "" {
-		return &gat.Docs{}, func() error { return nil }, nil
+		return &harvest.Docs{}, func() error { return nil }, nil
 	}
 	if sample < 0 || sample > 1 {
 		return nil, nil, fmt.Errorf("-sample %v is not a share between 0 and 1", sample)
@@ -568,19 +568,19 @@ func openDocs(path string, sample float64) (*gat.Docs, func() error, error) {
 	if err != nil {
 		return nil, nil, err
 	}
-	w, err := vo.NewWriter(f, sample)
+	w, err := reject.NewWriter(f, sample)
 	if err != nil {
 		_ = f.Close()
 		return nil, nil, err
 	}
-	return &gat.Docs{Rejects: w}, func() error {
+	return &harvest.Docs{Rejects: w}, func() error {
 		return errors.Join(w.Close(), f.Close())
 	}, nil
 }
 
 // printAdmitted is the part of a decoding run that the byte counts do not say:
 // how many of the records in those bytes gao is allowed to keep.
-func printAdmitted(w io.Writer, docs *gat.Docs) {
+func printAdmitted(w io.Writer, docs *harvest.Docs) {
 	if docs == nil {
 		return
 	}
@@ -588,7 +588,7 @@ func printAdmitted(w io.Writer, docs *gat.Docs) {
 	fmt.Fprintf(w, "%d documents admitted, %d turned away\n", admitted, rejected)
 
 	reasons := docs.Reasons()
-	for _, r := range vo.Reasons() {
+	for _, r := range reject.Reasons() {
 		if n := reasons[r]; n > 0 {
 			fmt.Fprintf(w, "  %-14s %d\n", r, n)
 		}
@@ -605,11 +605,11 @@ func sourceList(sources []doc.Source) string {
 }
 
 // hfSources returns the sources to fetch, which is all of them or the one named.
-func hfSources(name string) ([]gat.Pinned, error) {
+func hfSources(name string) ([]harvest.Pinned, error) {
 	if name == "" {
-		return gat.Sources(), nil
+		return harvest.Sources(), nil
 	}
-	p, ok := gat.Pin(doc.Source(name))
+	p, ok := harvest.Pin(doc.Source(name))
 	if !ok {
 		return nil, fmt.Errorf("%q is not a pinned source", name)
 	}
@@ -618,45 +618,45 @@ func hfSources(name string) ([]gat.Pinned, error) {
 	if p.Dropped {
 		return nil, fmt.Errorf("%s is pinned and dropped from the ingest: %s", name, p.DroppedBecause)
 	}
-	return []gat.Pinned{p}, nil
+	return []harvest.Pinned{p}, nil
 }
 
 // printPlan says what is left before anything is fetched, because the first
 // question about a 513.6 GB pull is how much of it is still to come.
-func printPlan(w io.Writer, sources []gat.Pinned, todo []gat.Work, doneFiles int, doneBytes int64) {
+func printPlan(w io.Writer, sources []harvest.Pinned, todo []harvest.Work, doneFiles int, doneBytes int64) {
 	total := 0
 	var totalBytes int64
 	for _, p := range sources {
 		total += len(p.Files)
 		totalBytes += p.Bytes()
 	}
-	fmt.Fprintf(w, "%d of %d files done, %s of %s\n", doneFiles, total, may.GB(doneBytes), may.GB(totalBytes))
+	fmt.Fprintf(w, "%d of %d files done, %s of %s\n", doneFiles, total, fleet.GB(doneBytes), fleet.GB(totalBytes))
 	if len(todo) == 0 {
 		fmt.Fprintln(w, "nothing left to fetch")
 		return
 	}
-	fmt.Fprintf(w, "%d files to fetch, %s to move\n", len(todo), may.GB(gat.Remaining(todo)))
+	fmt.Fprintf(w, "%d files to fetch, %s to move\n", len(todo), fleet.GB(harvest.Remaining(todo)))
 }
 
 // printFetched is one line per file, which over 122 files and several days is
 // the only thing anybody watches.
-func printFetched(w io.Writer, r gat.Report) {
+func printFetched(w io.Writer, r harvest.Report) {
 	if r.Err != nil {
 		fmt.Fprintf(w, "%-10s %-44s failed after %s\n", r.Pin.Source, r.File.Path, round(r.Elapsed))
 		return
 	}
-	line := fmt.Sprintf("%-10s %-44s %8s  %s", r.Pin.Source, r.File.Path, may.GB(r.File.Bytes), round(r.Elapsed))
+	line := fmt.Sprintf("%-10s %-44s %8s  %s", r.Pin.Source, r.File.Path, fleet.GB(r.File.Bytes), round(r.Elapsed))
 	if r.Documents > 0 {
 		line += fmt.Sprintf("  %d documents", r.Documents)
 	}
 	if r.Reconnects > 0 {
 		line += fmt.Sprintf("  %d reconnects", r.Reconnects)
 	}
-	if r.Access == gat.Random {
+	if r.Access == harvest.Random {
 		// The size column is the size of the file, and a file read this way was
 		// not moved, so what it cost is printed next to it rather than left to
 		// be inferred from a number that means something else.
-		line += fmt.Sprintf("  %s in %d requests", may.GB(r.Moved), r.Requests)
+		line += fmt.Sprintf("  %s in %d requests", fleet.GB(r.Moved), r.Requests)
 	}
 	fmt.Fprintln(w, line)
 }
@@ -674,7 +674,7 @@ func hfError(stderr io.Writer, err error) int {
 	case errors.Is(err, context.Canceled):
 		fmt.Fprintln(stderr, "gao harvest hf: stopped, and the ledger has everything that finished")
 		return 0
-	case errors.Is(err, gat.ErrGated):
+	case errors.Is(err, harvest.ErrGated):
 		fmt.Fprintf(stderr, "gao harvest hf: %v\n", err)
 		return 1
 	default:
@@ -683,10 +683,10 @@ func hfError(stderr io.Writer, err error) int {
 	}
 }
 
-// runGatLedger prints what an ingest directory has already done, without
+// runHarvestLedger prints what an ingest directory has already done, without
 // opening the ledger for writing, so it is safe to run against a directory an
 // ingest is using.
-func runGatLedger(stdout, stderr io.Writer, args []string) int {
+func runHarvestLedger(stdout, stderr io.Writer, args []string) int {
 	fs := flag.NewFlagSet("harvest ledger", flag.ContinueOnError)
 	fs.SetOutput(stderr)
 	dir := fs.String("dir", "", "the ingest directory")
@@ -713,7 +713,7 @@ flags:
 		return 2
 	}
 
-	entries, err := gat.ReadLedger(*dir)
+	entries, err := harvest.ReadLedger(*dir)
 	if err != nil {
 		fmt.Fprintf(stderr, "gao harvest ledger: %v\n", err)
 		return 1
@@ -724,7 +724,7 @@ flags:
 	// holder is printed after them rather than left for the reader to guess at.
 	// A lock that cannot be read is a note and not a failure, because this
 	// command claims nothing and the numbers above it are still the numbers.
-	if h, err := gat.ReadHolder(*dir); err != nil {
+	if h, err := harvest.ReadHolder(*dir); err != nil {
 		fmt.Fprintf(stderr, "gao harvest ledger: %v\n", err)
 	} else if h.PID != 0 {
 		fmt.Fprintf(stdout, "\nan ingest is running here: %s\n", h)
@@ -737,7 +737,7 @@ flags:
 // A file read out of order has no digest, and printing an empty cell would read
 // as a bug in the ledger rather than as the thing it is. Naming it says which of
 // the two happened.
-func verified(e gat.Entry) string {
+func verified(e harvest.Entry) string {
 	if e.Digest == "" {
 		return "read in pieces"
 	}
@@ -746,7 +746,7 @@ func verified(e gat.Entry) string {
 
 // printLedger is separate from the command so the formatting can be tested
 // without a directory on disk.
-func printLedger(w io.Writer, entries []gat.Entry, files bool) {
+func printLedger(w io.Writer, entries []harvest.Entry, files bool) {
 	if len(entries) == 0 {
 		fmt.Fprintln(w, "nothing fetched yet")
 		return
@@ -757,13 +757,13 @@ func printLedger(w io.Writer, entries []gat.Entry, files bool) {
 		fmt.Fprint(tw, "source\tfile\tsize\tdigest\tbox\n")
 		// AllSources rather than Sources, so a ledger written before a source
 		// was dropped still lists what it fetched instead of losing the lines.
-		for _, p := range gat.AllSources() {
+		for _, p := range harvest.AllSources() {
 			for _, e := range entries {
 				if e.Source != p.Source {
 					continue
 				}
 				fmt.Fprintf(tw, "%s\t%s\t%s\t%s\t%s\n",
-					e.Source, e.Path, may.GB(e.Bytes), verified(e), e.Box)
+					e.Source, e.Path, fleet.GB(e.Bytes), verified(e), e.Box)
 			}
 		}
 		_ = tw.Flush()
@@ -793,15 +793,15 @@ func printLedger(w io.Writer, entries []gat.Entry, files bool) {
 
 	tw := tabwriter.NewWriter(w, 0, 0, 2, ' ', 0)
 	fmt.Fprint(tw, "source\tfiles\tof\tfetched\tdocuments\treconnects\n")
-	for _, p := range gat.AllSources() {
+	for _, p := range harvest.AllSources() {
 		t, ok := by[p.Source]
 		if !ok {
 			continue
 		}
 		fmt.Fprintf(tw, "%s\t%d\t%d\t%s\t%d\t%d\n",
-			p.Source, t.files, len(p.Files), may.GB(t.bytes), t.documents, t.reconnects)
+			p.Source, t.files, len(p.Files), fleet.GB(t.bytes), t.documents, t.reconnects)
 	}
 	fmt.Fprintf(tw, "total\t%d\t%d\t%s\t%d\t%d\n",
-		all.files, gat.Files(), may.GB(all.bytes), all.documents, all.reconnects)
+		all.files, harvest.Files(), fleet.GB(all.bytes), all.documents, all.reconnects)
 	_ = tw.Flush()
 }

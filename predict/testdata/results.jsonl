@@ -1,0 +1,1 @@
+{"id":"P07-5","claim":"measured Gemma-3 fertility on gao is 3.0 characters per token give or take 0.15","state":"truot","reading":"3.28 characters per token over 3228869043 characters and 983022920 tokens, outside the band on the high side","by":"gao harvest hf -source glotcc -decode -tokenizer over 500000 documents of vie-Latn_0","box":"server3"}

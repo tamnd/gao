@@ -14,11 +14,11 @@ import (
 
 	"github.com/klauspost/compress/gzip"
 
-	"github.com/tamnd/gao/dem"
+	"github.com/tamnd/gao/count"
 	"github.com/tamnd/gao/doc"
-	"github.com/tamnd/gao/gat"
-	"github.com/tamnd/gao/may"
-	"github.com/tamnd/gao/vo"
+	"github.com/tamnd/gao/fleet"
+	"github.com/tamnd/gao/harvest"
+	"github.com/tamnd/gao/reject"
 )
 
 // The tests here never fetch anything. What a real fetch does is settled in the
@@ -28,14 +28,14 @@ import (
 
 func TestTheHFPlanSaysWhatIsLeftAndFetchesNothing(t *testing.T) {
 	dir := t.TempDir()
-	out, _, code := exec(t, "gat", "hf", "-dir", dir, "-plan")
+	out, _, code := exec(t, "harvest", "hf", "-dir", dir, "-plan")
 	if code != 0 {
 		t.Fatalf("gao harvest hf -plan: exit %d, want 0", code)
 	}
 	for _, want := range []string{
-		fmt.Sprintf("0 of %d files done", gat.Files()),
-		may.GB(gat.TotalBytes()),
-		fmt.Sprintf("%d files to fetch", gat.Files()),
+		fmt.Sprintf("0 of %d files done", harvest.Files()),
+		fleet.GB(harvest.TotalBytes()),
+		fmt.Sprintf("%d files to fetch", harvest.Files()),
 	} {
 		if !strings.Contains(out, want) {
 			t.Errorf("the plan does not mention %q:\n%s", want, out)
@@ -44,24 +44,24 @@ func TestTheHFPlanSaysWhatIsLeftAndFetchesNothing(t *testing.T) {
 
 	// A plan opens the ledger, because a plan that did not would report every
 	// file as still to do on a box that has already fetched half of them.
-	if _, err := os.Stat(filepath.Join(dir, gat.LedgerName)); err != nil {
+	if _, err := os.Stat(filepath.Join(dir, harvest.LedgerName)); err != nil {
 		t.Errorf("the plan left no ledger: %v", err)
 	}
 }
 
 func TestTheHFPlanSkipsWhatTheLedgerAlreadyHas(t *testing.T) {
 	dir := t.TempDir()
-	p, ok := gat.Pin(doc.SourceHPLT3)
+	p, ok := harvest.Pin(doc.SourceHPLT3)
 	if !ok {
 		t.Fatal("hplt3 is not pinned")
 	}
 
-	l, err := gat.OpenLedger(dir)
+	l, err := harvest.OpenLedger(dir)
 	if err != nil {
 		t.Fatal(err)
 	}
 	for _, f := range p.Files {
-		if err := l.Record(gat.Entry{
+		if err := l.Record(harvest.Entry{
 			Source: p.Source, Revision: p.Revision, Path: f.Path, Bytes: f.Bytes,
 		}); err != nil {
 			t.Fatal(err)
@@ -71,7 +71,7 @@ func TestTheHFPlanSkipsWhatTheLedgerAlreadyHas(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	out, _, code := exec(t, "gat", "hf", "-dir", dir, "-source", "hplt3", "-plan")
+	out, _, code := exec(t, "harvest", "hf", "-dir", dir, "-source", "hplt3", "-plan")
 	if code != 0 {
 		t.Fatalf("exit %d, want 0", code)
 	}
@@ -79,22 +79,22 @@ func TestTheHFPlanSkipsWhatTheLedgerAlreadyHas(t *testing.T) {
 		t.Errorf("a source that is fully fetched still has work:\n%s", out)
 	}
 
-	out, _, code = exec(t, "gat", "hf", "-dir", dir, "-plan")
+	out, _, code = exec(t, "harvest", "hf", "-dir", dir, "-plan")
 	if code != 0 {
 		t.Fatalf("exit %d, want 0", code)
 	}
 	done := len(p.Files)
-	if !strings.Contains(out, fmt.Sprintf("%d of %d files done", done, gat.Files())) {
+	if !strings.Contains(out, fmt.Sprintf("%d of %d files done", done, harvest.Files())) {
 		t.Errorf("the plan does not count the finished source:\n%s", out)
 	}
-	if !strings.Contains(out, fmt.Sprintf("%d files to fetch", gat.Files()-done)) {
+	if !strings.Contains(out, fmt.Sprintf("%d files to fetch", harvest.Files()-done)) {
 		t.Errorf("the plan does not subtract the finished source:\n%s", out)
 	}
 }
 
 func TestTheHFLimitBoundsWhatARunWillTake(t *testing.T) {
 	dir := t.TempDir()
-	out, _, code := exec(t, "gat", "hf", "-dir", dir, "-limit", "3", "-plan")
+	out, _, code := exec(t, "harvest", "hf", "-dir", dir, "-limit", "3", "-plan")
 	if code != 0 {
 		t.Fatalf("exit %d, want 0", code)
 	}
@@ -103,7 +103,7 @@ func TestTheHFLimitBoundsWhatARunWillTake(t *testing.T) {
 	}
 
 	// A limit larger than the work is not an error and does not lie about it.
-	out, _, code = exec(t, "gat", "hf", "-dir", dir, "-source", "finepdfs", "-limit", "99", "-plan")
+	out, _, code = exec(t, "harvest", "hf", "-dir", dir, "-source", "finepdfs", "-limit", "99", "-plan")
 	if code != 0 {
 		t.Fatalf("exit %d, want 0", code)
 	}
@@ -129,7 +129,7 @@ func onlyList(t *testing.T, names ...string) string {
 // were named, wherever they sit in the manifest, which is what lets a schedule
 // be handed out.
 func TestOnlyTakesTheFilesItWasNamedRatherThanTheFirstOnes(t *testing.T) {
-	sources := gat.Sources()
+	sources := harvest.Sources()
 	first, last := sources[0], sources[len(sources)-1]
 	a := first.Files[len(first.Files)-1]
 	b := last.Files[len(last.Files)-1]
@@ -137,22 +137,22 @@ func TestOnlyTakesTheFilesItWasNamedRatherThanTheFirstOnes(t *testing.T) {
 		string(first.Source)+"/"+a.Path,
 		string(last.Source)+"/"+b.Path)
 
-	out, errOut, code := exec(t, "gat", "hf", "-dir", t.TempDir(), "-only", path, "-plan")
+	out, errOut, code := exec(t, "harvest", "hf", "-dir", t.TempDir(), "-only", path, "-plan")
 	if code != 0 {
 		t.Fatalf("gao harvest hf -only: exit %d, %s", code, errOut)
 	}
-	want := fmt.Sprintf("names 2 files, 2 left to fetch, %s to move", may.GB(a.Bytes+b.Bytes))
+	want := fmt.Sprintf("names 2 files, 2 left to fetch, %s to move", fleet.GB(a.Bytes+b.Bytes))
 	if !strings.Contains(out, want) {
 		t.Errorf("the run does not say %q:\n%s", want, out)
 	}
 
 	// Neither of the two is near the front of the manifest, so a limit of two
 	// picks two other files and moves a different number of bytes.
-	limited, _, code := exec(t, "gat", "hf", "-dir", t.TempDir(), "-limit", "2", "-plan")
+	limited, _, code := exec(t, "harvest", "hf", "-dir", t.TempDir(), "-limit", "2", "-plan")
 	if code != 0 {
 		t.Fatalf("gao harvest hf -limit 2: exit %d", code)
 	}
-	if strings.Contains(limited, may.GB(a.Bytes+b.Bytes)) {
+	if strings.Contains(limited, fleet.GB(a.Bytes+b.Bytes)) {
 		t.Errorf("a limit of two takes the same bytes as the list, so this proves nothing:\n%s", limited)
 	}
 }
@@ -166,7 +166,7 @@ func TestOnlyTakesTheFilesItWasNamedRatherThanTheFirstOnes(t *testing.T) {
 // leaves nothing behind. That is what the ledger check at the end of each case
 // is for.
 func TestOnlyRefusesAListThatWouldFetchNothing(t *testing.T) {
-	p, ok := gat.Pin(doc.SourceHPLT3)
+	p, ok := harvest.Pin(doc.SourceHPLT3)
 	if !ok {
 		t.Fatal("hplt3 is not pinned")
 	}
@@ -189,7 +189,7 @@ func TestOnlyRefusesAListThatWouldFetchNothing(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			dir := t.TempDir()
-			_, errOut, code := exec(t, "gat", "hf", "-dir", dir, "-only", onlyList(t, tc.list...), "-plan")
+			_, errOut, code := exec(t, "harvest", "hf", "-dir", dir, "-only", onlyList(t, tc.list...), "-plan")
 			if code != 2 {
 				t.Fatalf("exit %d, want 2", code)
 			}
@@ -198,7 +198,7 @@ func TestOnlyRefusesAListThatWouldFetchNothing(t *testing.T) {
 					t.Errorf("the refusal does not say %q: %q", want, errOut)
 				}
 			}
-			if _, err := os.Stat(filepath.Join(dir, gat.LedgerName)); err == nil {
+			if _, err := os.Stat(filepath.Join(dir, harvest.LedgerName)); err == nil {
 				t.Error("a refused list still opened a ledger, so the check runs later than it should")
 			}
 		})
@@ -210,17 +210,17 @@ func TestOnlyRefusesAListThatWouldFetchNothing(t *testing.T) {
 // handed nineteen files and fetched all nineteen.
 func TestAListWhoseFilesAreAllDoneIsAFinishedHand(t *testing.T) {
 	dir := t.TempDir()
-	p, ok := gat.Pin(doc.SourceGlotCC)
+	p, ok := harvest.Pin(doc.SourceGlotCC)
 	if !ok {
 		t.Fatal("glotcc is not pinned")
 	}
 
-	l, err := gat.OpenLedger(dir)
+	l, err := harvest.OpenLedger(dir)
 	if err != nil {
 		t.Fatal(err)
 	}
 	for _, f := range p.Files[:2] {
-		if err := l.Record(gat.Entry{
+		if err := l.Record(harvest.Entry{
 			Source: p.Source, Revision: p.Revision, Path: f.Path, Bytes: f.Bytes,
 		}); err != nil {
 			t.Fatal(err)
@@ -233,7 +233,7 @@ func TestAListWhoseFilesAreAllDoneIsAFinishedHand(t *testing.T) {
 	path := onlyList(t,
 		string(p.Source)+"/"+p.Files[0].Path,
 		string(p.Source)+"/"+p.Files[1].Path)
-	out, errOut, code := exec(t, "gat", "hf", "-dir", dir, "-only", path, "-plan")
+	out, errOut, code := exec(t, "harvest", "hf", "-dir", dir, "-only", path, "-plan")
 	if code != 0 {
 		t.Fatalf("exit %d, %s", code, errOut)
 	}
@@ -246,7 +246,7 @@ func TestAListWhoseFilesAreAllDoneIsAFinishedHand(t *testing.T) {
 // schedule was missing: 'gao assign files -box NAME' writes the list and 'gao harvest
 // hf -only' takes it, with nothing in between to edit it by hand.
 func TestTheScheduleTheSplitPrintsIsTheOneTheFetcherTakes(t *testing.T) {
-	names, errOut, code := exec(t, "giao", "files", "-box", "server3", giaoFleet(t))
+	names, errOut, code := exec(t, "assign", "files", "-box", "server3", assignFleet(t))
 	if code != 0 {
 		t.Fatalf("gao assign files -box: exit %d, %s", code, errOut)
 	}
@@ -256,12 +256,12 @@ func TestTheScheduleTheSplitPrintsIsTheOneTheFetcherTakes(t *testing.T) {
 	}
 
 	want := len(strings.Fields(names))
-	out, errOut, code := exec(t, "gat", "hf", "-dir", t.TempDir(), "-only", path, "-plan")
+	out, errOut, code := exec(t, "harvest", "hf", "-dir", t.TempDir(), "-only", path, "-plan")
 	if code != 0 {
 		t.Fatalf("gao harvest hf -only: exit %d, %s", code, errOut)
 	}
-	if want == 0 || want >= gat.Files() {
-		t.Fatalf("the schedule hands server3 %d of the %d pinned files, which is not a share of it", want, gat.Files())
+	if want == 0 || want >= harvest.Files() {
+		t.Fatalf("the schedule hands server3 %d of the %d pinned files, which is not a share of it", want, harvest.Files())
 	}
 	if !strings.Contains(out, fmt.Sprintf("names %d files, %d left to fetch", want, want)) {
 		t.Errorf("the fetcher does not take all %d files the split named:\n%s", want, out)
@@ -269,7 +269,7 @@ func TestTheScheduleTheSplitPrintsIsTheOneTheFetcherTakes(t *testing.T) {
 }
 
 func TestHFRefusesASourceItHasNoPinFor(t *testing.T) {
-	_, errOut, code := exec(t, "gat", "hf", "-dir", t.TempDir(), "-source", "commoncrawl", "-plan")
+	_, errOut, code := exec(t, "harvest", "hf", "-dir", t.TempDir(), "-source", "commoncrawl", "-plan")
 	if code == 0 {
 		t.Error("gao harvest hf accepted a source that is not pinned")
 	}
@@ -280,10 +280,10 @@ func TestHFRefusesASourceItHasNoPinFor(t *testing.T) {
 
 func TestHFRefusesALedgerItCannotRead(t *testing.T) {
 	dir := t.TempDir()
-	if err := os.WriteFile(filepath.Join(dir, gat.LedgerName), []byte("this is not an entry\n"), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(dir, harvest.LedgerName), []byte("this is not an entry\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	_, errOut, code := exec(t, "gat", "hf", "-dir", dir, "-plan")
+	_, errOut, code := exec(t, "harvest", "hf", "-dir", dir, "-plan")
 	if code != 1 {
 		t.Errorf("exit %d, want 1", code)
 	}
@@ -294,7 +294,7 @@ func TestHFRefusesALedgerItCannotRead(t *testing.T) {
 
 func TestTheLedgerCommandReportsPerSourceAndInTotal(t *testing.T) {
 	dir := t.TempDir()
-	out, _, code := exec(t, "gat", "ledger", "-dir", dir)
+	out, _, code := exec(t, "harvest", "ledger", "-dir", dir)
 	if code != 0 {
 		t.Fatalf("exit %d, want 0", code)
 	}
@@ -302,11 +302,11 @@ func TestTheLedgerCommandReportsPerSourceAndInTotal(t *testing.T) {
 		t.Errorf("an empty ledger reads as:\n%s", out)
 	}
 
-	l, err := gat.OpenLedger(dir)
+	l, err := harvest.OpenLedger(dir)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := l.Record(gat.Entry{
+	if err := l.Record(harvest.Entry{
 		Source: doc.SourceHPLT3, Revision: "sha256:a", Path: "vie_Latn/5_1.jsonl.zst",
 		Bytes: 15_049_231_912, Documents: 12_000_000, Reconnects: 3, Box: "server1",
 	}); err != nil {
@@ -316,11 +316,11 @@ func TestTheLedgerCommandReportsPerSourceAndInTotal(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	out, _, code = exec(t, "gat", "ledger", "-dir", dir)
+	out, _, code = exec(t, "harvest", "ledger", "-dir", dir)
 	if code != 0 {
 		t.Fatalf("exit %d, want 0", code)
 	}
-	for _, want := range []string{"hplt3", "12000000", "total", may.GB(15_049_231_912)} {
+	for _, want := range []string{"hplt3", "12000000", "total", fleet.GB(15_049_231_912)} {
 		if !strings.Contains(out, want) {
 			t.Errorf("the report does not mention %q:\n%s", want, out)
 		}
@@ -331,7 +331,7 @@ func TestTheLedgerCommandReportsPerSourceAndInTotal(t *testing.T) {
 		t.Errorf("the report does not say how many files the source has:\n%s", out)
 	}
 
-	out, _, code = exec(t, "gat", "ledger", "-dir", dir, "-files")
+	out, _, code = exec(t, "harvest", "ledger", "-dir", dir, "-files")
 	if code != 0 {
 		t.Fatalf("exit %d, want 0", code)
 	}
@@ -345,18 +345,18 @@ func TestTheLedgerCommandReportsPerSourceAndInTotal(t *testing.T) {
 // A finished file is one line, and over 154 files across several days that line
 // is the only thing anybody watches, so what is on it is worth asserting.
 func TestAFetchedFileReportsWhatItCost(t *testing.T) {
-	p, ok := gat.Pin(doc.SourceHPLT3)
+	p, ok := harvest.Pin(doc.SourceHPLT3)
 	if !ok {
 		t.Fatal("hplt3 is not pinned")
 	}
 
 	var w bytes.Buffer
-	printFetched(&w, gat.Report{
+	printFetched(&w, harvest.Report{
 		Pin: p, File: p.Files[1], Documents: 12_000_000, Reconnects: 3,
 		Elapsed: 90 * 60 * 1e9,
 	})
 	line := w.String()
-	for _, want := range []string{"hplt3", p.Files[1].Path, may.GB(p.Files[1].Bytes), "12000000 documents", "3 reconnects"} {
+	for _, want := range []string{"hplt3", p.Files[1].Path, fleet.GB(p.Files[1].Bytes), "12000000 documents", "3 reconnects"} {
 		if !strings.Contains(line, want) {
 			t.Errorf("the line does not mention %q: %s", want, line)
 		}
@@ -365,7 +365,7 @@ func TestAFetchedFileReportsWhatItCost(t *testing.T) {
 	// A transfer nothing interrupted should not carry a zero it invites a reader
 	// to interpret.
 	w.Reset()
-	printFetched(&w, gat.Report{Pin: p, File: p.Files[1], Elapsed: 1e9})
+	printFetched(&w, harvest.Report{Pin: p, File: p.Files[1], Elapsed: 1e9})
 	if strings.Contains(w.String(), "reconnects") {
 		t.Errorf("a clean transfer reported reconnects: %s", w.String())
 	}
@@ -374,7 +374,7 @@ func TestAFetchedFileReportsWhatItCost(t *testing.T) {
 	}
 
 	w.Reset()
-	printFetched(&w, gat.Report{Pin: p, File: p.Files[1], Err: os.ErrDeadlineExceeded, Elapsed: 1e9})
+	printFetched(&w, harvest.Report{Pin: p, File: p.Files[1], Err: os.ErrDeadlineExceeded, Elapsed: 1e9})
 	if !strings.Contains(w.String(), "failed") {
 		t.Errorf("a failed file does not read as failed: %s", w.String())
 	}
@@ -392,7 +392,7 @@ func TestAnInterruptedRunIsNotAFailedOne(t *testing.T) {
 	}
 
 	stderr.Reset()
-	if code := hfError(&stderr, gat.ErrGated); code != 1 {
+	if code := hfError(&stderr, harvest.ErrGated); code != 1 {
 		t.Errorf("a gated source exits %d, want 1", code)
 	}
 	if !strings.Contains(stderr.String(), "gated") {
@@ -410,10 +410,10 @@ func TestAnInterruptedRunIsNotAFailedOne(t *testing.T) {
 // two hundred gigabytes of somebody else's bandwidth.
 func TestHFRefusesToDecodeASourceItCannotDecode(t *testing.T) {
 	for _, args := range [][]string{
-		{"gat", "hf", "-dir", t.TempDir(), "-decode", "-plan"},
-		{"gat", "hf", "-dir", t.TempDir(), "-source", "culturax", "-decode", "-plan"},
+		{"harvest", "hf", "-dir", t.TempDir(), "-decode", "-plan"},
+		{"harvest", "hf", "-dir", t.TempDir(), "-source", "culturax", "-decode", "-plan"},
 		// -rejects implies -decode, so it is refused on the same grounds.
-		{"gat", "hf", "-dir", t.TempDir(), "-rejects", filepath.Join(t.TempDir(), "vo.jsonl.zst"), "-plan"},
+		{"harvest", "hf", "-dir", t.TempDir(), "-rejects", filepath.Join(t.TempDir(), "vo.jsonl.zst"), "-plan"},
 	} {
 		out, errOut, code := exec(t, args...)
 		if code != 1 {
@@ -438,7 +438,7 @@ func TestHFRefusesToDecodeASourceItCannotDecode(t *testing.T) {
 // away for provenance it does not carry, which is the reason it is dropped.
 func TestHFDecodesTheSourcesItHasAMappingFor(t *testing.T) {
 	for _, name := range []string{"hplt3", "fineweb2", "finepdfs", "glotcc"} {
-		out, errOut, code := exec(t, "gat", "hf", "-dir", t.TempDir(), "-source", name, "-decode", "-plan")
+		out, errOut, code := exec(t, "harvest", "hf", "-dir", t.TempDir(), "-source", name, "-decode", "-plan")
 		if code != 0 {
 			t.Fatalf("%s: exit %d, want 0: %s", name, code, errOut)
 		}
@@ -473,7 +473,7 @@ func TestARejectSampleThatIsNotAShareIsRefused(t *testing.T) {
 	}
 	// The segment has to be finished on the way out, since one with no index
 	// cannot be read back.
-	seg, err := vo.Open(path)
+	seg, err := reject.Open(path)
 	if err != nil {
 		t.Fatalf("the reject store cannot be read: %v", err)
 	}
@@ -494,8 +494,8 @@ func TestADecodingRunReportsWhatItKeptAndWhatItTurnedAway(t *testing.T) {
 		t.Errorf("a run that only counted bytes reported documents:\n%s", w.String())
 	}
 
-	docs := &gat.Docs{}
-	p, ok := gat.Pin(doc.SourceMADLAD400)
+	docs := &harvest.Docs{}
+	p, ok := harvest.Pin(doc.SourceMADLAD400)
 	if !ok {
 		t.Fatal("madlad400 is not pinned")
 	}
@@ -535,8 +535,8 @@ func gzipOf(t *testing.T, s string) io.Reader {
 	return &buf
 }
 
-func TestHFIsInTheGatHelpAndTheUsage(t *testing.T) {
-	out, _, code := exec(t, "gat", "help")
+func TestHFIsInTheHarvestHelpAndTheUsage(t *testing.T) {
+	out, _, code := exec(t, "harvest", "help")
 	if code != 0 {
 		t.Fatalf("exit %d, want 0", code)
 	}
@@ -548,12 +548,12 @@ func TestHFIsInTheGatHelpAndTheUsage(t *testing.T) {
 
 	// The usage has to name the token variable, because a gated source fails at
 	// the first fetch and this is where somebody looks.
-	_, errOut, code := exec(t, "gat", "hf", "-h")
+	_, errOut, code := exec(t, "harvest", "hf", "-h")
 	if code != 2 {
 		t.Errorf("gao harvest hf -h: exit %d, want 2", code)
 	}
-	if !strings.Contains(errOut, may.TokenEnv) {
-		t.Errorf("the usage does not name %s:\n%s", may.TokenEnv, errOut)
+	if !strings.Contains(errOut, fleet.TokenEnv) {
+		t.Errorf("the usage does not name %s:\n%s", fleet.TokenEnv, errOut)
 	}
 
 	// Which sources decode is in the usage rather than only in the error,
@@ -571,17 +571,17 @@ func TestHFIsInTheGatHelpAndTheUsage(t *testing.T) {
 // same document segment.
 func TestHFRefusesADirectoryAnotherIngestIsHolding(t *testing.T) {
 	dir := t.TempDir()
-	lock, err := gat.LockDir(dir, "gao harvest hf")
+	lock, err := harvest.LockDir(dir, "gao harvest hf")
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer func() { _ = lock.Release() }()
 
-	_, errOut, code := exec(t, "gat", "hf", "-dir", dir, "-source", "glotcc", "-limit", "1")
+	_, errOut, code := exec(t, "harvest", "hf", "-dir", dir, "-source", "glotcc", "-limit", "1")
 	if code != 1 {
 		t.Fatalf("exit %d, want 1", code)
 	}
-	for _, want := range []string{"another ingest", may.Label(), gat.LockName} {
+	for _, want := range []string{"another ingest", fleet.Label(), harvest.LockName} {
 		if !strings.Contains(errOut, want) {
 			t.Errorf("the refusal does not mention %q: %q", want, errOut)
 		}
@@ -592,13 +592,13 @@ func TestHFRefusesADirectoryAnotherIngestIsHolding(t *testing.T) {
 // is the moment somebody most wants to read it.
 func TestHFCanStillPrintThePlanWhileAnIngestHoldsTheDirectory(t *testing.T) {
 	dir := t.TempDir()
-	lock, err := gat.LockDir(dir, "gao harvest hf")
+	lock, err := harvest.LockDir(dir, "gao harvest hf")
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer func() { _ = lock.Release() }()
 
-	out, _, code := exec(t, "gat", "hf", "-dir", dir, "-source", "glotcc", "-plan")
+	out, _, code := exec(t, "harvest", "hf", "-dir", dir, "-source", "glotcc", "-plan")
 	if code != 0 {
 		t.Fatalf("exit %d, want 0, a plan should not need the lock", code)
 	}
@@ -611,7 +611,7 @@ func TestHFCanStillPrintThePlanWhileAnIngestHoldsTheDirectory(t *testing.T) {
 // read only command says so rather than leaving it to be guessed at.
 func TestTheLedgerCommandSaysWhenAnIngestIsRunning(t *testing.T) {
 	dir := t.TempDir()
-	out, _, code := exec(t, "gat", "ledger", "-dir", dir)
+	out, _, code := exec(t, "harvest", "ledger", "-dir", dir)
 	if code != 0 {
 		t.Fatalf("exit %d, want 0", code)
 	}
@@ -619,20 +619,20 @@ func TestTheLedgerCommandSaysWhenAnIngestIsRunning(t *testing.T) {
 		t.Errorf("an unlocked directory reported a running ingest:\n%s", out)
 	}
 
-	lock, err := gat.LockDir(dir, "gao harvest hf")
+	lock, err := harvest.LockDir(dir, "gao harvest hf")
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer func() { _ = lock.Release() }()
 
-	out, _, code = exec(t, "gat", "ledger", "-dir", dir)
+	out, _, code = exec(t, "harvest", "ledger", "-dir", dir)
 	if code != 0 {
 		t.Fatalf("exit %d with a lock held, want 0, this command claims nothing", code)
 	}
 	if !strings.Contains(out, "an ingest is running") {
 		t.Errorf("a locked directory did not report the ingest:\n%s", out)
 	}
-	if !strings.Contains(out, may.Label()) {
+	if !strings.Contains(out, fleet.Label()) {
 		t.Errorf("the report does not say which box is holding it:\n%s", out)
 	}
 }
@@ -644,10 +644,10 @@ func TestTheLedgerCommandSaysWhenAnIngestIsRunning(t *testing.T) {
 func TestTheCountsAreOnDiskBeforeTheRunEnds(t *testing.T) {
 	dir := t.TempDir()
 	var stderr bytes.Buffer
-	var tally dem.Tally
+	var tally count.Tally
 
 	saveCounts(&stderr, dir, "server1", &tally, false)
-	r, err := dem.ReadReport(dir)
+	r, err := count.ReadReport(dir)
 	if err != nil {
 		t.Fatalf("nothing was written before the run ended: %v", err)
 	}
@@ -659,7 +659,7 @@ func TestTheCountsAreOnDiskBeforeTheRunEnds(t *testing.T) {
 	}
 
 	saveCounts(&stderr, dir, "server1", &tally, true)
-	r, err = dem.ReadReport(dir)
+	r, err = count.ReadReport(dir)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -675,7 +675,7 @@ func TestTheCountsAreOnDiskBeforeTheRunEnds(t *testing.T) {
 // them is reported and does not end the run.
 func TestCountsThatCannotBeWrittenDoNotStopTheRun(t *testing.T) {
 	var stderr bytes.Buffer
-	var tally dem.Tally
+	var tally count.Tally
 
 	saveCounts(&stderr, filepath.Join(t.TempDir(), "no-such-directory"), "server1", &tally, false)
 	if !strings.Contains(stderr.String(), "writing the counts") {
@@ -688,21 +688,21 @@ func TestCountsThatCannotBeWrittenDoNotStopTheRun(t *testing.T) {
 // a bad record two hours into a 25.2 GB shard, and the counts it left behind
 // were carried into the run that then read the whole shard properly.
 func TestAFailedFileLeavesNothingBehindInTheCounts(t *testing.T) {
-	var tally dem.Tally
-	count := tally.Counting(nil, nil)
+	var tally count.Tally
+	counting := tally.Counting(nil, nil)
 	add := func(n int) {
 		t.Helper()
 		for range n {
-			if err := count(&doc.Document{Provenance: doc.Provenance{Source: doc.SourceHPLT3}, Text: "Việt Nam"}); err != nil {
+			if err := counting(&doc.Document{Provenance: doc.Provenance{Source: doc.SourceHPLT3}, Text: "Việt Nam"}); err != nil {
 				t.Fatal(err)
 			}
 		}
 	}
 
 	add(2)
-	settle(&tally, gat.Report{})
+	settle(&tally, harvest.Report{})
 	add(5)
-	settle(&tally, gat.Report{Err: errors.New("the file has a record that does not parse")})
+	settle(&tally, harvest.Report{Err: errors.New("the file has a record that does not parse")})
 
 	if got := tally.Total().Documents; got != 2 {
 		t.Errorf("the counts hold %d documents, want the 2 off the file that finished", got)
@@ -710,7 +710,7 @@ func TestAFailedFileLeavesNothingBehindInTheCounts(t *testing.T) {
 
 	// The next run reads that file again from the front, all of it this time.
 	add(6)
-	settle(&tally, gat.Report{})
+	settle(&tally, harvest.Report{})
 	if got := tally.Total().Documents; got != 8 {
 		t.Errorf("the counts hold %d documents, want 2 plus the 6 the file really holds", got)
 	}
@@ -721,9 +721,9 @@ func TestAFailedFileLeavesNothingBehindInTheCounts(t *testing.T) {
 // corpus twice the size of what is in the store.
 func TestCountsAreCarriedOnlyWhenTheLedgerNamesTheFiles(t *testing.T) {
 	dir := t.TempDir()
-	var earlier dem.Tally
-	count := earlier.Counting(nil, nil)
-	if err := count(&doc.Document{Provenance: doc.Provenance{Source: doc.SourceFineWeb2}, Text: "Việt Nam"}); err != nil {
+	var earlier count.Tally
+	counting := earlier.Counting(nil, nil)
+	if err := counting(&doc.Document{Provenance: doc.Provenance{Source: doc.SourceFineWeb2}, Text: "Việt Nam"}); err != nil {
 		t.Fatal(err)
 	}
 	earlier.Commit()
@@ -731,13 +731,13 @@ func TestCountsAreCarriedOnlyWhenTheLedgerNamesTheFiles(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	ledger, err := gat.OpenLedger(dir)
+	ledger, err := harvest.OpenLedger(dir)
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer func() { _ = ledger.Close() }()
 
-	var tally dem.Tally
+	var tally count.Tally
 	var out bytes.Buffer
 	carried, err := seedCounts(&out, dir, ledger, &tally)
 	if err != nil {
@@ -751,10 +751,10 @@ func TestCountsAreCarriedOnlyWhenTheLedgerNamesTheFiles(t *testing.T) {
 	}
 
 	// And with the ledger naming a file, the same counts are carried.
-	if err := ledger.Record(gat.Entry{Source: doc.SourceFineWeb2, Revision: "af9c13333eb9", Path: "data/vie_Latn/train/000_00000.parquet", Documents: 1}); err != nil {
+	if err := ledger.Record(harvest.Entry{Source: doc.SourceFineWeb2, Revision: "af9c13333eb9", Path: "data/vie_Latn/train/000_00000.parquet", Documents: 1}); err != nil {
 		t.Fatal(err)
 	}
-	var resumed dem.Tally
+	var resumed count.Tally
 	carried, err = seedCounts(&out, dir, ledger, &resumed)
 	if err != nil {
 		t.Fatal(err)
@@ -775,23 +775,23 @@ func TestCountsAreCarriedOnlyWhenTheLedgerNamesTheFiles(t *testing.T) {
 // finished a resumed GlotCC batch saying "1500000 documents admitted" and
 // "37.9 GB of text" one line apart, which is three files and nine files.
 func TestAResumedRunSaysHowMuchOfTheTextItRead(t *testing.T) {
-	var tally dem.Tally
-	count := tally.Counting(nil, nil)
+	var tally count.Tally
+	counting := tally.Counting(nil, nil)
 	for range 3 {
-		if err := count(&doc.Document{Provenance: doc.Provenance{Source: doc.SourceGlotCC}, Text: "Việt Nam"}); err != nil {
+		if err := counting(&doc.Document{Provenance: doc.Provenance{Source: doc.SourceGlotCC}, Text: "Việt Nam"}); err != nil {
 			t.Fatal(err)
 		}
 	}
 	tally.Commit()
 
 	var out bytes.Buffer
-	printTally(&out, &tally, dem.Counts{})
+	printTally(&out, &tally, count.Counts{})
 	if strings.Contains(out.String(), "came off earlier runs") {
 		t.Errorf("a run that started from nothing split its total anyway: %q", out.String())
 	}
 
 	out.Reset()
-	printTally(&out, &tally, dem.Counts{Documents: 2, Bytes: 20})
+	printTally(&out, &tally, count.Counts{Documents: 2, Bytes: 20})
 	if !strings.Contains(out.String(), "of which 20 B came off earlier runs and 10 B was read by this one") {
 		t.Errorf("the run said %q, and the line above it counts only what this run admitted", out.String())
 	}

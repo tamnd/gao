@@ -15,8 +15,8 @@ import (
 	"github.com/klauspost/compress/zstd"
 
 	"github.com/tamnd/gao/doc"
-	"github.com/tamnd/gao/gat"
-	"github.com/tamnd/gao/kho"
+	"github.com/tamnd/gao/harvest"
+	"github.com/tamnd/gao/store"
 )
 
 // hpltLine is shaped like the records HPLT actually serves, since a fixture
@@ -31,9 +31,9 @@ const hpltLine = `{"f":"./segments/1498128329372.0/warc/CC-MAIN-20170629154125-2
 	`"html_lang":["vi"],"cluster_size":8,"id":"53f8dd156ecc9372c3ac02e8c80575f8","filter":"keep",` +
 	`"pii":[[23230,23254]],"doc_scores":[10,9.4],"web-register":{"NA":0.736}}`
 
-func hpltPin(t *testing.T) (gat.Pinned, gat.File) {
+func hpltPin(t *testing.T) (harvest.Pinned, harvest.File) {
 	t.Helper()
-	p, ok := gat.Pin(doc.SourceHPLT3)
+	p, ok := harvest.Pin(doc.SourceHPLT3)
 	if !ok {
 		t.Fatal("hplt3 is not pinned")
 	}
@@ -62,7 +62,7 @@ func ingest(t *testing.T, lines int) (*parts, string, string) {
 	t.Helper()
 	dir := t.TempDir()
 	var out bytes.Buffer
-	docs := &gat.Docs{}
+	docs := &harvest.Docs{}
 	sink := newParts(dir, docs, "server1", &out)
 	docs.Emit = sink.write
 
@@ -85,13 +85,13 @@ func TestAnIngestWritesWhatItAdmits(t *testing.T) {
 		t.Fatalf("wrote %d parts, want 1", sink.written)
 	}
 	p, _ := hpltPin(t)
-	want := kho.StagePath(p.Snapshot(), 0, 0)
+	want := store.StagePath(p.Snapshot(), 0, 0)
 	path := filepath.Join(dir, filepath.FromSlash(want))
 	if _, err := os.Stat(path); err != nil {
 		t.Fatalf("the part is not at %s: %v", want, err)
 	}
 
-	rows, err := kho.ReadPart(path)
+	rows, err := store.ReadPart(path)
 	if err != nil {
 		t.Fatalf("ReadPart: %v", err)
 	}
@@ -115,13 +115,13 @@ func TestAWrittenPartSaysWhereItCameFrom(t *testing.T) {
 	_, dir, _ := ingest(t, 1)
 	p, _ := hpltPin(t)
 
-	meta, err := kho.PartMetadata(filepath.Join(dir, filepath.FromSlash(kho.StagePath(p.Snapshot(), 0, 0))))
+	meta, err := store.PartMetadata(filepath.Join(dir, filepath.FromSlash(store.StagePath(p.Snapshot(), 0, 0))))
 	if err != nil {
 		t.Fatalf("PartMetadata: %v", err)
 	}
 	for k, want := range map[string]string{
 		"gao.snapshot": p.Snapshot(),
-		"gao.stage":    gat.Stage,
+		"gao.stage":    harvest.Stage,
 		"gao.box":      "server1",
 	} {
 		if meta[k] != want {
@@ -135,7 +135,7 @@ func TestAWrittenPartSaysWhereItCameFrom(t *testing.T) {
 // would write the rest of it beside a fragment nobody knows is a fragment.
 func TestAFileThatFailsToDecodeLeavesNoPart(t *testing.T) {
 	dir := t.TempDir()
-	docs := &gat.Docs{}
+	docs := &harvest.Docs{}
 	sink := newParts(dir, docs, "server1", io.Discard)
 	docs.Emit = sink.write
 
@@ -168,12 +168,12 @@ func TestAFileThatFailsToDecodeLeavesNoPart(t *testing.T) {
 // beats writing under a made up index.
 func TestAFileTheSourceDoesNotPinIsRefused(t *testing.T) {
 	dir := t.TempDir()
-	docs := &gat.Docs{}
+	docs := &harvest.Docs{}
 	sink := newParts(dir, docs, "server1", io.Discard)
 	docs.Emit = sink.write
 
 	p, _ := hpltPin(t)
-	_, err := sink.Consume(t.Context(), p, gat.File{Path: "vie_Latn/nowhere.jsonl.zst"}, zstdOf(t, hpltLine+"\n"))
+	_, err := sink.Consume(t.Context(), p, harvest.File{Path: "vie_Latn/nowhere.jsonl.zst"}, zstdOf(t, hpltLine+"\n"))
 	if err == nil {
 		t.Fatal("a file from outside the manifest was written anyway")
 	}
@@ -185,7 +185,7 @@ func TestAFileTheSourceDoesNotPinIsRefused(t *testing.T) {
 // A document arriving with no file open would mean the sink was wired wrong,
 // and writing it somewhere plausible is how that goes unnoticed.
 func TestADocumentWithNoFileOpenIsABug(t *testing.T) {
-	sink := newParts(t.TempDir(), &gat.Docs{}, "server1", io.Discard)
+	sink := newParts(t.TempDir(), &harvest.Docs{}, "server1", io.Discard)
 	if err := sink.write(&doc.Document{}); err == nil {
 		t.Error("a document was written with no file open")
 	}
@@ -193,7 +193,7 @@ func TestADocumentWithNoFileOpenIsABug(t *testing.T) {
 
 func TestARunThatWroteNothingSaysNothing(t *testing.T) {
 	var w bytes.Buffer
-	sink := newParts(t.TempDir(), &gat.Docs{}, "server1", io.Discard)
+	sink := newParts(t.TempDir(), &harvest.Docs{}, "server1", io.Discard)
 	sink.summary(&w)
 	if w.Len() != 0 {
 		t.Errorf("a run that wrote no parts printed a summary:\n%s", w.String())
@@ -214,7 +214,7 @@ func TestARunThatWroteSomethingSaysWhereItIs(t *testing.T) {
 
 // -out implies -decode, since writing documents means having decoded them.
 func TestTheOutFlagIsInTheUsage(t *testing.T) {
-	_, errOut, code := exec(t, "gat", "hf", "-h")
+	_, errOut, code := exec(t, "harvest", "hf", "-h")
 	if code != 2 {
 		t.Fatalf("gao harvest hf -h: exit %d, want 2", code)
 	}
@@ -230,11 +230,11 @@ func TestTheOutFlagIsInTheUsage(t *testing.T) {
 // published repo would put text that no stage has cleaned under a name that
 // says it was.
 func TestAnIngestWritesToTheWorkingRepo(t *testing.T) {
-	d := kho.Staging()
-	if d.Tier != kho.Working {
+	d := store.Staging()
+	if d.Tier != store.Working {
 		t.Errorf("%s is a release and an ingest writes there", d.Repo())
 	}
-	sink := newParts(t.TempDir(), &gat.Docs{}, "server1", io.Discard)
+	sink := newParts(t.TempDir(), &harvest.Docs{}, "server1", io.Discard)
 	if sink.dataset.Name != d.Name {
 		t.Errorf("an ingest writes to %s, want %s", sink.dataset.Name, d.Name)
 	}
@@ -244,7 +244,7 @@ func TestAnIngestWritesToTheWorkingRepo(t *testing.T) {
 // property the upload will depend on.
 func TestAPartThatCannotBeHandedOffFailsTheFile(t *testing.T) {
 	dir := t.TempDir()
-	docs := &gat.Docs{}
+	docs := &harvest.Docs{}
 	sink := newParts(dir, docs, "server1", io.Discard)
 	docs.Emit = sink.write
 
@@ -253,7 +253,7 @@ func TestAPartThatCannotBeHandedOffFailsTheFile(t *testing.T) {
 	if err := sink.open(t.Context(), p, f); err != nil {
 		t.Fatal(err)
 	}
-	sink.roll.Finished = func(kho.PartFile) error { return fail }
+	sink.roll.Finished = func(store.PartFile) error { return fail }
 	if err := sink.write(document(t, 0)); err != nil {
 		t.Fatalf("Append: %v", err)
 	}
@@ -265,7 +265,7 @@ func TestAPartThatCannotBeHandedOffFailsTheFile(t *testing.T) {
 // acceptingHub is enough of the Hub to push at. It says yes to everything,
 // because what is being tested here is what the ingest does with a push that
 // worked, and the protocol itself is tested in kho.
-func acceptingHub(t *testing.T) *kho.Pusher {
+func acceptingHub(t *testing.T) *store.Pusher {
 	t.Helper()
 	var srv *httptest.Server
 	srv = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -281,7 +281,7 @@ func acceptingHub(t *testing.T) *kho.Pusher {
 		}
 	}))
 	t.Cleanup(srv.Close)
-	return &kho.Pusher{Repo: kho.Staging().Repo(), API: srv.URL, Client: srv.Client(), Token: "hf_test"}
+	return &store.Pusher{Repo: store.Staging().Repo(), API: srv.URL, Client: srv.Client(), Token: "hf_test"}
 }
 
 // The whole point of the push is that the box does not keep what it has
@@ -289,7 +289,7 @@ func acceptingHub(t *testing.T) *kho.Pusher {
 // guards against.
 func TestAPushedPartIsDeletedFromTheBoxThatWroteIt(t *testing.T) {
 	dir := t.TempDir()
-	docs := &gat.Docs{}
+	docs := &harvest.Docs{}
 	var out bytes.Buffer
 	sink := newParts(dir, docs, "server1", &out)
 	sink.push = acceptingHub(t)
@@ -300,7 +300,7 @@ func TestAPushedPartIsDeletedFromTheBoxThatWroteIt(t *testing.T) {
 		t.Fatalf("Consume: %v", err)
 	}
 
-	path := filepath.Join(dir, filepath.FromSlash(kho.StagePath(p.Snapshot(), 0, 0)))
+	path := filepath.Join(dir, filepath.FromSlash(store.StagePath(p.Snapshot(), 0, 0)))
 	if _, err := os.Stat(path); !os.IsNotExist(err) {
 		t.Errorf("the part is still on the box that pushed it: %v", err)
 	}
@@ -313,7 +313,7 @@ func TestAPushedPartIsDeletedFromTheBoxThatWroteIt(t *testing.T) {
 
 	var w bytes.Buffer
 	sink.summary(&w)
-	if !strings.Contains(w.String(), kho.Staging().Repo()) {
+	if !strings.Contains(w.String(), store.Staging().Repo()) {
 		t.Errorf("the summary does not say where the parts went:\n%s", w.String())
 	}
 }
@@ -327,9 +327,9 @@ func TestAPartThatFailedToPushIsNotDeleted(t *testing.T) {
 	defer srv.Close()
 
 	dir := t.TempDir()
-	docs := &gat.Docs{}
+	docs := &harvest.Docs{}
 	sink := newParts(dir, docs, "server1", io.Discard)
-	sink.push = &kho.Pusher{Repo: kho.Staging().Repo(), API: srv.URL, Client: srv.Client(), Token: "hf_test"}
+	sink.push = &store.Pusher{Repo: store.Staging().Repo(), API: srv.URL, Client: srv.Client(), Token: "hf_test"}
 	docs.Emit = sink.write
 
 	p, f := hpltPin(t)
@@ -342,7 +342,7 @@ func TestAPartThatFailedToPushIsNotDeleted(t *testing.T) {
 	if err := sink.close(nil); err == nil {
 		t.Fatal("a part that could not be pushed was reported as written")
 	}
-	if _, err := os.Stat(filepath.Join(dir, filepath.FromSlash(kho.StagePath(p.Snapshot(), 0, 0)))); err != nil {
+	if _, err := os.Stat(filepath.Join(dir, filepath.FromSlash(store.StagePath(p.Snapshot(), 0, 0)))); err != nil {
 		t.Errorf("the only copy of an unpushed part was deleted: %v", err)
 	}
 }
@@ -350,7 +350,7 @@ func TestAPartThatFailedToPushIsNotDeleted(t *testing.T) {
 // Pushing needs something to push, and a flag combination that cannot work
 // should say so before the download starts rather than after it.
 func TestPushingWithNowhereToWriteIsRefused(t *testing.T) {
-	_, errOut, code := exec(t, "gat", "hf", "-dir", t.TempDir(), "-push")
+	_, errOut, code := exec(t, "harvest", "hf", "-dir", t.TempDir(), "-push")
 	if code != 2 {
 		t.Fatalf("gao harvest hf -push with no -out: exit %d, want 2", code)
 	}
@@ -360,7 +360,7 @@ func TestPushingWithNowhereToWriteIsRefused(t *testing.T) {
 }
 
 func TestThePushFlagIsInTheUsage(t *testing.T) {
-	_, errOut, code := exec(t, "gat", "hf", "-h")
+	_, errOut, code := exec(t, "harvest", "hf", "-h")
 	if code != 2 {
 		t.Fatalf("gao harvest hf -h: exit %d, want 2", code)
 	}
