@@ -19,7 +19,33 @@ import (
 // arrives composed from one source and decomposed from another and a table
 // would have to hold both. The one letter decomposition does not answer for is
 // d with stroke, which has no combining form.
+//
+// The answer for a letter is cached, because this is called once per rune of
+// every document in the corpus and decomposing one rune allocates two strings
+// to do it. On a real GlotCC part that was seven percent of the whole cleaning
+// line. The cache is the Latin range only, which is where every letter the
+// question is ever asked about lives; anything above it falls through to the
+// decomposition and pays what it always paid.
 func isDiacritic(c rune) bool {
+	if c >= 0 && c < rune(len(diacritic)) {
+		return diacritic[c]
+	}
+	return decomposesToAMark(c)
+}
+
+// diacritic answers isDiacritic for the Latin ranges, filled once at startup.
+// The bound is U+2000, which is past Latin Extended Additional, where the
+// precomposed Vietnamese vowels live, and past every combining mark that can
+// stand in for one.
+var diacritic = func() [0x2000]bool {
+	var table [0x2000]bool
+	for c := range len(table) {
+		table[c] = decomposesToAMark(rune(c))
+	}
+	return table
+}()
+
+func decomposesToAMark(c rune) bool {
 	if c == 'đ' || c == 'Đ' {
 		return true
 	}

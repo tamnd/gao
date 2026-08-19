@@ -261,3 +261,31 @@ func reasonOf(name string) vo.Reason {
 	}
 	return r
 }
+
+// Measuring one document twice has to give one answer. It did not: the most
+// frequent gram was picked by walking a map, so when two grams tied on both
+// count and length the winner was whichever one Go's randomized iteration
+// yielded, and the coverage of the two is not the same number. On a real GlotCC
+// part that was four documents in five thousand whose Top came back differently
+// on a second reading of the same bytes, which for a corpus whose entire claim
+// is that a row can be reproduced from its inputs is not a rounding difference.
+func TestMeasuringOneDocumentTwiceGivesOneAnswer(t *testing.T) {
+	// Two grams of three syllables, tied on count and tied on length, covering
+	// different amounts of the document because one of them repeats across
+	// itself and the other does not. "ba ba ba" occurs twice inside a run of
+	// four and covers four syllables; "ca da ea" occurs twice apart and covers
+	// six. Which of them is called the most frequent decides the answer, and
+	// nothing in the document decides between them.
+	text := "ba ba ba ba ca da ea xa ya za ca da ea"
+
+	first := Measure(text)
+	for i := range 200 {
+		got := Measure(text)
+		if got.Top != first.Top {
+			t.Fatalf("reading %d measured Top as %v, and the first reading measured %v", i, got.Top, first.Top)
+		}
+		if got.Repeat != first.Repeat {
+			t.Fatalf("reading %d measured Repeat as %v, and the first reading measured %v", i, got.Repeat, first.Repeat)
+		}
+	}
+}
