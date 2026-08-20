@@ -1,6 +1,8 @@
 package main
 
 import (
+	"bytes"
+	"compress/gzip"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -9,6 +11,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/tamnd/gao/crawl"
 )
 
 // The command is tested against a server rather than against a mock, because
@@ -160,17 +164,65 @@ func TestCrawlSeedsTakeBareHosts(t *testing.T) {
 	if err := os.WriteFile(file, []byte(body), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	got, err := crawlSeeds(file, []string{"dantri.com.vn"})
+	f, err := crawl.OpenFrontier(crawl.FrontierOptions{Dir: t.TempDir()})
+	if err != nil {
+		t.Fatalf("OpenFrontier: %v", err)
+	}
+	defer func() { _ = f.Close() }()
+
+	queued, refused, err := crawlSeeds(file, []string{"dantri.com.vn"}, f)
 	if err != nil {
 		t.Fatalf("crawlSeeds: %v", err)
 	}
-	want := []string{"https://dantri.com.vn/", "https://vnexpress.net/", "https://tuoitre.vn/kinh-doanh"}
-	if len(got) != len(want) {
-		t.Fatalf("got %v, want %v", got, want)
+	if queued != 3 || refused != 0 {
+		t.Fatalf("%d seeds queued and %d refused, want 3 and 0", queued, refused)
 	}
-	for i := range want {
-		if got[i] != want[i] {
-			t.Errorf("seed %d is %q, want %q", i, got[i], want[i])
+	got, err := f.Next(10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := map[string]bool{
+		"https://dantri.com.vn/":        true,
+		"https://vnexpress.net/":        true,
+		"https://tuoitre.vn/kinh-doanh": true,
+	}
+	if len(got) != len(want) {
+		t.Fatalf("the frontier holds %v, want %v", got, want)
+	}
+	for _, u := range got {
+		if !want[u] {
+			t.Errorf("the frontier holds %q, which was not a seed", u)
 		}
+	}
+}
+
+// A seed list is now an extract from a Common Crawl index and those are kept
+// compressed, so a run should not have to gunzip six million URLs to a file
+// first on a box whose disk is meant to be cache.
+func TestCrawlSeedsReadAGzippedList(t *testing.T) {
+	file := filepath.Join(t.TempDir(), "seeds.txt.gz")
+	var buf bytes.Buffer
+	zw := gzip.NewWriter(&buf)
+	if _, err := zw.Write([]byte("https://baodongthap.example/tin-1.html\nbaocantho.example\n")); err != nil {
+		t.Fatal(err)
+	}
+	if err := zw.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(file, buf.Bytes(), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	f, err := crawl.OpenFrontier(crawl.FrontierOptions{Dir: t.TempDir()})
+	if err != nil {
+		t.Fatalf("OpenFrontier: %v", err)
+	}
+	defer func() { _ = f.Close() }()
+
+	queued, _, err := crawlSeeds(file, nil, f)
+	if err != nil {
+		t.Fatalf("crawlSeeds: %v", err)
+	}
+	if queued != 2 {
+		t.Fatalf("%d seeds queued from a gzipped list, want 2", queued)
 	}
 }

@@ -129,11 +129,26 @@ func Reject(err error) (reject.Reason, string, bool) {
 // CrawlOptions configures a [Crawler]. The zero value works and uses the
 // defaults named on each field.
 type CrawlOptions struct {
-	// Client is the HTTP client. Zero means one with a thirty second timeout
-	// and redirects turned off, which is the only configuration this package
-	// will use: see [Crawler.Get] on why redirects are returned rather than
-	// followed.
+	// Client is the HTTP client. Zero means [NewClient] with the defaults,
+	// which is a sharded keep-alive pool, a five second deadline on the
+	// response header, twenty seconds on the whole exchange, and redirects
+	// returned rather than followed. See [Crawler.Get] on the redirects and
+	// transport.go on the rest.
 	Client *http.Client
+
+	// Transport configures the client built when Client is nil. It is ignored
+	// when a caller brings its own.
+	Transport TransportOptions
+
+	// Timeout bounds the whole exchange on the client built when Client is
+	// nil. Zero means [DefaultFetchTimeout].
+	Timeout time.Duration
+
+	// Strikes is how many failures a host that has never answered gets before
+	// the crawl stops sending to it. Zero means [DefaultStrikes], and a
+	// negative number turns the breaker off, which is what a test that wants
+	// every request to go out asks for.
+	Strikes int
 
 	// Polite is the schedule. Zero means a new one with the defaults, which is
 	// wrong for a real crawl, because the schedule has to be shared by every
@@ -155,6 +170,7 @@ type CrawlOptions struct {
 type Crawler struct {
 	client  *http.Client
 	polite  *Polite
+	dead    *breaker
 	agent   string
 	maxBody int64
 
@@ -203,15 +219,13 @@ func NewCrawler(o CrawlOptions) *Crawler {
 		reading: map[string]chan struct{}{},
 	}
 	if c.client == nil {
-		c.client = &http.Client{
-			Timeout: 30 * time.Second,
-			CheckRedirect: func(*http.Request, []*http.Request) error {
-				return http.ErrUseLastResponse
-			},
-		}
+		c.client = NewClient(o.Transport, o.Timeout)
 	}
 	if c.polite == nil {
 		c.polite = NewPolite(PoliteOptions{})
+	}
+	if o.Strikes >= 0 {
+		c.dead = newBreaker(o.Strikes)
 	}
 	if c.maxBody <= 0 {
 		c.maxBody = MaxBody
@@ -255,6 +269,12 @@ func (c *Crawler) Get(ctx context.Context, rawurl string) (*Visit, error) {
 
 	if why, ok := c.isBlocked(host); ok {
 		return nil, fmt.Errorf("%w: %s said %s", ErrBlocked, host, why)
+	}
+	// Before the robots fetch rather than after it. A host that does not
+	// resolve does not resolve for its robots.txt either, and checking after
+	// would pay the dead host's deadline to find out that we already knew.
+	if c.dead != nil && c.dead.dead(host) {
+		return nil, fmt.Errorf("%w: %s failed %d times without answering", ErrDead, host, c.dead.strikes)
 	}
 
 	site, err := c.published(ctx, u)
@@ -480,9 +500,21 @@ func (c *Crawler) fetch(ctx context.Context, host, target string) (fetched, erro
 
 	resp, err := c.client.Do(req)
 	if err != nil {
+		// Only a request that produced no response counts against the host. A
+		// cancelled crawl is not the host's doing, and counting it would end a
+		// run by convincing itself that the web had gone away.
+		if c.dead != nil && ctx.Err() == nil {
+			c.dead.failed(host)
+		}
 		return fetched{}, fmt.Errorf("harvest: %s: %w", target, err)
 	}
 	defer func() { _ = resp.Body.Close() }()
+
+	// A status line is an answer, whatever the status is. A host that 404s is a
+	// host, and the next URL on it may well be a page.
+	if c.dead != nil {
+		c.dead.answered(host)
+	}
 
 	switch resp.StatusCode {
 	case http.StatusUnauthorized, http.StatusForbidden:
@@ -507,6 +539,20 @@ func (c *Crawler) fetch(ctx context.Context, host, target string) (fetched, erro
 // Delay is the gap this crawler is currently leaving between requests to a host,
 // which is the longer of ours and whatever that host's robots.txt asked for.
 func (c *Crawler) Delay(host string) time.Duration { return c.polite.Delay(host) }
+
+// Dropped is how many hosts the crawl has stopped sending to because they
+// never answered.
+//
+// It is the third number in the pair [Crawler.Hosts] reports and it is watched
+// for the same reason: a crawl dropping a rising share of the hosts it meets
+// has either followed links into a bad neighborhood of the web or has broken
+// its own networking, and the two look identical from the page count alone.
+func (c *Crawler) Dropped() int {
+	if c.dead == nil {
+		return 0
+	}
+	return c.dead.dropped()
+}
 
 // Blocked reports whether a host has told us to stop, and what it said.
 func (c *Crawler) Blocked(host string) (string, bool) { return c.isBlocked(host) }

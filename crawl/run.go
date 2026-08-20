@@ -34,15 +34,41 @@ import (
 
 // DefaultWorkers is how many fetches are in flight at once.
 //
-// Twenty is what one box runs at while staying inside a second per host: at a
-// crawl spread over thousands of hosts the workers are almost never on the same
-// one, and when they are the schedule makes them queue.
-const DefaultWorkers = 20
+// Twenty was the first number and it was wrong by a factor of twenty five. The
+// reasoning behind it was about the host, that a crawl spread over thousands of
+// hosts almost never has two workers on one, and that part was right. What it
+// missed is that the host is not what a worker spends its time on. A worker
+// spends it on a socket, and a socket is idle almost the whole time it is open.
+//
+// The fleet measured it on one box, on one afternoon, on the same seed. At
+// twenty workers the crawl did 6.4 pages a second. At five hundred, with
+// nothing else changed, it did 60 to 67. The box was not busy either time: the
+// limit was never the machine, it was that twenty sockets cannot hold more than
+// twenty pages in the air at once, and a page takes about three seconds to
+// arrive. Five hundred is chosen against the same measurement and against the
+// open file limit, which is what actually breaks first on a small box.
+//
+// A crawl still owes each host a second between requests and still sends one
+// request to a host at a time. Those are enforced in [harvest.Polite] and this
+// number does not touch them. Five hundred workers over a frontier of a hundred
+// thousand hosts is five hundred different hosts being asked once.
+const DefaultWorkers = 500
 
 // DefaultBatch is how many URLs are taken from the frontier at a time. It is
 // larger than the worker count so that the pool is never waiting on a read, and
 // small enough that a run stopped in the middle loses a batch and not a shift.
-const DefaultBatch = 200
+//
+// It is eight times the workers rather than a fixed number because the frontier
+// hands out at most [DefaultPerHost] URLs per host per batch. A batch of 200 is
+// therefore at least 100 hosts, which was plenty for twenty workers and is a
+// fifth of what five hundred need: the pool would drain the batch, find most of
+// its hosts already in flight, and hand everything back.
+func DefaultBatch(workers int) int {
+	if workers <= 0 {
+		workers = DefaultWorkers
+	}
+	return 8 * workers
+}
 
 // idle is how long the feeder waits before asking an empty frontier again while
 // fetches are still in flight. A crawl's queue empties whenever the pool has
@@ -127,7 +153,7 @@ func Run(ctx context.Context, o RunOptions) (Progress, error) {
 		o.Workers = DefaultWorkers
 	}
 	if o.Batch <= 0 {
-		o.Batch = DefaultBatch
+		o.Batch = DefaultBatch(o.Workers)
 	}
 	if o.Checkpoint <= 0 {
 		o.Checkpoint = time.Minute
@@ -326,9 +352,7 @@ func (r *loop) one(ctx context.Context, rawurl string) error {
 	// clearest case: it is refused on every content test there is and it is the
 	// most valuable page on the site to follow.
 	if page != nil && !page.NoFollow && verdict.Reason != reject.ReasonLanguage {
-		for _, link := range page.Links {
-			r.offer(link)
-		}
+		r.offerAll(page.Links)
 	}
 
 	return r.write(rawurl, verdict)
@@ -379,6 +403,19 @@ func (r *loop) offer(rawurl string) {
 	}
 	if ok {
 		r.offered.Add(1)
+	}
+}
+
+// offerAll puts a whole page's links in the frontier in one go, which is one
+// turn at the frontier's lock rather than sixty of them. See
+// [Frontier.OfferAll]: the links of one page are where a crawl's frontier
+// traffic comes from and offering them one at a time was what every worker on
+// the box was queueing for.
+func (r *loop) offerAll(links []string) {
+	n, err := r.o.Frontier.OfferAll(links)
+	r.offered.Add(int64(n))
+	if err != nil {
+		r.fail(err)
 	}
 }
 

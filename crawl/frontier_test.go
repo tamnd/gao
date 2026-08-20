@@ -440,6 +440,60 @@ func TestAURLThatIsNotOneIsRefusedWithoutTouchingTheQueue(t *testing.T) {
 	}
 }
 
+// A page's links go in together, and what that has to leave behind is exactly
+// what offering them one at a time would have. The batch is where a crawl's
+// frontier traffic is, so it is worth knowing that the shortcut is only a
+// shortcut through the lock and not through any of the checks.
+func TestAPageOfLinksGoesInTogether(t *testing.T) {
+	one := open(t, FrontierOptions{})
+	all := open(t, FrontierOptions{})
+
+	links := []string{
+		"https://baodongthap.example/tin-1.html",
+		"https://baodongthap.example/tin-2.html",
+		"https://baodongthap.example/tin-1.html", // the same page twice, as a menu does
+		"not a url",
+		"mailto:toasoan@baodongthap.example",
+		"https://vnexpress.example/thoi-su/bai-viet.html",
+	}
+	for _, u := range links {
+		if _, _, err := one.Offer(u); err != nil {
+			t.Fatalf("Offer(%s): %v", u, err)
+		}
+	}
+	queued, err := all.OfferAll(links)
+	if err != nil {
+		t.Fatalf("OfferAll: %v", err)
+	}
+
+	a, b := one.Stats(), all.Stats()
+	if a != b {
+		t.Errorf("one at a time left %+v and the batch left %+v", a, b)
+	}
+	if int64(queued) != b.Admitted {
+		t.Errorf("OfferAll says it queued %d and the stats say %d", queued, b.Admitted)
+	}
+	if b.Admitted != 3 || b.Duplicate != 1 || b.Malformed != 2 {
+		t.Errorf("the batch left %+v, want 3 queued, 1 duplicate and 2 malformed", b)
+	}
+}
+
+// A page with no links is the ordinary case on a crawl and it must not cost a
+// turn at the lock every worker is waiting for.
+func TestAPageWithNoLinksOffersNothing(t *testing.T) {
+	f := open(t, FrontierOptions{})
+	queued, err := f.OfferAll(nil)
+	if err != nil {
+		t.Fatalf("OfferAll: %v", err)
+	}
+	if queued != 0 {
+		t.Errorf("a page with no links queued %d URLs", queued)
+	}
+	if s := f.Stats(); s.Offered != 0 {
+		t.Errorf("a page with no links was counted as %d offers", s.Offered)
+	}
+}
+
 // The yield counters are what a status line reads on a run that has been going
 // for a week, and they are also what the budget earns on.
 func TestWhatCameBackIsCountedAndCharged(t *testing.T) {

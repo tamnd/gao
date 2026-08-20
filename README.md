@@ -588,6 +588,44 @@ Every rule in that scheduler was doing what it was written to do. One request in
 
 That moved `pipeline_version` to 0.6.0 on the same grounds as 0.4.0. No column changed meaning, and what changed is which of the queued million a run gets to, which is visible only as which hosts are in the corpus.
 
+### Going ten times faster on the same machines
+
+Twelve pages a second across three boxes is a crawl of a billion pages that finishes in 2087. The rate had been read as a consequence of politeness, one request per host per second and not many hosts, and that reading was wrong. `ami`, another crawler on this project, was pointed at `server3` on the same afternoon under the same load and held 130 pages a second with a peak of 298 while `gao` on that box held 6.4. Whatever the ceiling was, it was not the machine and it was not the network.
+
+The first cause was the worker count and it needed no code at all. Twenty workers each spending most of their time waiting on a socket is twenty sockets, and the box has room for thousands. At `-workers 500` the same binary on the same seed went to 60 pages a second. Everything after that is a lock somebody has to find, and all three of them were found the same way, with `kill -QUIT` and a count of what the goroutines were standing in.
+
+The second cause was Go's default HTTP transport, which is three separate problems for a crawler. It keeps one idle connection pool of a hundred behind one mutex taken on every request, so at two thousand workers the pool is the crawl. And it has only a whole request deadline, so a server that accepts a connection and then says nothing costs the full timeout: on a four minute run over the Common Crawl seed, 795 of 28,038 requests ended in a thirty second timeout, which is 23,850 worker seconds out of the 130,500 the run had. Eighteen percent of the crawl was spent waiting for servers that were never going to answer. The transport is now sharded by host across 32 pools, so one host keeps its keep alive and no pool is contended by everybody, and a server gets five seconds to begin answering rather than thirty seconds to finish. Hosts that never answer at all are given up on after three tries: 4,657 hosts on that run produced 8,139 failures between them, and a host that has answered once is never given up on however badly it behaves afterwards, because that is a busy host rather than a dead one.
+
+The third was the sink, and the dump named it exactly. Of 2,000 workers, 1,841 were blocked on one mutex and 75 were on the network. That mutex was gzipping each WARC record at the highest deflate level while holding it, so every worker on the box queued behind one compression. A WARC record is its own gzip member, which means a worker can compress its own record on its own core and take its turn at the file only to hand over bytes that are already finished. The lock also became three, one for the archive and one for each of the two repos, so a part being uploaded to the hub stops one repo rather than the crawl.
+
+The fourth was the frontier, and it only became visible once the sink stopped hiding it. A crawl offers around sixty links for every page it fetches, 909,695 URLs from 15,669 pages on the run that measured it, so the frontier is asked sixty times as often as anything else on the box. One call per link made it the queue every worker stood in: the next dump had 1,584 workers waiting there against 46 in the sink. A page's links now go in together, one turn at the lock for the page, with the parsing and the canonicalization and the fleet split all done before the lock is taken.
+
+Each of those was measured by running the two builds alternately in the same session rather than one after the other on different afternoons. That matters more than it sounds. The first measurement of the new transport read 47.0 pages a second against the old build's 60.0, which looks like a regression and is not: run back to back in the same minute the two read 44.6 and 48.6. These are shared machines whose load swings by more than the effect being measured, and a single number off a busy box is not evidence about anything.
+
+Where it ends up, on `server2`, six cores, 2,000 workers, three alternating rounds against the same seed:
+
+```
+round   split sink   and frontier batch
+1            82.3                  98.4
+2            87.2                  91.8
+3           101.4                 105.0
+mean         90.3                  98.4
+```
+
+That is against 6.4 pages a second on the box where this started, and it is one box rather than the fleet. `pipeline_version` moves to 0.7.0, on the same grounds as 0.4.0 and 0.6.0: no column changed meaning, and a crawl that fetches ten times as many pages an hour reaches deeper into every site before a part closes, so which pages are in the corpus is different either side of the boundary.
+
+### A seed of four hundred thousand hosts
+
+The seed list of 137 newspapers was leads rather than sites and it worked as leads, but it starts a two thousand worker crawl on 137 hosts, and one request per host per second is 137 requests a second no matter how many workers are watching. The frontier fills out within ten minutes, and the ten minutes are real.
+
+The seed is now the Vietnamese side of a Common Crawl index. Not from `data.commoncrawl.org`, which answers 403 to anything running at fleet pace, but from `open-index/ccrawl-urls`, which is the same index published as 300 Parquet shards and read over ordinary HTTPS with no rate limit. Parquet column pruning means a scan for Vietnamese URLs moves 4 of the 18 columns rather than the file. That is 25,286,369 URLs over 404,186 hosts, capped at 40 URLs per host to make it a list of sites rather than a list of whatever the big newspapers had, which leaves 6.6 million.
+
+Vietnamese has to be the index's first language for a page and not merely one of its languages. A page whose languages read `rus,vie` is a Russian page with a Vietnamese section, and the first pull took those: the top of the seed was a Russian grocer and a Russian steel fabricator. On a sampled shard 1,697 of 2,266 matches have `vie` first, so the loose filter was a quarter noise.
+
+There is no rule about `.vn` anywhere in this, and there should not be. `vnba.ru` is a Vietnamese language news site on a Russian domain, and its URLs read `bloomberg-rup-len-ngoi-khoi-sac-tren-cac-thi-truong-moi-noi`. The language is the test and the domain is not evidence.
+
+A seed that size also changed how it is read. Six and a half million URLs held as a slice of strings before the crawl starts is most of `server1`'s memory spent on nothing, so the seed is now offered to the frontier as it is read, and a file ending in `.gz` is read through gzip, since an extract from a Common Crawl index is kept compressed.
+
 Every one of the reject rows is something somebody can re-cost. The repetition threshold is the one that matters most and it is the one that is wrong for Vietnamese: a third of what it removed on the first run was article prose rather than listing pages, because an official is named in full every time they are mentioned and `đồng chí Vũ Quyết Tiến, Phó Bí thư Tỉnh ủy, Chủ tịch Ủy ban MTTQ tỉnh` is three occurrences of one eight syllable gram in a nine hundred word article. The threshold is Gopher's, scaled from words to syllables, and a Vietnamese title is long in syllables and carries one fact. Because the rejects carry the measured rate for every page, the threshold can be moved and the corpus recomposed without fetching anything again.
 
 ## Reading Parquet without downloading it
