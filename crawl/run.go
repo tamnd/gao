@@ -70,6 +70,17 @@ func DefaultBatch(workers int) int {
 	return 8 * workers
 }
 
+// DefaultFeeders is how many goroutines take batches from the frontier.
+//
+// One was enough while a batch was a lock and a read, and it stopped being
+// enough once the fetching got faster: two thousand workers all take from the
+// channel one feeder fills, so whatever that feeder can do in a second is what
+// the box can do in a second. Four of them is not a number with a derivation
+// behind it, it is the smallest number that stops one goroutine being the
+// answer, and the frontier does not care how many there are since a batch takes
+// no lock on it.
+const DefaultFeeders = 4
+
 // idle is how long the feeder waits before asking an empty frontier again while
 // fetches are still in flight. A crawl's queue empties whenever the pool has
 // taken everything and the links that will refill it are still on the wire, and
@@ -93,6 +104,10 @@ type RunOptions struct {
 	// Batch is how many URLs are taken from the frontier at a time. Zero is
 	// [DefaultBatch].
 	Batch int
+
+	// Feeders is how many goroutines take batches from the frontier and hand
+	// them to the workers. Zero is [DefaultFeeders].
+	Feeders int
 
 	// Pages stops the run after this many fetches. Zero runs until the frontier
 	// has nothing left, which on the open web is never, so a real run sets one
@@ -166,6 +181,9 @@ func Run(ctx context.Context, o RunOptions) (Progress, error) {
 	if o.Batch <= 0 {
 		o.Batch = DefaultBatch(o.Workers)
 	}
+	if o.Feeders <= 0 {
+		o.Feeders = DefaultFeeders
+	}
 	if o.Checkpoint <= 0 {
 		o.Checkpoint = time.Minute
 	}
@@ -200,19 +218,27 @@ func Run(ctx context.Context, o RunOptions) (Progress, error) {
 	done := make(chan struct{})
 	go r.watch(ctx, done)
 
-	err := r.feed(ctx, urls)
+	var feeders sync.WaitGroup
+	for range o.Feeders {
+		feeders.Go(func() {
+			if err := r.feed(ctx, urls); err != nil {
+				r.fail(err)
+				stop()
+			}
+		})
+	}
+	feeders.Wait()
 	close(urls)
 	wg.Wait()
 	close(done)
+
+	err := r.err()
 
 	// The frontier is flushed whatever happened. A run that stopped because the
 	// disk filled still knows which URLs it had taken, and the next one starts
 	// from there rather than from the last checkpoint.
 	if ferr := o.Frontier.Flush(); ferr != nil && err == nil {
 		err = ferr
-	}
-	if serr := r.err(); serr != nil && err == nil {
-		err = serr
 	}
 	return r.progress(), err
 }
@@ -240,6 +266,11 @@ type loop struct {
 
 // feed takes batches from the frontier and hands them to the workers, stopping
 // when the frontier is empty or the run has fetched what it was asked for.
+//
+// [DefaultFeeders] of these run at once. They share the channel and they share
+// the frontier, and neither of those needs them to agree on anything: a batch
+// takes no lock on the frontier, and a URL comes off a queue file under that
+// file's own lock, so two feeders asking at the same time get different URLs.
 func (r *loop) feed(ctx context.Context, urls chan<- string) error {
 	for {
 		// A stopped crawl is a finished crawl rather than a failed one, so the

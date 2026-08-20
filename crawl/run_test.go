@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -411,5 +412,78 @@ func TestWorkersReachingForOneHostAreCounted(t *testing.T) {
 	}
 	if p.Kept != 3 {
 		t.Errorf("the run kept %d pages, want the three articles, so waiting cost pages", p.Kept)
+	}
+}
+
+// Several feeders taking from the same frontier fetch each page once.
+//
+// The feeder used to be one goroutine and is [DefaultFeeders] of them now,
+// because two thousand workers all take from the channel it fills. What that
+// change had to keep is that a URL still reaches exactly one worker. Run it
+// under -race.
+func TestSeveralFeedersFetchEachPageOnce(t *testing.T) {
+	var mu sync.Mutex
+	asked := map[string]int{}
+	mux := http.NewServeMux()
+	mux.HandleFunc("/robots.txt", func(w http.ResponseWriter, _ *http.Request) {
+		fmt.Fprint(w, "User-agent: *\nCrawl-delay: 0\n")
+	})
+	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+		mu.Lock()
+		asked[r.URL.Path]++
+		mu.Unlock()
+		w.Header().Set("Content-Type", "text/html; charset=utf-8")
+		n, _ := strconv.Atoi(strings.TrimSuffix(strings.TrimPrefix(r.URL.Path, "/tin/"), ".html"))
+		fmt.Fprint(w, article(n))
+	})
+	srv := httptest.NewServer(mux)
+	defer srv.Close()
+
+	dir := t.TempDir()
+	f, err := OpenFrontier(FrontierOptions{Dir: filepath.Join(dir, "frontier"), PerHost: 1 << 20})
+	if err != nil {
+		t.Fatalf("OpenFrontier: %v", err)
+	}
+	defer func() { _ = f.Close() }()
+
+	want := 400
+	for i := range want {
+		if _, _, err := f.Offer(fmt.Sprintf("%s/tin/%d.html", srv.URL, i)); err != nil {
+			t.Fatalf("Offer: %v", err)
+		}
+	}
+
+	s := openSink(t, SinkOptions{Dir: filepath.Join(dir, "out")})
+	defer func() { _ = s.Close() }()
+	c := harvest.NewCrawler(harvest.CrawlOptions{
+		Polite:  harvest.NewPolite(harvest.PoliteOptions{Delay: time.Millisecond}),
+		Version: "test",
+	})
+
+	ctx, cancel := context.WithTimeout(t.Context(), 60*time.Second)
+	defer cancel()
+	p, err := Run(ctx, RunOptions{Frontier: f, Sink: s, Crawler: c, Workers: 32, Batch: 16, Feeders: 8})
+	if err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+	mu.Lock()
+	defer mu.Unlock()
+	// robots.txt and the TDM reservation are fetched once for the host and are
+	// not pages. The articles carry a nav bar, so the run also finds the two
+	// pages that links to, which is the crawl working rather than a miscount.
+	delete(asked, "/robots.txt")
+	delete(asked, "/.well-known/tdmrep.json")
+	for path, n := range asked {
+		if n != 1 {
+			t.Fatalf("%s was fetched %d times, so a URL reached two workers", path, n)
+		}
+	}
+	if p.Fetched != int64(len(asked)) {
+		t.Fatalf("the run counted %d fetches and the site was asked for %d pages", p.Fetched, len(asked))
+	}
+	for i := range want {
+		if asked[fmt.Sprintf("/tin/%d.html", i)] != 1 {
+			t.Fatalf("/tin/%d.html was offered and never fetched", i)
+		}
 	}
 }
