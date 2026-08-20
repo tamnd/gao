@@ -563,3 +563,75 @@ func TestANewSnapshotDoesNotStartTheVolumeCountOver(t *testing.T) {
 		}
 	}
 }
+
+// The part number is on the disk before the part is on the hub.
+//
+// It used to be written after. A run stopped in the window between the push and
+// the save came back holding the number it had before, wrote the same path
+// again, and on the hub a path written again replaces what is at it. That is not
+// a gap in a dataset, it is rows that were published and are not any more.
+// Thirteen parts across open-index/vitweb and open-index/vitweb-rejects have two
+// Add commits at the same path, minutes apart, at the times the fleet was
+// restarted to measure a frontier change.
+func TestThePartNumberIsWrittenDownBeforeThePartIsPushed(t *testing.T) {
+	dir := t.TempDir()
+
+	var pushed []string
+	var atPush []sinkState
+	push := func(_ store.Dataset, _, path string) error {
+		pushed = append(pushed, path)
+		// What a run started at this instant would come back holding.
+		b, err := os.ReadFile(filepath.Join(dir, stateFile))
+		if err != nil {
+			t.Errorf("reading %s during the push of %s: %v", stateFile, path, err)
+			return nil
+		}
+		var st sinkState
+		if err := json.Unmarshal(b, &st); err != nil {
+			t.Errorf("reading %s during the push of %s: %v", stateFile, path, err)
+			return nil
+		}
+		atPush = append(atPush, st)
+		return nil
+	}
+
+	s := openSink(t, SinkOptions{Dir: dir, BytesPerPart: 1, Push: push})
+	for i := range 3 {
+		if err := s.Write(Verdict{Doc: sampleDoc(i), Kept: true}); err != nil {
+			t.Fatalf("Write: %v", err)
+		}
+	}
+	if err := s.Close(); err != nil {
+		t.Fatalf("Close: %v", err)
+	}
+
+	if len(pushed) < 2 {
+		t.Fatalf("%d parts were pushed and the test needs at least two: %v", len(pushed), pushed)
+	}
+	for i, path := range pushed {
+		// The path carries the number the part was written under, and the state
+		// at the moment of the push has to be past it, since that number is
+		// spent.
+		want := partNumber(t, path)
+		if got := atPush[i].Kept; got <= want {
+			t.Fatalf("%s was being pushed while %s still said the next kept part is %d, so a run killed here would write over it",
+				path, stateFile, got)
+		}
+	}
+}
+
+// partNumber pulls the part number off a path like
+// data/web/snapshot-00001-00034.parquet.
+func partNumber(t *testing.T, path string) int {
+	t.Helper()
+	base := strings.TrimSuffix(filepath.Base(path), ".parquet")
+	i := strings.LastIndex(base, "-")
+	if i < 0 {
+		t.Fatalf("%q is not a part path", path)
+	}
+	n, err := strconv.Atoi(base[i+1:])
+	if err != nil {
+		t.Fatalf("%q is not a part path: %v", path, err)
+	}
+	return n
+}
