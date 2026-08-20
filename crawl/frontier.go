@@ -38,12 +38,12 @@ import (
 
 // DefaultBuckets is how many queue files the frontier writes.
 //
-// A URL goes to the bucket its host hashes to, and a batch is taken from the
-// buckets in rotation, so a page that links to forty pages on one site does not
-// get fetched as forty requests in a row to that site. Sixty four is enough
-// mixing for that and few enough files to hold every one of them open, which
-// matters more than it sounds: the alternative is an open file cache, and a
-// cache in the queue is a cache in the one structure that cannot be rebuilt.
+// A URL goes to the bucket it hashes to and a batch is taken from the buckets in
+// rotation, so a page that links to forty pages on one site does not get fetched
+// as forty requests in a row to that site. Sixty four is enough mixing for that
+// and few enough files to hold every one of them open, which matters more than
+// it sounds: the alternative is an open file cache, and a cache in the queue is a
+// cache in the one structure that cannot be rebuilt.
 const DefaultBuckets = 64
 
 // DefaultBits is bits per URL in the resident filter, matching
@@ -798,7 +798,7 @@ func (f *Frontier) admit(p *pending) (bool, error) {
 	if err := f.record(p.hash); err != nil {
 		return false, err
 	}
-	if err := f.push(p.host, p.canonical); err != nil {
+	if err := f.push(p.canonical); err != nil {
 		return false, err
 	}
 	f.stats.Admitted.Add(1)
@@ -817,11 +817,7 @@ func (f *Frontier) admit(p *pending) (bool, error) {
 // file. Making them queue behind the offers and the batches was most of what a
 // goroutine dump found the workers waiting for.
 func (f *Frontier) Requeue(canonical string) error {
-	host, err := hostOf(canonical)
-	if err != nil {
-		return err
-	}
-	if err := f.push(host, canonical); err != nil {
+	if err := f.push(canonical); err != nil {
 		return err
 	}
 	f.stats.Requeued.Add(1)
@@ -891,11 +887,7 @@ func (f *Frontier) Next(n int) ([]string, error) {
 	}
 
 	for _, line := range over {
-		host, err := hostOf(line)
-		if err != nil {
-			continue
-		}
-		if err := f.push(host, line); err != nil {
+		if err := f.push(line); err != nil {
 			return nil, err
 		}
 		f.stats.Deferred.Add(1)
@@ -1055,18 +1047,34 @@ func (f *Frontier) record(h uint64) error {
 	return nil
 }
 
-// push appends a canonical URL to its host's bucket. It takes that bucket's
-// lock and no other, so a caller that holds the frontier's lock may call it and
-// a caller that holds nothing may too.
-func (f *Frontier) push(host, canonical string) error {
-	return f.bucket(host).push(canonical)
+// push appends a canonical URL to its bucket. It takes that bucket's lock and no
+// other, so a caller that holds the frontier's lock may call it and a caller
+// that holds nothing may too.
+func (f *Frontier) push(canonical string) error {
+	return f.bucket(canonical).push(canonical)
 }
 
-// bucket is the queue file a host's URLs go in. One host is always in the same
-// bucket, which is what lets a batch be read a bucket at a time and still be
-// spread over hosts.
-func (f *Frontier) bucket(host string) *bucket {
-	return f.queue[int(hashOf(host)%uint64(f.o.Buckets))]
+// bucket is the queue file a URL goes in, chosen by the whole URL rather than by
+// its host.
+//
+// It was the host, on the reasoning that a batch read a bucket at a time would
+// then be spread over hosts. It does the opposite. A page links to its own site
+// sixty times over, all sixty go in together, and the bucket ends up a run of
+// one host followed by a run of another. A batch takes two URLs per host, so
+// reading that run means reading fifty eight it has to put straight back:
+// server2 was deferring twenty nine URLs for every one it handed out, and doing
+// it in the one goroutine that fills the batch, with a URL parse each and the
+// frontier's lock held. The workers waiting for that were the largest group in a
+// goroutine dump of the box.
+//
+// On the whole URL those sixty links land in sixty different files and every
+// bucket ends up interleaved, which is what makes two per host per batch
+// something a read runs into rarely rather than constantly.
+//
+// Nothing looks a URL up by bucket, so changing what decides it costs nothing on
+// a queue already written: those URLs come out of wherever they went in.
+func (f *Frontier) bucket(canonical string) *bucket {
+	return f.queue[int(hashOf(canonical)%uint64(f.o.Buckets))]
 }
 
 // runsHave reports whether a hash is in one of the sorted runs on disk. It is

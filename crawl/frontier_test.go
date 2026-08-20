@@ -966,3 +966,38 @@ func TestOneNewURLOfferedByEveryWorkerAtOnceIsQueuedOnce(t *testing.T) {
 		t.Fatalf("one URL offered by sixteen workers was queued %d times", got)
 	}
 }
+
+func TestAPageWorthOfLinksToOneSiteDoesNotJamTheBatches(t *testing.T) {
+	// What a crawl actually offers: a page links to its own site sixty times and
+	// every one of those arrives together. If those sixty land in one queue file
+	// then a batch reads a run of one host, hands out the two it is allowed and
+	// puts the other fifty eight back, which is a bucket read and a push each and
+	// all of it in the goroutine that fills the batch.
+	f := open(t, FrontierOptions{})
+	for h := range 64 {
+		for i := range 60 {
+			offer(t, f, fmt.Sprintf("https://bao%d.example/tin/%d.html", h, i))
+		}
+	}
+
+	handed := 0
+	for {
+		got := next(t, f, 100)
+		if len(got) == 0 {
+			break
+		}
+		handed += len(got)
+	}
+	if handed != 64*60 {
+		t.Fatalf("drained %d URLs of %d", handed, 64*60)
+	}
+
+	// One deferral per URL handed out is already generous: it means the queue
+	// gets read through twice. The bug being held off here was twenty nine.
+	deferred := f.Stats().Deferred
+	if deferred > int64(handed) {
+		t.Fatalf("put %d URLs back to hand out %d, so the batches are reading a run of one host at a time",
+			deferred, handed)
+	}
+	t.Logf("deferred %d to hand out %d", deferred, handed)
+}
