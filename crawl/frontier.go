@@ -138,10 +138,16 @@ type Frontier struct {
 	o   FrontierOptions
 	dir string
 
-	// mu guards the resident half of the seen set and the batching in
-	// [Frontier.Next]. It is the outermost of the three locks here: a caller
-	// holding it may take a bucket's or the runs', and neither of those is ever
-	// held while taking this.
+	// mu guards the resident half of the seen set. It is the outermost of the
+	// three locks here: a caller holding it may take a bucket's or the runs',
+	// and neither of those is ever held while taking this.
+	//
+	// [Frontier.Next] does not take it. Filling a batch touches the queue files,
+	// which have their own locks, the rotation counter, which is an atomic, and
+	// the counters, which are atomics too. It used to hold this lock for the
+	// whole of a batch, and since a batch is the supply of URLs for every worker
+	// on the box, that put the thing offering links behind the thing handing them
+	// out.
 	//
 	// What it does not guard is the runs on disk, which is the point. Everything
 	// under it is memory, so the time it is held for is bounded by the machine
@@ -180,7 +186,13 @@ type Frontier struct {
 	gen    int
 
 	queue []*bucket
-	turn  int
+
+	// turn is which bucket the next batch starts from, and it is an atomic
+	// because [Frontier.Next] takes no lock. Two batches being filled at once
+	// step through the rotation together rather than each from the same place,
+	// which is all the coordination they need: the lines themselves are handed
+	// out under the bucket's own lock, so no line goes to both of them.
+	turn atomic.Uint64
 
 	stats counters
 
@@ -838,8 +850,6 @@ func (f *Frontier) Next(n int) ([]string, error) {
 	if n <= 0 {
 		return nil, nil
 	}
-	f.mu.Lock()
-	defer f.mu.Unlock()
 
 	out := make([]string, 0, n)
 	per := map[string]int{}
@@ -851,8 +861,7 @@ func (f *Frontier) Next(n int) ([]string, error) {
 	// memory in one batch: past it the bucket is left alone until next time.
 	most := 4 * n
 	for range f.o.Buckets {
-		b := f.queue[f.turn%f.o.Buckets]
-		f.turn++
+		b := f.queue[(f.turn.Add(1)-1)%uint64(f.o.Buckets)]
 		if err := b.arm(); err != nil {
 			return nil, err
 		}
@@ -1008,7 +1017,7 @@ func (f *Frontier) writeManifest() error {
 	}
 	f.runsMu.RUnlock()
 	for _, b := range f.queue {
-		m.Heads = append(m.Heads, b.head)
+		m.Heads = append(m.Heads, b.at())
 	}
 	b, err := json.MarshalIndent(m, "", "  ")
 	if err != nil {
@@ -1427,6 +1436,15 @@ func (b *bucket) arm() error {
 		return fmt.Errorf("crawl: flushing the queue: %w", err)
 	}
 	return nil
+}
+
+// at is how far this bucket has been read, which is the one thing about a bucket
+// the manifest has to write down. It takes the lock because [Frontier.Next]
+// moves the head without the frontier's.
+func (b *bucket) at() int64 {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return b.head
 }
 
 // readyLocked is how many bytes are on the disk and not yet read.

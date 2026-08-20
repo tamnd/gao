@@ -1047,3 +1047,54 @@ func TestABucketWithURLsOnTheDiskIsNotFlushedToFindMore(t *testing.T) {
 		t.Fatalf("the bucket was flushed with ninety nine URLs still unread on the disk")
 	}
 }
+
+// Batches filled from several goroutines at once hand out every URL and hand out
+// none of them twice.
+//
+// Next takes no lock on the frontier any more, so this is the property that has
+// to hold: the rotation counter is an atomic and the lines come off the buckets
+// under the bucket's own lock. Run it under -race.
+func TestSeveralBatchesFilledAtOnceHandOutEveryURLOnce(t *testing.T) {
+	f := open(t, FrontierOptions{Buckets: 8, PerHost: 1 << 20})
+
+	want := 0
+	for h := range 40 {
+		for i := range 50 {
+			offer(t, f, fmt.Sprintf("https://bao%d.com/tin/%d.html", h, i))
+			want++
+		}
+	}
+
+	var mu sync.Mutex
+	got := map[string]int{}
+	var wg sync.WaitGroup
+	for range 8 {
+		wg.Go(func() {
+			for {
+				batch, err := f.Next(37)
+				if err != nil {
+					t.Errorf("Next: %v", err)
+					return
+				}
+				if len(batch) == 0 {
+					return
+				}
+				mu.Lock()
+				for _, u := range batch {
+					got[u]++
+				}
+				mu.Unlock()
+			}
+		})
+	}
+	wg.Wait()
+
+	if len(got) != want {
+		t.Fatalf("%d URLs came out of the frontier and %d went in", len(got), want)
+	}
+	for u, n := range got {
+		if n != 1 {
+			t.Fatalf("%s was handed out %d times", u, n)
+		}
+	}
+}
