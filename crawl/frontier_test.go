@@ -772,7 +772,7 @@ func TestAURLTheBufferSplitComesBackWhole(t *testing.T) {
 	f := open(t, FrontierOptions{Buckets: 1})
 	b := f.queue[0]
 
-	var want []string
+	want := make([]string, 0, 1000)
 	for i := range 1000 {
 		u := fmt.Sprintf("https://bao.com/tin/%d/%s.html", i, strings.Repeat("a", 200))
 		if err := b.push(u); err != nil {
@@ -894,7 +894,7 @@ func TestPuttingURLsBackWhileTheCrawlRunsLosesNothing(t *testing.T) {
 func TestAURLOnDiskIsRefusedHoweverManyWorkersAskAtOnce(t *testing.T) {
 	f := open(t, FrontierOptions{Pending: 64})
 
-	var urls []string
+	urls := make([]string, 0, 800)
 	for h := range 20 {
 		for i := range 40 {
 			urls = append(urls, fmt.Sprintf("https://bao%d.com/tin/%d.html", h, i))
