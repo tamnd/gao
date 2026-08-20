@@ -226,3 +226,34 @@ func TestCrawlSeedsReadAGzippedList(t *testing.T) {
 		t.Fatalf("%d seeds queued from a gzipped list, want 2", queued)
 	}
 }
+
+// The seed goes to the frontier in batches, so a list that does not divide by
+// the batch size is where a lost remainder would show up. The real list is six
+// and a half million URLs and nobody counts those by hand.
+func TestCrawlSeedsLongerThanOneBatchArriveWhole(t *testing.T) {
+	const n = seedBatch*2 + 7
+	var buf bytes.Buffer
+	for i := range n {
+		fmt.Fprintf(&buf, "https://host-%d.example/\n", i)
+	}
+	file := filepath.Join(t.TempDir(), "seeds.txt")
+	if err := os.WriteFile(file, buf.Bytes(), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	f, err := crawl.OpenFrontier(crawl.FrontierOptions{Dir: t.TempDir()})
+	if err != nil {
+		t.Fatalf("OpenFrontier: %v", err)
+	}
+	defer func() { _ = f.Close() }()
+
+	queued, refused, err := crawlSeeds(file, nil, f)
+	if err != nil {
+		t.Fatalf("crawlSeeds: %v", err)
+	}
+	if queued != n || refused != 0 {
+		t.Fatalf("%d seeds queued and %d refused, want %d and 0", queued, refused, n)
+	}
+	if got := f.Stats().Admitted; got != n {
+		t.Fatalf("the frontier admitted %d, want %d", got, n)
+	}
+}

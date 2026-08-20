@@ -298,7 +298,27 @@ func crawlSummary(w io.Writer, p crawl.Progress) {
 // A bare host is taken as its home page over https, because a seed list from
 // Certificate Transparency is hosts and typing the scheme onto ten million of
 // them is work for the program rather than for the person.
+//
+// It offers in batches because of what one URL per turn costs at this size. The
+// whole seed goes in through the frontier's lock, and taking it once per line
+// loaded server1 at around five thousand URLs a second, which is twenty three
+// minutes of a machine holding open connections to nothing before it fetches its
+// first page.
 func crawlSeeds(path string, args []string, f *crawl.Frontier) (queued, refused int, err error) {
+	batch := make([]string, 0, seedBatch)
+	flush := func() error {
+		if len(batch) == 0 {
+			return nil
+		}
+		n, err := f.OfferAll(batch)
+		queued += n
+		if err != nil {
+			return err
+		}
+		refused += len(batch) - n
+		batch = batch[:0]
+		return nil
+	}
 	add := func(line string) error {
 		line = strings.TrimSpace(line)
 		if line == "" || strings.HasPrefix(line, "#") {
@@ -307,16 +327,11 @@ func crawlSeeds(path string, args []string, f *crawl.Frontier) (queued, refused 
 		if !strings.Contains(line, "://") {
 			line = "https://" + line + "/"
 		}
-		ok, _, err := f.Offer(line)
-		if err != nil {
-			return err
+		batch = append(batch, line)
+		if len(batch) < seedBatch {
+			return nil
 		}
-		if ok {
-			queued++
-		} else {
-			refused++
-		}
-		return nil
+		return flush()
 	}
 	for _, a := range args {
 		if err := add(a); err != nil {
@@ -324,7 +339,7 @@ func crawlSeeds(path string, args []string, f *crawl.Frontier) (queued, refused 
 		}
 	}
 	if path == "" {
-		return queued, refused, nil
+		return queued, refused, flush()
 	}
 
 	r := io.Reader(os.Stdin)
@@ -352,5 +367,13 @@ func crawlSeeds(path string, args []string, f *crawl.Frontier) (queued, refused 
 			return queued, refused, err
 		}
 	}
-	return queued, refused, s.Err()
+	if err := s.Err(); err != nil {
+		return queued, refused, err
+	}
+	return queued, refused, flush()
 }
+
+// seedBatch is how many seed URLs are handed to the frontier in one turn at its
+// lock. Large enough that the lock stops being the cost, small enough that the
+// batch is a rounding error against the frontier itself.
+const seedBatch = 10000
