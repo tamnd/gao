@@ -607,3 +607,53 @@ func TestAFrontierWillNotChangeShardOnResume(t *testing.T) {
 		t.Error("a frontier written by box 0 was reopened as box 1")
 	}
 }
+
+// Fetched is the call a worker makes for every URL that comes back, and it used
+// to take the frontier's lock to add one to four numbers. On a 2,500 worker box
+// that put 765 workers in a queue behind the offers and the batches, so the
+// counters are atomics now and the call takes no lock at all.
+//
+// What has to stay true is that none of the counting is lost when everything
+// happens at once, which is the thing a lock was buying. The race detector has
+// its own opinion and this is the arithmetic.
+func TestCountingWhileTheCrawlOffersAndTakesLosesNothing(t *testing.T) {
+	f, err := OpenFrontier(FrontierOptions{Dir: t.TempDir()})
+	if err != nil {
+		t.Fatalf("OpenFrontier: %v", err)
+	}
+	defer func() { _ = f.Close() }()
+
+	const workers, each = 16, 500
+	var wg sync.WaitGroup
+	for w := range workers {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for i := range each {
+				u := fmt.Sprintf("https://bao%d.com/tin/%d.html", w, i)
+				if _, _, err := f.Offer(u); err != nil {
+					t.Errorf("Offer: %v", err)
+					return
+				}
+				f.Fetched(u, frontier.New)
+				// Read it while it moves, since a progress line does.
+				_ = f.Stats().Queued()
+			}
+		}()
+	}
+	wg.Wait()
+
+	s := f.Stats()
+	if s.Fetched != workers*each {
+		t.Errorf("the frontier counted %d fetches, want %d", s.Fetched, workers*each)
+	}
+	if s.New != workers*each {
+		t.Errorf("the frontier counted %d new, want %d", s.New, workers*each)
+	}
+	if s.Offered != workers*each {
+		t.Errorf("the frontier counted %d offers, want %d", s.Offered, workers*each)
+	}
+	if s.Admitted != workers*each {
+		t.Errorf("the frontier admitted %d, want %d, so an offer was lost", s.Admitted, workers*each)
+	}
+}

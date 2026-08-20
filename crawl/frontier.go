@@ -30,6 +30,7 @@ import (
 	"sort"
 	"strings"
 	"sync"
+	"sync/atomic"
 
 	"github.com/tamnd/gao/doc"
 	"github.com/tamnd/gao/frontier"
@@ -156,9 +157,76 @@ type Frontier struct {
 	queue []*bucket
 	turn  int
 
-	stats Stats
+	stats counters
 
 	closed bool
+}
+
+// counters is [Stats] as the frontier keeps it while a crawl is running.
+//
+// They are atomics rather than plain fields under the frontier's mutex because
+// of what one of them was costing. Fetched is called once per URL that comes
+// back and did nothing but add one to four numbers, and taking the frontier's
+// lock to do that put it behind every offer, every batch and every queue write
+// on the box: a goroutine dump of a 2,500 worker run on server3 had 765 workers
+// standing in that lock inside Fetched, against 3,876 on the network. Counting
+// is not a reason to queue.
+//
+// Reading them one at a time means a snapshot can catch a counter mid update
+// and show a total that no single instant had. That is the right trade for a
+// progress line and it is why [Stats] is documented as a snapshot rather than
+// as a transaction.
+type counters struct {
+	Offered   atomic.Int64
+	Admitted  atomic.Int64
+	Duplicate atomic.Int64
+	Refused   atomic.Int64
+	Malformed atomic.Int64
+	Foreign   atomic.Int64
+	Handed    atomic.Int64
+	Deferred  atomic.Int64
+	Requeued  atomic.Int64
+	Fetched   atomic.Int64
+	New       atomic.Int64
+	Repeat    atomic.Int64
+	Empty     atomic.Int64
+}
+
+// load is the counters as a value, for a caller or for the manifest.
+func (c *counters) load() Stats {
+	return Stats{
+		Offered:   c.Offered.Load(),
+		Admitted:  c.Admitted.Load(),
+		Duplicate: c.Duplicate.Load(),
+		Refused:   c.Refused.Load(),
+		Malformed: c.Malformed.Load(),
+		Foreign:   c.Foreign.Load(),
+		Handed:    c.Handed.Load(),
+		Deferred:  c.Deferred.Load(),
+		Requeued:  c.Requeued.Load(),
+		Fetched:   c.Fetched.Load(),
+		New:       c.New.Load(),
+		Repeat:    c.Repeat.Load(),
+		Empty:     c.Empty.Load(),
+	}
+}
+
+// store puts a value back, which happens once, when a frontier is opened on a
+// directory a previous run left counters in.
+func (c *counters) store(s Stats) {
+	c.Offered.Store(s.Offered)
+	c.Admitted.Store(s.Admitted)
+	c.Duplicate.Store(s.Duplicate)
+	c.Refused.Store(s.Refused)
+	c.Malformed.Store(s.Malformed)
+	c.Foreign.Store(s.Foreign)
+	c.Handed.Store(s.Handed)
+	c.Deferred.Store(s.Deferred)
+	c.Requeued.Store(s.Requeued)
+	c.Fetched.Store(s.Fetched)
+	c.New.Store(s.New)
+	c.Repeat.Store(s.Repeat)
+	c.Empty.Store(s.Empty)
 }
 
 // A run is one sorted file of hashes, with a fence index in memory.
@@ -293,7 +361,8 @@ func OpenFrontier(o FrontierOptions) (*Frontier, error) {
 			return nil, fmt.Errorf("crawl: the frontier in %s is shard %d of %d and this run is shard %d of %d",
 				o.Dir, m.Shard, m.Fleet, o.Shard, o.Fleet)
 		}
-		f.gen, f.stats = m.Gen, m.Stats
+		f.gen = m.Gen
+		f.stats.store(m.Stats)
 		// A resume with a smaller filter than the one that filled it would be
 		// wrong about everything. The plan is allowed to grow.
 		o.Expect = max(o.Expect, m.Expect)
@@ -534,9 +603,9 @@ func parseOffer(rawurl string) pending {
 // admit is the half of an offer that touches the frontier. It is called with
 // the lock held.
 func (f *Frontier) admit(p pending) (bool, string, error) {
-	f.stats.Offered++
+	f.stats.Offered.Add(1)
 	if p.bad {
-		f.stats.Malformed++
+		f.stats.Malformed.Add(1)
 		return false, p.why, nil
 	}
 
@@ -545,7 +614,7 @@ func (f *Frontier) admit(p pending) (bool, string, error) {
 	// hash in this frontier's set for a page this frontier will never fetch.
 	if f.o.Fleet > 1 {
 		if box := int(hashOf(p.host) % uint64(f.o.Fleet)); box != f.o.Shard {
-			f.stats.Foreign++
+			f.stats.Foreign.Add(1)
 			return false, fmt.Sprintf("%s belongs to box %d of %d", p.host, box, f.o.Fleet), nil
 		}
 	}
@@ -556,7 +625,7 @@ func (f *Frontier) admit(p pending) (bool, string, error) {
 		return false, "", err
 	}
 	if seen {
-		f.stats.Duplicate++
+		f.stats.Duplicate.Add(1)
 		return false, "already offered", nil
 	}
 
@@ -568,7 +637,7 @@ func (f *Frontier) admit(p pending) (bool, string, error) {
 			if err := f.record(h); err != nil {
 				return false, "", err
 			}
-			f.stats.Refused++
+			f.stats.Refused.Add(1)
 			return false, why, nil
 		}
 	}
@@ -579,7 +648,7 @@ func (f *Frontier) admit(p pending) (bool, string, error) {
 	if err := f.push(p.host, p.canonical); err != nil {
 		return false, "", err
 	}
-	f.stats.Admitted++
+	f.stats.Admitted.Add(1)
 	return true, "", nil
 }
 
@@ -597,7 +666,7 @@ func (f *Frontier) Requeue(canonical string) error {
 	if err := f.push(host, canonical); err != nil {
 		return err
 	}
-	f.stats.Requeued++
+	f.stats.Requeued.Add(1)
 	return nil
 }
 
@@ -648,7 +717,7 @@ func (f *Frontier) Next(n int) ([]string, error) {
 			}
 			host, err := hostOf(line)
 			if err != nil {
-				f.stats.Malformed++
+				f.stats.Malformed.Add(1)
 				continue
 			}
 			if per[host] >= f.o.PerHost {
@@ -671,36 +740,37 @@ func (f *Frontier) Next(n int) ([]string, error) {
 		if err := f.push(host, line); err != nil {
 			return nil, err
 		}
-		f.stats.Deferred++
+		f.stats.Deferred.Add(1)
 	}
-	f.stats.Handed += int64(len(out))
+	f.stats.Handed.Add(int64(len(out)))
 	return out, nil
 }
 
 // Fetched reports what a URL turned into, which is what the budget earns on and
 // what tells a template that produces nothing from one that produces articles.
+//
+// It takes no lock. The counters are atomics and the budget keeps its own, so
+// the one call a worker makes for every URL it finishes no longer queues behind
+// the offers and the batches.
 func (f *Frontier) Fetched(canonical string, r frontier.Result) {
-	f.mu.Lock()
-	f.stats.Fetched++
+	f.stats.Fetched.Add(1)
 	switch r {
 	case frontier.New:
-		f.stats.New++
+		f.stats.New.Add(1)
 	case frontier.Repeat:
-		f.stats.Repeat++
+		f.stats.Repeat.Add(1)
 	default:
-		f.stats.Empty++
+		f.stats.Empty.Add(1)
 	}
-	f.mu.Unlock()
 	if f.o.Budget != nil {
 		f.o.Budget.Fetched(canonical, r)
 	}
 }
 
-// Stats is a snapshot of the counters.
+// Stats is a snapshot of the counters, read without the lock and therefore
+// without stopping the crawl to print a progress line.
 func (f *Frontier) Stats() Stats {
-	f.mu.Lock()
-	defer f.mu.Unlock()
-	return f.stats
+	return f.stats.load()
 }
 
 // Flush writes everything that is only in memory: the queue buffers, the pending
@@ -781,7 +851,7 @@ func (f *Frontier) writeManifest() error {
 		Shard:   f.o.Shard,
 		Fleet:   f.o.Fleet,
 		Gen:     f.gen,
-		Stats:   f.stats,
+		Stats:   f.stats.load(),
 	}
 	for _, r := range f.runs {
 		m.Runs = append(m.Runs, runMan{Name: r.name, Count: r.count})
