@@ -658,16 +658,14 @@ func TestCountingWhileTheCrawlOffersAndTakesLosesNothing(t *testing.T) {
 	}
 }
 
-// A batch takes at most two URLs per host, so a queue of many URLs on few hosts
-// leaves most of every read unused. Those used to be written back to a bucket,
-// which on the fleet was nineteen queue writes for every page fetched, so they
-// are held for the next batch instead.
+// The queue survives being stopped and started, which is a thing the fleet does
+// every time a binary is replaced.
 //
-// Held is the word that has to be tested. A URL that came out of a bucket and
-// exists nowhere else is a URL one missed flush away from being lost, and losing
-// it is silent: the crawl simply never fetches that page and nothing counts it.
-// So take the whole queue in batches, with a flush partway through, and check
-// that what comes out is exactly what went in.
+// Losing a URL here is silent: the crawl simply never fetches that page and no
+// counter moves. This test was written for a change that held over quota URLs in
+// memory between batches, and it found that change losing 26 URLs of 200 across
+// a restart. That change is gone and the test is not, because the property it
+// checks is one the queue is supposed to have whatever is behind it.
 func TestNoURLIsLostBetweenBatches(t *testing.T) {
 	dir := t.TempDir()
 	f := open(t, FrontierOptions{Dir: dir, PerHost: 2})
@@ -696,9 +694,7 @@ func TestNoURLIsLostBetweenBatches(t *testing.T) {
 		for _, u := range batch {
 			got[u]++
 		}
-		// A crawl stopped and started again in the middle, which is what the
-		// fleet does every time a binary is replaced. Whatever was being held
-		// exists only in memory, so this is where losing it would show.
+		// The stop and the start, partway through draining the queue.
 		if round == 3 {
 			if err := f.Close(); err != nil {
 				t.Fatalf("Close: %v", err)
@@ -724,7 +720,10 @@ func TestNoURLIsLostBetweenBatches(t *testing.T) {
 }
 
 // The whole point of the per host cap is that a batch is spread over hosts, and
-// holding the leftovers rather than writing them back must not quietly undo it.
+// nothing about how the leftovers are handled may quietly undo it. A batch that
+// is one host is a batch that finishes at that host's crawl delay however many
+// workers are watching, which is the difference between ninety pages a second
+// and two.
 func TestABatchIsStillSpreadOverHosts(t *testing.T) {
 	f := open(t, FrontierOptions{PerHost: 2})
 	for h := range 5 {
