@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 
 	"github.com/tamnd/gao/frontier"
@@ -880,5 +881,88 @@ func TestPuttingURLsBackWhileTheCrawlRunsLosesNothing(t *testing.T) {
 		if n != 1 {
 			t.Fatalf("%s came out %d times on the last round", u, n)
 		}
+	}
+}
+
+// A URL already written out to a run is refused however many workers offer it
+// at once.
+//
+// The runs are read with the frontier's lock let go, so this is the pass that
+// the lock used to make trivially correct. Small Pending forces the hashes onto
+// the disk, and offering every one of them again from every goroutine at once is
+// what puts many readers in a run file together.
+func TestAURLOnDiskIsRefusedHoweverManyWorkersAskAtOnce(t *testing.T) {
+	f := open(t, FrontierOptions{Pending: 64})
+
+	var urls []string
+	for h := range 20 {
+		for i := range 40 {
+			urls = append(urls, fmt.Sprintf("https://bao%d.com/tin/%d.html", h, i))
+		}
+	}
+	for _, u := range urls {
+		if ok, why, err := f.Offer(u); err != nil || !ok {
+			t.Fatalf("Offer %s: %v %s", u, err, why)
+		}
+	}
+	if err := f.Flush(); err != nil {
+		t.Fatalf("Flush: %v", err)
+	}
+	if len(f.runs) == 0 {
+		t.Fatal("nothing spilled to a run, so the disk pass is not being tested")
+	}
+
+	var queued atomic.Int64
+	var wg sync.WaitGroup
+	for range 8 {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			n, err := f.OfferAll(urls)
+			if err != nil {
+				t.Errorf("OfferAll: %v", err)
+				return
+			}
+			queued.Add(int64(n))
+		}()
+	}
+	wg.Wait()
+
+	if got := queued.Load(); got != 0 {
+		t.Fatalf("%d URLs were queued a second time and every one of them was already in a run", got)
+	}
+}
+
+// Two workers offering the same new URL at the same moment queue it once.
+//
+// Once is what the third pass is for. It cannot be guaranteed, because two
+// workers can be inside the run files together and neither has recorded
+// anything, and the whole trade is that an exact overlap costs one page fetched
+// twice rather than costing every offer a disk read under the frontier's lock.
+// This is the size of that: with nothing on disk to read there is no window at
+// all, and the count has to be exactly one.
+func TestOneNewURLOfferedByEveryWorkerAtOnceIsQueuedOnce(t *testing.T) {
+	f := open(t, FrontierOptions{})
+
+	var queued atomic.Int64
+	var wg sync.WaitGroup
+	for range 16 {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			ok, _, err := f.Offer("https://bao.com/tin/1.html")
+			if err != nil {
+				t.Errorf("Offer: %v", err)
+				return
+			}
+			if ok {
+				queued.Add(1)
+			}
+		}()
+	}
+	wg.Wait()
+
+	if got := queued.Load(); got != 1 {
+		t.Fatalf("one URL offered by sixteen workers was queued %d times", got)
 	}
 }
