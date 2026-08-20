@@ -48,6 +48,8 @@ func runStore(stdout, stderr io.Writer, args []string) int {
 		return runStoreMove(stdout, stderr, args[1:])
 	case "index":
 		return runStoreIndex(stdout, stderr, args[1:])
+	case "repair":
+		return runStoreRepair(stdout, stderr, args[1:])
 	case "help", "-h", "--help":
 		storeUsage(stdout)
 		return 0
@@ -72,6 +74,7 @@ subcommands:
   push      upload a file to a dataset repo at the path it belongs at
   card      generate a dataset card from a snapshot manifest
   index     read every part's footer and write the parts index
+  repair    rewrite parts whose string columns hold bytes that are not UTF-8
   move      re-lay a dataset repo into another one without the bytes traveling
   order     what sorting a shard by host buys, and what holding it resident costs
 
