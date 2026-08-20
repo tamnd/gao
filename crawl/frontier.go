@@ -138,6 +138,10 @@ type Frontier struct {
 	o   FrontierOptions
 	dir string
 
+	// mu guards the seen set, the runs and the batching in [Frontier.Next]. Each
+	// queue file has a lock of its own and this one is the outer of the two: a
+	// caller holding this may take a bucket's lock and nothing takes this while
+	// holding a bucket's.
 	mu sync.Mutex
 
 	// filter is the resident approximate set, bits is its length in bits.
@@ -243,11 +247,28 @@ type run struct {
 type bucket struct {
 	path string
 
+	// mu guards this bucket and nothing else.
+	//
+	// The frontier's own lock used to guard every bucket, which meant a URL going
+	// onto one queue file waited for a URL going onto another one. A goroutine
+	// dump of a 2,500 worker run on server3 had 2,007 workers standing in the
+	// frontier's lock and 856 of those were inside [Frontier.Requeue], holding up
+	// the whole box to append one line to one file. The files are independent and
+	// so are these.
+	//
+	// It is the inner lock. A caller that holds the frontier's lock may take it,
+	// and nothing takes the frontier's lock while holding this.
+	mu sync.Mutex
+
 	w  *os.File
 	bw *bufio.Writer
 
 	r  *os.File
 	br *bufio.Reader
+
+	// part is the front of a line that was on the disk without its newline yet.
+	// See [bucket.takeLocked] for why a bucket has one.
+	part string
 
 	head int64 // bytes consumed
 	end  int64 // bytes written
@@ -656,13 +677,17 @@ func (f *Frontier) admit(p pending) (bool, string, error) {
 // that did not happen: a host that asked for time, a connection that broke. It
 // is deliberately separate from Offer, because a URL coming back from a failed
 // fetch is already in the seen set and Offer would refuse it.
+//
+// It takes one bucket's lock rather than the frontier's. Every hand back from a
+// host that is not due yet comes through here, which on a real shard is one call
+// for every two pages fetched, and all any of them does is append a line to a
+// file. Making them queue behind the offers and the batches was most of what a
+// goroutine dump found the workers waiting for.
 func (f *Frontier) Requeue(canonical string) error {
 	host, err := hostOf(canonical)
 	if err != nil {
 		return err
 	}
-	f.mu.Lock()
-	defer f.mu.Unlock()
 	if err := f.push(host, canonical); err != nil {
 		return err
 	}
@@ -690,8 +715,8 @@ func (f *Frontier) Next(n int) ([]string, error) {
 	// The readers cannot see what is sitting in a write buffer, and on a small
 	// queue that is most of it.
 	for _, b := range f.queue {
-		if err := b.bw.Flush(); err != nil {
-			return nil, fmt.Errorf("crawl: reading the queue: %w", err)
+		if err := b.sync(); err != nil {
+			return nil, err
 		}
 	}
 
@@ -784,13 +809,8 @@ func (f *Frontier) Flush() error {
 
 func (f *Frontier) flush() error {
 	for _, b := range f.queue {
-		if err := b.bw.Flush(); err != nil {
-			return fmt.Errorf("crawl: flushing the queue: %w", err)
-		}
-		if b.head >= f.o.Compact {
-			if err := b.compact(); err != nil {
-				return err
-			}
+		if err := b.trim(f.o.Compact); err != nil {
+			return err
 		}
 	}
 	if f.logw != nil {
@@ -820,19 +840,26 @@ func (f *Frontier) Close() error {
 	if f.logw != nil {
 		errs = append(errs, f.logw.Flush())
 	}
+	// Each bucket's own lock is taken here as well as the frontier's, because a
+	// Requeue arriving now holds nothing but the bucket and would otherwise be
+	// writing into a file this is closing.
 	for _, b := range f.queue {
+		b.mu.Lock()
 		if b.bw != nil {
 			errs = append(errs, b.bw.Flush())
 		}
+		b.mu.Unlock()
 	}
 	errs = append(errs, f.writeManifest())
 	for _, b := range f.queue {
+		b.mu.Lock()
 		if b.w != nil {
 			errs = append(errs, b.w.Close())
 		}
 		if b.r != nil {
 			errs = append(errs, b.r.Close())
 		}
+		b.mu.Unlock()
 	}
 	if f.log != nil {
 		errs = append(errs, f.log.Close())
@@ -891,15 +918,18 @@ func (f *Frontier) record(h uint64) error {
 	return nil
 }
 
-// push appends a canonical URL to its host's bucket.
+// push appends a canonical URL to its host's bucket. It takes that bucket's
+// lock and no other, so a caller that holds the frontier's lock may call it and
+// a caller that holds nothing may too.
 func (f *Frontier) push(host, canonical string) error {
-	b := f.queue[int(hashOf(host)%uint64(f.o.Buckets))]
-	n, err := b.bw.WriteString(canonical + "\n")
-	if err != nil {
-		return fmt.Errorf("crawl: queueing a URL: %w", err)
-	}
-	b.end += int64(n)
-	return nil
+	return f.bucket(host).push(canonical)
+}
+
+// bucket is the queue file a host's URLs go in. One host is always in the same
+// bucket, which is what lets a batch be read a bucket at a time and still be
+// spread over hosts.
+func (f *Frontier) bucket(host string) *bucket {
+	return f.queue[int(hashOf(host)%uint64(f.o.Buckets))]
 }
 
 // seen reports whether a hash is in the exact set. The filter answers for most
@@ -1178,27 +1208,87 @@ func (s *scanner) next() (uint64, bool, error) {
 	return binary.BigEndian.Uint64(buf[:]), true, nil
 }
 
+// push appends one URL to the bucket.
+func (b *bucket) push(canonical string) error {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return b.pushLocked(canonical)
+}
+
+func (b *bucket) pushLocked(canonical string) error {
+	n, err := b.bw.WriteString(canonical + "\n")
+	if err != nil {
+		return fmt.Errorf("crawl: queueing a URL: %w", err)
+	}
+	b.end += int64(n)
+	return nil
+}
+
 // take reads the next URL out of a bucket, or returns empty when the bucket has
-// nothing left. The head only moves for a line that was returned, so a crawl
-// killed between here and the fetch loses the batch it was holding and no more.
+// nothing left.
 func (b *bucket) take() (string, error) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return b.takeLocked()
+}
+
+// takeLocked is take with the bucket's lock already held.
+//
+// The head only moves for a line that was returned, so a crawl killed between
+// here and the fetch loses the batch it was holding and no more.
+func (b *bucket) takeLocked() (string, error) {
 	if b.head >= b.end {
 		return "", nil
 	}
 	line, err := b.br.ReadString('\n')
 	if err != nil {
 		if errors.Is(err, io.EOF) {
+			// End of what has reached the disk, which is not the same as the end
+			// of the bucket. The writer's buffer fills in the middle of a URL as
+			// often as anywhere else, and when it does the front of that URL is on
+			// the disk and the rest is still in memory. Those bytes are out of the
+			// reader now whatever this returns, so they are held here and put back
+			// in front of the next read. Dropping them would hand the tail of a URL
+			// out as though it were a whole one.
+			b.part += line
 			return "", nil
 		}
 		return "", fmt.Errorf("crawl: reading %s: %w", b.path, err)
 	}
+	line, b.part = b.part+line, ""
 	b.head += int64(len(line))
 	return strings.TrimSuffix(line, "\n"), nil
 }
 
+// sync writes the bucket's buffer out, so that a reader sees what has been
+// offered rather than only what has spilled.
+func (b *bucket) sync() error {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	if err := b.bw.Flush(); err != nil {
+		return fmt.Errorf("crawl: flushing the queue: %w", err)
+	}
+	return nil
+}
+
+// trim writes the buffer out and hands the disk back when the consumed head has
+// grown past limit.
+func (b *bucket) trim(limit int64) error {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	if err := b.bw.Flush(); err != nil {
+		return fmt.Errorf("crawl: flushing the queue: %w", err)
+	}
+	if b.head < limit {
+		return nil
+	}
+	return b.compact()
+}
+
 // compact cuts the consumed head off a queue file. Everything is closed and
 // reopened around the rename, because the point is to hand the disk back and a
-// file still held open is a file still on the disk.
+// file still held open is a file still on the disk. It is called with the
+// bucket's lock held.
 func (b *bucket) compact() error {
 	if err := b.bw.Flush(); err != nil {
 		return fmt.Errorf("crawl: compacting %s: %w", b.path, err)
@@ -1236,6 +1326,9 @@ func (b *bucket) compact() error {
 		return fmt.Errorf("crawl: compacting %s: %w", b.path, err)
 	}
 	b.w, b.bw, b.r, b.br = w, bufio.NewWriterSize(w, 1<<16), r, bufio.NewReaderSize(r, 1<<16)
+	// The copy started at the head, so a part line held from an earlier read is
+	// back in the file and holding it as well would hand it out twice.
+	b.part = ""
 	b.head, b.end = 0, n
 	return nil
 }

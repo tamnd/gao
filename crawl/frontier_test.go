@@ -751,3 +751,134 @@ func TestABatchIsStillSpreadOverHosts(t *testing.T) {
 		}
 	}
 }
+
+// A URL the write buffer spilled halfway through comes back whole.
+//
+// The bucket's 64 KB write buffer fills in the middle of a URL as often as
+// anywhere else, and when it does the front of that URL is on the disk and the
+// rest is still in memory. A reader that arrives in between is told the bucket
+// has bytes left, reaches the end of the file partway through a line, and
+// whatever it returns it cannot un-read those bytes. They used to be dropped,
+// which meant the front of the URL was gone and its tail came back on the next
+// read looking like a URL of its own.
+//
+// [Frontier.Next] flushes every bucket before it reads, so this was out of reach
+// while a requeue also held the frontier's lock. It is not out of reach now: a
+// requeue takes one bucket and can land between that flush and that read. The
+// bucket is driven directly here because that race is not one a test can arrange
+// on demand.
+func TestAURLTheBufferSplitComesBackWhole(t *testing.T) {
+	f := open(t, FrontierOptions{Buckets: 1})
+	b := f.queue[0]
+
+	var want []string
+	for i := range 1000 {
+		u := fmt.Sprintf("https://bao.com/tin/%d/%s.html", i, strings.Repeat("a", 200))
+		if err := b.push(u); err != nil {
+			t.Fatalf("push: %v", err)
+		}
+		want = append(want, u)
+	}
+
+	// Read what the buffer spilled by itself, with no flush, which is the state a
+	// requeue leaves the file in.
+	var got []string
+	drain := func() {
+		for {
+			line, err := b.take()
+			if err != nil {
+				t.Fatalf("take: %v", err)
+			}
+			if line == "" {
+				return
+			}
+			got = append(got, line)
+		}
+	}
+	drain()
+	if len(got) == 0 {
+		t.Fatal("the buffer never spilled, so this test is checking nothing")
+	}
+	if len(got) == len(want) {
+		t.Fatal("the buffer spilled all of it, so this test is checking nothing")
+	}
+
+	if err := b.sync(); err != nil {
+		t.Fatalf("sync: %v", err)
+	}
+	drain()
+
+	if len(got) != len(want) {
+		t.Fatalf("%d URLs came out of the bucket and %d went in", len(got), len(want))
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Fatalf("URL %d came back as %q and went in as %q", i, got[i], want[i])
+		}
+	}
+}
+
+// Putting URLs back while the frontier is handing them out and taking new ones
+// loses none of them.
+//
+// Requeue no longer takes the frontier's lock, only the lock on the one bucket
+// it writes to, and this is the property that change had to keep. Run it under
+// -race, which is where a bucket written without its lock shows up.
+func TestPuttingURLsBackWhileTheCrawlRunsLosesNothing(t *testing.T) {
+	f := open(t, FrontierOptions{Buckets: 8, PerHost: 1 << 20})
+
+	const hosts, each = 16, 50
+	for h := range hosts {
+		for i := range each {
+			u := fmt.Sprintf("https://bao%d.com/tin/%d.html", h, i)
+			if ok, why, err := f.Offer(u); err != nil || !ok {
+				t.Fatalf("Offer %s: %v %s", u, err, why)
+			}
+		}
+	}
+
+	// Every URL is taken out and put straight back, from many workers at once,
+	// and the last round takes them out for good.
+	var mu sync.Mutex
+	got := map[string]int{}
+	for round := range 4 {
+		last := round == 3
+		var batch []string
+		for {
+			b, err := f.Next(64)
+			if err != nil {
+				t.Fatalf("Next: %v", err)
+			}
+			if len(b) == 0 {
+				break
+			}
+			batch = append(batch, b...)
+		}
+		var wg sync.WaitGroup
+		for _, u := range batch {
+			wg.Add(1)
+			go func() {
+				defer wg.Done()
+				if last {
+					mu.Lock()
+					got[u]++
+					mu.Unlock()
+					return
+				}
+				if err := f.Requeue(u); err != nil {
+					t.Errorf("Requeue %s: %v", u, err)
+				}
+			}()
+		}
+		wg.Wait()
+	}
+
+	if len(got) != hosts*each {
+		t.Fatalf("%d URLs came back out of %d that went in", len(got), hosts*each)
+	}
+	for u, n := range got {
+		if n != 1 {
+			t.Fatalf("%s came out %d times on the last round", u, n)
+		}
+	}
+}
