@@ -30,6 +30,7 @@ import (
 	"sort"
 	"strings"
 	"sync"
+	"sync/atomic"
 
 	"github.com/tamnd/gao/doc"
 	"github.com/tamnd/gao/frontier"
@@ -156,9 +157,80 @@ type Frontier struct {
 	queue []*bucket
 	turn  int
 
-	stats Stats
+	// carry is what the last batch read and could not use, held for the next one
+	// instead of being written back to a bucket. See [Frontier.Next].
+	carry []string
+
+	stats counters
 
 	closed bool
+}
+
+// counters is [Stats] as the frontier keeps it while a crawl is running.
+//
+// They are atomics rather than plain fields under the frontier's mutex because
+// of what one of them was costing. Fetched is called once per URL that comes
+// back and did nothing but add one to four numbers, and taking the frontier's
+// lock to do that put it behind every offer, every batch and every queue write
+// on the box: a goroutine dump of a 2,500 worker run on server3 had 765 workers
+// standing in that lock inside Fetched, against 3,876 on the network. Counting
+// is not a reason to queue.
+//
+// Reading them one at a time means a snapshot can catch a counter mid update
+// and show a total that no single instant had. That is the right trade for a
+// progress line and it is why [Stats] is documented as a snapshot rather than
+// as a transaction.
+type counters struct {
+	Offered   atomic.Int64
+	Admitted  atomic.Int64
+	Duplicate atomic.Int64
+	Refused   atomic.Int64
+	Malformed atomic.Int64
+	Foreign   atomic.Int64
+	Handed    atomic.Int64
+	Deferred  atomic.Int64
+	Requeued  atomic.Int64
+	Fetched   atomic.Int64
+	New       atomic.Int64
+	Repeat    atomic.Int64
+	Empty     atomic.Int64
+}
+
+// load is the counters as a value, for a caller or for the manifest.
+func (c *counters) load() Stats {
+	return Stats{
+		Offered:   c.Offered.Load(),
+		Admitted:  c.Admitted.Load(),
+		Duplicate: c.Duplicate.Load(),
+		Refused:   c.Refused.Load(),
+		Malformed: c.Malformed.Load(),
+		Foreign:   c.Foreign.Load(),
+		Handed:    c.Handed.Load(),
+		Deferred:  c.Deferred.Load(),
+		Requeued:  c.Requeued.Load(),
+		Fetched:   c.Fetched.Load(),
+		New:       c.New.Load(),
+		Repeat:    c.Repeat.Load(),
+		Empty:     c.Empty.Load(),
+	}
+}
+
+// store puts a value back, which happens once, when a frontier is opened on a
+// directory a previous run left counters in.
+func (c *counters) store(s Stats) {
+	c.Offered.Store(s.Offered)
+	c.Admitted.Store(s.Admitted)
+	c.Duplicate.Store(s.Duplicate)
+	c.Refused.Store(s.Refused)
+	c.Malformed.Store(s.Malformed)
+	c.Foreign.Store(s.Foreign)
+	c.Handed.Store(s.Handed)
+	c.Deferred.Store(s.Deferred)
+	c.Requeued.Store(s.Requeued)
+	c.Fetched.Store(s.Fetched)
+	c.New.Store(s.New)
+	c.Repeat.Store(s.Repeat)
+	c.Empty.Store(s.Empty)
 }
 
 // A run is one sorted file of hashes, with a fence index in memory.
@@ -293,7 +365,8 @@ func OpenFrontier(o FrontierOptions) (*Frontier, error) {
 			return nil, fmt.Errorf("crawl: the frontier in %s is shard %d of %d and this run is shard %d of %d",
 				o.Dir, m.Shard, m.Fleet, o.Shard, o.Fleet)
 		}
-		f.gen, f.stats = m.Gen, m.Stats
+		f.gen = m.Gen
+		f.stats.store(m.Stats)
 		// A resume with a smaller filter than the one that filled it would be
 		// wrong about everything. The plan is allowed to grow.
 		o.Expect = max(o.Expect, m.Expect)
@@ -466,57 +539,109 @@ func (f *Frontier) openQueue(m *manifest) error {
 // charged to the budget, because charging a host for a URL it has already been
 // asked for is how a host's allowance gets spent on one page.
 func (f *Frontier) Offer(rawurl string) (bool, string, error) {
+	p := parseOffer(rawurl)
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return f.admit(p)
+}
+
+// OfferAll puts a page's links to the frontier in one turn at the lock.
+//
+// It exists because of the ratio. A crawl offers around sixty links for every
+// page it fetches, 909,695 URLs from 15,669 pages on the bench that measured it,
+// so the frontier is asked sixty times as often as anything else on the box and
+// one call per link makes it the queue every worker stands in. A goroutine dump
+// of a two thousand worker run had 1,584 workers waiting on this lock, against
+// 46 in the sink and 48 on the network.
+//
+// The parsing, the canonicalization and the fleet split all happen before the
+// lock is taken, because none of them touch the frontier, and doing the whole
+// page's worth of that work up front is what makes one turn at the lock enough.
+func (f *Frontier) OfferAll(rawurls []string) (int, error) {
+	if len(rawurls) == 0 {
+		return 0, nil
+	}
+	ps := make([]pending, len(rawurls))
+	for i, u := range rawurls {
+		ps[i] = parseOffer(u)
+	}
+
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	queued := 0
+	for _, p := range ps {
+		ok, _, err := f.admit(p)
+		if err != nil {
+			return queued, err
+		}
+		if ok {
+			queued++
+		}
+	}
+	return queued, nil
+}
+
+// A pending is a URL that has been through the checks needing nothing from the
+// frontier: whether it parses and what host it is on.
+type pending struct {
+	canonical string
+	host      string
+	why       string // filled in when the URL was already refused
+	bad       bool   // refused for not parsing rather than for the fleet split
+}
+
+// parseOffer does the part of an offer that needs no lock. It is the expensive
+// part, a URL parse and two hashes, and the whole reason it is separate.
+func parseOffer(rawurl string) pending {
 	canonical, err := frontier.Canon(rawurl)
 	if err != nil {
-		f.mu.Lock()
-		f.stats.Offered++
-		f.stats.Malformed++
-		f.mu.Unlock()
-		return false, err.Error(), nil
+		return pending{why: err.Error(), bad: true}
 	}
 	host, err := hostOf(canonical)
 	if err != nil {
-		f.mu.Lock()
-		f.stats.Offered++
-		f.stats.Malformed++
-		f.mu.Unlock()
-		return false, err.Error(), nil
+		return pending{why: err.Error(), bad: true}
+	}
+	return pending{canonical: canonical, host: host}
+}
+
+// admit is the half of an offer that touches the frontier. It is called with
+// the lock held.
+func (f *Frontier) admit(p pending) (bool, string, error) {
+	f.stats.Offered.Add(1)
+	if p.bad {
+		f.stats.Malformed.Add(1)
+		return false, p.why, nil
 	}
 
 	// The fleet split comes before anything is remembered. A URL another box
 	// owns is not this box's business at all, and recording it here would put a
 	// hash in this frontier's set for a page this frontier will never fetch.
-	if f.o.Fleet > 1 && int(hashOf(host)%uint64(f.o.Fleet)) != f.o.Shard {
-		f.mu.Lock()
-		f.stats.Offered++
-		f.stats.Foreign++
-		f.mu.Unlock()
-		return false, fmt.Sprintf("%s belongs to box %d of %d", host, hashOf(host)%uint64(f.o.Fleet), f.o.Fleet), nil
+	if f.o.Fleet > 1 {
+		if box := int(hashOf(p.host) % uint64(f.o.Fleet)); box != f.o.Shard {
+			f.stats.Foreign.Add(1)
+			return false, fmt.Sprintf("%s belongs to box %d of %d", p.host, box, f.o.Fleet), nil
+		}
 	}
 
-	f.mu.Lock()
-	defer f.mu.Unlock()
-	f.stats.Offered++
-
-	h := hashOf(canonical)
+	h := hashOf(p.canonical)
 	seen, err := f.seen(h)
 	if err != nil {
 		return false, "", err
 	}
 	if seen {
-		f.stats.Duplicate++
+		f.stats.Duplicate.Add(1)
 		return false, "already offered", nil
 	}
 
 	if f.o.Budget != nil {
-		if ok, why := f.o.Budget.Offer(canonical); !ok {
+		if ok, why := f.o.Budget.Offer(p.canonical); !ok {
 			// The refusal is remembered too. A trap generates the same URL from
 			// twenty pages and refusing it twenty times is twenty shape lookups
 			// for an answer that will not change.
 			if err := f.record(h); err != nil {
 				return false, "", err
 			}
-			f.stats.Refused++
+			f.stats.Refused.Add(1)
 			return false, why, nil
 		}
 	}
@@ -524,10 +649,10 @@ func (f *Frontier) Offer(rawurl string) (bool, string, error) {
 	if err := f.record(h); err != nil {
 		return false, "", err
 	}
-	if err := f.push(host, canonical); err != nil {
+	if err := f.push(p.host, p.canonical); err != nil {
 		return false, "", err
 	}
-	f.stats.Admitted++
+	f.stats.Admitted.Add(1)
 	return true, "", nil
 }
 
@@ -545,7 +670,7 @@ func (f *Frontier) Requeue(canonical string) error {
 	if err := f.push(host, canonical); err != nil {
 		return err
 	}
-	f.stats.Requeued++
+	f.stats.Requeued.Add(1)
 	return nil
 }
 
@@ -578,6 +703,24 @@ func (f *Frontier) Next(n int) ([]string, error) {
 	per := map[string]int{}
 	var over []string
 
+	// What the last batch could not use comes first, because it was read from
+	// the front of a bucket and is older than anything still in one.
+	carry := f.carry
+	f.carry = f.carry[:0]
+	for _, line := range carry {
+		host, err := hostOf(line)
+		if err != nil {
+			f.stats.Malformed.Add(1)
+			continue
+		}
+		if len(out) >= n || per[host] >= f.o.PerHost {
+			over = append(over, line)
+			continue
+		}
+		per[host]++
+		out = append(out, line)
+	}
+
 	// Every bucket gets a look, and a bucket that only had URLs for hosts
 	// already at their share is not a reason to stop. The read cap is what
 	// stops a bucket holding a million URLs for one host from being pulled into
@@ -596,7 +739,7 @@ func (f *Frontier) Next(n int) ([]string, error) {
 			}
 			host, err := hostOf(line)
 			if err != nil {
-				f.stats.Malformed++
+				f.stats.Malformed.Add(1)
 				continue
 			}
 			if per[host] >= f.o.PerHost {
@@ -611,7 +754,29 @@ func (f *Frontier) Next(n int) ([]string, error) {
 		}
 	}
 
-	for _, line := range over {
+	// What is over a host's share is held for the next batch rather than written
+	// back to a bucket.
+	//
+	// It used to be written back, and on a 2,500 worker box that was the largest
+	// single cost in the frontier: a batch of twenty thousand at two per host
+	// needs ten thousand distinct hosts to fill, so most of what a bucket holds
+	// is over the share the moment it is read. server3 deferred 509,708 URLs in
+	// five minutes against 27,236 pages fetched, nineteen reads and nineteen
+	// writes of the queue for every page, all of it under the lock every worker
+	// wants.
+	//
+	// Holding them costs memory bounded by [Frontier.Next]'s read cap and gives
+	// the next batch the oldest URLs on the box, which is the order a queue is
+	// supposed to have. Past the bound the rest go back to disk as before, so a
+	// frontier that has drifted onto a handful of hosts still cannot grow a list
+	// in memory without limit.
+	keep := over
+	if len(keep) > most {
+		keep = over[:most]
+	}
+	f.carry = append(f.carry, keep...)
+	f.stats.Deferred.Add(int64(len(keep)))
+	for _, line := range over[len(keep):] {
 		host, err := hostOf(line)
 		if err != nil {
 			continue
@@ -619,36 +784,37 @@ func (f *Frontier) Next(n int) ([]string, error) {
 		if err := f.push(host, line); err != nil {
 			return nil, err
 		}
-		f.stats.Deferred++
+		f.stats.Deferred.Add(1)
 	}
-	f.stats.Handed += int64(len(out))
+	f.stats.Handed.Add(int64(len(out)))
 	return out, nil
 }
 
 // Fetched reports what a URL turned into, which is what the budget earns on and
 // what tells a template that produces nothing from one that produces articles.
+//
+// It takes no lock. The counters are atomics and the budget keeps its own, so
+// the one call a worker makes for every URL it finishes no longer queues behind
+// the offers and the batches.
 func (f *Frontier) Fetched(canonical string, r frontier.Result) {
-	f.mu.Lock()
-	f.stats.Fetched++
+	f.stats.Fetched.Add(1)
 	switch r {
 	case frontier.New:
-		f.stats.New++
+		f.stats.New.Add(1)
 	case frontier.Repeat:
-		f.stats.Repeat++
+		f.stats.Repeat.Add(1)
 	default:
-		f.stats.Empty++
+		f.stats.Empty.Add(1)
 	}
-	f.mu.Unlock()
 	if f.o.Budget != nil {
 		f.o.Budget.Fetched(canonical, r)
 	}
 }
 
-// Stats is a snapshot of the counters.
+// Stats is a snapshot of the counters, read without the lock and therefore
+// without stopping the crawl to print a progress line.
 func (f *Frontier) Stats() Stats {
-	f.mu.Lock()
-	defer f.mu.Unlock()
-	return f.stats
+	return f.stats.load()
 }
 
 // Flush writes everything that is only in memory: the queue buffers, the pending
@@ -661,6 +827,9 @@ func (f *Frontier) Flush() error {
 }
 
 func (f *Frontier) flush() error {
+	if err := f.spillCarry(); err != nil {
+		return err
+	}
 	for _, b := range f.queue {
 		if err := b.bw.Flush(); err != nil {
 			return fmt.Errorf("crawl: flushing the queue: %w", err)
@@ -684,6 +853,27 @@ func (f *Frontier) flush() error {
 	return f.writeManifest()
 }
 
+// spillCarry writes what the last batch held back to the buckets it came from.
+//
+// Those URLs were read out of a queue file and exist nowhere else, so anything
+// that makes the directory the whole state of the frontier has to call this
+// first. That is both the checkpoint and the close, and the close does not go
+// through the checkpoint, which is how the first version of this lost 26 URLs
+// out of 200 across a restart.
+func (f *Frontier) spillCarry() error {
+	for _, line := range f.carry {
+		host, err := hostOf(line)
+		if err != nil {
+			continue
+		}
+		if err := f.push(host, line); err != nil {
+			return err
+		}
+	}
+	f.carry = f.carry[:0]
+	return nil
+}
+
 // Close flushes and closes everything. A frontier that was closed cleanly opens
 // again with nothing lost.
 func (f *Frontier) Close() error {
@@ -695,6 +885,7 @@ func (f *Frontier) Close() error {
 	f.closed = true
 
 	var errs []error
+	errs = append(errs, f.spillCarry())
 	if f.logw != nil {
 		errs = append(errs, f.logw.Flush())
 	}
@@ -729,7 +920,7 @@ func (f *Frontier) writeManifest() error {
 		Shard:   f.o.Shard,
 		Fleet:   f.o.Fleet,
 		Gen:     f.gen,
-		Stats:   f.stats,
+		Stats:   f.stats.load(),
 	}
 	for _, r := range f.runs {
 		m.Runs = append(m.Runs, runMan{Name: r.name, Count: r.count})

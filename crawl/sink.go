@@ -34,6 +34,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/tamnd/gao/fleet"
@@ -154,30 +155,78 @@ type sinkState struct {
 	Reject int `json:"reject_part"`
 }
 
+// warcGzip is whether the volumes are compressed. It is not an option because a
+// run whose archive does not fit on the disk is not a run, and it is a named
+// constant because the sink now compresses a record in one place and writes it
+// in another and the two have to agree.
+const warcGzip = true
+
+// A stream is one repo's part writer with the lock that serializes it.
+//
+// The lock is per repo rather than one for the pair because the two are written
+// at different moments by different workers, and because closing a part sends it
+// to the store: a kept part being uploaded should not stop the rejects being
+// written for the minute that takes.
+type stream struct {
+	mu   sync.Mutex
+	roll *store.Roll
+	// opened is when the part being written was first written to. The zero time
+	// means no part is open, which is the state a fresh sink and a sink that has
+	// just pushed a part are both in.
+	opened time.Time
+}
+
+// sinkCount is the running totals. They are atomics rather than fields under a
+// lock because every worker adds to them and reading them for a progress line
+// should not have to wait behind a part upload.
+type sinkCount struct {
+	archived, kept, dropped         atomic.Int64
+	volumes, warcBytes, aged        atomic.Int64
+	parts, partBytes, pushed, freed atomic.Int64
+}
+
 // A Sink is the output side of one crawl on one box.
 //
-// It is safe for concurrent use, and the lock is one lock over all three
-// streams. Two workers writing WARC records at once would interleave them, and
-// splitting the lock in three would buy nothing anyway: a crawl spends its time
-// waiting for hosts, not waiting for a file.
+// It is safe for concurrent use, and it holds three locks rather than one. That
+// was one lock, on the reasoning that a crawl spends its time waiting for hosts
+// rather than waiting for a file. Measurement said otherwise. A goroutine dump
+// of a two thousand worker run on server3 had 1,841 workers blocked on that one
+// lock and 75 of them on the network, 1,173 waiting to append a Parquet row and
+// 668 waiting to write a WARC record, because the record was being gzipped at
+// the highest deflate level with the lock held and every other worker on the box
+// was queueing behind that one compression.
+//
+// So the compression moved out of the lock, which [harvest.EncodeRecord] is
+// for, and the lock became three: one for the WARC stream, and one for each of
+// the two repos. Two workers writing WARC records at once would still interleave
+// them, so the archive is still serialized, but it is serialized around a file
+// write rather than around a compressor.
 type Sink struct {
 	o     SinkOptions
 	kept  store.Dataset
 	drops store.Dataset
 
-	mu     sync.Mutex
-	state  sinkState
+	// streams is fixed at open and never written to afterwards, so a worker
+	// reads it without a lock and takes the lock inside the stream it found.
+	streams map[string]*stream
+
+	warcMu sync.Mutex
 	warc   *harvest.WARCWriter
 	file   *os.File
 	name   string
-	closed bool
 	done   []string
-	rolls  map[string]*store.Roll
-	// opened is when the part each roll is writing was first written to. A repo
-	// with no entry has no part open, which is the state a fresh sink and a sink
-	// that has just pushed a part are both in.
-	opened map[string]time.Time
-	stats  SinkStats
+
+	// stateMu is the innermost lock. It is taken while one of the others is
+	// held and never the other way round, which is what keeps the order safe.
+	stateMu sync.Mutex
+	state   sinkState
+
+	// outMu keeps the two repos from interleaving their progress lines, which
+	// they can now do because they no longer share a lock.
+	outMu sync.Mutex
+
+	closed atomic.Bool
+	stats  sinkCount
 }
 
 // VolumePath is where one WARC volume lives under the working directory.
@@ -215,19 +264,15 @@ func OpenSink(o SinkOptions) (*Sink, error) {
 	if err := os.MkdirAll(filepath.Join(o.Dir, "warc"), 0o755); err != nil {
 		return nil, fmt.Errorf("crawl: making the volume directory: %w", err)
 	}
-	s := &Sink{
-		o: o, kept: kept, drops: drops,
-		rolls:  map[string]*store.Roll{},
-		opened: map[string]time.Time{},
-	}
+	s := &Sink{o: o, kept: kept, drops: drops, streams: map[string]*stream{}}
 	if err := s.load(); err != nil {
 		return nil, err
 	}
 	if err := s.found(); err != nil {
 		return nil, err
 	}
-	s.rolls[KeptRepo] = s.roll(kept, s.state.Kept)
-	s.rolls[RejectRepo] = s.roll(drops, s.state.Reject)
+	s.streams[KeptRepo] = &stream{roll: s.roll(kept, s.state.Kept)}
+	s.streams[RejectRepo] = &stream{roll: s.roll(drops, s.state.Reject)}
 	return s, nil
 }
 
@@ -323,9 +368,31 @@ func (s *Sink) roll(d store.Dataset, first int) *store.Roll {
 // extractor is a program we will change, and a page it got wrong is only worth
 // having if the bytes are still here when the next version runs.
 func (s *Sink) Archive(v *harvest.Visit, at time.Time) (string, error) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	if s.closed {
+	if s.closed.Load() {
+		return "", fmt.Errorf("crawl: that sink is closed")
+	}
+
+	// Built and compressed before the lock is taken, which is the whole of what
+	// this costs. Each record is its own gzip member, so a worker can do its own
+	// deflating on its own core and take its turn at the file only to hand over
+	// bytes that are already finished.
+	recs := harvest.VisitRecords(v, at, harvest.Agent(s.o.Version))
+	bodies := make([][]byte, len(recs))
+	response := -1
+	for i, r := range recs {
+		b, err := harvest.EncodeRecord(r, warcGzip)
+		if err != nil {
+			return "", fmt.Errorf("crawl: encoding %s: %w", v.URL, err)
+		}
+		bodies[i] = b
+		if r.Type() == "response" {
+			response = i
+		}
+	}
+
+	s.warcMu.Lock()
+	defer s.warcMu.Unlock()
+	if s.closed.Load() {
 		return "", fmt.Errorf("crawl: that sink is closed")
 	}
 	if err := s.volume(); err != nil {
@@ -333,16 +400,16 @@ func (s *Sink) Archive(v *harvest.Visit, at time.Time) (string, error) {
 	}
 
 	var locator string
-	for _, r := range harvest.VisitRecords(v, at, harvest.Agent(s.o.Version)) {
-		offset, length, err := s.warc.Write(r)
+	for i, b := range bodies {
+		offset, length, err := s.warc.Append(b)
 		if err != nil {
 			return "", fmt.Errorf("crawl: writing %s to %s: %w", v.URL, s.name, err)
 		}
-		if r.Type() == "response" {
+		if i == response {
 			locator = fmt.Sprintf("%s@%d+%d", s.name, offset, length)
 		}
 	}
-	s.stats.Archived++
+	s.stats.archived.Add(1)
 	if s.warc.Offset() >= s.o.Volume {
 		if err := s.rotate(); err != nil {
 			return locator, err
@@ -357,50 +424,67 @@ func (s *Sink) Write(v Verdict) error {
 	if v.Doc == nil {
 		return fmt.Errorf("crawl: a verdict arrived with no document, which is a bug in the caller")
 	}
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	if s.closed {
+	if s.closed.Load() {
+		return fmt.Errorf("crawl: that sink is closed")
+	}
+	name := RejectRepo
+	if v.Kept {
+		name = KeptRepo
+	}
+	st := s.streams[name]
+
+	st.mu.Lock()
+	defer st.mu.Unlock()
+	if s.closed.Load() {
 		return fmt.Errorf("crawl: that sink is closed")
 	}
 	if v.Kept {
-		if err := s.rolls[KeptRepo].Append(v.Doc); err != nil {
+		if err := st.roll.Append(v.Doc); err != nil {
 			return err
 		}
-		s.stats.Kept++
-		return s.due(KeptRepo)
+		s.stats.kept.Add(1)
+		return s.due(st)
 	}
-	if err := s.rolls[RejectRepo].AppendReject(v.Doc, v.Stage, string(v.Reason), v.Detail); err != nil {
+	if err := st.roll.AppendReject(v.Doc, v.Stage, string(v.Reason), v.Detail); err != nil {
 		return err
 	}
-	s.stats.Dropped++
-	return s.due(RejectRepo)
+	s.stats.dropped.Add(1)
+	return s.due(st)
 }
 
 // due closes the part one repo is writing when it has been open longer than the
-// run allows.
+// run allows. It is called with that repo's lock held.
 //
 // It is called after the append rather than before it, so the part that is
 // timed is the one the row just went into. That also means the clock is only
 // read when a row arrives: a repo nothing is being written to holds its part
 // open rather than pushing an empty one every interval, and a crawl that stops
 // pushes what is open on the way out.
-func (s *Sink) due(name string) error {
-	at, open := s.opened[name]
-	if !open {
-		s.opened[name] = time.Now()
+func (s *Sink) due(st *stream) error {
+	if st.opened.IsZero() {
+		st.opened = time.Now()
 		return nil
 	}
-	if time.Since(at) < s.o.PartEvery {
+	if time.Since(st.opened) < s.o.PartEvery {
 		return nil
 	}
-	return s.rolls[name].Cut()
+	return st.roll.Cut()
 }
 
 // Stats returns what the sink has written.
 func (s *Sink) Stats() SinkStats {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	return s.stats
+	return SinkStats{
+		Archived:  s.stats.archived.Load(),
+		Kept:      s.stats.kept.Load(),
+		Dropped:   s.stats.dropped.Load(),
+		Volumes:   int(s.stats.volumes.Load()),
+		WARCBytes: s.stats.warcBytes.Load(),
+		Aged:      int(s.stats.aged.Load()),
+		Parts:     int(s.stats.parts.Load()),
+		PartBytes: s.stats.partBytes.Load(),
+		Pushed:    int(s.stats.pushed.Load()),
+		Freed:     s.stats.freed.Load(),
+	}
 }
 
 // Flush closes the open WARC volume without closing the sink, so that a
@@ -408,9 +492,9 @@ func (s *Sink) Stats() SinkStats {
 // closed early is a small part, and a crawl that checkpointed every minute would
 // publish a thousand of them.
 func (s *Sink) Flush() error {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	if s.closed || s.warc == nil {
+	s.warcMu.Lock()
+	defer s.warcMu.Unlock()
+	if s.closed.Load() || s.warc == nil {
 		return nil
 	}
 	return s.rotate()
@@ -418,24 +502,32 @@ func (s *Sink) Flush() error {
 
 // Close finishes both rolls and the open volume.
 func (s *Sink) Close() error {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	if s.closed {
+	if s.closed.Swap(true) {
 		return nil
 	}
-	s.closed = true
 
+	// The flag is set first and each lock is taken after it, so a worker already
+	// inside Write or Archive finishes the row it was writing and the next one
+	// to arrive is turned away rather than finding a closed roll.
 	var first error
 	for _, name := range []string{KeptRepo, RejectRepo} {
-		if _, err := s.rolls[name].Close(); err != nil && first == nil {
+		st := s.streams[name]
+		st.mu.Lock()
+		_, err := st.roll.Close()
+		st.mu.Unlock()
+		if err != nil && first == nil {
 			first = err
 		}
 	}
+
+	s.warcMu.Lock()
 	if s.warc != nil {
 		if err := s.rotate(); err != nil && first == nil {
 			first = err
 		}
 	}
+	s.warcMu.Unlock()
+
 	if err := s.save(); err != nil && first == nil {
 		first = err
 	}
@@ -443,7 +535,7 @@ func (s *Sink) Close() error {
 }
 
 // volume opens the current WARC volume if none is open, writing the warcinfo
-// record that says who made the file.
+// record that says who made the file. It is called with the WARC lock held.
 func (s *Sink) volume() error {
 	if s.warc != nil {
 		return nil
@@ -454,6 +546,7 @@ func (s *Sink) volume() error {
 	// writing over it would leave them pointing at the wrong bytes.
 	var f *os.File
 	var rel string
+	s.stateMu.Lock()
 	for {
 		rel = VolumePath(s.o.Snapshot, s.o.Shard, s.state.Volume)
 		var err error
@@ -462,11 +555,13 @@ func (s *Sink) volume() error {
 			break
 		}
 		if !os.IsExist(err) {
+			s.stateMu.Unlock()
 			return fmt.Errorf("crawl: opening %s: %w", rel, err)
 		}
 		s.state.Volume++
 	}
-	s.file, s.name, s.warc = f, rel, harvest.NewWARCWriter(f, true)
+	s.stateMu.Unlock()
+	s.file, s.name, s.warc = f, rel, harvest.NewWARCWriter(f, warcGzip)
 	info := harvest.Info(harvest.WARCInfo{
 		Filename:  filepath.Base(rel),
 		Software:  Stage,
@@ -483,7 +578,7 @@ func (s *Sink) volume() error {
 }
 
 // rotate closes the open volume and moves the counter on, aging out the oldest
-// volume if the run is only keeping a few.
+// volume if the run is only keeping a few. It is called with the WARC lock held.
 func (s *Sink) rotate() error {
 	if s.warc == nil {
 		return nil
@@ -496,9 +591,11 @@ func (s *Sink) rotate() error {
 	if err := f.Close(); err != nil {
 		return fmt.Errorf("crawl: closing %s: %w", name, err)
 	}
-	s.stats.Volumes++
-	s.stats.WARCBytes += n
+	s.stats.volumes.Add(1)
+	s.stats.warcBytes.Add(n)
+	s.stateMu.Lock()
 	s.state.Volume++
+	s.stateMu.Unlock()
 	s.done = append(s.done, name)
 	if err := s.age(); err != nil {
 		return err
@@ -512,6 +609,8 @@ func (s *Sink) rotate() error {
 // reason: the disk under a crawler is cache. What it costs is that a document
 // whose locator names a deleted volume points at bytes nobody has, and that is
 // the trade a run makes when it sets the number.
+//
+// It is called with the WARC lock held, which is what guards s.done.
 func (s *Sink) age() error {
 	if s.o.Keep <= 0 {
 		return nil
@@ -522,20 +621,25 @@ func (s *Sink) age() error {
 		if err := os.Remove(filepath.Join(s.o.Dir, filepath.FromSlash(old))); err != nil && !os.IsNotExist(err) {
 			return fmt.Errorf("crawl: aging out %s: %w", old, err)
 		}
-		s.stats.Aged++
+		s.stats.aged.Add(1)
 	}
 	return nil
 }
 
 // finished takes one closed part to the store and gives the disk back.
+//
+// It is the roll's own callback, so it runs inside the append that closed the
+// part and that repo's lock is already held. That is what makes the write to
+// opened below safe and it is why the upload underneath it stops only this repo
+// rather than the crawl.
 func (s *Sink) finished(d store.Dataset, f store.PartFile) error {
-	s.stats.Parts++
-	s.stats.PartBytes += f.Bytes
+	s.stats.parts.Add(1)
+	s.stats.partBytes.Add(f.Bytes)
 	s.count(d)
 	// This repo has no part open now, whether it was the clock or the size that
 	// closed the last one. The next row to arrive starts the next part and the
 	// clock on it.
-	delete(s.opened, d.Name)
+	s.streams[d.Name].opened = time.Time{}
 
 	verb := "wrote"
 	if s.o.Push != nil {
@@ -553,12 +657,14 @@ func (s *Sink) finished(d store.Dataset, f store.PartFile) error {
 		// The directory a part sat in is empty once the last part has gone, and
 		// this fails while it is not, which is the condition to check.
 		_ = os.Remove(filepath.Dir(local))
-		s.stats.Pushed++
-		s.stats.Freed += f.Bytes
+		s.stats.pushed.Add(1)
+		s.stats.freed.Add(f.Bytes)
 		verb = "pushed"
 	}
 	if s.o.Out != nil {
+		s.outMu.Lock()
 		fmt.Fprintf(s.o.Out, "%-8s %-52s %8s  %d rows\n", verb, d.Repo()+"/"+f.Path, fleet.GB(f.Bytes), f.Documents)
+		s.outMu.Unlock()
 	}
 	return s.save()
 }
@@ -566,6 +672,8 @@ func (s *Sink) finished(d store.Dataset, f store.PartFile) error {
 // count moves the part number for one dataset on, so that a run started again
 // numbers from where this one got to.
 func (s *Sink) count(d store.Dataset) {
+	s.stateMu.Lock()
+	defer s.stateMu.Unlock()
 	if d.Name == KeptRepo {
 		s.state.Kept++
 		return
@@ -590,7 +698,12 @@ func (s *Sink) load() error {
 	return nil
 }
 
+// save rewrites the counter file. It takes the state lock for the whole of it
+// rather than only for the marshal, because two repos closing a part at the same
+// moment would otherwise be writing the same temporary file.
 func (s *Sink) save() error {
+	s.stateMu.Lock()
+	defer s.stateMu.Unlock()
 	b, err := json.MarshalIndent(s.state, "", "  ")
 	if err != nil {
 		return err

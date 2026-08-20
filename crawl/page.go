@@ -99,9 +99,25 @@ const Extractor = "gao-crawl@" + ExtractorVersion
 // this run got to, and the corpus either side of the boundary is drawn from a
 // different set of hosts.
 //
+// 0.7.0 is where the crawl started going as fast as the box it is on. Under
+// 0.6.0 the default was twenty workers, all of them sharing one connection pool
+// behind one mutex, and every fetched page took the same sink lock to be gzipped
+// at the highest deflate level and then took it again per link to be offered to
+// the frontier. On server3 that was 6.4 pages a second while ami on the same box
+// at the same loaded moment held 130. The workers now number in the hundreds,
+// the connection pools are sharded by host, a host that has never answered is
+// given up on after three tries, a record is compressed before the sink lock is
+// taken rather than inside it, and a page's links go to the frontier in one
+// turn at its lock instead of sixty.
+//
+// None of that changes a column and all of it changes which pages are in the
+// corpus. A crawl that fetches ten times as many pages an hour reaches deeper
+// into each site before a part closes, and the dead host rule means the hosts
+// that only ever timed out are absent rather than represented by their failures.
+//
 // Older rows stay published rather than being deleted, since a version column
 // nobody has to trust is worth more than a corpus with holes in it.
-const PipelineVersion = "0.6.0"
+const PipelineVersion = "0.7.0"
 
 // A Page is what one HTML document had in it.
 type Page struct {

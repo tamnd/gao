@@ -2,6 +2,7 @@ package crawl
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -9,6 +10,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -432,6 +434,88 @@ func TestASinkThatIsClosedSaysSo(t *testing.T) {
 	}
 	if err := s.Close(); err != nil {
 		t.Errorf("closing twice: %v", err)
+	}
+}
+
+// Every worker on the box writes to one sink at once, so what it does under that
+// has to be right rather than only fast. This is the test the lock split is for:
+// it runs the three streams together the way a crawl does and then reads the
+// archive back record by record, which is where an interleaved WARC shows up.
+func TestManyWorkersWritingAtOnceLeaveAReadableArchive(t *testing.T) {
+	dir := t.TempDir()
+	s := openSink(t, SinkOptions{Dir: dir})
+
+	const workers, each = 24, 20
+	var wg sync.WaitGroup
+	errs := make(chan error, workers*each*2)
+	for w := range workers {
+		wg.Go(func() {
+			for i := range each {
+				n := w*each + i
+				body := fmt.Sprintf("<html><body><p>Bai viet so %d</p></body></html>", n)
+				if _, err := s.Archive(visit(fmt.Sprintf("https://baodongthap.example/tin-%d.html", n), body), time.Now()); err != nil {
+					errs <- err
+					return
+				}
+				// Both repos, because the two used to share a lock with the
+				// archive and now hold one each.
+				if err := s.Write(Verdict{Doc: sampleDoc(n), Kept: n%2 == 0, Stage: StageSift, Reason: reject.ReasonShort}); err != nil {
+					errs <- err
+					return
+				}
+			}
+		})
+	}
+	wg.Wait()
+	close(errs)
+	for err := range errs {
+		t.Fatalf("writing from many workers: %v", err)
+	}
+
+	stats := s.Stats()
+	if err := s.Close(); err != nil {
+		t.Fatalf("Close: %v", err)
+	}
+	if want := int64(workers * each); stats.Archived != want {
+		t.Errorf("archived %d visits, want %d", stats.Archived, want)
+	}
+	if got := stats.Kept + stats.Dropped; got != int64(workers*each) {
+		t.Errorf("wrote %d rows, want %d", got, workers*each)
+	}
+
+	volumes, err := filepath.Glob(filepath.Join(dir, "warc", "*.warc.gz"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	seen := 0
+	for _, v := range volumes {
+		f, err := os.Open(v)
+		if err != nil {
+			t.Fatal(err)
+		}
+		r, err := harvest.NewWARCReader(f)
+		if err != nil {
+			t.Fatalf("%s would not open: %v", filepath.Base(v), err)
+		}
+		for {
+			rec, err := r.Next()
+			if errors.Is(err, harvest.ErrDone) {
+				break
+			}
+			if err != nil {
+				t.Fatalf("%s stopped reading after %d records: %v", filepath.Base(v), seen, err)
+			}
+			if rec.Type() == "response" {
+				seen++
+			}
+		}
+		_ = f.Close()
+	}
+	// One response record per visit, all of them readable in sequence. A record
+	// whose bytes were interleaved with another worker's would have ended the
+	// read above rather than arriving short.
+	if seen != workers*each {
+		t.Errorf("read %d response records back, want %d", seen, workers*each)
 	}
 }
 

@@ -2,6 +2,7 @@ package main
 
 import (
 	"bufio"
+	"compress/gzip"
 	"context"
 	"encoding/json"
 	"flag"
@@ -34,9 +35,14 @@ func runCrawl(stdout, stderr io.Writer, args []string) int {
 	shard := fs.Int("shard", 0, "this box's index in the fleet, which decides which hosts it owns and names its parts")
 	boxes := fs.Int("fleet", 1, "how many boxes are crawling, so that every host is fetched by exactly one of them")
 	workers := fs.Int("workers", crawl.DefaultWorkers, "how many fetches are in flight at once")
-	batch := fs.Int("batch", crawl.DefaultBatch, "how many URLs are taken from the frontier at a time")
+	batch := fs.Int("batch", 0, "how many URLs are taken from the frontier at a time (default eight per worker)")
 	pages := fs.Int64("pages", 0, "stop after this many fetches, which is how a first run is kept to a size somebody can read")
 	delay := fs.Duration("delay", harvest.DefaultDelay, "the gap between two requests to one host, before the site's own Crawl-delay")
+	header := fs.Duration("header", harvest.DefaultHeaderTimeout, "how long a server has to begin answering before the request is given up on")
+	timeout := fs.Duration("timeout", harvest.DefaultFetchTimeout, "how long the whole exchange gets, header and body together")
+	shards := fs.Int("shards", harvest.DefaultShards, "how many keep-alive pools the hosts are spread over")
+	strikes := fs.Int("strikes", harvest.DefaultStrikes, "how many failures a host that has never answered gets, or -1 to keep asking")
+	verify := fs.Bool("verify", false, "check TLS certificates, which drops the sites whose certificates have expired")
 	expect := fs.Int64("expect", crawl.DefaultExpect, "how many URLs the frontier's resident filter is sized for")
 	volume := fs.Int64("volume", crawl.DefaultVolume, "how large a WARC volume grows before the next one opens")
 	keep := fs.Int("keep", 0, "how many finished WARC volumes stay on the disk, zero for all of them")
@@ -105,12 +111,6 @@ flags:
 		*snapshot = "web-" + time.Now().UTC().Format("20060102")
 	}
 
-	urls, err := crawlSeeds(*seeds, fs.Args())
-	if err != nil {
-		fmt.Fprintf(stderr, "gao crawl: %v\n", err)
-		return 1
-	}
-
 	kept, _ := store.Lookup(crawl.KeptRepo)
 	drops, _ := store.Lookup(crawl.RejectRepo)
 
@@ -153,18 +153,10 @@ flags:
 	}
 	defer func() { _ = f.Close() }()
 
-	queued, refused := 0, 0
-	for _, u := range urls {
-		ok, _, err := f.Offer(u)
-		if err != nil {
-			fmt.Fprintf(stderr, "gao crawl: %v\n", err)
-			return 1
-		}
-		if ok {
-			queued++
-		} else {
-			refused++
-		}
+	queued, refused, err := crawlSeeds(*seeds, fs.Args(), f)
+	if err != nil {
+		fmt.Fprintf(stderr, "gao crawl: %v\n", err)
+		return 1
 	}
 
 	sinkOpts := crawl.SinkOptions{
@@ -209,6 +201,13 @@ flags:
 	c := harvest.NewCrawler(harvest.CrawlOptions{
 		Polite:  harvest.NewPolite(harvest.PoliteOptions{Delay: *delay}),
 		Version: version,
+		Timeout: *timeout,
+		Strikes: *strikes,
+		Transport: harvest.TransportOptions{
+			Shards: *shards,
+			Header: *header,
+			Verify: *verify,
+		},
 	})
 
 	fmt.Fprintf(stdout, "%s and %s\n", kept.Repo(), drops.Repo())
@@ -274,6 +273,8 @@ func crawlSummary(w io.Writer, p crawl.Progress) {
 	fmt.Fprintf(w, "\n%s: %s fetched, %s kept, %s dropped, %s failed, %.1f pages a second\n",
 		round(p.Elapsed), thousands(p.Fetched), thousands(p.Kept), thousands(p.Dropped),
 		thousands(p.Failed), p.Rate())
+	fmt.Fprintf(w, "schedule: %s handed back because the host was not due, %s put back because the batch already had two of that host\n",
+		thousands(p.Waited), thousands(p.Frontier.Deferred))
 	fmt.Fprintf(w, "frontier: %s offered, %s queued, %s already seen, %s refused, %s another box's\n",
 		thousands(p.Frontier.Offered), thousands(p.Frontier.Queued()),
 		thousands(p.Frontier.Duplicate), thousands(p.Frontier.Refused), thousands(p.Frontier.Foreign))
@@ -283,47 +284,98 @@ func crawlSummary(w io.Writer, p crawl.Progress) {
 		p.Sink.Parts, p.Sink.Pushed, fleet.GB(p.Sink.Freed))
 }
 
-// crawlSeeds reads the seed list, which is URLs on the command line, a file, or
-// standard input.
+// crawlSeeds reads the seed list and offers each URL to the frontier as it is
+// read, returning how many were queued and how many were turned away.
+//
+// The seed list is URLs on the command line, a file, or standard input. A file
+// whose name ends in .gz is read through gzip, since the seed is now an extract
+// from a Common Crawl index and those are kept compressed.
+//
+// It offers as it reads rather than collecting first. The seed used to be a few
+// thousand hosts and a slice was the obvious thing. It is now the Vietnamese
+// side of a whole Common Crawl index, 6.6 million URLs over 404,186 hosts, and
+// as a slice of strings that is most of server1's memory spent before the crawl
+// has fetched a page.
 //
 // A bare host is taken as its home page over https, because a seed list from
 // Certificate Transparency is hosts and typing the scheme onto ten million of
 // them is work for the program rather than for the person.
-func crawlSeeds(path string, args []string) ([]string, error) {
-	var out []string
-	add := func(line string) {
+//
+// It offers in batches because of what one URL per turn costs at this size. The
+// whole seed goes in through the frontier's lock, and taking it once per line
+// loaded server1 at around five thousand URLs a second, which is twenty three
+// minutes of a machine holding open connections to nothing before it fetches its
+// first page.
+func crawlSeeds(path string, args []string, f *crawl.Frontier) (queued, refused int, err error) {
+	batch := make([]string, 0, seedBatch)
+	flush := func() error {
+		if len(batch) == 0 {
+			return nil
+		}
+		n, err := f.OfferAll(batch)
+		queued += n
+		if err != nil {
+			return err
+		}
+		refused += len(batch) - n
+		batch = batch[:0]
+		return nil
+	}
+	add := func(line string) error {
 		line = strings.TrimSpace(line)
 		if line == "" || strings.HasPrefix(line, "#") {
-			return
+			return nil
 		}
 		if !strings.Contains(line, "://") {
 			line = "https://" + line + "/"
 		}
-		out = append(out, line)
+		batch = append(batch, line)
+		if len(batch) < seedBatch {
+			return nil
+		}
+		return flush()
 	}
 	for _, a := range args {
-		add(a)
+		if err := add(a); err != nil {
+			return queued, refused, err
+		}
 	}
 	if path == "" {
-		return out, nil
+		return queued, refused, flush()
 	}
 
 	r := io.Reader(os.Stdin)
 	if path != "-" {
-		f, err := os.Open(path)
+		file, err := os.Open(path)
 		if err != nil {
-			return nil, err
+			return queued, refused, err
 		}
-		defer func() { _ = f.Close() }()
-		r = f
+		defer func() { _ = file.Close() }()
+		r = file
 	}
-	s := bufio.NewScanner(r)
+	if strings.HasSuffix(path, ".gz") {
+		zr, err := gzip.NewReader(r)
+		if err != nil {
+			return queued, refused, fmt.Errorf("%s: %w", path, err)
+		}
+		defer func() { _ = zr.Close() }()
+		r = zr
+	}
+
+	s := bufio.NewScanner(bufio.NewReaderSize(r, 1<<20))
 	s.Buffer(make([]byte, 0, 64<<10), 1<<20)
 	for s.Scan() {
-		add(s.Text())
+		if err := add(s.Text()); err != nil {
+			return queued, refused, err
+		}
 	}
 	if err := s.Err(); err != nil {
-		return nil, err
+		return queued, refused, err
 	}
-	return out, nil
+	return queued, refused, flush()
 }
+
+// seedBatch is how many seed URLs are handed to the frontier in one turn at its
+// lock. Large enough that the lock stops being the cost, small enough that the
+// batch is a rounding error against the frontier itself.
+const seedBatch = 10000

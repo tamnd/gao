@@ -30,13 +30,15 @@ func baseLog(t *testing.T, quality, fertility map[string]float64) string {
 }
 
 func wholeRoster() (map[string]float64, map[string]float64) {
-	return map[string]float64{
-			"gemma-3-27b-it": 61.0, "qwen3-30b-a3b": 62.0, "llama-3.3-70b-instruct": 58.0,
-			"mistral-small-3": 55.5, "sailor2-8b": 44.0,
-		}, map[string]float64{
-			"gemma-3-27b-it": 1.32, "qwen3-30b-a3b": 1.28, "llama-3.3-70b-instruct": 1.75,
-			"mistral-small-3": 1.60, "sailor2-8b": 1.55,
-		}
+	score := map[string]float64{
+		"gemma-3-27b-it": 61.0, "qwen3-30b-a3b": 62.0, "llama-3.3-70b-instruct": 58.0,
+		"mistral-small-3": 55.5, "sailor2-8b": 44.0,
+	}
+	cost := map[string]float64{
+		"gemma-3-27b-it": 1.32, "qwen3-30b-a3b": 1.28, "llama-3.3-70b-instruct": 1.75,
+		"mistral-small-3": 1.60, "sailor2-8b": 1.55,
+	}
+	return score, cost
 }
 
 // The order of the criteria is the content, so the command that prints them has

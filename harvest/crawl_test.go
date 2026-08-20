@@ -8,6 +8,7 @@ import (
 	"net/url"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -410,6 +411,103 @@ func TestASiteThatSaysItIsBusyAndNothingElseStillGetsLeftAlone(t *testing.T) {
 	}
 	if n := s.askedFor("/nang"); n != 2 {
 		t.Errorf("the site was asked for the busy page %d times", n)
+	}
+}
+
+// A frontier that grows by following links accumulates hosts that are not there
+// any more, and the cost of one of those is the deadline in front of it rather
+// than the failure itself. The seed crawl met 4,657 hosts that produced a fetch
+// failure and 8,139 failures between them, so the same hosts were being paid for
+// again and again.
+func TestAHostThatNeverAnswersIsGivenUpOn(t *testing.T) {
+	s := newSite(t, map[string]http.HandlerFunc{
+		"/robots.txt": text("User-agent: *\nAllow: /\n"),
+		"/bai":        text("<html><body>xin chao</body></html>"),
+	})
+	gone := s.URL
+	s.Close()
+
+	c, _ := crawler(t, harvest.CrawlOptions{Strikes: 2})
+
+	// Two failures, and neither one is the crawl deciding anything. Both are
+	// still ordinary fetch errors, because a single refused connection is not
+	// evidence about a host.
+	for i := range 2 {
+		_, err := get(t, c, gone+"/bai")
+		if err == nil {
+			t.Fatalf("request %d to a closed server succeeded", i+1)
+		}
+		if errors.Is(err, harvest.ErrDead) {
+			t.Fatalf("gave up after %d failures and the rule was 2", i+1)
+		}
+	}
+
+	if _, err := get(t, c, gone+"/bai"); !errors.Is(err, harvest.ErrDead) {
+		t.Fatalf("the third request to a host that never answered gave %v", err)
+	}
+	if got := c.Dropped(); got != 1 {
+		t.Fatalf("dropped %d hosts and one host was unreachable", got)
+	}
+}
+
+// The other half of the rule, and the important half. A host that answers
+// sometimes is a busy host, and giving up on those would give up on exactly the
+// popular Vietnamese sites the crawl is here for.
+func TestAHostThatAnsweredIsNeverGivenUpOn(t *testing.T) {
+	var fail atomic.Bool
+	s := newSite(t, map[string]http.HandlerFunc{
+		"/robots.txt": text("User-agent: *\nAllow: /\n"),
+		"/bai": func(w http.ResponseWriter, _ *http.Request) {
+			if fail.Load() {
+				// A hijack with no write is a connection that closes without a
+				// status line, which is what a server under load looks like.
+				hj, ok := w.(http.Hijacker)
+				if !ok {
+					return
+				}
+				conn, _, err := hj.Hijack()
+				if err != nil {
+					return
+				}
+				_ = conn.Close()
+				return
+			}
+			_, _ = w.Write([]byte("<html><body>xin chao</body></html>"))
+		},
+	})
+	c, _ := crawler(t, harvest.CrawlOptions{Strikes: 2})
+
+	if _, err := get(t, c, s.URL+"/bai"); err != nil {
+		t.Fatalf("the first page did not arrive: %v", err)
+	}
+
+	fail.Store(true)
+	for i := range 10 {
+		_, err := get(t, c, s.URL+"/bai")
+		if errors.Is(err, harvest.ErrDead) {
+			t.Fatalf("gave up on a host that had answered, after %d failures", i+1)
+		}
+	}
+	if got := c.Dropped(); got != 0 {
+		t.Fatalf("dropped %d hosts and every one of them had answered", got)
+	}
+}
+
+// Turning the breaker off is what a caller asks for when every request has to go
+// out, and it has to be sayable, because zero already means the default.
+func TestTheBreakerCanBeTurnedOff(t *testing.T) {
+	s := newSite(t, map[string]http.HandlerFunc{"/bai": text("hi")})
+	gone := s.URL
+	s.Close()
+
+	c, _ := crawler(t, harvest.CrawlOptions{Strikes: -1})
+	for range 5 {
+		if _, err := get(t, c, gone+"/bai"); errors.Is(err, harvest.ErrDead) {
+			t.Fatal("gave up on a host with the breaker turned off")
+		}
+	}
+	if got := c.Dropped(); got != 0 {
+		t.Fatalf("dropped %d hosts with the breaker turned off", got)
 	}
 }
 

@@ -32,6 +32,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/tamnd/gao/doc"
@@ -128,9 +129,57 @@ func NewWARCWriter(w io.Writer, gz bool) *WARCWriter {
 // record about to be written.
 func (w *WARCWriter) Offset() int64 { return w.n }
 
+// Compressed reports whether this writer gzips its records, which is what a
+// caller encoding a record ahead of the write needs to know.
+func (w *WARCWriter) Compressed() bool { return w.gz }
+
 // Write writes one record and returns its offset and length in the file, which
 // together are the whole of what a CDX index holds about where a page lives.
 func (w *WARCWriter) Write(r *Record) (offset, length int64, err error) {
+	out, err := EncodeRecord(r, w.gz)
+	if err != nil {
+		return 0, 0, err
+	}
+	return w.Append(out)
+}
+
+// Append writes bytes [EncodeRecord] already produced and returns where they
+// landed.
+//
+// It exists because of where a crawler's time goes. Only one worker may be
+// writing to the file at a time, and compressing during that turn makes every
+// other worker wait for it. A goroutine dump of a two thousand worker run on
+// server3 had 1,841 workers blocked on the sink's lock and 75 of them on the
+// network, which is a crawler spending its day queueing for a gzip rather than
+// talking to the web. A record is its own gzip member, so a worker can compress
+// its own record on its own and hold the lock for a file write and nothing else.
+func (w *WARCWriter) Append(b []byte) (offset, length int64, err error) {
+	offset = w.n
+	n, err := w.w.Write(b)
+	w.n += int64(n)
+	return offset, int64(n), err
+}
+
+// gzips holds the compressors between records. A gzip writer at this level
+// carries a window and a hash table that come to several hundred kilobytes, and
+// a crawl at a hundred pages a second builds two records a page, so allocating
+// one per record hands the collector two hundred of them a second for no reason.
+var gzips = sync.Pool{New: func() any {
+	// The level is a constant and a constant level is never rejected, so the
+	// error here cannot happen and there is nowhere in a pool to report it if it
+	// did.
+	zw, _ := gzip.NewWriterLevel(io.Discard, gzip.BestCompression)
+	return zw
+}}
+
+// EncodeRecord builds the bytes one record occupies in a file, which is all of
+// the work of writing it apart from the write.
+//
+// Pass gz to match the writer the bytes are going to, which is
+// [WARCWriter.Compressed]. Appending a compressed record to an uncompressed file
+// produces a file no reader will parse, and it is the caller holding the two
+// apart rather than the writer, so this is worth reading twice at the call site.
+func EncodeRecord(r *Record, gz bool) ([]byte, error) {
 	var head bytes.Buffer
 	head.WriteString(warcVersion + "\r\n")
 	for _, f := range r.Fields {
@@ -138,7 +187,7 @@ func (w *WARCWriter) Write(r *Record) (offset, length int64, err error) {
 			continue
 		}
 		if strings.ContainsAny(f.Value, "\r\n") {
-			return 0, 0, fmt.Errorf("harvest: WARC field %s carries a newline, which would end the record early", f.Name)
+			return nil, fmt.Errorf("harvest: WARC field %s carries a newline, which would end the record early", f.Name)
 		}
 		head.WriteString(f.Name + ": " + f.Value + "\r\n")
 	}
@@ -153,30 +202,26 @@ func (w *WARCWriter) Write(r *Record) (offset, length int64, err error) {
 	// reader relies on them to resynchronize.
 	body = append(body, '\r', '\n', '\r', '\n')
 
-	out := body
-	if w.gz {
-		var buf bytes.Buffer
-		// The deflate level and an empty header are both pinned, because a
-		// snapshot that rebuilds to different bytes is a snapshot nobody can
-		// verify. Go writes no modification time and no name unless asked, so
-		// the same record compresses to the same bytes on every machine.
-		zw, err := gzip.NewWriterLevel(&buf, gzip.BestCompression)
-		if err != nil {
-			return 0, 0, err
-		}
-		if _, err := zw.Write(body); err != nil {
-			return 0, 0, err
-		}
-		if err := zw.Close(); err != nil {
-			return 0, 0, err
-		}
-		out = buf.Bytes()
+	if !gz {
+		return body, nil
 	}
 
-	offset = w.n
-	n, err := w.w.Write(out)
-	w.n += int64(n)
-	return offset, int64(n), err
+	var buf bytes.Buffer
+	// The deflate level and an empty header are both pinned, because a snapshot
+	// that rebuilds to different bytes is a snapshot nobody can verify. Go writes
+	// no modification time and no name unless asked, so the same record
+	// compresses to the same bytes on every machine, and a writer taken from the
+	// pool is reset to exactly the state a fresh one is in.
+	zw, _ := gzips.Get().(*gzip.Writer)
+	defer gzips.Put(zw)
+	zw.Reset(&buf)
+	if _, err := zw.Write(body); err != nil {
+		return nil, err
+	}
+	if err := zw.Close(); err != nil {
+		return nil, err
+	}
+	return buf.Bytes(), nil
 }
 
 // WARCInfo is what goes at the top of every file: who wrote it, with what, and

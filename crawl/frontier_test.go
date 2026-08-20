@@ -440,6 +440,60 @@ func TestAURLThatIsNotOneIsRefusedWithoutTouchingTheQueue(t *testing.T) {
 	}
 }
 
+// A page's links go in together, and what that has to leave behind is exactly
+// what offering them one at a time would have. The batch is where a crawl's
+// frontier traffic is, so it is worth knowing that the shortcut is only a
+// shortcut through the lock and not through any of the checks.
+func TestAPageOfLinksGoesInTogether(t *testing.T) {
+	one := open(t, FrontierOptions{})
+	all := open(t, FrontierOptions{})
+
+	links := []string{
+		"https://baodongthap.example/tin-1.html",
+		"https://baodongthap.example/tin-2.html",
+		"https://baodongthap.example/tin-1.html", // the same page twice, as a menu does
+		"not a url",
+		"mailto:toasoan@baodongthap.example",
+		"https://vnexpress.example/thoi-su/bai-viet.html",
+	}
+	for _, u := range links {
+		if _, _, err := one.Offer(u); err != nil {
+			t.Fatalf("Offer(%s): %v", u, err)
+		}
+	}
+	queued, err := all.OfferAll(links)
+	if err != nil {
+		t.Fatalf("OfferAll: %v", err)
+	}
+
+	a, b := one.Stats(), all.Stats()
+	if a != b {
+		t.Errorf("one at a time left %+v and the batch left %+v", a, b)
+	}
+	if int64(queued) != b.Admitted {
+		t.Errorf("OfferAll says it queued %d and the stats say %d", queued, b.Admitted)
+	}
+	if b.Admitted != 3 || b.Duplicate != 1 || b.Malformed != 2 {
+		t.Errorf("the batch left %+v, want 3 queued, 1 duplicate and 2 malformed", b)
+	}
+}
+
+// A page with no links is the ordinary case on a crawl and it must not cost a
+// turn at the lock every worker is waiting for.
+func TestAPageWithNoLinksOffersNothing(t *testing.T) {
+	f := open(t, FrontierOptions{})
+	queued, err := f.OfferAll(nil)
+	if err != nil {
+		t.Fatalf("OfferAll: %v", err)
+	}
+	if queued != 0 {
+		t.Errorf("a page with no links queued %d URLs", queued)
+	}
+	if s := f.Stats(); s.Offered != 0 {
+		t.Errorf("a page with no links was counted as %d offers", s.Offered)
+	}
+}
+
 // The yield counters are what a status line reads on a run that has been going
 // for a week, and they are also what the budget earns on.
 func TestWhatCameBackIsCountedAndCharged(t *testing.T) {
@@ -551,5 +605,150 @@ func TestAFrontierWillNotChangeShardOnResume(t *testing.T) {
 	}
 	if _, err := OpenFrontier(FrontierOptions{Dir: dir, Shard: 1, Fleet: 3}); err == nil {
 		t.Error("a frontier written by box 0 was reopened as box 1")
+	}
+}
+
+// Fetched is the call a worker makes for every URL that comes back, and it used
+// to take the frontier's lock to add one to four numbers. On a 2,500 worker box
+// that put 765 workers in a queue behind the offers and the batches, so the
+// counters are atomics now and the call takes no lock at all.
+//
+// What has to stay true is that none of the counting is lost when everything
+// happens at once, which is the thing a lock was buying. The race detector has
+// its own opinion and this is the arithmetic.
+func TestCountingWhileTheCrawlOffersAndTakesLosesNothing(t *testing.T) {
+	f, err := OpenFrontier(FrontierOptions{Dir: t.TempDir()})
+	if err != nil {
+		t.Fatalf("OpenFrontier: %v", err)
+	}
+	defer func() { _ = f.Close() }()
+
+	const workers, each = 16, 500
+	var wg sync.WaitGroup
+	for w := range workers {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for i := range each {
+				u := fmt.Sprintf("https://bao%d.com/tin/%d.html", w, i)
+				if _, _, err := f.Offer(u); err != nil {
+					t.Errorf("Offer: %v", err)
+					return
+				}
+				f.Fetched(u, frontier.New)
+				// Read it while it moves, since a progress line does.
+				_ = f.Stats().Queued()
+			}
+		}()
+	}
+	wg.Wait()
+
+	s := f.Stats()
+	if s.Fetched != workers*each {
+		t.Errorf("the frontier counted %d fetches, want %d", s.Fetched, workers*each)
+	}
+	if s.New != workers*each {
+		t.Errorf("the frontier counted %d new, want %d", s.New, workers*each)
+	}
+	if s.Offered != workers*each {
+		t.Errorf("the frontier counted %d offers, want %d", s.Offered, workers*each)
+	}
+	if s.Admitted != workers*each {
+		t.Errorf("the frontier admitted %d, want %d, so an offer was lost", s.Admitted, workers*each)
+	}
+}
+
+// A batch takes at most two URLs per host, so a queue of many URLs on few hosts
+// leaves most of every read unused. Those used to be written back to a bucket,
+// which on the fleet was nineteen queue writes for every page fetched, so they
+// are held for the next batch instead.
+//
+// Held is the word that has to be tested. A URL that came out of a bucket and
+// exists nowhere else is a URL one missed flush away from being lost, and losing
+// it is silent: the crawl simply never fetches that page and nothing counts it.
+// So take the whole queue in batches, with a flush partway through, and check
+// that what comes out is exactly what went in.
+func TestNoURLIsLostBetweenBatches(t *testing.T) {
+	dir := t.TempDir()
+	f := open(t, FrontierOptions{Dir: dir, PerHost: 2})
+
+	want := map[string]bool{}
+	for h := range 5 {
+		for i := range 40 {
+			u := fmt.Sprintf("https://bao%d.com/tin/%d.html", h, i)
+			ok, why, err := f.Offer(u)
+			if err != nil {
+				t.Fatalf("Offer: %v", err)
+			}
+			if !ok {
+				t.Fatalf("%s was refused: %s", u, why)
+			}
+			want[u] = true
+		}
+	}
+
+	got := map[string]int{}
+	for round := range 200 {
+		batch, err := f.Next(8)
+		if err != nil {
+			t.Fatalf("Next: %v", err)
+		}
+		for _, u := range batch {
+			got[u]++
+		}
+		// A crawl stopped and started again in the middle, which is what the
+		// fleet does every time a binary is replaced. Whatever was being held
+		// exists only in memory, so this is where losing it would show.
+		if round == 3 {
+			if err := f.Close(); err != nil {
+				t.Fatalf("Close: %v", err)
+			}
+			f = open(t, FrontierOptions{Dir: dir, PerHost: 2})
+		}
+		if len(got) == len(want) {
+			break
+		}
+	}
+
+	for u := range want {
+		if got[u] == 0 {
+			t.Errorf("%s went in and never came out", u)
+		}
+		if got[u] > 1 {
+			t.Errorf("%s came out %d times", u, got[u])
+		}
+	}
+	if len(got) != len(want) {
+		t.Errorf("%d URLs came back out of %d", len(got), len(want))
+	}
+}
+
+// The whole point of the per host cap is that a batch is spread over hosts, and
+// holding the leftovers rather than writing them back must not quietly undo it.
+func TestABatchIsStillSpreadOverHosts(t *testing.T) {
+	f := open(t, FrontierOptions{PerHost: 2})
+	for h := range 5 {
+		for i := range 40 {
+			if _, _, err := f.Offer(fmt.Sprintf("https://bao%d.com/tin/%d.html", h, i)); err != nil {
+				t.Fatalf("Offer: %v", err)
+			}
+		}
+	}
+	batch, err := f.Next(8)
+	if err != nil {
+		t.Fatalf("Next: %v", err)
+	}
+	per := map[string]int{}
+	for _, u := range batch {
+		host, err := hostOf(u)
+		if err != nil {
+			t.Fatal(err)
+		}
+		per[host]++
+	}
+	for host, n := range per {
+		if n > 2 {
+			t.Errorf("the batch took %d URLs from %s, and the cap is two", n, host)
+		}
 	}
 }
