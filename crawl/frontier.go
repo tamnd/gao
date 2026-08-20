@@ -157,6 +157,10 @@ type Frontier struct {
 	queue []*bucket
 	turn  int
 
+	// carry is what the last batch read and could not use, held for the next one
+	// instead of being written back to a bucket. See [Frontier.Next].
+	carry []string
+
 	stats counters
 
 	closed bool
@@ -699,6 +703,24 @@ func (f *Frontier) Next(n int) ([]string, error) {
 	per := map[string]int{}
 	var over []string
 
+	// What the last batch could not use comes first, because it was read from
+	// the front of a bucket and is older than anything still in one.
+	carry := f.carry
+	f.carry = f.carry[:0]
+	for _, line := range carry {
+		host, err := hostOf(line)
+		if err != nil {
+			f.stats.Malformed.Add(1)
+			continue
+		}
+		if len(out) >= n || per[host] >= f.o.PerHost {
+			over = append(over, line)
+			continue
+		}
+		per[host]++
+		out = append(out, line)
+	}
+
 	// Every bucket gets a look, and a bucket that only had URLs for hosts
 	// already at their share is not a reason to stop. The read cap is what
 	// stops a bucket holding a million URLs for one host from being pulled into
@@ -732,7 +754,29 @@ func (f *Frontier) Next(n int) ([]string, error) {
 		}
 	}
 
-	for _, line := range over {
+	// What is over a host's share is held for the next batch rather than written
+	// back to a bucket.
+	//
+	// It used to be written back, and on a 2,500 worker box that was the largest
+	// single cost in the frontier: a batch of twenty thousand at two per host
+	// needs ten thousand distinct hosts to fill, so most of what a bucket holds
+	// is over the share the moment it is read. server3 deferred 509,708 URLs in
+	// five minutes against 27,236 pages fetched, nineteen reads and nineteen
+	// writes of the queue for every page, all of it under the lock every worker
+	// wants.
+	//
+	// Holding them costs memory bounded by [Frontier.Next]'s read cap and gives
+	// the next batch the oldest URLs on the box, which is the order a queue is
+	// supposed to have. Past the bound the rest go back to disk as before, so a
+	// frontier that has drifted onto a handful of hosts still cannot grow a list
+	// in memory without limit.
+	keep := over
+	if len(keep) > most {
+		keep = over[:most]
+	}
+	f.carry = append(f.carry, keep...)
+	f.stats.Deferred.Add(int64(len(keep)))
+	for _, line := range over[len(keep):] {
 		host, err := hostOf(line)
 		if err != nil {
 			continue
@@ -783,6 +827,9 @@ func (f *Frontier) Flush() error {
 }
 
 func (f *Frontier) flush() error {
+	if err := f.spillCarry(); err != nil {
+		return err
+	}
 	for _, b := range f.queue {
 		if err := b.bw.Flush(); err != nil {
 			return fmt.Errorf("crawl: flushing the queue: %w", err)
@@ -806,6 +853,27 @@ func (f *Frontier) flush() error {
 	return f.writeManifest()
 }
 
+// spillCarry writes what the last batch held back to the buckets it came from.
+//
+// Those URLs were read out of a queue file and exist nowhere else, so anything
+// that makes the directory the whole state of the frontier has to call this
+// first. That is both the checkpoint and the close, and the close does not go
+// through the checkpoint, which is how the first version of this lost 26 URLs
+// out of 200 across a restart.
+func (f *Frontier) spillCarry() error {
+	for _, line := range f.carry {
+		host, err := hostOf(line)
+		if err != nil {
+			continue
+		}
+		if err := f.push(host, line); err != nil {
+			return err
+		}
+	}
+	f.carry = f.carry[:0]
+	return nil
+}
+
 // Close flushes and closes everything. A frontier that was closed cleanly opens
 // again with nothing lost.
 func (f *Frontier) Close() error {
@@ -817,6 +885,7 @@ func (f *Frontier) Close() error {
 	f.closed = true
 
 	var errs []error
+	errs = append(errs, f.spillCarry())
 	if f.logw != nil {
 		errs = append(errs, f.logw.Flush())
 	}
