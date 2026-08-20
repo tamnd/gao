@@ -452,9 +452,9 @@ func (r *loop) watch(ctx context.Context, done <-chan struct{}) {
 				r.o.Report(p)
 			}
 			if r.o.Out != nil {
-				fmt.Fprintf(r.o.Out, "%s  %d fetched, %d kept, %d dropped, %d failed, %d not due, %d queued, %.1f pages a second\n",
+				fmt.Fprintf(r.o.Out, "%s  %d fetched, %d kept, %d dropped, %d failed, %d not due, %d deferred, %d queued, %.1f pages a second\n",
 					p.Elapsed.Round(time.Second), p.Fetched, p.Kept, p.Dropped, p.Failed, p.Waited,
-					p.Frontier.Queued(), p.Rate())
+					p.Frontier.Deferred, p.Frontier.Queued(), p.Rate())
 			}
 		}
 	}
