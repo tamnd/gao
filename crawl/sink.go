@@ -641,6 +641,32 @@ func (s *Sink) finished(d store.Dataset, f store.PartFile) error {
 	// clock on it.
 	s.streams[d.Name].opened = time.Time{}
 
+	// The number goes to the disk before the part goes to the hub, and it used
+	// to go after.
+	//
+	// What is between them is an upload, which on a part of a few megabytes is
+	// seconds. A run that stops in there comes back holding the number it had
+	// before, writes the same path again, and on the hub a path written again
+	// replaces what is at it. That is not a gap in a dataset, it is rows that
+	// were published and are not any more. Thirteen parts across the two repos
+	// have two Add commits at the same path, and the pairs are minutes apart at
+	// exactly the times the fleet was restarted.
+	//
+	// The other order costs a gap: a number spent by a part that never made it
+	// up. A dataset with a part number missing is a dataset somebody has to
+	// explain, which is a great deal better than a dataset that quietly holds
+	// half of what it was told to hold.
+	//
+	// It narrows the window rather than closing it. A run stopped between this
+	// save and the upload leaves the gap, a run stopped during the upload leaves
+	// the gap, and a run whose sink is still uploading when the next run opens
+	// the file still reads the old number. Not replacing a path that is already
+	// on the hub is the thing that actually closes it, and that belongs on the
+	// push rather than here.
+	if err := s.save(); err != nil {
+		return err
+	}
+
 	verb := "wrote"
 	if s.o.Push != nil {
 		local := filepath.Join(s.o.Dir, d.Name, filepath.FromSlash(f.Path))
@@ -666,7 +692,7 @@ func (s *Sink) finished(d store.Dataset, f store.PartFile) error {
 		fmt.Fprintf(s.o.Out, "%-8s %-52s %8s  %d rows\n", verb, d.Repo()+"/"+f.Path, fleet.GB(f.Bytes), f.Documents)
 		s.outMu.Unlock()
 	}
-	return s.save()
+	return nil
 }
 
 // count moves the part number for one dataset on, so that a run started again
