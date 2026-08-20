@@ -841,14 +841,6 @@ func (f *Frontier) Next(n int) ([]string, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 
-	// The readers cannot see what is sitting in a write buffer, and on a small
-	// queue that is most of it.
-	for _, b := range f.queue {
-		if err := b.sync(); err != nil {
-			return nil, err
-		}
-	}
-
 	out := make([]string, 0, n)
 	per := map[string]int{}
 	var over []string
@@ -861,6 +853,9 @@ func (f *Frontier) Next(n int) ([]string, error) {
 	for range f.o.Buckets {
 		b := f.queue[f.turn%f.o.Buckets]
 		f.turn++
+		if err := b.arm(); err != nil {
+			return nil, err
+		}
 		for reads := 0; len(out) < n && reads < most; reads++ {
 			line, err := b.take()
 			if err != nil {
@@ -1411,15 +1406,38 @@ func (b *bucket) takeLocked() (string, error) {
 	return strings.TrimSuffix(line, "\n"), nil
 }
 
-// sync writes the bucket's buffer out, so that a reader sees what has been
-// offered rather than only what has spilled.
-func (b *bucket) sync() error {
+// arm makes sure the bucket has something for [bucket.take] to find, which means
+// flushing the write buffer only when the reader has caught up with what has
+// already reached the disk.
+//
+// [Frontier.Next] used to flush all sixty four buckets on every call, because a
+// reader cannot see what is sitting in a write buffer and on a small queue that
+// is most of it. On a real queue it is almost none of it: server2 carries twenty
+// six million URLs and the reader is megabytes behind the disk on every bucket,
+// so those flushes were sixty four locks and sixty four small writes per batch,
+// taken against two thousand workers appending to the same buckets, to make
+// visible something nobody was going to read for another ten minutes.
+func (b *bucket) arm() error {
 	b.mu.Lock()
 	defer b.mu.Unlock()
+	if b.readyLocked() > 0 || b.bw.Buffered() == 0 {
+		return nil
+	}
 	if err := b.bw.Flush(); err != nil {
 		return fmt.Errorf("crawl: flushing the queue: %w", err)
 	}
 	return nil
+}
+
+// readyLocked is how many bytes are on the disk and not yet read.
+//
+// end counts everything written including what is still buffered, and head
+// counts what has been handed out, so neither on its own says whether a read
+// would find anything. part is in there because those bytes came off the disk
+// and are being held for the rest of their line, so they are read and not
+// counted in head.
+func (b *bucket) readyLocked() int64 {
+	return b.end - int64(b.bw.Buffered()) - b.head - int64(len(b.part))
 }
 
 // trim writes the buffer out and hands the disk back when the consumed head has
