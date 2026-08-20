@@ -149,7 +149,15 @@ type Frontier struct {
 	mu sync.Mutex
 
 	// filter is the resident approximate set, bits is its length in bits.
-	filter []uint64
+	//
+	// The words are atomics and neither reading nor setting one takes mu. Bits in
+	// this thing are only ever set, never cleared, so a reader that misses a set
+	// another worker has just made reads the state of a moment slightly before its
+	// own, which is the same answer it would have got by arriving slightly
+	// earlier. What that buys is the three probes and the two hashes in front of
+	// them happening outside the lock, and on a page of sixty links that was most
+	// of what the lock was being held for.
+	filter []atomic.Uint64
 	bits   uint64
 
 	// pending is the hashes offered since the last run was written, held both
@@ -407,7 +415,7 @@ func OpenFrontier(o FrontierOptions) (*Frontier, error) {
 	if f.bits < 64 {
 		f.bits = 64
 	}
-	f.filter = make([]uint64, (f.bits+63)/64)
+	f.filter = make([]atomic.Uint64, (f.bits+63)/64)
 
 	if err := f.openRuns(m); err != nil {
 		_ = f.Close()
@@ -614,9 +622,19 @@ func (f *Frontier) OfferAll(rawurls []string) (int, error) {
 // hashes in memory, which closes that for every case but an exact overlap of the
 // two reads, and what an exact overlap costs is one page fetched twice.
 func (f *Frontier) offer(ps []pending) (int, error) {
+	for i := range ps {
+		f.sift(&ps[i])
+	}
+
 	f.mu.Lock()
 	for i := range ps {
-		f.sort(&ps[i])
+		if ps[i].done || !ps[i].onDisk {
+			continue
+		}
+		if _, ok := f.pending[ps[i].hash]; ok {
+			f.stats.Duplicate.Add(1)
+			ps[i].done, ps[i].why, ps[i].onDisk = true, "already offered", false
+		}
 	}
 	f.mu.Unlock()
 
@@ -662,6 +680,7 @@ type pending struct {
 	canonical string
 	host      string
 	hash      uint64
+	hostHash  uint64
 	why       string // why it was refused, or empty
 	bad       bool   // refused for not parsing rather than for the fleet split
 	done      bool   // answered, and why says how
@@ -669,8 +688,9 @@ type pending struct {
 	onDisk    bool   // the runs still have to be asked about it
 }
 
-// parseOffer does the part of an offer that needs no lock. It is the expensive
-// part, a URL parse and two hashes, and the whole reason it is separate.
+// parseOffer does the part of an offer that needs nothing from the frontier at
+// all. It is the expensive part, a URL parse and two blake3 hashes, and the
+// whole reason it is separate.
 func parseOffer(rawurl string) pending {
 	canonical, err := frontier.Canon(rawurl)
 	if err != nil {
@@ -680,12 +700,22 @@ func parseOffer(rawurl string) pending {
 	if err != nil {
 		return pending{why: err.Error(), bad: true}
 	}
-	return pending{canonical: canonical, host: host}
+	return pending{
+		canonical: canonical,
+		host:      host,
+		hash:      hashOf(canonical),
+		hostHash:  hashOf(host),
+	}
 }
 
-// sort is the first pass: everything about one offer that memory can settle. It
-// is called with the frontier's lock held.
-func (f *Frontier) sort(p *pending) {
+// sift is the part of an offer that needs no lock at all: the counters, which
+// are atomics, the fleet split, which is a hash and a remainder, and the filter,
+// whose words are atomics too.
+//
+// Everything here used to be under the frontier's lock, and on a page of sixty
+// links it was two blake3 hashes and three probes into a twelve megabyte bitmap
+// per link, sixty times over, with every other worker on the box waiting.
+func (f *Frontier) sift(p *pending) {
 	f.stats.Offered.Add(1)
 	if p.bad {
 		f.stats.Malformed.Add(1)
@@ -697,25 +727,17 @@ func (f *Frontier) sort(p *pending) {
 	// owns is not this box's business at all, and recording it here would put a
 	// hash in this frontier's set for a page this frontier will never fetch.
 	if f.o.Fleet > 1 {
-		if box := int(hashOf(p.host) % uint64(f.o.Fleet)); box != f.o.Shard {
+		if box := int(p.hostHash % uint64(f.o.Fleet)); box != f.o.Shard {
 			f.stats.Foreign.Add(1)
 			p.done, p.why = true, fmt.Sprintf("%s belongs to box %d of %d", p.host, box, f.o.Fleet)
 			return
 		}
 	}
 
-	p.hash = hashOf(p.canonical)
-	if !f.maybe(p.hash) {
-		// The filter is never wrong about a URL it has not got, so this one is
-		// new and the disk has nothing to say about it.
-		return
-	}
-	if _, ok := f.pending[p.hash]; ok {
-		f.stats.Duplicate.Add(1)
-		p.done, p.why = true, "already offered"
-		return
-	}
-	p.onDisk = true
+	// The filter is never wrong about a URL it has not got, so a no here is the
+	// whole answer and neither the hashes in memory nor the runs on disk are
+	// asked about it.
+	p.onDisk = f.maybe(p.hash)
 }
 
 // admit is the last pass: what is left is new as far as anything knows, so it is
@@ -732,6 +754,31 @@ func (f *Frontier) admit(p *pending) (bool, error) {
 		f.stats.Duplicate.Add(1)
 		p.done, p.why = true, "already offered"
 		return false, nil
+	}
+
+	// The filter said no when this URL was sifted and says yes now, so somebody
+	// set those bits in between. Usually that somebody is in the hashes above and
+	// the check has already caught it, and what is left is the case where a spill
+	// moved the hash out of memory and into a run between the two. The runs did
+	// not get asked, because at sift time there was no reason to ask them.
+	//
+	// This is a disk read with the lock held, which is the thing the three passes
+	// exist to avoid, and it is here because it happens when one worker records a
+	// hash inside the few microseconds another is sifting the same one and a
+	// spill lands in the same window. What it costs when it is skipped is a page
+	// fetched twice.
+	if !p.onDisk && f.maybe(p.hash) {
+		f.runsMu.RLock()
+		seen, err := f.runsHave(p.hash)
+		f.runsMu.RUnlock()
+		if err != nil {
+			return false, err
+		}
+		if seen {
+			f.stats.Duplicate.Add(1)
+			p.done, p.why = true, "already offered"
+			return false, nil
+		}
 	}
 
 	if f.o.Budget != nil {
@@ -1052,16 +1099,16 @@ func (f *Frontier) probes(h uint64) (uint64, uint64, uint64) {
 
 func (f *Frontier) add(h uint64) {
 	a, b, c := f.probes(h)
-	f.filter[a/64] |= 1 << (a % 64)
-	f.filter[b/64] |= 1 << (b % 64)
-	f.filter[c/64] |= 1 << (c % 64)
+	f.filter[a/64].Or(1 << (a % 64))
+	f.filter[b/64].Or(1 << (b % 64))
+	f.filter[c/64].Or(1 << (c % 64))
 }
 
 func (f *Frontier) maybe(h uint64) bool {
 	a, b, c := f.probes(h)
-	return f.filter[a/64]&(1<<(a%64)) != 0 &&
-		f.filter[b/64]&(1<<(b%64)) != 0 &&
-		f.filter[c/64]&(1<<(c%64)) != 0
+	return f.filter[a/64].Load()&(1<<(a%64)) != 0 &&
+		f.filter[b/64].Load()&(1<<(b%64)) != 0 &&
+		f.filter[c/64].Load()&(1<<(c%64)) != 0
 }
 
 // spill writes the pending hashes out as a sorted run and then merges runs that
