@@ -38,12 +38,12 @@ import (
 
 // DefaultBuckets is how many queue files the frontier writes.
 //
-// A URL goes to the bucket its host hashes to, and a batch is taken from the
-// buckets in rotation, so a page that links to forty pages on one site does not
-// get fetched as forty requests in a row to that site. Sixty four is enough
-// mixing for that and few enough files to hold every one of them open, which
-// matters more than it sounds: the alternative is an open file cache, and a
-// cache in the queue is a cache in the one structure that cannot be rebuilt.
+// A URL goes to the bucket it hashes to and a batch is taken from the buckets in
+// rotation, so a page that links to forty pages on one site does not get fetched
+// as forty requests in a row to that site. Sixty four is enough mixing for that
+// and few enough files to hold every one of them open, which matters more than
+// it sounds: the alternative is an open file cache, and a cache in the queue is a
+// cache in the one structure that cannot be rebuilt.
 const DefaultBuckets = 64
 
 // DefaultBits is bits per URL in the resident filter, matching
@@ -138,10 +138,26 @@ type Frontier struct {
 	o   FrontierOptions
 	dir string
 
+	// mu guards the resident half of the seen set and the batching in
+	// [Frontier.Next]. It is the outermost of the three locks here: a caller
+	// holding it may take a bucket's or the runs', and neither of those is ever
+	// held while taking this.
+	//
+	// What it does not guard is the runs on disk, which is the point. Everything
+	// under it is memory, so the time it is held for is bounded by the machine
+	// rather than by a read.
 	mu sync.Mutex
 
 	// filter is the resident approximate set, bits is its length in bits.
-	filter []uint64
+	//
+	// The words are atomics and neither reading nor setting one takes mu. Bits in
+	// this thing are only ever set, never cleared, so a reader that misses a set
+	// another worker has just made reads the state of a moment slightly before its
+	// own, which is the same answer it would have got by arriving slightly
+	// earlier. What that buys is the three probes and the two hashes in front of
+	// them happening outside the lock, and on a page of sixty links that was most
+	// of what the lock was being held for.
+	filter []atomic.Uint64
 	bits   uint64
 
 	// pending is the hashes offered since the last run was written, held both
@@ -151,8 +167,17 @@ type Frontier struct {
 	log     *os.File
 	logw    *bufio.Writer
 
-	runs []*run
-	gen  int
+	// runsMu guards the runs slice and the files it names. It is separate from
+	// mu because looking a hash up in a run is a disk read, and a disk read is
+	// the one thing that must not happen with the frontier's lock held. It is
+	// taken for reading by any number of workers at once, and for writing only
+	// when a spill adds a run or a merge replaces two, which is where the files
+	// a reader is holding get closed.
+	//
+	// A caller holding mu may take it. Nothing takes mu while holding it.
+	runsMu sync.RWMutex
+	runs   []*run
+	gen    int
 
 	queue []*bucket
 	turn  int
@@ -243,11 +268,28 @@ type run struct {
 type bucket struct {
 	path string
 
+	// mu guards this bucket and nothing else.
+	//
+	// The frontier's own lock used to guard every bucket, which meant a URL going
+	// onto one queue file waited for a URL going onto another one. A goroutine
+	// dump of a 2,500 worker run on server3 had 2,007 workers standing in the
+	// frontier's lock and 856 of those were inside [Frontier.Requeue], holding up
+	// the whole box to append one line to one file. The files are independent and
+	// so are these.
+	//
+	// It is the inner lock. A caller that holds the frontier's lock may take it,
+	// and nothing takes the frontier's lock while holding this.
+	mu sync.Mutex
+
 	w  *os.File
 	bw *bufio.Writer
 
 	r  *os.File
 	br *bufio.Reader
+
+	// part is the front of a line that was on the disk without its newline yet.
+	// See [bucket.takeLocked] for why a bucket has one.
+	part string
 
 	head int64 // bytes consumed
 	end  int64 // bytes written
@@ -373,7 +415,7 @@ func OpenFrontier(o FrontierOptions) (*Frontier, error) {
 	if f.bits < 64 {
 		f.bits = 64
 	}
-	f.filter = make([]uint64, (f.bits+63)/64)
+	f.filter = make([]atomic.Uint64, (f.bits+63)/64)
 
 	if err := f.openRuns(m); err != nil {
 		_ = f.Close()
@@ -535,10 +577,11 @@ func (f *Frontier) openQueue(m *manifest) error {
 // charged to the budget, because charging a host for a URL it has already been
 // asked for is how a host's allowance gets spent on one page.
 func (f *Frontier) Offer(rawurl string) (bool, string, error) {
-	p := parseOffer(rawurl)
-	f.mu.Lock()
-	defer f.mu.Unlock()
-	return f.admit(p)
+	ps := []pending{parseOffer(rawurl)}
+	if _, err := f.offer(ps); err != nil {
+		return false, "", err
+	}
+	return ps[0].queued, ps[0].why, nil
 }
 
 // OfferAll puts a page's links to the frontier in one turn at the lock.
@@ -561,12 +604,65 @@ func (f *Frontier) OfferAll(rawurls []string) (int, error) {
 	for i, u := range rawurls {
 		ps[i] = parseOffer(u)
 	}
+	return f.offer(ps)
+}
+
+// offer is the three passes an offer goes through, and the split between them
+// is where the lock is held and where it is not.
+//
+// The first pass answers everything memory can answer: whether the URL parsed,
+// whether it is this box's, and whether the filter or the hashes not yet written
+// out have seen it. The second pass is the sorted runs on disk, and it runs with
+// the frontier's lock let go, because a goroutine dump of a 2,500 worker run
+// caught the one worker holding that lock inside a read of a run file with 1,151
+// others waiting behind it. The third pass records what survived and queues it.
+//
+// Letting the lock go in the middle means two workers can be on disk for the
+// same URL at once and both find it new. The third pass looks again at the
+// hashes in memory, which closes that for every case but an exact overlap of the
+// two reads, and what an exact overlap costs is one page fetched twice.
+func (f *Frontier) offer(ps []pending) (int, error) {
+	for i := range ps {
+		f.sift(&ps[i])
+	}
+
+	f.mu.Lock()
+	for i := range ps {
+		if ps[i].done || !ps[i].onDisk {
+			continue
+		}
+		if _, ok := f.pending[ps[i].hash]; ok {
+			f.stats.Duplicate.Add(1)
+			ps[i].done, ps[i].why, ps[i].onDisk = true, "already offered", false
+		}
+	}
+	f.mu.Unlock()
+
+	f.runsMu.RLock()
+	var err error
+	for i := range ps {
+		if ps[i].done || !ps[i].onDisk {
+			continue
+		}
+		var seen bool
+		if seen, err = f.runsHave(ps[i].hash); err != nil {
+			break
+		}
+		if seen {
+			f.stats.Duplicate.Add(1)
+			ps[i].done, ps[i].why = true, "already offered"
+		}
+	}
+	f.runsMu.RUnlock()
+	if err != nil {
+		return 0, err
+	}
 
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	queued := 0
-	for _, p := range ps {
-		ok, _, err := f.admit(p)
+	for i := range ps {
+		ok, err := f.admit(&ps[i])
 		if err != nil {
 			return queued, err
 		}
@@ -577,17 +673,24 @@ func (f *Frontier) OfferAll(rawurls []string) (int, error) {
 	return queued, nil
 }
 
-// A pending is a URL that has been through the checks needing nothing from the
-// frontier: whether it parses and what host it is on.
+// A pending is one URL on its way through [Frontier.offer], carrying both the
+// part of the answer worked out without the frontier and the part worked out
+// with it.
 type pending struct {
 	canonical string
 	host      string
-	why       string // filled in when the URL was already refused
+	hash      uint64
+	hostHash  uint64
+	why       string // why it was refused, or empty
 	bad       bool   // refused for not parsing rather than for the fleet split
+	done      bool   // answered, and why says how
+	queued    bool   // it went on the queue
+	onDisk    bool   // the runs still have to be asked about it
 }
 
-// parseOffer does the part of an offer that needs no lock. It is the expensive
-// part, a URL parse and two hashes, and the whole reason it is separate.
+// parseOffer does the part of an offer that needs nothing from the frontier at
+// all. It is the expensive part, a URL parse and two blake3 hashes, and the
+// whole reason it is separate.
 func parseOffer(rawurl string) pending {
 	canonical, err := frontier.Canon(rawurl)
 	if err != nil {
@@ -597,36 +700,85 @@ func parseOffer(rawurl string) pending {
 	if err != nil {
 		return pending{why: err.Error(), bad: true}
 	}
-	return pending{canonical: canonical, host: host}
+	return pending{
+		canonical: canonical,
+		host:      host,
+		hash:      hashOf(canonical),
+		hostHash:  hashOf(host),
+	}
 }
 
-// admit is the half of an offer that touches the frontier. It is called with
-// the lock held.
-func (f *Frontier) admit(p pending) (bool, string, error) {
+// sift is the part of an offer that needs no lock at all: the counters, which
+// are atomics, the fleet split, which is a hash and a remainder, and the filter,
+// whose words are atomics too.
+//
+// Everything here used to be under the frontier's lock, and on a page of sixty
+// links it was two blake3 hashes and three probes into a twelve megabyte bitmap
+// per link, sixty times over, with every other worker on the box waiting.
+func (f *Frontier) sift(p *pending) {
 	f.stats.Offered.Add(1)
 	if p.bad {
 		f.stats.Malformed.Add(1)
-		return false, p.why, nil
+		p.done = true
+		return
 	}
 
 	// The fleet split comes before anything is remembered. A URL another box
 	// owns is not this box's business at all, and recording it here would put a
 	// hash in this frontier's set for a page this frontier will never fetch.
 	if f.o.Fleet > 1 {
-		if box := int(hashOf(p.host) % uint64(f.o.Fleet)); box != f.o.Shard {
+		if box := int(p.hostHash % uint64(f.o.Fleet)); box != f.o.Shard {
 			f.stats.Foreign.Add(1)
-			return false, fmt.Sprintf("%s belongs to box %d of %d", p.host, box, f.o.Fleet), nil
+			p.done, p.why = true, fmt.Sprintf("%s belongs to box %d of %d", p.host, box, f.o.Fleet)
+			return
 		}
 	}
 
-	h := hashOf(p.canonical)
-	seen, err := f.seen(h)
-	if err != nil {
-		return false, "", err
+	// The filter is never wrong about a URL it has not got, so a no here is the
+	// whole answer and neither the hashes in memory nor the runs on disk are
+	// asked about it.
+	p.onDisk = f.maybe(p.hash)
+}
+
+// admit is the last pass: what is left is new as far as anything knows, so it is
+// charged to the budget, remembered and queued. It is called with the frontier's
+// lock held.
+func (f *Frontier) admit(p *pending) (bool, error) {
+	if p.done {
+		return false, nil
 	}
-	if seen {
+
+	// Looked at again because the runs were read with the lock let go, and
+	// another worker offering the same URL in that window has recorded it here.
+	if _, ok := f.pending[p.hash]; ok {
 		f.stats.Duplicate.Add(1)
-		return false, "already offered", nil
+		p.done, p.why = true, "already offered"
+		return false, nil
+	}
+
+	// The filter said no when this URL was sifted and says yes now, so somebody
+	// set those bits in between. Usually that somebody is in the hashes above and
+	// the check has already caught it, and what is left is the case where a spill
+	// moved the hash out of memory and into a run between the two. The runs did
+	// not get asked, because at sift time there was no reason to ask them.
+	//
+	// This is a disk read with the lock held, which is the thing the three passes
+	// exist to avoid, and it is here because it happens when one worker records a
+	// hash inside the few microseconds another is sifting the same one and a
+	// spill lands in the same window. What it costs when it is skipped is a page
+	// fetched twice.
+	if !p.onDisk && f.maybe(p.hash) {
+		f.runsMu.RLock()
+		seen, err := f.runsHave(p.hash)
+		f.runsMu.RUnlock()
+		if err != nil {
+			return false, err
+		}
+		if seen {
+			f.stats.Duplicate.Add(1)
+			p.done, p.why = true, "already offered"
+			return false, nil
+		}
 	}
 
 	if f.o.Budget != nil {
@@ -634,36 +786,38 @@ func (f *Frontier) admit(p pending) (bool, string, error) {
 			// The refusal is remembered too. A trap generates the same URL from
 			// twenty pages and refusing it twenty times is twenty shape lookups
 			// for an answer that will not change.
-			if err := f.record(h); err != nil {
-				return false, "", err
+			if err := f.record(p.hash); err != nil {
+				return false, err
 			}
 			f.stats.Refused.Add(1)
-			return false, why, nil
+			p.done, p.why = true, why
+			return false, nil
 		}
 	}
 
-	if err := f.record(h); err != nil {
-		return false, "", err
+	if err := f.record(p.hash); err != nil {
+		return false, err
 	}
-	if err := f.push(p.host, p.canonical); err != nil {
-		return false, "", err
+	if err := f.push(p.canonical); err != nil {
+		return false, err
 	}
 	f.stats.Admitted.Add(1)
-	return true, "", nil
+	p.done, p.queued = true, true
+	return true, nil
 }
 
 // Requeue puts a URL back without asking whether it has been seen, for a fetch
 // that did not happen: a host that asked for time, a connection that broke. It
 // is deliberately separate from Offer, because a URL coming back from a failed
 // fetch is already in the seen set and Offer would refuse it.
+//
+// It takes one bucket's lock rather than the frontier's. Every hand back from a
+// host that is not due yet comes through here, which on a real shard is one call
+// for every two pages fetched, and all any of them does is append a line to a
+// file. Making them queue behind the offers and the batches was most of what a
+// goroutine dump found the workers waiting for.
 func (f *Frontier) Requeue(canonical string) error {
-	host, err := hostOf(canonical)
-	if err != nil {
-		return err
-	}
-	f.mu.Lock()
-	defer f.mu.Unlock()
-	if err := f.push(host, canonical); err != nil {
+	if err := f.push(canonical); err != nil {
 		return err
 	}
 	f.stats.Requeued.Add(1)
@@ -690,8 +844,8 @@ func (f *Frontier) Next(n int) ([]string, error) {
 	// The readers cannot see what is sitting in a write buffer, and on a small
 	// queue that is most of it.
 	for _, b := range f.queue {
-		if err := b.bw.Flush(); err != nil {
-			return nil, fmt.Errorf("crawl: reading the queue: %w", err)
+		if err := b.sync(); err != nil {
+			return nil, err
 		}
 	}
 
@@ -733,11 +887,7 @@ func (f *Frontier) Next(n int) ([]string, error) {
 	}
 
 	for _, line := range over {
-		host, err := hostOf(line)
-		if err != nil {
-			continue
-		}
-		if err := f.push(host, line); err != nil {
+		if err := f.push(line); err != nil {
 			return nil, err
 		}
 		f.stats.Deferred.Add(1)
@@ -784,13 +934,8 @@ func (f *Frontier) Flush() error {
 
 func (f *Frontier) flush() error {
 	for _, b := range f.queue {
-		if err := b.bw.Flush(); err != nil {
-			return fmt.Errorf("crawl: flushing the queue: %w", err)
-		}
-		if b.head >= f.o.Compact {
-			if err := b.compact(); err != nil {
-				return err
-			}
+		if err := b.trim(f.o.Compact); err != nil {
+			return err
 		}
 	}
 	if f.logw != nil {
@@ -820,26 +965,35 @@ func (f *Frontier) Close() error {
 	if f.logw != nil {
 		errs = append(errs, f.logw.Flush())
 	}
+	// Each bucket's own lock is taken here as well as the frontier's, because a
+	// Requeue arriving now holds nothing but the bucket and would otherwise be
+	// writing into a file this is closing.
 	for _, b := range f.queue {
+		b.mu.Lock()
 		if b.bw != nil {
 			errs = append(errs, b.bw.Flush())
 		}
+		b.mu.Unlock()
 	}
 	errs = append(errs, f.writeManifest())
 	for _, b := range f.queue {
+		b.mu.Lock()
 		if b.w != nil {
 			errs = append(errs, b.w.Close())
 		}
 		if b.r != nil {
 			errs = append(errs, b.r.Close())
 		}
+		b.mu.Unlock()
 	}
 	if f.log != nil {
 		errs = append(errs, f.log.Close())
 	}
+	f.runsMu.Lock()
 	for _, r := range f.runs {
 		errs = append(errs, r.f.Close())
 	}
+	f.runsMu.Unlock()
 	return errors.Join(errs...)
 }
 
@@ -853,9 +1007,11 @@ func (f *Frontier) writeManifest() error {
 		Gen:     f.gen,
 		Stats:   f.stats.load(),
 	}
+	f.runsMu.RLock()
 	for _, r := range f.runs {
 		m.Runs = append(m.Runs, runMan{Name: r.name, Count: r.count})
 	}
+	f.runsMu.RUnlock()
 	for _, b := range f.queue {
 		m.Heads = append(m.Heads, b.head)
 	}
@@ -891,28 +1047,42 @@ func (f *Frontier) record(h uint64) error {
 	return nil
 }
 
-// push appends a canonical URL to its host's bucket.
-func (f *Frontier) push(host, canonical string) error {
-	b := f.queue[int(hashOf(host)%uint64(f.o.Buckets))]
-	n, err := b.bw.WriteString(canonical + "\n")
-	if err != nil {
-		return fmt.Errorf("crawl: queueing a URL: %w", err)
-	}
-	b.end += int64(n)
-	return nil
+// push appends a canonical URL to its bucket. It takes that bucket's lock and no
+// other, so a caller that holds the frontier's lock may call it and a caller
+// that holds nothing may too.
+func (f *Frontier) push(canonical string) error {
+	return f.bucket(canonical).push(canonical)
 }
 
-// seen reports whether a hash is in the exact set. The filter answers for most
-// of what is new without a read, and everything it says yes to is checked
-// against the pending map and then against the runs, newest first, because a URL
-// offered twice tends to be offered twice close together.
-func (f *Frontier) seen(h uint64) (bool, error) {
-	if !f.maybe(h) {
-		return false, nil
-	}
-	if _, ok := f.pending[h]; ok {
-		return true, nil
-	}
+// bucket is the queue file a URL goes in, chosen by the whole URL rather than by
+// its host.
+//
+// It was the host, on the reasoning that a batch read a bucket at a time would
+// then be spread over hosts. It does the opposite. A page links to its own site
+// sixty times over, all sixty go in together, and the bucket ends up a run of
+// one host followed by a run of another. A batch takes two URLs per host, so
+// reading that run means reading fifty eight it has to put straight back:
+// server2 was deferring twenty nine URLs for every one it handed out, and doing
+// it in the one goroutine that fills the batch, with a URL parse each and the
+// frontier's lock held. The workers waiting for that were the largest group in a
+// goroutine dump of the box.
+//
+// On the whole URL those sixty links land in sixty different files and every
+// bucket ends up interleaved, which is what makes two per host per batch
+// something a read runs into rarely rather than constantly.
+//
+// Nothing looks a URL up by bucket, so changing what decides it costs nothing on
+// a queue already written: those URLs come out of wherever they went in.
+func (f *Frontier) bucket(canonical string) *bucket {
+	return f.queue[int(hashOf(canonical)%uint64(f.o.Buckets))]
+}
+
+// runsHave reports whether a hash is in one of the sorted runs on disk. It is
+// called with the runs held for reading and the frontier's lock let go.
+//
+// Newest first, because a URL offered twice tends to be offered twice close
+// together.
+func (f *Frontier) runsHave(h uint64) (bool, error) {
 	for i := len(f.runs) - 1; i >= 0; i-- {
 		ok, err := f.runs[i].has(h)
 		if err != nil {
@@ -937,16 +1107,16 @@ func (f *Frontier) probes(h uint64) (uint64, uint64, uint64) {
 
 func (f *Frontier) add(h uint64) {
 	a, b, c := f.probes(h)
-	f.filter[a/64] |= 1 << (a % 64)
-	f.filter[b/64] |= 1 << (b % 64)
-	f.filter[c/64] |= 1 << (c % 64)
+	f.filter[a/64].Or(1 << (a % 64))
+	f.filter[b/64].Or(1 << (b % 64))
+	f.filter[c/64].Or(1 << (c % 64))
 }
 
 func (f *Frontier) maybe(h uint64) bool {
 	a, b, c := f.probes(h)
-	return f.filter[a/64]&(1<<(a%64)) != 0 &&
-		f.filter[b/64]&(1<<(b%64)) != 0 &&
-		f.filter[c/64]&(1<<(c%64)) != 0
+	return f.filter[a/64].Load()&(1<<(a%64)) != 0 &&
+		f.filter[b/64].Load()&(1<<(b%64)) != 0 &&
+		f.filter[c/64].Load()&(1<<(c%64)) != 0
 }
 
 // spill writes the pending hashes out as a sorted run and then merges runs that
@@ -972,7 +1142,11 @@ func (f *Frontier) spill() error {
 	if err != nil {
 		return err
 	}
+	// The write is over by here, so what the readers are shut out of is a slice
+	// append rather than the several seconds it takes to put a run on the disk.
+	f.runsMu.Lock()
 	f.runs = append(f.runs, r)
+	f.runsMu.Unlock()
 
 	clear(f.pending)
 	if err := f.log.Truncate(0); err != nil {
@@ -1000,10 +1174,17 @@ func (f *Frontier) compactRuns() error {
 		if err != nil {
 			return err
 		}
-		f.runs = f.runs[:len(f.runs)-2]
-		f.runs = append(f.runs, merged)
+		// The swap and the two closes go together under the write lock. A reader
+		// that got through with the old slice would be part way into a file this
+		// is about to close, and the error it came back with would be reported as
+		// a URL nobody had seen.
+		f.runsMu.Lock()
+		f.runs = append(f.runs[:len(f.runs)-2], merged)
 		for _, old := range []*run{a, b} {
 			_ = old.f.Close()
+		}
+		f.runsMu.Unlock()
+		for _, old := range []*run{a, b} {
 			if err := os.Remove(filepath.Join(f.dir, old.name)); err != nil {
 				return fmt.Errorf("crawl: removing a merged run: %w", err)
 			}
@@ -1178,27 +1359,87 @@ func (s *scanner) next() (uint64, bool, error) {
 	return binary.BigEndian.Uint64(buf[:]), true, nil
 }
 
+// push appends one URL to the bucket.
+func (b *bucket) push(canonical string) error {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return b.pushLocked(canonical)
+}
+
+func (b *bucket) pushLocked(canonical string) error {
+	n, err := b.bw.WriteString(canonical + "\n")
+	if err != nil {
+		return fmt.Errorf("crawl: queueing a URL: %w", err)
+	}
+	b.end += int64(n)
+	return nil
+}
+
 // take reads the next URL out of a bucket, or returns empty when the bucket has
-// nothing left. The head only moves for a line that was returned, so a crawl
-// killed between here and the fetch loses the batch it was holding and no more.
+// nothing left.
 func (b *bucket) take() (string, error) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return b.takeLocked()
+}
+
+// takeLocked is take with the bucket's lock already held.
+//
+// The head only moves for a line that was returned, so a crawl killed between
+// here and the fetch loses the batch it was holding and no more.
+func (b *bucket) takeLocked() (string, error) {
 	if b.head >= b.end {
 		return "", nil
 	}
 	line, err := b.br.ReadString('\n')
 	if err != nil {
 		if errors.Is(err, io.EOF) {
+			// End of what has reached the disk, which is not the same as the end
+			// of the bucket. The writer's buffer fills in the middle of a URL as
+			// often as anywhere else, and when it does the front of that URL is on
+			// the disk and the rest is still in memory. Those bytes are out of the
+			// reader now whatever this returns, so they are held here and put back
+			// in front of the next read. Dropping them would hand the tail of a URL
+			// out as though it were a whole one.
+			b.part += line
 			return "", nil
 		}
 		return "", fmt.Errorf("crawl: reading %s: %w", b.path, err)
 	}
+	line, b.part = b.part+line, ""
 	b.head += int64(len(line))
 	return strings.TrimSuffix(line, "\n"), nil
 }
 
+// sync writes the bucket's buffer out, so that a reader sees what has been
+// offered rather than only what has spilled.
+func (b *bucket) sync() error {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	if err := b.bw.Flush(); err != nil {
+		return fmt.Errorf("crawl: flushing the queue: %w", err)
+	}
+	return nil
+}
+
+// trim writes the buffer out and hands the disk back when the consumed head has
+// grown past limit.
+func (b *bucket) trim(limit int64) error {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	if err := b.bw.Flush(); err != nil {
+		return fmt.Errorf("crawl: flushing the queue: %w", err)
+	}
+	if b.head < limit {
+		return nil
+	}
+	return b.compact()
+}
+
 // compact cuts the consumed head off a queue file. Everything is closed and
 // reopened around the rename, because the point is to hand the disk back and a
-// file still held open is a file still on the disk.
+// file still held open is a file still on the disk. It is called with the
+// bucket's lock held.
 func (b *bucket) compact() error {
 	if err := b.bw.Flush(); err != nil {
 		return fmt.Errorf("crawl: compacting %s: %w", b.path, err)
@@ -1236,6 +1477,9 @@ func (b *bucket) compact() error {
 		return fmt.Errorf("crawl: compacting %s: %w", b.path, err)
 	}
 	b.w, b.bw, b.r, b.br = w, bufio.NewWriterSize(w, 1<<16), r, bufio.NewReaderSize(r, 1<<16)
+	// The copy started at the head, so a part line held from an earlier read is
+	// back in the file and holding it as well would hand it out twice.
+	b.part = ""
 	b.head, b.end = 0, n
 	return nil
 }

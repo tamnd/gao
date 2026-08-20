@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 
 	"github.com/tamnd/gao/frontier"
@@ -750,4 +751,253 @@ func TestABatchIsStillSpreadOverHosts(t *testing.T) {
 			t.Errorf("the batch took %d URLs from %s, and the cap is two", n, host)
 		}
 	}
+}
+
+// A URL the write buffer spilled halfway through comes back whole.
+//
+// The bucket's 64 KB write buffer fills in the middle of a URL as often as
+// anywhere else, and when it does the front of that URL is on the disk and the
+// rest is still in memory. A reader that arrives in between is told the bucket
+// has bytes left, reaches the end of the file partway through a line, and
+// whatever it returns it cannot un-read those bytes. They used to be dropped,
+// which meant the front of the URL was gone and its tail came back on the next
+// read looking like a URL of its own.
+//
+// [Frontier.Next] flushes every bucket before it reads, so this was out of reach
+// while a requeue also held the frontier's lock. It is not out of reach now: a
+// requeue takes one bucket and can land between that flush and that read. The
+// bucket is driven directly here because that race is not one a test can arrange
+// on demand.
+func TestAURLTheBufferSplitComesBackWhole(t *testing.T) {
+	f := open(t, FrontierOptions{Buckets: 1})
+	b := f.queue[0]
+
+	want := make([]string, 0, 1000)
+	for i := range 1000 {
+		u := fmt.Sprintf("https://bao.com/tin/%d/%s.html", i, strings.Repeat("a", 200))
+		if err := b.push(u); err != nil {
+			t.Fatalf("push: %v", err)
+		}
+		want = append(want, u)
+	}
+
+	// Read what the buffer spilled by itself, with no flush, which is the state a
+	// requeue leaves the file in.
+	var got []string
+	drain := func() {
+		for {
+			line, err := b.take()
+			if err != nil {
+				t.Fatalf("take: %v", err)
+			}
+			if line == "" {
+				return
+			}
+			got = append(got, line)
+		}
+	}
+	drain()
+	if len(got) == 0 {
+		t.Fatal("the buffer never spilled, so this test is checking nothing")
+	}
+	if len(got) == len(want) {
+		t.Fatal("the buffer spilled all of it, so this test is checking nothing")
+	}
+
+	if err := b.sync(); err != nil {
+		t.Fatalf("sync: %v", err)
+	}
+	drain()
+
+	if len(got) != len(want) {
+		t.Fatalf("%d URLs came out of the bucket and %d went in", len(got), len(want))
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Fatalf("URL %d came back as %q and went in as %q", i, got[i], want[i])
+		}
+	}
+}
+
+// Putting URLs back while the frontier is handing them out and taking new ones
+// loses none of them.
+//
+// Requeue no longer takes the frontier's lock, only the lock on the one bucket
+// it writes to, and this is the property that change had to keep. Run it under
+// -race, which is where a bucket written without its lock shows up.
+func TestPuttingURLsBackWhileTheCrawlRunsLosesNothing(t *testing.T) {
+	f := open(t, FrontierOptions{Buckets: 8, PerHost: 1 << 20})
+
+	const hosts, each = 16, 50
+	for h := range hosts {
+		for i := range each {
+			u := fmt.Sprintf("https://bao%d.com/tin/%d.html", h, i)
+			if ok, why, err := f.Offer(u); err != nil || !ok {
+				t.Fatalf("Offer %s: %v %s", u, err, why)
+			}
+		}
+	}
+
+	// Every URL is taken out and put straight back, from many workers at once,
+	// and the last round takes them out for good.
+	var mu sync.Mutex
+	got := map[string]int{}
+	for round := range 4 {
+		last := round == 3
+		var batch []string
+		for {
+			b, err := f.Next(64)
+			if err != nil {
+				t.Fatalf("Next: %v", err)
+			}
+			if len(b) == 0 {
+				break
+			}
+			batch = append(batch, b...)
+		}
+		var wg sync.WaitGroup
+		for _, u := range batch {
+			wg.Add(1)
+			go func() {
+				defer wg.Done()
+				if last {
+					mu.Lock()
+					got[u]++
+					mu.Unlock()
+					return
+				}
+				if err := f.Requeue(u); err != nil {
+					t.Errorf("Requeue %s: %v", u, err)
+				}
+			}()
+		}
+		wg.Wait()
+	}
+
+	if len(got) != hosts*each {
+		t.Fatalf("%d URLs came back out of %d that went in", len(got), hosts*each)
+	}
+	for u, n := range got {
+		if n != 1 {
+			t.Fatalf("%s came out %d times on the last round", u, n)
+		}
+	}
+}
+
+// A URL already written out to a run is refused however many workers offer it
+// at once.
+//
+// The runs are read with the frontier's lock let go, so this is the pass that
+// the lock used to make trivially correct. Small Pending forces the hashes onto
+// the disk, and offering every one of them again from every goroutine at once is
+// what puts many readers in a run file together.
+func TestAURLOnDiskIsRefusedHoweverManyWorkersAskAtOnce(t *testing.T) {
+	f := open(t, FrontierOptions{Pending: 64})
+
+	urls := make([]string, 0, 800)
+	for h := range 20 {
+		for i := range 40 {
+			urls = append(urls, fmt.Sprintf("https://bao%d.com/tin/%d.html", h, i))
+		}
+	}
+	for _, u := range urls {
+		if ok, why, err := f.Offer(u); err != nil || !ok {
+			t.Fatalf("Offer %s: %v %s", u, err, why)
+		}
+	}
+	if err := f.Flush(); err != nil {
+		t.Fatalf("Flush: %v", err)
+	}
+	if len(f.runs) == 0 {
+		t.Fatal("nothing spilled to a run, so the disk pass is not being tested")
+	}
+
+	var queued atomic.Int64
+	var wg sync.WaitGroup
+	for range 8 {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			n, err := f.OfferAll(urls)
+			if err != nil {
+				t.Errorf("OfferAll: %v", err)
+				return
+			}
+			queued.Add(int64(n))
+		}()
+	}
+	wg.Wait()
+
+	if got := queued.Load(); got != 0 {
+		t.Fatalf("%d URLs were queued a second time and every one of them was already in a run", got)
+	}
+}
+
+// Two workers offering the same new URL at the same moment queue it once.
+//
+// Once is what the third pass is for. It cannot be guaranteed, because two
+// workers can be inside the run files together and neither has recorded
+// anything, and the whole trade is that an exact overlap costs one page fetched
+// twice rather than costing every offer a disk read under the frontier's lock.
+// This is the size of that: with nothing on disk to read there is no window at
+// all, and the count has to be exactly one.
+func TestOneNewURLOfferedByEveryWorkerAtOnceIsQueuedOnce(t *testing.T) {
+	f := open(t, FrontierOptions{})
+
+	var queued atomic.Int64
+	var wg sync.WaitGroup
+	for range 16 {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			ok, _, err := f.Offer("https://bao.com/tin/1.html")
+			if err != nil {
+				t.Errorf("Offer: %v", err)
+				return
+			}
+			if ok {
+				queued.Add(1)
+			}
+		}()
+	}
+	wg.Wait()
+
+	if got := queued.Load(); got != 1 {
+		t.Fatalf("one URL offered by sixteen workers was queued %d times", got)
+	}
+}
+
+func TestAPageWorthOfLinksToOneSiteDoesNotJamTheBatches(t *testing.T) {
+	// What a crawl actually offers: a page links to its own site sixty times and
+	// every one of those arrives together. If those sixty land in one queue file
+	// then a batch reads a run of one host, hands out the two it is allowed and
+	// puts the other fifty eight back, which is a bucket read and a push each and
+	// all of it in the goroutine that fills the batch.
+	f := open(t, FrontierOptions{})
+	for h := range 64 {
+		for i := range 60 {
+			offer(t, f, fmt.Sprintf("https://bao%d.example/tin/%d.html", h, i))
+		}
+	}
+
+	handed := 0
+	for {
+		got := next(t, f, 100)
+		if len(got) == 0 {
+			break
+		}
+		handed += len(got)
+	}
+	if handed != 64*60 {
+		t.Fatalf("drained %d URLs of %d", handed, 64*60)
+	}
+
+	// One deferral per URL handed out is already generous: it means the queue
+	// gets read through twice. The bug being held off here was twenty nine.
+	deferred := f.Stats().Deferred
+	if deferred > int64(handed) {
+		t.Fatalf("put %d URLs back to hand out %d, so the batches are reading a run of one host at a time",
+			deferred, handed)
+	}
+	t.Logf("deferred %d to hand out %d", deferred, handed)
 }
