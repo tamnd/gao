@@ -32,19 +32,21 @@ func fertilityLog(t *testing.T, on map[string][]string, tokens map[string]int64)
 // everyCandidate is the whole roster measured on two boxes each, which is the
 // state the milestone item describes and the only state that exits zero.
 func everyCandidate() (map[string][]string, map[string]int64) {
-	return map[string][]string{
-			"gemma-3":          {"server1", "gamingpc"},
-			"llama-3.3":        {"server1", "server2"},
-			"qwen3":            {"server1", "server3"},
-			"gao-192k":         {"server1", "gamingpc"},
-			"gemma-3-plus-32k": {"server1", "server2"},
-		}, map[string]int64{
-			"gemma-3":          3_311_258,
-			"llama-3.3":        4_385_965,
-			"qwen3":            3_773_585,
-			"gao-192k":         3_200_000,
-			"gemma-3-plus-32k": 2_777_778,
-		}
+	boxes := map[string][]string{
+		"gemma-3":          {"server1", "gamingpc"},
+		"llama-3.3":        {"server1", "server2"},
+		"qwen3":            {"server1", "server3"},
+		"gao-192k":         {"server1", "gamingpc"},
+		"gemma-3-plus-32k": {"server1", "server2"},
+	}
+	tokens := map[string]int64{
+		"gemma-3":          3_311_258,
+		"llama-3.3":        4_385_965,
+		"qwen3":            3_773_585,
+		"gao-192k":         3_200_000,
+		"gemma-3-plus-32k": 2_777_778,
+	}
+	return boxes, tokens
 }
 
 // The roster is the answer to a question nobody asks until late, which is which

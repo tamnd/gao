@@ -501,7 +501,7 @@ func (c *Crawler) fetch(ctx context.Context, host, target string) (fetched, erro
 	resp, err := c.client.Do(req)
 	if err != nil {
 		// Only a request that produced no response counts against the host. A
-		// cancelled crawl is not the host's doing, and counting it would end a
+		// canceled crawl is not the host's doing, and counting it would end a
 		// run by convincing itself that the web had gone away.
 		if c.dead != nil && ctx.Err() == nil {
 			c.dead.failed(host)

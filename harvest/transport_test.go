@@ -87,10 +87,14 @@ func TestASlowHeaderIsGivenUpOnWithoutWaitingOutTheRequest(t *testing.T) {
 
 	c := NewClient(TransportOptions{Header: 100 * time.Millisecond}, 10*time.Second)
 	at := time.Now()
-	_, err := c.Get(quiet.URL)
+	resp, err := c.Get(quiet.URL)
 	took := time.Since(at)
 
 	if err == nil {
+		// Unreachable while the server holds its header back, and closed anyway
+		// because a test that leaks a body on a path it does not expect to take
+		// is a test that hides the leak.
+		_ = resp.Body.Close()
 		t.Fatal("a server that sent no header answered anyway")
 	}
 	if took > 2*time.Second {
