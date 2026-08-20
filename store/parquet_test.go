@@ -3,12 +3,14 @@ package store
 import (
 	"bytes"
 	"errors"
+	"maps"
 	"os"
 	"path/filepath"
 	"reflect"
 	"slices"
 	"strings"
 	"testing"
+	"unicode/utf8"
 
 	"github.com/tamnd/gao/doc"
 )
@@ -736,5 +738,69 @@ func TestARowWithAnUnreadableLicenseComesBackUnknown(t *testing.T) {
 	row.LicenseClass = "invented-later"
 	if got := DocumentOf(row).LicenseClass; got != doc.LicenseUnknown {
 		t.Errorf("a license class this build cannot read came back as %q, want %q", got, doc.LicenseUnknown)
+	}
+}
+
+// A published part has to be readable by the tools the README tells people to
+// use, and a Parquet string column is defined as UTF-8. The web does not agree.
+// A link on tramtrieuthaytramtrieutro.com percent encodes its path in an
+// encoding that is not UTF-8, the decoded path became url_template, and DuckDB
+// then refused the entire part with "value ... is not valid UTF8" rather than the
+// one row that carried it.
+func TestBytesTheWebCallsTextDoNotSpoilThePart(t *testing.T) {
+	in := sample(11)
+	in.URLTemplate = "tramtrieuthaytramtrieutro.com/blogpost1-Thong-tin-so-v\xe1\xbb\x9b\xffi-Tri-tu\xe1\xbb"
+	in.Host = "tramtrieuthaytramtrieutro.com"
+	in.Text = "M\xe1\xbbt trang ti\xe1\xba\xbfng Vi\xe1\xbb\x87t"
+	in.MediaType = "text/html"
+	in.TDMSignals = map[string]string{"tdmrep": "\xffno"}
+	in.UpstreamFields = map[string]string{"note": "\xfe\xff"}
+
+	path, _ := writePart(t, textDataset(t), in)
+	rows, err := ReadPart(path)
+	if err != nil {
+		t.Fatalf("ReadPart: %v", err)
+	}
+	if len(rows) != 1 {
+		t.Fatalf("read %d rows, want 1", len(rows))
+	}
+	got := rows[0]
+	for name, s := range map[string]string{
+		"url_template": got.URLTemplate,
+		"text":         got.Text,
+		"host":         got.Host,
+	} {
+		if !utf8.ValidString(s) {
+			t.Errorf("%s came back as bytes no reader will take: %q", name, s)
+		}
+	}
+	for k, v := range got.TDMSignals {
+		if !utf8.ValidString(k) || !utf8.ValidString(v) {
+			t.Errorf("tdm_signals holds %q: %q", k, v)
+		}
+	}
+	for k, v := range got.UpstreamFields {
+		if !utf8.ValidString(k) || !utf8.ValidString(v) {
+			t.Errorf("upstream_fields holds %q: %q", k, v)
+		}
+	}
+	// What was readable stays readable. Losing the whole slug would be a quieter
+	// version of losing the whole file.
+	if !strings.Contains(got.URLTemplate, "Thong-tin-so-v") {
+		t.Errorf("the template lost more than the bad bytes: %q", got.URLTemplate)
+	}
+}
+
+// A document whose strings are already text is handed through rather than
+// copied, because every row on a crawl at a hundred pages a second goes through
+// here and almost none of them need anything done.
+func TestTextThatIsAlreadyTextIsNotCopied(t *testing.T) {
+	m := map[string]string{"tdmrep": "0"}
+	if got := validMap(m); !maps.Equal(got, m) {
+		t.Fatalf("validMap changed a clean map: %v", got)
+	}
+	s := "một trang tiếng Việt"
+	if got := valid(s); got != s {
+		t.Fatalf("valid changed a clean string: %q", got)
 	}
 }

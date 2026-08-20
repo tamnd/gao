@@ -10,6 +10,7 @@ import (
 	"strings"
 	"sync"
 	"time"
+	"unicode/utf8"
 
 	"github.com/parquet-go/parquet-go"
 	"github.com/tamnd/gao/doc"
@@ -156,24 +157,24 @@ func RowOf(d *doc.Document) Row {
 	return Row{
 		DocID:         d.DocID,
 		RawID:         d.RawID,
-		Text:          d.Text,
+		Text:          valid(d.Text),
 		SchemaVersion: d.SchemaVersion,
 
 		Source:          string(d.Source),
 		SourceLocator:   d.SourceLocator,
-		URL:             d.URL,
-		Host:            d.Host,
-		URLTemplate:     d.URLTemplate,
+		URL:             valid(d.URL),
+		Host:            valid(d.Host),
+		URLTemplate:     valid(d.URLTemplate),
 		FetchedAt:       d.FetchedAt,
-		MediaType:       d.MediaType,
+		MediaType:       valid(d.MediaType),
 		Extractor:       d.Extractor,
 		PipelineVersion: d.PipelineVersion,
 
 		HTTPStatus:     d.HTTPStatus,
 		RobotsDecision: d.RobotsDecision,
-		RobotsRule:     d.RobotsRule,
+		RobotsRule:     valid(d.RobotsRule),
 		RobotsHash:     d.RobotsHash,
-		TDMSignals:     d.TDMSignals,
+		TDMSignals:     validMap(d.TDMSignals),
 		Consent:        string(d.Consent),
 
 		Lang:       d.Lang,
@@ -198,15 +199,54 @@ func RowOf(d *doc.Document) Row {
 		// The class is stored by name and not by its integer, so that a file
 		// read without gao says restricted rather than 3.
 		LicenseClass:    d.LicenseClass.String(),
-		LicenseEvidence: d.LicenseEvidence,
+		LicenseEvidence: valid(d.LicenseEvidence),
 
 		Structure:      d.Structure,
 		NChars:         d.NChars,
 		NSyllables:     d.NSyllables,
 		NTokens:        d.NTokens,
 		ContamFlags:    d.ContamFlags,
-		UpstreamFields: d.UpstreamFields,
+		UpstreamFields: validMap(d.UpstreamFields),
 	}
+}
+
+// valid is a string on its way into a Parquet string column, which is defined as
+// UTF-8 and is therefore not a place arbitrary bytes can go.
+//
+// The web hands over bytes and not text. A link on one Vietnamese blog percent
+// encodes its path in something that is not UTF-8, the decoded path becomes the
+// url_template column, and DuckDB then refuses the whole file: "value ... is not
+// valid UTF8". One bad link on one page made a published part unreadable, which
+// is a far worse outcome than losing the two bytes. Replacing them keeps the row,
+// keeps the file and leaves the replacement character where the loss was.
+//
+// The check comes first because almost every string passes it and passing costs a
+// scan rather than a copy.
+func valid(s string) string {
+	if utf8.ValidString(s) {
+		return s
+	}
+	return strings.ToValidUTF8(s, "�")
+}
+
+// validMap is [valid] over a map of headers, which is where a server that
+// mislabels its own encoding puts its bytes.
+//
+// It returns the map it was given when there is nothing to fix, so the common
+// case costs a scan, and builds a new one otherwise rather than writing into a
+// document underneath its owner.
+func validMap(m map[string]string) map[string]string {
+	for k, v := range m {
+		if utf8.ValidString(k) && utf8.ValidString(v) {
+			continue
+		}
+		out := make(map[string]string, len(m))
+		for k, v := range m {
+			out[valid(k)] = valid(v)
+		}
+		return out
+	}
+	return m
 }
 
 // DocumentOf converts a row back into a document.
@@ -566,7 +606,7 @@ func (p *ParquetWriter) AppendReject(d *doc.Document, stage, reason, detail stri
 		Row:          RowOf(d),
 		RejectStage:  stage,
 		RejectReason: reason,
-		RejectDetail: detail,
+		RejectDetail: valid(detail),
 	})
 	if _, err := p.r.Write(p.rbuf); err != nil {
 		return fmt.Errorf("store: writing row %d: %w", p.n, err)
