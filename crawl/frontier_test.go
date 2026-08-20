@@ -804,8 +804,10 @@ func TestAURLTheBufferSplitComesBackWhole(t *testing.T) {
 		t.Fatal("the buffer spilled all of it, so this test is checking nothing")
 	}
 
-	if err := b.sync(); err != nil {
-		t.Fatalf("sync: %v", err)
+	// What [Frontier.Next] does before it reads a bucket, which is where the
+	// rest of the URLs come from.
+	if err := b.arm(); err != nil {
+		t.Fatalf("arm: %v", err)
 	}
 	drain()
 
@@ -1000,4 +1002,99 @@ func TestAPageWorthOfLinksToOneSiteDoesNotJamTheBatches(t *testing.T) {
 			deferred, handed)
 	}
 	t.Logf("deferred %d to hand out %d", deferred, handed)
+}
+
+// A bucket that still has URLs on the disk is not flushed to find more.
+//
+// The flush is what [Frontier.Next] used to do to all sixty four buckets on
+// every call. On a queue with twenty six million URLs on it the reader is
+// nowhere near the end of any of them, so every one of those flushes was a lock
+// and a write against the workers appending to that same bucket, for nothing.
+func TestABucketWithURLsOnTheDiskIsNotFlushedToFindMore(t *testing.T) {
+	f := open(t, FrontierOptions{Buckets: 1})
+	b := f.queue[0]
+
+	for i := range 100 {
+		if err := b.push(fmt.Sprintf("https://bao.com/tin/%d.html", i)); err != nil {
+			t.Fatalf("push: %v", err)
+		}
+	}
+	if err := b.arm(); err != nil {
+		t.Fatalf("arm: %v", err)
+	}
+	if b.bw.Buffered() != 0 {
+		t.Fatalf("an empty bucket was not flushed, so it had nothing to hand out")
+	}
+
+	// More URLs arrive and sit in the buffer, and one comes off the disk, which
+	// leaves ninety nine there.
+	for i := 100; i < 200; i++ {
+		if err := b.push(fmt.Sprintf("https://bao.com/tin/%d.html", i)); err != nil {
+			t.Fatalf("push: %v", err)
+		}
+	}
+	if _, err := b.take(); err != nil {
+		t.Fatalf("take: %v", err)
+	}
+	buffered := b.bw.Buffered()
+	if buffered == 0 {
+		t.Fatal("the second hundred spilled on its own, so this test is checking nothing")
+	}
+	if err := b.arm(); err != nil {
+		t.Fatalf("arm: %v", err)
+	}
+	if b.bw.Buffered() != buffered {
+		t.Fatalf("the bucket was flushed with ninety nine URLs still unread on the disk")
+	}
+}
+
+// Batches filled from several goroutines at once hand out every URL and hand out
+// none of them twice.
+//
+// Next takes no lock on the frontier any more, so this is the property that has
+// to hold: the rotation counter is an atomic and the lines come off the buckets
+// under the bucket's own lock. Run it under -race.
+func TestSeveralBatchesFilledAtOnceHandOutEveryURLOnce(t *testing.T) {
+	f := open(t, FrontierOptions{Buckets: 8, PerHost: 1 << 20})
+
+	want := 0
+	for h := range 40 {
+		for i := range 50 {
+			offer(t, f, fmt.Sprintf("https://bao%d.com/tin/%d.html", h, i))
+			want++
+		}
+	}
+
+	var mu sync.Mutex
+	got := map[string]int{}
+	var wg sync.WaitGroup
+	for range 8 {
+		wg.Go(func() {
+			for {
+				batch, err := f.Next(37)
+				if err != nil {
+					t.Errorf("Next: %v", err)
+					return
+				}
+				if len(batch) == 0 {
+					return
+				}
+				mu.Lock()
+				for _, u := range batch {
+					got[u]++
+				}
+				mu.Unlock()
+			}
+		})
+	}
+	wg.Wait()
+
+	if len(got) != want {
+		t.Fatalf("%d URLs came out of the frontier and %d went in", len(got), want)
+	}
+	for u, n := range got {
+		if n != 1 {
+			t.Fatalf("%s was handed out %d times", u, n)
+		}
+	}
 }

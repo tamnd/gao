@@ -138,10 +138,16 @@ type Frontier struct {
 	o   FrontierOptions
 	dir string
 
-	// mu guards the resident half of the seen set and the batching in
-	// [Frontier.Next]. It is the outermost of the three locks here: a caller
-	// holding it may take a bucket's or the runs', and neither of those is ever
-	// held while taking this.
+	// mu guards the resident half of the seen set. It is the outermost of the
+	// three locks here: a caller holding it may take a bucket's or the runs',
+	// and neither of those is ever held while taking this.
+	//
+	// [Frontier.Next] does not take it. Filling a batch touches the queue files,
+	// which have their own locks, the rotation counter, which is an atomic, and
+	// the counters, which are atomics too. It used to hold this lock for the
+	// whole of a batch, and since a batch is the supply of URLs for every worker
+	// on the box, that put the thing offering links behind the thing handing them
+	// out.
 	//
 	// What it does not guard is the runs on disk, which is the point. Everything
 	// under it is memory, so the time it is held for is bounded by the machine
@@ -180,7 +186,13 @@ type Frontier struct {
 	gen    int
 
 	queue []*bucket
-	turn  int
+
+	// turn is which bucket the next batch starts from, and it is an atomic
+	// because [Frontier.Next] takes no lock. Two batches being filled at once
+	// step through the rotation together rather than each from the same place,
+	// which is all the coordination they need: the lines themselves are handed
+	// out under the bucket's own lock, so no line goes to both of them.
+	turn atomic.Uint64
 
 	stats counters
 
@@ -838,16 +850,6 @@ func (f *Frontier) Next(n int) ([]string, error) {
 	if n <= 0 {
 		return nil, nil
 	}
-	f.mu.Lock()
-	defer f.mu.Unlock()
-
-	// The readers cannot see what is sitting in a write buffer, and on a small
-	// queue that is most of it.
-	for _, b := range f.queue {
-		if err := b.sync(); err != nil {
-			return nil, err
-		}
-	}
 
 	out := make([]string, 0, n)
 	per := map[string]int{}
@@ -859,8 +861,10 @@ func (f *Frontier) Next(n int) ([]string, error) {
 	// memory in one batch: past it the bucket is left alone until next time.
 	most := 4 * n
 	for range f.o.Buckets {
-		b := f.queue[f.turn%f.o.Buckets]
-		f.turn++
+		b := f.queue[(f.turn.Add(1)-1)%uint64(f.o.Buckets)]
+		if err := b.arm(); err != nil {
+			return nil, err
+		}
 		for reads := 0; len(out) < n && reads < most; reads++ {
 			line, err := b.take()
 			if err != nil {
@@ -1013,7 +1017,7 @@ func (f *Frontier) writeManifest() error {
 	}
 	f.runsMu.RUnlock()
 	for _, b := range f.queue {
-		m.Heads = append(m.Heads, b.head)
+		m.Heads = append(m.Heads, b.at())
 	}
 	b, err := json.MarshalIndent(m, "", "  ")
 	if err != nil {
@@ -1411,15 +1415,47 @@ func (b *bucket) takeLocked() (string, error) {
 	return strings.TrimSuffix(line, "\n"), nil
 }
 
-// sync writes the bucket's buffer out, so that a reader sees what has been
-// offered rather than only what has spilled.
-func (b *bucket) sync() error {
+// arm makes sure the bucket has something for [bucket.take] to find, which means
+// flushing the write buffer only when the reader has caught up with what has
+// already reached the disk.
+//
+// [Frontier.Next] used to flush all sixty four buckets on every call, because a
+// reader cannot see what is sitting in a write buffer and on a small queue that
+// is most of it. On a real queue it is almost none of it: server2 carries twenty
+// six million URLs and the reader is megabytes behind the disk on every bucket,
+// so those flushes were sixty four locks and sixty four small writes per batch,
+// taken against two thousand workers appending to the same buckets, to make
+// visible something nobody was going to read for another ten minutes.
+func (b *bucket) arm() error {
 	b.mu.Lock()
 	defer b.mu.Unlock()
+	if b.readyLocked() > 0 || b.bw.Buffered() == 0 {
+		return nil
+	}
 	if err := b.bw.Flush(); err != nil {
 		return fmt.Errorf("crawl: flushing the queue: %w", err)
 	}
 	return nil
+}
+
+// at is how far this bucket has been read, which is the one thing about a bucket
+// the manifest has to write down. It takes the lock because [Frontier.Next]
+// moves the head without the frontier's.
+func (b *bucket) at() int64 {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return b.head
+}
+
+// readyLocked is how many bytes are on the disk and not yet read.
+//
+// end counts everything written including what is still buffered, and head
+// counts what has been handed out, so neither on its own says whether a read
+// would find anything. part is in there because those bytes came off the disk
+// and are being held for the rest of their line, so they are read and not
+// counted in head.
+func (b *bucket) readyLocked() int64 {
+	return b.end - int64(b.bw.Buffered()) - b.head - int64(len(b.part))
 }
 
 // trim writes the buffer out and hands the disk back when the consumed head has

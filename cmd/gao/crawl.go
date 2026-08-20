@@ -36,6 +36,7 @@ func runCrawl(stdout, stderr io.Writer, args []string) int {
 	boxes := fs.Int("fleet", 1, "how many boxes are crawling, so that every host is fetched by exactly one of them")
 	workers := fs.Int("workers", crawl.DefaultWorkers, "how many fetches are in flight at once")
 	batch := fs.Int("batch", 0, "how many URLs are taken from the frontier at a time (default eight per worker)")
+	feeders := fs.Int("feeders", crawl.DefaultFeeders, "how many goroutines take batches from the frontier")
 	pages := fs.Int64("pages", 0, "stop after this many fetches, which is how a first run is kept to a size somebody can read")
 	delay := fs.Duration("delay", harvest.DefaultDelay, "the gap between two requests to one host, before the site's own Crawl-delay")
 	header := fs.Duration("header", harvest.DefaultHeaderTimeout, "how long a server has to begin answering before the request is given up on")
@@ -225,6 +226,7 @@ flags:
 		Crawler:    c,
 		Workers:    *workers,
 		Batch:      *batch,
+		Feeders:    *feeders,
 		Pages:      *pages,
 		Checkpoint: *every,
 		Out:        stdout,
