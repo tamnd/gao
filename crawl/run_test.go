@@ -367,3 +367,49 @@ func TestALinkOnAPageInAnotherLanguageIsNotFollowed(t *testing.T) {
 		t.Error("the English page was never fetched, so the test proved nothing")
 	}
 }
+
+// A queue of URLs that all belong to one host is the shape a crawl slows down
+// in, and until this counter existed there was no way to see it: the progress
+// line showed a low rate and said nothing about why. Every worker that reaches
+// for the same host gets one turn and the rest are handed their URL back, which
+// is correct and cheap and completely invisible.
+//
+// The delay is long enough here that most turns land on a host that is not due.
+// The run still has to finish and still has to keep the articles, because a URL
+// given back is a URL that comes round again.
+func TestWorkersReachingForOneHostAreCounted(t *testing.T) {
+	srv := site(t)
+	dir := t.TempDir()
+
+	f, err := OpenFrontier(FrontierOptions{Dir: filepath.Join(dir, "frontier")})
+	if err != nil {
+		t.Fatalf("OpenFrontier: %v", err)
+	}
+	defer func() { _ = f.Close() }()
+	if ok, _, err := f.Offer(srv.URL + "/"); err != nil || !ok {
+		t.Fatalf("offering the seed: %v", err)
+	}
+
+	s := openSink(t, SinkOptions{Dir: filepath.Join(dir, "out"), Snapshot: "gaocrawl-20260820"})
+	c := harvest.NewCrawler(harvest.CrawlOptions{
+		Polite:  harvest.NewPolite(harvest.PoliteOptions{Delay: 40 * time.Millisecond}),
+		Version: "test",
+	})
+
+	ctx, cancel := context.WithTimeout(t.Context(), 30*time.Second)
+	defer cancel()
+	p, err := Run(ctx, RunOptions{Frontier: f, Sink: s, Crawler: c, Workers: 8, Batch: 8})
+	if err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+	if err := s.Close(); err != nil {
+		t.Fatalf("closing the sink: %v", err)
+	}
+
+	if p.Waited == 0 {
+		t.Error("eight workers shared one host and none of them was told to wait")
+	}
+	if p.Kept != 3 {
+		t.Errorf("the run kept %d pages, want the three articles, so waiting cost pages", p.Kept)
+	}
+}

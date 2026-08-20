@@ -273,6 +273,7 @@ func crawlSummary(w io.Writer, p crawl.Progress) {
 	fmt.Fprintf(w, "\n%s: %s fetched, %s kept, %s dropped, %s failed, %.1f pages a second\n",
 		round(p.Elapsed), thousands(p.Fetched), thousands(p.Kept), thousands(p.Dropped),
 		thousands(p.Failed), p.Rate())
+	fmt.Fprintf(w, "schedule: %s taken from the queue for a host that was not due yet\n", thousands(p.Waited))
 	fmt.Fprintf(w, "frontier: %s offered, %s queued, %s already seen, %s refused, %s another box's\n",
 		thousands(p.Frontier.Offered), thousands(p.Frontier.Queued()),
 		thousands(p.Frontier.Duplicate), thousands(p.Frontier.Refused), thousands(p.Frontier.Foreign))

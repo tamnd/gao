@@ -127,6 +127,17 @@ type Progress struct {
 	Redirects int64 `json:"redirects"`
 	Offered   int64 `json:"offered"`
 
+	// Waited is how many times a worker took a URL and gave it straight back
+	// because the host was not due yet.
+	//
+	// It is the number that says whether a fleet is slow because the web is slow
+	// or because it is asking the wrong questions. Every one of these is a worker
+	// turn that cost a frontier read and a frontier write and fetched nothing,
+	// and a run where it dwarfs Fetched is a run whose queue is a handful of
+	// hosts wearing millions of URLs. Nothing else in this struct can tell that
+	// apart from a slow web.
+	Waited int64 `json:"waited"`
+
 	Frontier Stats     `json:"frontier"`
 	Sink     SinkStats `json:"sink"`
 }
@@ -221,6 +232,7 @@ type loop struct {
 	failed    atomic.Int64
 	redirects atomic.Int64
 	offered   atomic.Int64
+	waited    atomic.Int64
 
 	mu    sync.Mutex
 	first error
@@ -368,6 +380,7 @@ func (r *loop) missed(ctx context.Context, rawurl string, at time.Time, err erro
 	if errors.Is(err, harvest.ErrBusy) {
 		// A host that asked for time has not refused. The URL goes back and the
 		// wait is the schedule's business rather than this loop's.
+		r.waited.Add(1)
 		return r.o.Frontier.Requeue(rawurl)
 	}
 	r.failed.Add(1)
@@ -439,8 +452,8 @@ func (r *loop) watch(ctx context.Context, done <-chan struct{}) {
 				r.o.Report(p)
 			}
 			if r.o.Out != nil {
-				fmt.Fprintf(r.o.Out, "%s  %d fetched, %d kept, %d dropped, %d failed, %d queued, %.1f pages a second\n",
-					p.Elapsed.Round(time.Second), p.Fetched, p.Kept, p.Dropped, p.Failed,
+				fmt.Fprintf(r.o.Out, "%s  %d fetched, %d kept, %d dropped, %d failed, %d not due, %d queued, %.1f pages a second\n",
+					p.Elapsed.Round(time.Second), p.Fetched, p.Kept, p.Dropped, p.Failed, p.Waited,
 					p.Frontier.Queued(), p.Rate())
 			}
 		}
@@ -456,6 +469,7 @@ func (r *loop) progress() Progress {
 		Failed:    r.failed.Load(),
 		Redirects: r.redirects.Load(),
 		Offered:   r.offered.Load(),
+		Waited:    r.waited.Load(),
 		Frontier:  r.o.Frontier.Stats(),
 		Sink:      r.o.Sink.Stats(),
 	}
