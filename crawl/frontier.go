@@ -253,6 +253,7 @@ type counters struct {
 	Foreign   atomic.Int64
 	Handed    atomic.Int64
 	Deferred  atomic.Int64
+	Exhausted atomic.Int64
 	Requeued  atomic.Int64
 	Fetched   atomic.Int64
 	New       atomic.Int64
@@ -271,6 +272,7 @@ func (c *counters) load() Stats {
 		Foreign:   c.Foreign.Load(),
 		Handed:    c.Handed.Load(),
 		Deferred:  c.Deferred.Load(),
+		Exhausted: c.Exhausted.Load(),
 		Requeued:  c.Requeued.Load(),
 		Fetched:   c.Fetched.Load(),
 		New:       c.New.Load(),
@@ -290,6 +292,7 @@ func (c *counters) store(s Stats) {
 	c.Foreign.Store(s.Foreign)
 	c.Handed.Store(s.Handed)
 	c.Deferred.Store(s.Deferred)
+	c.Exhausted.Store(s.Exhausted)
 	c.Requeued.Store(s.Requeued)
 	c.Fetched.Store(s.Fetched)
 	c.New.Store(s.New)
@@ -358,6 +361,14 @@ type Stats struct {
 	Deferred int64 `json:"deferred"`
 	Requeued int64 `json:"requeued"`
 
+	// Exhausted is how many batches stopped early because the queue had no host
+	// left under its share of the batch, rather than because the batch was full.
+	// It is the frontier saying it has run out of breadth rather than out of
+	// URLs, and it is the number to watch for throughput: a crawl whose batches
+	// are mostly exhausted is a crawl whose ceiling is how many hosts it knows,
+	// and no amount of extra workers will move it.
+	Exhausted int64 `json:"exhausted"`
+
 	// Fetched, New, Repeat and Empty are what came back, reported to
 	// [Frontier.Fetched] and kept here so a status line does not have to add up
 	// a log. The three of them are the crawl's yield, and a run where Empty is
@@ -369,7 +380,22 @@ type Stats struct {
 }
 
 // Queued is how many URLs have been admitted and not yet handed out.
-func (s Stats) Queued() int64 { return s.Admitted + s.Requeued + s.Deferred - s.Handed }
+//
+// Requeued is in the sum and Deferred is not, and the difference between the two
+// is the whole of why this is worth a comment. A requeue is a URL that was handed
+// out and came back, so it pairs with a Handed that already ran and has to be
+// added back. A deferral never left: [Frontier.Next] took the line out of a
+// bucket, saw the host was already at its share of the batch, and put the same
+// line back. Nothing was handed out and nothing needs adding back.
+//
+// Counting deferrals here made the queue look far deeper than it was, and by a
+// margin that grew with the crawl rather than staying still. A shard that had
+// fetched 4,097 pages reported 768,816 URLs waiting when it was holding about
+// 22,669, because 746,147 of that total was the same small set of URLs being
+// taken out and put back. That is not a cosmetic wrong number. A frontier that
+// looks like it is holding three quarters of a million URLs is a frontier nobody
+// suspects of having run short of hosts, which is exactly what it had done.
+func (s Stats) Queued() int64 { return s.Admitted + s.Requeued - s.Handed }
 
 // manifest is what is written to frontier.json, and it is everything an open
 // needs that cannot be worked out from the files.
@@ -1025,6 +1051,7 @@ func (f *Frontier) Next(n int) ([]string, error) {
 	// stops a bucket holding a million URLs for one host from being pulled into
 	// memory in one batch: past it the bucket is left alone until next time.
 	most := 4 * n
+
 	for range f.o.Buckets {
 		b := f.queue[(f.turn.Add(1)-1)%uint64(f.o.Buckets)]
 		if err := b.arm(); err != nil {
@@ -1061,6 +1088,21 @@ func (f *Frontier) Next(n int) ([]string, error) {
 		}
 		f.stats.Deferred.Add(1)
 	}
+
+	// A batch that came back short after every bucket was looked at did not run
+	// out of URLs, it ran out of hosts. There were more URLs down there and every
+	// one of them belonged to a host already holding its share of this batch.
+	//
+	// This is a note taken rather than a decision made. It changes nothing about
+	// what was handed out, and it is here because it is the number that says
+	// whether adding workers can help. A batch that is short is a batch where the
+	// fetchers are already able to take everything the queue can safely give, so
+	// the ceiling is how many hosts the crawl knows and the only thing that lifts
+	// it is finding more of them.
+	if len(out) < n {
+		f.stats.Exhausted.Add(1)
+	}
+
 	f.stats.Handed.Add(int64(len(out)))
 	return out, nil
 }

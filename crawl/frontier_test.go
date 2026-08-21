@@ -1343,3 +1343,55 @@ func copyDir(t *testing.T, dir string) string {
 	}
 	return to
 }
+
+func TestQueuedDoesNotCountADeferralAsAnArrival(t *testing.T) {
+	f := open(t, FrontierOptions{PerHost: 2})
+	offer(t, f,
+		"https://one.example/a", "https://one.example/b", "https://one.example/c",
+		"https://one.example/d", "https://one.example/e")
+
+	if got := next(t, f, 10); len(got) != 2 {
+		t.Fatalf("a batch from one host under PerHost 2 returned %d URLs", len(got))
+	}
+
+	s := f.Stats()
+	if s.Admitted != 5 || s.Handed != 2 || s.Deferred != 3 {
+		t.Fatalf("the counters after one batch are %+v", s)
+	}
+	// Five went in and two came out, so three are waiting. The three deferrals
+	// are those same three URLs taken out of a bucket and put straight back, so
+	// counting them as arrivals reports more URLs queued than were ever offered.
+	if q := s.Queued(); q != 3 {
+		t.Errorf("Queued reports %d URLs waiting, and 3 were left", q)
+	}
+}
+
+func TestAShortBatchIsReportedAsRunningOutOfHosts(t *testing.T) {
+	f := open(t, FrontierOptions{PerHost: 2})
+
+	// Three hosts, twenty URLs each. A batch can hold six of these, ever,
+	// however many are queued and however many are asked for.
+	for _, host := range []string{"one.example", "two.example", "three.example"} {
+		for i := range 20 {
+			offer(t, f, fmt.Sprintf("https://%s/p/%d", host, i))
+		}
+	}
+
+	if got := next(t, f, 500); len(got) != 6 {
+		t.Fatalf("a batch over three hosts under PerHost 2 returned %d URLs", len(got))
+	}
+	if s := f.Stats(); s.Exhausted != 1 {
+		t.Errorf("a batch that asked for 500 and got 6 reported Exhausted %d", s.Exhausted)
+	}
+
+	// A batch that gets everything it asked for is not short and must not be
+	// counted, or the number stops meaning anything.
+	g := open(t, FrontierOptions{PerHost: 2})
+	offer(t, g, "https://a.example/1", "https://b.example/1")
+	if got := next(t, g, 2); len(got) != 2 {
+		t.Fatalf("a full batch returned %d URLs", len(got))
+	}
+	if s := g.Stats(); s.Exhausted != 0 {
+		t.Errorf("a batch that was filled reported Exhausted %d", s.Exhausted)
+	}
+}

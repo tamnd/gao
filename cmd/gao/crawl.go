@@ -298,8 +298,8 @@ func crawlSummary(w io.Writer, p crawl.Progress) {
 	fmt.Fprintf(w, "\n%s: %s fetched, %s kept, %s dropped, %s failed, %.1f pages a second\n",
 		round(p.Elapsed), thousands(p.Fetched), thousands(p.Kept), thousands(p.Dropped),
 		thousands(p.Failed), p.Rate())
-	fmt.Fprintf(w, "schedule: %s handed back because the host was not due, %s put back because the batch already had two of that host\n",
-		thousands(p.Waited), thousands(p.Frontier.Deferred))
+	fmt.Fprintf(w, "schedule: %s handed back because the host was not due, %s put back because the batch already had two of that host, %s batches short of hosts\n",
+		thousands(p.Waited), thousands(p.Frontier.Deferred), thousands(p.Frontier.Exhausted))
 	fmt.Fprintf(w, "frontier: %s offered, %s queued, %s already seen, %s refused, %s another box's\n",
 		thousands(p.Frontier.Offered), thousands(p.Frontier.Queued()),
 		thousands(p.Frontier.Duplicate), thousands(p.Frontier.Refused), thousands(p.Frontier.Foreign))
