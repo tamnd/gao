@@ -821,11 +821,14 @@ func (f *Frontier) offer(ps []pending) (int, error) {
 			queued++
 		}
 	}
-	s, spilling := f.freeze()
+	s, spilling, err := f.freeze()
 	f.mu.Unlock()
 
 	if admitErr != nil {
 		return queued, admitErr
+	}
+	if err != nil {
+		return queued, err
 	}
 	// The spill happens here rather than inside the third pass, with the
 	// frontier's lock let go, which is the whole of [Frontier.freeze]'s reason to
@@ -1086,11 +1089,14 @@ func (f *Frontier) Stats() Stats {
 func (f *Frontier) Flush() error {
 	f.mu.Lock()
 	err := f.flush()
-	s, spilling := f.freeze()
+	s, spilling, ferr := f.freeze()
 	f.mu.Unlock()
 
 	if err != nil {
 		return err
+	}
+	if ferr != nil {
+		return ferr
 	}
 	if spilling {
 		return f.spill(s)
@@ -1332,43 +1338,56 @@ func (s spill) log() string { return fmt.Sprintf("pending-%06d.hashes", s.gen) }
 // The log is rotated rather than truncated for the same reason the map is set
 // aside rather than cleared. Those hashes are only on the disk in that file
 // until the run lands, so a crash during the write has to find them there.
-func (f *Frontier) freeze() (spill, bool) {
+func (f *Frontier) freeze() (spill, bool, error) {
 	if len(f.pending) < f.o.Pending || f.spilling != nil {
-		return spill{}, false
+		return spill{}, false, nil
 	}
 	f.gen++
 	s := spill{hashes: f.pending, gen: f.gen}
 
 	if err := f.rotateLog(s.log()); err != nil {
-		// A log that would not rotate is a log that is still the one being
-		// written to, so the hashes stay where they are and the next offer tries
-		// again. Nothing has been given away at this point.
+		// Reported rather than swallowed. A log that will not rotate is a disk
+		// that will not take another file, and both boxes running this crawl are
+		// above 97% on the filesystem the frontier lives on, so this is the case
+		// that actually happens. A crawl that quietly went on offering here would
+		// grow the pending map without bound and lose the lot on the next kill.
+		//
+		// Nothing has been given away at this point: rotateLog leaves the live
+		// log where it was when it fails, so the hashes are still in the map and
+		// still in the file.
 		f.gen--
-		return spill{}, false
+		return spill{}, false, err
 	}
 	f.spilling = f.pending
 	f.pending = make(map[uint64]struct{}, f.o.Pending)
-	return s, true
+	return s, true, nil
 }
 
 // rotateLog flushes the pending log, renames it out of the way under the name
 // the spill will delete it by, and opens a fresh one. The caller holds mu.
+// The old file is renamed before the new one is opened and closed only once the
+// new one is there, so a failure anywhere in here leaves the frontier writing to
+// a log that exists under the name it thinks it has. Renaming a file that is
+// open keeps the descriptor good, which is what makes that order available.
 func (f *Frontier) rotateLog(name string) error {
 	if err := f.logw.Flush(); err != nil {
-		return err
-	}
-	if err := f.log.Close(); err != nil {
-		return err
+		return fmt.Errorf("crawl: rotating the pending hashes: %w", err)
 	}
 	path := filepath.Join(f.dir, "pending.hashes")
-	if err := os.Rename(path, filepath.Join(f.dir, name)); err != nil {
-		return err
+	rotated := filepath.Join(f.dir, name)
+	if err := os.Rename(path, rotated); err != nil {
+		return fmt.Errorf("crawl: rotating the pending hashes: %w", err)
 	}
 	fh, err := os.OpenFile(path, os.O_RDWR|os.O_CREATE|os.O_TRUNC, 0o644)
 	if err != nil {
-		return err
+		_ = os.Rename(rotated, path)
+		return fmt.Errorf("crawl: rotating the pending hashes: %w", err)
 	}
+	old := f.log
 	f.log, f.logw = fh, bufio.NewWriterSize(fh, 1<<16)
+	if err := old.Close(); err != nil {
+		return fmt.Errorf("crawl: rotating the pending hashes: %w", err)
+	}
 	return nil
 }
 
