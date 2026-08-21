@@ -206,6 +206,16 @@ func (r *Result) reshape(text string) string {
 
 // syllable normalizes one run of letters and writes it out.
 func (r *Result) syllable(b *strings.Builder, s string) {
+	// A run of ASCII letters has no mark to compose and no tone to move, and
+	// without this both compose and retone decompose it, walk it and put it
+	// back together to reach that conclusion. A Vietnamese page carries a lot
+	// of them: brand names, English words, the Latin half of anything
+	// bilingual, and whatever of the markup survived extraction.
+	if ascii(s) {
+		b.WriteString(s)
+		return
+	}
+
 	out := compose(s)
 	if out != s {
 		r.Composed++
