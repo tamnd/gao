@@ -160,6 +160,31 @@ func (w *WARCWriter) Append(b []byte) (offset, length int64, err error) {
 	return offset, int64(n), err
 }
 
+// warcLevel is how hard the WARC is compressed.
+//
+// Five rather than nine, and the two numbers are not close in what they cost.
+// Compressing 218MB off a live crawl's own WARC, one record's worth at a time,
+// best of five passes on `server2`:
+//
+//	level 1    3,452ms   76.0MB   2.87x
+//	level 5    6,709ms   69.1MB   3.16x
+//	level 6    9,078ms   68.8MB   3.18x
+//	level 9   12,760ms   68.6MB   3.19x
+//
+// Nine costs 1.9 times the CPU of five and gives back 0.8% of the bytes. On the
+// profile that sent me here, compress/flate was 13.3% of the crawler's whole CPU
+// and findMatch alone was 8.4%, which is what nine buys with that 1.9.
+//
+// One down from five costs almost nothing and one up costs a third more, so the
+// curve turns here. Going all the way to one would save another tenth of the CPU
+// and cost 11% more disk, which is the wrong trade on boxes that are at 90% and
+// 99% full.
+//
+// The WARC is a local recording aged out by -keep and is not what gets
+// published, so this trades disk that is deliberately temporary for pages a
+// second, which is the thing that is short.
+const warcLevel = 5
+
 // gzips holds the compressors between records. A gzip writer at this level
 // carries a window and a hash table that come to several hundred kilobytes, and
 // a crawl at a hundred pages a second builds two records a page, so allocating
@@ -168,7 +193,7 @@ var gzips = sync.Pool{New: func() any {
 	// The level is a constant and a constant level is never rejected, so the
 	// error here cannot happen and there is nowhere in a pool to report it if it
 	// did.
-	zw, _ := gzip.NewWriterLevel(io.Discard, gzip.BestCompression)
+	zw, _ := gzip.NewWriterLevel(io.Discard, warcLevel)
 	return zw
 }}
 

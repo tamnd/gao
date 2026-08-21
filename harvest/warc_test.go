@@ -5,6 +5,7 @@ import (
 	"errors"
 	"io"
 	"net/http"
+	"os"
 	"strings"
 	"testing"
 	"time"
@@ -503,4 +504,49 @@ func TestALengthFromTheWireDoesNotTruncateThePage(t *testing.T) {
 	if got, _ := rec.Get("X-Gao-Sent-Content-Encoding"); got != "gzip" {
 		t.Errorf("the encoding the site sent reads %q", got)
 	}
+}
+
+// BenchmarkEncodeRecord compresses a record the size of a real page, which is
+// where a third of the crawler's remaining CPU goes once the text pass has been
+// dealt with.
+//
+// GAO_BENCH_WARC points it at a real WARC volume instead of the page built here,
+// which is how the compression level in warc.go was chosen. What that measured
+// was 218MB off a live crawl, and the level costs and buys what the comment on
+// warcLevel says it does.
+func BenchmarkEncodeRecord(b *testing.B) {
+	block := benchBlock(b)
+	r := &harvest.Record{Fields: []harvest.Field{
+		{Name: "WARC-Type", Value: "response"},
+		{Name: "WARC-Target-URI", Value: "https://example.vn/mot-bai-viet"},
+		{Name: "Content-Type", Value: "application/http; msgtype=response"},
+	}, Block: block}
+
+	b.SetBytes(int64(len(block)))
+	b.ReportAllocs()
+	for b.Loop() {
+		if _, err := harvest.EncodeRecord(r, true); err != nil {
+			b.Fatal(err)
+		}
+	}
+}
+
+func benchBlock(b *testing.B) []byte {
+	b.Helper()
+	if p := os.Getenv("GAO_BENCH_WARC"); p != "" {
+		raw, err := os.ReadFile(p)
+		if err != nil {
+			b.Fatalf("GAO_BENCH_WARC: %v", err)
+		}
+		return raw
+	}
+	// A page the size of a real one, built out of Vietnamese so the compressor
+	// sees the byte distribution it sees on the crawl rather than the one a
+	// repeated filler byte gives it.
+	var sb strings.Builder
+	for sb.Len() < 200<<10 {
+		sb.WriteString("<p>Tiếng Việt là ngôn ngữ chính thức của Việt Nam, và trang này nói về ")
+		sb.WriteString("một chủ đề nào đó mà người đọc quan tâm đến.</p>\n")
+	}
+	return []byte(sb.String())
 }
