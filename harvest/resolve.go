@@ -194,7 +194,7 @@ func (n *Names) Lookup(ctx context.Context, host string) ([]string, error) {
 	f.addrs, f.err = n.ask(ctx, host)
 	close(f.done)
 
-	// A failure under a cancelled context says something about this caller and
+	// A failure under a canceled context says something about this caller and
 	// nothing about the host, so it is not written down as a fact about the
 	// host. The waiters already have it and the next caller asks again.
 	keep := f.err == nil || ctx.Err() == nil
