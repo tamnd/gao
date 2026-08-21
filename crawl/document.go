@@ -123,8 +123,6 @@ func Build(v *harvest.Visit, p *Page, o BuildOptions) Verdict {
 	// and is Vietnamese to a reader who has the font.
 	n := normalize.Normalize(p.Text)
 	d.Text = n.Text
-	d.Markdown = normalize.Markup(p.Markdown)
-	d.Body = normalize.Markup(p.Body)
 	d.NChars = doc.Chars(d.Text)
 	d.NSyllables = doc.Syllables(d.Text)
 	d.DocID = doc.SumString(d.Text)
@@ -149,6 +147,28 @@ func Build(v *harvest.Visit, p *Page, o BuildOptions) Verdict {
 		out.Measured = m
 		return out
 	}
+
+	// The two markdown renderings are normalized last, after the page is known
+	// to be one this crawl keeps.
+	//
+	// They used to run above, beside the text, and three quarters of every
+	// crawl's work on them was thrown away: the crawl keeps about one page in
+	// four, and a rejection is written out with its stage, its reason and its
+	// measurements and none of its writing. The published rejects carry no text
+	// column, no markdown column and no body column, so what these two calls
+	// produced for a rejected page was serialized to a local segment and dropped
+	// again at export.
+	//
+	// They are not cheap either. Over 500 real pages off a live crawl the two
+	// together are 13.9ms of a page's 46.3ms, and the body one alone is 9.4ms
+	// because it is the whole document rather than the part of it that reads as
+	// content.
+	//
+	// Nothing above this line reads either field, which is what makes the move
+	// safe: the language decision, the thresholds and the reservation all work
+	// on the text.
+	d.Markdown = normalize.Markup(p.Markdown)
+	d.Body = normalize.Markup(p.Body)
 
 	if err := d.Admit(); err != nil {
 		out := refuse(d, StageContract, reject.ReasonContract, err.Error())

@@ -6,6 +6,7 @@ import (
 	"slices"
 	"strings"
 	"unicode"
+	"unicode/utf8"
 
 	"golang.org/x/text/unicode/norm"
 
@@ -222,6 +223,20 @@ func untone(tok string) (string, rune, bool) {
 	if tok == "" {
 		return "", 0, false
 	}
+	// A token of ASCII letters has no tone on it and no mark inside its letters,
+	// and NFD and NFC both hand it back as it came, so the answer is the token
+	// itself with no tone. Anything else made of ASCII is not letters and is
+	// refused here for the same reason the loop below would refuse it.
+	//
+	// 91.1% of the tokens the sift measures over a real WARC volume are plain
+	// ASCII, and every one of them was paying for an NFD, a rune walk, a Builder
+	// and an NFC to arrive back where it started.
+	if letters, ok := plain(tok); ok {
+		if !letters {
+			return "", 0, false
+		}
+		return tok, noTone, true
+	}
 	var b strings.Builder
 	tone := noTone
 	for _, c := range norm.NFD.String(tok) {
@@ -239,6 +254,24 @@ func untone(tok string) (string, rune, bool) {
 		b.WriteRune(c)
 	}
 	return norm.NFC.String(b.String()), tone, true
+}
+
+// plain reports whether tok is ASCII throughout, and if it is, whether it is
+// letters throughout as well. The second answer is only meaningful when the
+// first is true, which is why they come back together rather than as two walks
+// of the same bytes.
+func plain(tok string) (letters, ascii bool) {
+	letters = true
+	for i := range len(tok) {
+		c := tok[i]
+		if c >= utf8.RuneSelf {
+			return false, false
+		}
+		if (c < 'a' || c > 'z') && (c < 'A' || c > 'Z') {
+			letters = false
+		}
+	}
+	return letters, true
 }
 
 // Syllables returns the inventory, without tone marks and sorted, so that a
