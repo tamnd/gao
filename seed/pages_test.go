@@ -361,6 +361,58 @@ func TestAnEmptyRepoSaysSoRatherThanPrintingNothing(t *testing.T) {
 	}
 }
 
+// A crawler that keeps text/html and decides on the Content-Type pays for a PDF
+// in full before it drops it, and a PDF is megabytes where a page is kilobytes.
+func TestAddressesThisCrawlerCannotReadAreLeftOut(t *testing.T) {
+	h := newHub(t)
+	h.put("finepdfs", 0,
+		"https://vise.com.vn/tai-lieu.pdf",
+		"https://moet.gov.vn/thong-tu-2024.PDF",
+		"https://uni.edu.vn/luan-van.docx",
+		"https://cdn.vn/anh.jpg",
+		"https://vnexpress.net/bai-viet.html",
+		"https://tuoitre.vn/khong-co-duoi",
+		"https://luatvietnam.vn/tai-file.pdf.aspx",
+	)
+
+	got, report := read(t, Pages{Repo: "open-index/vitco-clean", API: h.srv.URL, PerHost: -1})
+	if len(got) != 3 || report.Binary != 4 {
+		t.Fatalf("seven addresses gave %d kept and %d passed over, want 3 and 4: %v", len(got), report.Binary, got)
+	}
+	for _, address := range got {
+		if strings.Contains(strings.ToLower(address), ".pdf") && !strings.HasSuffix(address, ".aspx") {
+			t.Errorf("%s reached the seed", address)
+		}
+	}
+
+	all, _ := read(t, Pages{Repo: "open-index/vitco-clean", API: h.srv.URL, PerHost: -1, Any: true})
+	if len(all) != 7 {
+		t.Errorf("-any gave %d addresses of seven", len(all))
+	}
+}
+
+// Path order puts every part of the first source before the first part of the
+// second, so a read cut short by a limit would come back holding one upstream.
+// The sources are read in rotation instead.
+func TestTheSourcesAreReadInRotationSoATruncatedReadIsAMix(t *testing.T) {
+	h := newHub(t)
+	for i := range 3 {
+		h.put("finepdfs", i, addresses(fmt.Sprintf("pdf%d.vn", i), 4)...)
+		h.put("fineweb2", i, addresses(fmt.Sprintf("web%d.vn", i), 4)...)
+		h.put("hplt3", i, addresses(fmt.Sprintf("hplt%d.vn", i), 4)...)
+	}
+
+	got, _ := read(t, Pages{Repo: "open-index/vitco-clean", API: h.srv.URL, PerHost: -1, Limit: 12})
+	sources := map[string]bool{}
+	for _, address := range got {
+		host, _ := hostOf(address)
+		sources[strings.TrimRight(strings.TrimSuffix(host, ".vn"), "0123456789")] = true
+	}
+	if len(sources) != 3 {
+		t.Errorf("the first twelve addresses came from %d sources, want all three: %v", len(sources), sources)
+	}
+}
+
 func TestOnlyAbsoluteHTTPAddressesAreSeeds(t *testing.T) {
 	for _, tc := range []struct {
 		raw, host string

@@ -81,6 +81,10 @@ type Pages struct {
 	// crawler splits on. A Fleet of zero or one takes everything.
 	Shard, Fleet int
 
+	// Any keeps addresses this crawler cannot read, which is what a caller
+	// wanting the raw inventory rather than a seed list asks for.
+	Any bool
+
 	// Limit stops after this many addresses. Zero reads the whole dataset.
 	Limit int
 }
@@ -98,23 +102,28 @@ type PagesReport struct {
 	Hosts int
 
 	// Foreign is addresses on hosts another box owns, Capped is addresses past
-	// a host's share, and Bad is addresses that would not parse. A dataset this
-	// large has a few of the last, and a run that stopped on one would be a run
-	// that cannot read the corpus it published.
+	// a host's share, Binary is addresses naming something this crawler cannot
+	// read, and Bad is addresses that would not parse. A dataset this large has
+	// a few of the last, and a run that stopped on one would be a run that
+	// cannot read the corpus it published.
 	Foreign int
 	Capped  int
+	Binary  int
 	Bad     int
 }
 
-// Read calls yield with every address the filters admit, in the order the
-// dataset holds them.
+// Read calls yield with every address the filters admit.
 //
-// The order matters and it is deliberately not shuffled. A part is one source at
-// one revision, so reading in order hands the frontier a source at a time, and a
-// frontier fed one source at a time still spreads across that source's hosts
-// because a source is not sorted by host either. Shuffling 16 million addresses
-// would mean holding 16 million addresses, and the point of reading a column
-// rather than a dataset is not to.
+// The parts are taken one source at a time in rotation rather than in path
+// order, and that is not tidiness. Path order puts every part of finepdfs before
+// the first part of fineweb2, so a run stopped by -max comes back holding
+// nothing but PDFs off one upstream. Rotating means any prefix of the output is
+// a mix of the sources, which is what a truncated read has to be to be worth
+// anything.
+//
+// Nothing is shuffled beyond that. Shuffling 16 million addresses would mean
+// holding 16 million addresses, and reading a column rather than a dataset is
+// exactly the decision not to.
 func (p Pages) Read(ctx context.Context, yield func(string) error) (PagesReport, error) {
 	var out PagesReport
 
@@ -163,21 +172,51 @@ func (p Pages) dir() string {
 	return store.DataDir + "/" + strings.Trim(p.Prefix, "/")
 }
 
-// parts is the parquet files under [Pages.dir], in path order, which for a
-// published dataset is the order they were written in.
+// parts is the parquet files under [Pages.dir], one source at a time in
+// rotation: the first part of each source, then the second of each, and so on.
 func (p Pages) parts(ctx context.Context, repo string) ([]store.Stored, error) {
 	files, err := (&store.Pusher{Repo: repo, Token: p.Token, API: p.API}).List(ctx, p.dir())
 	if err != nil {
 		return nil, err
 	}
-	out := make([]store.Stored, 0, len(files))
+	bySource := map[string][]store.Stored{}
+	var order []string
 	for _, f := range files {
-		if f.Parquet() {
-			out = append(out, f)
+		if !f.Parquet() {
+			continue
+		}
+		s := sourceOf(f.Path)
+		if _, seen := bySource[s]; !seen {
+			order = append(order, s)
+		}
+		bySource[s] = append(bySource[s], f)
+	}
+	sort.Strings(order)
+	deepest := 0
+	for _, s := range order {
+		sort.Slice(bySource[s], func(i, j int) bool { return bySource[s][i].Path < bySource[s][j].Path })
+		deepest = max(deepest, len(bySource[s]))
+	}
+
+	out := make([]store.Stored, 0, len(files))
+	for i := range deepest {
+		for _, s := range order {
+			if i < len(bySource[s]) {
+				out = append(out, bySource[s][i])
+			}
 		}
 	}
-	sort.Slice(out, func(i, j int) bool { return out[i].Path < out[j].Path })
 	return out, nil
+}
+
+// sourceOf is the source directory a part is filed under, which for
+// data/hplt3/part-00000-of-00774.parquet is hplt3.
+func sourceOf(path string) string {
+	rest := strings.TrimPrefix(path, store.DataDir+"/")
+	if i := strings.IndexByte(rest, '/'); i >= 0 {
+		return rest[:i]
+	}
+	return ""
 }
 
 // errEnough ends a read early without making the caller's yield say so. It never
@@ -207,6 +246,10 @@ func (p Pages) readPart(ctx context.Context, st *count.Store, part store.Stored,
 			out.Bad++
 			return nil
 		}
+		if !p.Any && !markup(raw) {
+			out.Binary++
+			return nil
+		}
 		if p.Fleet > 1 && frontier.Box(host, p.Fleet) != p.Shard {
 			out.Foreign++
 			return nil
@@ -232,6 +275,55 @@ func (p Pages) readPart(ctx context.Context, st *count.Store, part store.Stored,
 		return fmt.Errorf("seed: reading %s of %s: %w", PagesColumn, part.Path, err)
 	}
 	return nil
+}
+
+// markup reports whether an address is worth handing to this crawler, which
+// keeps text/html and application/xhtml+xml and nothing else.
+//
+// The cost of getting this wrong is one sided and large. The crawler decides on
+// the Content-Type, which arrives with the response, so a PDF is resolved,
+// connected to, fetched in full and then dropped, and a PDF is megabytes where a
+// page is kilobytes. It has no links either, so it does not even pay the crawl
+// back in discovery. One published source is nothing but PDFs and the other two
+// carry some, and 1.7% of the whole inventory names one outright.
+//
+// It reads the extension of the path, which is a guess and is deliberately a
+// narrow one. A path with no extension is markup as far as this is concerned,
+// and so is a download handler named .aspx or .ashx that hands back a PDF, and
+// so is anything naming the file in its query string rather than its path. Over
+// 20,000 real addresses that last case leaks ten, which is 0.05%. The failure
+// worth avoiding is throwing away a page, not fetching a stray file.
+func markup(raw string) bool {
+	u, err := url.Parse(raw)
+	if err != nil {
+		return false
+	}
+	path := u.Path
+	if i := strings.LastIndexByte(path, '/'); i >= 0 {
+		path = path[i+1:]
+	}
+	i := strings.LastIndexByte(path, '.')
+	if i < 0 {
+		return true
+	}
+	return !notMarkup[strings.ToLower(path[i+1:])]
+}
+
+// notMarkup is the extensions a crawler that reads HTML has no use for. It is
+// the file types that actually turn up in the published inventory rather than
+// every type there is, since an extension nobody writes costs nothing to miss.
+var notMarkup = map[string]bool{
+	"pdf": true, "doc": true, "docx": true, "xls": true, "xlsx": true,
+	"ppt": true, "pptx": true, "rtf": true, "odt": true, "ods": true, "odp": true,
+	"epub": true, "mobi": true, "djvu": true, "ps": true,
+	"zip": true, "rar": true, "7z": true, "gz": true, "bz2": true, "xz": true,
+	"tar": true, "tgz": true, "exe": true, "dmg": true, "apk": true, "iso": true,
+	"jpg": true, "jpeg": true, "png": true, "gif": true, "bmp": true, "webp": true,
+	"svg": true, "ico": true, "tif": true, "tiff": true, "psd": true,
+	"mp3": true, "mp4": true, "avi": true, "mkv": true, "mov": true, "wmv": true,
+	"flv": true, "webm": true, "wav": true, "flac": true, "m4a": true, "ogg": true,
+	"css": true, "js": true, "json": true, "xml": true, "rss": true, "csv": true,
+	"txt": true, "woff": true, "woff2": true, "ttf": true, "eot": true,
 }
 
 // hostOf is the host of an address, lowercased, or false for anything that is

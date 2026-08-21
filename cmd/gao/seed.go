@@ -467,6 +467,7 @@ func runSeedPages(stdout, stderr io.Writer, args []string) int {
 	perHost := fs.Int("per-host", seed.DefaultPerHost, "how many addresses one host contributes, or -1 for all of them")
 	shard := fs.Int("shard", 0, "this box's index in the fleet, which decides which hosts it takes")
 	boxes := fs.Int("fleet", 1, "how many boxes are crawling, under the same host split the crawler uses")
+	any := fs.Bool("any", false, "keep addresses this crawler cannot read, such as PDFs, rather than only markup")
 	limit := fs.Int("max", 0, "stop after this many addresses, or read the whole dataset when zero")
 	timeout := fs.Duration("timeout", 2*time.Hour, "how long the whole read gets")
 	fs.Usage = func() {
@@ -493,6 +494,14 @@ over. Breadth worth having is across hosts.
 hash of the host, so each box gets the addresses of the hosts it owns and none
 of the ones it would refuse.
 
+Addresses that name a PDF or an archive or an image are left out, because the
+crawler keeps text/html and decides on the Content-Type, so it would resolve,
+connect, download megabytes and then drop them. -any keeps them, for a caller
+after the inventory rather than after a seed list.
+
+The sources are read in rotation rather than one after another, so a run cut
+short by -max comes back with a mix of them.
+
 flags:
 `)
 		fs.PrintDefaults()
@@ -517,6 +526,7 @@ flags:
 		PerHost: *perHost,
 		Shard:   *shard,
 		Fleet:   *boxes,
+		Any:     *any,
 		Limit:   *limit,
 	}
 	report, err := p.Read(ctx, func(address string) error {
@@ -537,6 +547,9 @@ flags:
 	fmt.Fprintf(stderr, "\n%s over %s of %s\n",
 		plural(report.Kept, "address"), plural(report.Hosts, "host"), plural(report.Parts, "part"))
 	fmt.Fprintf(stderr, "%d rows read, %d past a host's share", report.Rows, report.Capped)
+	if report.Binary > 0 {
+		fmt.Fprintf(stderr, ", %d not something this crawler reads", report.Binary)
+	}
 	if *boxes > 1 {
 		fmt.Fprintf(stderr, ", %d on another box's hosts", report.Foreign)
 	}
