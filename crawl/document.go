@@ -123,6 +123,8 @@ func Build(v *harvest.Visit, p *Page, o BuildOptions) Verdict {
 	// and is Vietnamese to a reader who has the font.
 	n := normalize.Normalize(p.Text)
 	d.Text = n.Text
+	d.Markdown = normalize.Markup(p.Markdown)
+	d.Body = normalize.Markup(p.Body)
 	d.NChars = doc.Chars(d.Text)
 	d.NSyllables = doc.Syllables(d.Text)
 	d.DocID = doc.SumString(d.Text)

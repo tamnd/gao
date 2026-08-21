@@ -469,7 +469,8 @@ flags:
 		fmt.Fprintf(stdout, "  %s\n", c)
 	}
 	if !d.Text {
-		fmt.Fprintf(stdout, "\nthis repo withholds %s, so the column is absent and not empty\n", store.TextColumn)
+		fmt.Fprintf(stdout, "\nthis repo withholds %s, so those columns are absent and not empty\n",
+			strings.Join(store.TextColumns, ", "))
 	}
 	return 0
 }
@@ -740,7 +741,8 @@ func printFileColumns(stdout, stderr io.Writer, path string) int {
 		fmt.Fprintf(stdout, "  %s\n", c)
 	}
 	if !slices.Contains(columns, store.TextColumn) {
-		fmt.Fprintf(stdout, "\nthis file withholds %s, so the column is absent and not empty\n", store.TextColumn)
+		fmt.Fprintf(stdout, "\nthis file withholds %s, so those columns are absent and not empty\n",
+			strings.Join(store.TextColumns, ", "))
 	}
 	// Nothing is nullable here, so a column nobody filled is a column of zeros
 	// and a reader summing it gets a number rather than a refusal. This is the

@@ -148,6 +148,31 @@ func Normalize(text string) Result {
 	return r
 }
 
+// Markup brings a marked up document to the same form [Normalize] does, minus
+// the one step that would destroy it.
+//
+// The characters are repaired the same way: a page in a font encoding is read
+// out of it, homoglyphs and look-alikes go back to the letters they are
+// impersonating, invisible and control characters come out, and every syllable
+// comes to NFC with its tone mark where gao writes it. Those are all repairs to
+// what a character is, and markdown does not care what its letters are.
+//
+// What does not run is the layout step. In extracted text the indentation is a
+// leftover of the markup it came out of and collapsing it is a repair. In
+// markdown the indentation is the markup: two spaces at the end of a line are a
+// line break, four at the start are a nested list item, and a run of spaces
+// inside a fenced block is somebody's code. Collapsing them would turn a
+// document into a different document that renders wrong.
+//
+// The charset is detected separately from the text pass rather than handed over.
+// The two can in principle disagree, since they are looking at different amounts
+// of the same page, and in practice the marked up version is the longer of the
+// two and so has the more evidence behind it.
+func Markup(text string) string {
+	var r Result
+	return r.reshape(r.unmix(r.repair(lineEndings(r.transcode(text)))))
+}
+
 // reshape walks the document a syllable at a time, brings each to NFC, and puts
 // the tone mark where gao writes it.
 //

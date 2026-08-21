@@ -10,7 +10,14 @@ import (
 // column on every document rather than a filename convention, because a store
 // that is appended to by six producers across a pipeline upgrade will contain
 // two versions in one segment, and the reader has to be able to tell.
-const SchemaVersion uint16 = 1
+//
+// Version 2 added the markdown and body columns. It is an addition and not a
+// break: every version 1 column means what it meant, and a reader that wants
+// text and provenance can read both versions with the same query. What a
+// version 1 row cannot tell you is whether its markdown is empty because the
+// page had none or because the row predates the column, which is exactly the
+// question the version column is here to answer.
+const SchemaVersion uint16 = 2
 
 // Document is one record in the store. The field groups are embedded rather than
 // nested so that the JSON stays flat, which is what the Parquet release needs
@@ -33,6 +40,38 @@ type Document struct {
 	// Text is normalized: NFC, canonical tone mark placement, legacy encodings
 	// already transcoded.
 	Text string `json:"text"`
+
+	// Markdown is the same content Text holds with the document's shape left in:
+	// headings, lists, tables, links and emphasis. It is normalized the same way
+	// Text is and it comes off the same block, so the two always agree about
+	// what the page was.
+	//
+	// It is empty for every document that did not come from HTML, which is every
+	// ingested corpus. There is no shape to recover from a source that shipped
+	// plain text, and inventing one would be a column that reads as evidence.
+	Markdown string `json:"markdown,omitempty"`
+
+	// Body is the whole document as markdown, with only the elements that are
+	// not writing at all taken out.
+	//
+	// Text and Markdown are an extractor's opinion about which part of a page is
+	// the content, and an extractor is the part of a pipeline most likely to be
+	// wrong and least likely to be noticed being wrong. Issue 176 is what that
+	// costs: every vnexpress article this crawler fetched came back as two bytes
+	// for as long as the crawler existed, and putting the extractor right did
+	// not put the corpus right, because the pages were already gone.
+	//
+	// This column is the answer to that. It is what a reader who disagrees with
+	// our extraction can run their own over, and it is what makes the next
+	// extractor bug a reprocessing job rather than a recrawl. Common Crawl
+	// publishes WARCs for the same reason.
+	//
+	// It is filled on documents that were kept. A page the extractor found no
+	// content on is refused before this is set, so a refusal for boilerplate
+	// still costs the page. That is the trade for not normalizing twenty
+	// kilobytes on each of the ten pages refused for every one kept, and it is
+	// the thing to revisit first if issue 176 ever repeats.
+	Body string `json:"body,omitempty"`
 
 	SchemaVersion uint16 `json:"schema_version"`
 
