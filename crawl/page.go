@@ -196,9 +196,10 @@ func Read(base *url.URL, r io.Reader) (*Page, error) {
 	resolve := base
 	p.readHead(root, &resolve)
 	p.readLinks(root, resolve)
-	if n := mainBlock(root); n != nil {
-		p.Text = render(n)
-		p.Markdown = markdown(n, resolve, skipped)
+	shape := measure(root)
+	if n := shape.mainBlock(root); n != nil {
+		p.Text = shape.render(n)
+		p.Markdown = markdown(n, resolve, shape.skipped)
 	}
 	p.Body = markdown(root, resolve, nonContent)
 	return p, nil
@@ -297,25 +298,106 @@ func (p *Page) readLinks(root *html.Node, base *url.URL) {
 	})
 }
 
-// boilerplate is the words that appear in the class or id of a container that
-// holds something other than the page's content.
+// furniture is the words that appear in the class or id of a container that is
+// never the page's content, however much text is in it.
 //
-// A word list is a blunt instrument and this one is short on purpose. It is here
-// for the case the density test gets wrong: a sidebar of forty article teasers
-// has real sentences in it and low enough link density to look like content, and
-// no amount of arithmetic tells it from the article. Everything else is left to
-// the arithmetic, because a list long enough to cover the web is a list that
-// throws away an article whose author called their content div "menu-content".
-var boilerplate = []string{
+// Every one of them names a thing rather than a position: an advertisement, a
+// cookie notice, a share bar. A container called any of these is that thing.
+var furniture = []string{
 	"advert", "banner", "breadcrumb", "cookie", "comment", "disqus", "footer",
-	"header", "menu", "nav", "newsletter", "pagination", "popup", "related",
-	"share", "sidebar", "social", "subscribe", "tag-list", "widget",
+	"newsletter", "pagination", "popup", "share", "social", "subscribe",
 }
 
-// skipped are the elements whose text is never part of the content, whatever it
-// says. Script and style are the obvious ones and the rest are the parts of the
-// page that are furniture in every design.
-func skipped(n *html.Node) bool {
+// position is the words that name where something sits on the page rather than
+// what it is, and those are the ones that cost a corpus an article.
+//
+// They used to be in the list above, and refusing a container for holding one of
+// them is how this package returned two bytes from a vnexpress article for as
+// long as it has existed. vnexpress wraps its stories in a div called sidebar-1
+// inside one called header-content, and both of those words were a ban. Three
+// articles taken off the front page on 21 August each came back as the
+// multiplication sign from a close button while the prose sat in the HTML.
+//
+// A word in this list is a reason to look rather than a verdict. What decides is
+// the same arithmetic the rest of the extractor runs on: a container holding
+// more link text than prose is navigation whatever it is called, and a container
+// holding two paragraphs of prose is content whatever it is called. That keeps
+// the case the list was written for, a sidebar of forty article teasers with
+// real sentences in it, because forty teasers are forty links and the links win.
+var position = []string{
+	"header", "menu", "nav", "related", "sidebar", "tag-list", "widget",
+}
+
+// prose is how much text outside links a container named for its position has to
+// hold before it is read as content rather than as furniture.
+//
+// Two paragraphs, roughly. Below it are the mastheads and the footers, which are
+// a line of text and a phone number and would otherwise be read as content on
+// any page with few enough links in them.
+const prose = 400
+
+// A shape is what the containers of one document hold: characters of text
+// outside links, and characters of text inside them.
+//
+// It is measured once per document, in one pass, and only for the containers
+// whose name puts the question. Measuring every element would be a map of a
+// hundred thousand entries on a page like the Vietnamese Wikipedia, and asking
+// per candidate would walk the subtree again for every one of them.
+type shape map[*html.Node]counts
+
+type counts struct{ chars, links int }
+
+// measure walks a document once and records what the named containers hold.
+func measure(root *html.Node) shape {
+	s := shape{}
+	var walk func(n *html.Node, inLink bool) counts
+	walk = func(n *html.Node, inLink bool) counts {
+		var c counts
+		for ch := n.FirstChild; ch != nil; ch = ch.NextSibling {
+			switch ch.Type {
+			case html.TextNode:
+				k := len(strings.TrimSpace(ch.Data))
+				if inLink {
+					c.links += k
+				} else {
+					c.chars += k
+				}
+			case html.ElementNode:
+				sub := walk(ch, inLink || ch.DataAtom == atom.A)
+				c.chars += sub.chars
+				c.links += sub.links
+			}
+		}
+		if named(n, position) {
+			s[n] = c
+		}
+		return c
+	}
+	walk(root, false)
+	return s
+}
+
+// named reports whether a node's class or id holds one of the words.
+func named(n *html.Node, words []string) bool {
+	if n.Type != html.ElementNode {
+		return false
+	}
+	class := strings.ToLower(attr(n, "class") + " " + attr(n, "id"))
+	if class == " " {
+		return false
+	}
+	for _, w := range words {
+		if strings.Contains(class, w) {
+			return true
+		}
+	}
+	return false
+}
+
+// skipped are the elements whose text is not part of the content. Script and
+// style are the obvious ones and the rest are the parts of the page that are
+// furniture in every design.
+func (s shape) skipped(n *html.Node) bool {
 	switch n.DataAtom {
 	case atom.Script, atom.Style, atom.Noscript, atom.Template, atom.Svg,
 		atom.Iframe, atom.Form, atom.Button, atom.Select, atom.Textarea,
@@ -327,16 +409,14 @@ func skipped(n *html.Node) bool {
 		// document is the site's masthead.
 		return !inside(n, atom.Article)
 	}
-	class := strings.ToLower(attr(n, "class") + " " + attr(n, "id"))
-	if class == " " {
+	if named(n, furniture) {
+		return true
+	}
+	if !named(n, position) {
 		return false
 	}
-	for _, w := range boilerplate {
-		if strings.Contains(class, w) {
-			return true
-		}
-	}
-	return false
+	c := s[n]
+	return c.links >= c.chars || c.chars < prose
 }
 
 // A block is one candidate container with the numbers the decision is made on.
@@ -373,7 +453,7 @@ func (b block) score() int {
 // is how an extractor ends up with the article followed by the list of related
 // stories, and a document with a nav column glued to the end of it is worse than
 // a document that is short.
-func mainBlock(root *html.Node) *html.Node {
+func (s shape) mainBlock(root *html.Node) *html.Node {
 	var best block
 	var scan func(n *html.Node) block
 	scan = func(n *html.Node) block {
@@ -388,7 +468,7 @@ func mainBlock(root *html.Node) *html.Node {
 					b.chars += count
 				}
 			case html.ElementNode:
-				if skipped(c) {
+				if s.skipped(c) {
 					continue
 				}
 				sub := scan(c)
@@ -443,7 +523,7 @@ func paragraph(n *html.Node) bool {
 // mean, and everything else is joined with spaces. Two texts separated by a
 // block element are two paragraphs and two texts inside one are one sentence
 // with a link in the middle of it.
-func render(n *html.Node) string {
+func (s shape) render(n *html.Node) string {
 	var out strings.Builder
 	var line strings.Builder
 
@@ -471,7 +551,7 @@ func render(n *html.Node) string {
 					line.WriteString(s)
 				}
 			case html.ElementNode:
-				if skipped(c) {
+				if s.skipped(c) {
 					continue
 				}
 				if block := paragraph(c) || container(c); block {
