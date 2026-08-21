@@ -587,13 +587,22 @@ func (f *Frontier) openLog() error {
 
 // readLog loads whole hashes from an open log into the pending map and the
 // filter, and reports how many it read.
+//
+// The end of the file and a hash cut in half by a kill both end the read without
+// an error, because both are what a log written by a process that was killed
+// looks like and neither costs anything but the last URL. Anything else is a
+// disk that cannot be read, which is worth saying out loud rather than reporting
+// as a short frontier.
 func (f *Frontier) readLog(fh *os.File) (int64, error) {
 	br := bufio.NewReaderSize(fh, 1<<20)
 	var buf [8]byte
 	var n int64
 	for {
 		if _, err := io.ReadFull(br, buf[:]); err != nil {
-			return n, nil
+			if errors.Is(err, io.EOF) || errors.Is(err, io.ErrUnexpectedEOF) {
+				return n, nil
+			}
+			return n, fmt.Errorf("crawl: reading the pending hashes: %w", err)
 		}
 		h := binary.BigEndian.Uint64(buf[:])
 		f.pending[h] = struct{}{}
@@ -1352,9 +1361,9 @@ func (f *Frontier) freeze() (spill, bool, error) {
 		// that actually happens. A crawl that quietly went on offering here would
 		// grow the pending map without bound and lose the lot on the next kill.
 		//
-		// Nothing has been given away at this point: rotateLog leaves the live
-		// log where it was when it fails, so the hashes are still in the map and
-		// still in the file.
+		// Nothing has been given away at this point: rotateLog puts a working
+		// log back on every path out of it, so the hashes are still in the map
+		// and still in a file called pending.hashes.
 		f.gen--
 		return spill{}, false, err
 	}
@@ -1363,31 +1372,58 @@ func (f *Frontier) freeze() (spill, bool, error) {
 	return s, true, nil
 }
 
-// rotateLog flushes the pending log, renames it out of the way under the name
-// the spill will delete it by, and opens a fresh one. The caller holds mu.
-// The old file is renamed before the new one is opened and closed only once the
-// new one is there, so a failure anywhere in here leaves the frontier writing to
-// a log that exists under the name it thinks it has. Renaming a file that is
-// open keeps the descriptor good, which is what makes that order available.
+// rotateLog flushes the pending log, closes it, renames it out of the way under
+// the name the spill will delete it by, and opens a fresh one. The caller holds
+// mu.
+//
+// The close comes before the rename because Windows will not rename a file that
+// anybody has open, and every test in this file that spills said so at once on
+// the Windows runner. Unix does not care, and the version that renamed first was
+// nicer: a failure left the frontier writing to a descriptor that was still
+// good. Without that, every path out of here has to put a working log back, and
+// [Frontier.reopenLog] is what does it.
 func (f *Frontier) rotateLog(name string) error {
 	if err := f.logw.Flush(); err != nil {
+		return fmt.Errorf("crawl: rotating the pending hashes: %w", err)
+	}
+	if err := f.log.Close(); err != nil {
 		return fmt.Errorf("crawl: rotating the pending hashes: %w", err)
 	}
 	path := filepath.Join(f.dir, "pending.hashes")
 	rotated := filepath.Join(f.dir, name)
 	if err := os.Rename(path, rotated); err != nil {
-		return fmt.Errorf("crawl: rotating the pending hashes: %w", err)
+		return errors.Join(fmt.Errorf("crawl: rotating the pending hashes: %w", err), f.reopenLog())
 	}
 	fh, err := os.OpenFile(path, os.O_RDWR|os.O_CREATE|os.O_TRUNC, 0o644)
 	if err != nil {
-		_ = os.Rename(rotated, path)
-		return fmt.Errorf("crawl: rotating the pending hashes: %w", err)
+		// The rotated file goes back under the live name, so the hashes written
+		// since the last spill are still where a recovery looks for them, and
+		// then it is reopened for appending. Losing them here would be losing
+		// every URL this crawl has seen since it started.
+		if back := os.Rename(rotated, path); back != nil {
+			return errors.Join(fmt.Errorf("crawl: rotating the pending hashes: %w", err), back)
+		}
+		return errors.Join(fmt.Errorf("crawl: rotating the pending hashes: %w", err), f.reopenLog())
 	}
-	old := f.log
 	f.log, f.logw = fh, bufio.NewWriterSize(fh, 1<<16)
-	if err := old.Close(); err != nil {
-		return fmt.Errorf("crawl: rotating the pending hashes: %w", err)
+	return nil
+}
+
+// reopenLog opens the pending log for appending and puts it back on the
+// frontier. It is the recovery path out of [Frontier.rotateLog], which has to
+// close the log before it can rename it and therefore has to be able to undo
+// that. The caller holds mu.
+//
+// A failure here is not recoverable and is not swallowed. The frontier would go
+// on offering with nothing writing the hashes down, and the crawl would find out
+// on the next restart, when a billion URLs it had already fetched came back as
+// unseen.
+func (f *Frontier) reopenLog() error {
+	fh, err := os.OpenFile(filepath.Join(f.dir, "pending.hashes"), os.O_RDWR|os.O_APPEND|os.O_CREATE, 0o644)
+	if err != nil {
+		return fmt.Errorf("crawl: reopening the pending hashes: %w", err)
 	}
+	f.log, f.logw = fh, bufio.NewWriterSize(fh, 1<<16)
 	return nil
 }
 
