@@ -137,10 +137,22 @@ func TestACrawlKeepsTheArticlesAndSaysWhyItDroppedTheRest(t *testing.T) {
 		t.Fatalf("%d rows in %s, want 3", len(kept), KeptRepo)
 	}
 	for _, r := range kept {
-		if r.Text != "" {
-			t.Errorf("a crawled page shipped its text: %q", r.Text)
+		// The three columns that carry the page. This test asserted the
+		// opposite of this until the crawl moved off the restricted class, and
+		// the reason it is three assertions rather than one is that the text
+		// and the markdown and the whole body are filled by three different
+		// stages, so a repo that publishes an empty markdown column is a
+		// regression that a check on the text alone would not see.
+		if r.Text == "" {
+			t.Error("a kept page shipped no text")
 		}
-		if r.LicenseClass != "restricted" {
+		if r.Markdown == "" {
+			t.Error("a kept page shipped no markdown")
+		}
+		if r.Body == "" {
+			t.Error("a kept page shipped no body")
+		}
+		if r.LicenseClass != "crawled" {
 			t.Errorf("a crawled page is class %q", r.LicenseClass)
 		}
 		if r.SourceLocator == "" || r.HTTPStatus != 200 {

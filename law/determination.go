@@ -100,14 +100,14 @@ var determinations = []Determination{
 	{
 		Subject:  "Government portal content that is not a legal document",
 		Sources:  []doc.Source{doc.SourceCrawl},
-		Class:    doc.LicenseRestricted,
-		Evidence: "a ministry's news article is an ordinary copyrighted work, and the domain it sits on does not change that",
+		Class:    doc.LicenseCrawled,
+		Evidence: "a ministry's news article is an ordinary copyrighted work and the domain it sits on does not change that, so it is published the way every other reachable page is and not on a claim about the publisher",
 	},
 	{
 		Subject:  "Crawled news, forums, and blogs",
 		Sources:  []doc.Source{doc.SourceCrawl, doc.SourceCCRecovery},
-		Class:    doc.LicenseRestricted,
-		Evidence: "no license grant and no reservation, so gao may process it and may not pass it on",
+		Class:    doc.LicenseCrawled,
+		Evidence: "publicly reachable, allowed by robots.txt, and carrying no text and data mining reservation, so it is published as fetched with its address and a takedown path attached, which is the posture Common Crawl publishes under and the one every corpus derived from it inherits",
 	},
 	{
 		Subject:  "Crawled pages carrying a reservation",

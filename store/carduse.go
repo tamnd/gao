@@ -380,6 +380,21 @@ func cardAllGlob(d Dataset) string {
 	return fmt.Sprintf("hf://datasets/%s/%s/*/*%s", d.Repo(), DataDir, ParquetExt)
 }
 
+// cardRejectGlob reads the repo holding what the crawl turned away, for the
+// queries that need a denominator.
+//
+// It resolves the sibling through [Lookup] rather than pasting the name
+// together, so a rename moves the card with it, and it reports whether the
+// sibling exists at all so a caller can drop the query rather than print one
+// that reads a repo nobody published.
+func cardRejectGlob(d Dataset) (string, bool) {
+	r, ok := Lookup(d.Name + "-rejects")
+	if !ok || !r.Reject {
+		return "", false
+	}
+	return cardAllGlob(r), true
+}
+
 // cardMeasured is a query result the card prints under the query, tied to the
 // data it was measured against.
 //
@@ -462,12 +477,17 @@ func cardMeasuredBox(b *strings.Builder, s SourceIndex, r cardMeasured) bool {
 // showing up at all.
 func cardRow(b *strings.Builder, d Dataset) {
 	row, source := cardExampleRow, "glotcc"
-	if d.Cleaned {
+	switch {
+	case d.Cleaned:
 		row, source = cardCleanRow, "hplt3"
+	case d.Crawled:
+		row, source = cardCrawlRow, "gao-crawl"
 	}
 
 	b.WriteString("## One row\n\n")
-	if d.Cleaned {
+	if d.Crawled {
+		b.WriteString("A page this crawler fetched, as `SELECT * ... LIMIT 1` returns it. The byte columns are printed as hex here and come back as blobs, and the three text columns are cut, because the point of printing a row is the shape and the article is twenty four hundred characters.\n\n")
+	} else if d.Cleaned {
 		b.WriteString("A document from `hplt3`, as `SELECT * ... LIMIT 1` returns it. The byte columns are printed as hex here and come back as blobs, and the text is cut because the document is forty eight hundred characters and the point of printing a row is the shape.\n\n")
 	} else {
 		fmt.Fprintf(b, "A document from `%s`, as `SELECT * ... LIMIT 1` returns it. The byte columns are printed as hex here and come back as blobs, and the text is cut because the document is seventeen hundred characters and the point of printing a row is the shape.\n\n", source)
@@ -491,6 +511,14 @@ func cardRow(b *strings.Builder, d Dataset) {
 	}
 	b.WriteString("}\n```\n\n")
 
+	if d.Crawled {
+		b.WriteString("The three text columns are the same page read three ways and they are worth comparing on this row. `text` is 2,401 characters, `markdown` is 2,666 of the same article with the headline promoted to `# ` and the links kept, and `body` is 5,395, which is the article plus the masthead, the navigation and the footer. That ratio is what the extractor removed.\n\n")
+		b.WriteString("`consent` is `open`, which means the page was asked and reserved nothing. It is not the same as empty, which means nobody was there to ask. `robots_decision` and `robots_rule` say which line of which `robots.txt` allowed the fetch at the time it happened rather than now, and `source_locator` is the WARC volume, offset and length on the box that fetched it, which is how the page can be extracted again by a later extractor without asking the site a second time.\n\n")
+		b.WriteString("`repeat_gram_max` and `top_gram_max` in `heuristics` are the repetition measurements this page was judged on, and they are on every row including the rejected ones, so the threshold that keeps or drops a page is a number anybody can move.\n\n")
+		b.WriteString("`gao_qual`, `gao_edu`, `n_tokens` and `pii_level` are zero because the stages that fill them have not run on this repo. They are in the schema so that a query written here still runs against a release, where they are filled.\n\n")
+		return
+	}
+
 	if d.Cleaned {
 		b.WriteString("The row above is what the four stages leave behind. `pii_level` is 1 and `pii_types` names three kinds, so `cover` found a phone number, a tax code and a name and replaced each of them in the text. The covering is in the text rather than in a separate column, and further down the same document it reads:\n\n")
 		b.WriteString("```\nCÔNG TY TNHH DỊCH VỤ DU LỊCH ANH TUẤN Giấy phép kinh doanh số: [MST] Ngày cấp: 01/08/1993\n```\n\n")
@@ -505,6 +533,46 @@ func cardRow(b *strings.Builder, d Dataset) {
 // data/hplt3/hplt3-5b2785d5b11c-00000-00001.parquet. It is chosen for carrying
 // covered identifiers, since what a reader of a cleaned repo most needs to see
 // in a row is what the covering did to the text.
+// cardCrawlRow is the page the crawl card prints, from a run of 680 fetches off
+// twelve Vietnamese news seeds on 21 August 2026.
+//
+// It is a vnexpress.net article on purpose. Every article on that host came back
+// as two bytes for the life of the previous extractor, because the site wraps
+// its stories in a container called `sidebar-1` inside one called
+// `header-content` and both of those words were on the ban list. A card that
+// prints a row from the host the extractor used to fail on is a card that can be
+// checked by looking at it.
+var cardCrawlRow = map[string]string{
+	"doc_id":           `"74a5c75cbd86e2d63cd0f659fa55d5d62cf27313e47a6e118892e7f161a661e4"`,
+	"raw_id":           `"a7be05565d54907274bc3dd6356d6acb6d90d23d48630dc10eec11e3b61f68e7"`,
+	"text":             `"Áp thấp nhiệt đới gây mưa lớn cho miền Bắc và Bắc Trung Bộ\n\nÁp thấp nhiệt đới trên vịnh Bắc Bộ có thể gây mưa trên 300 mm từ nay đến đêm 22/8 ở Đông Bắc Bộ và Thanh Hóa ..."`,
+	"markdown":         `"# Áp thấp nhiệt đới gây mưa lớn cho miền Bắc và Bắc Trung Bộ\n\nÁp thấp nhiệt đới trên vịnh Bắc Bộ có thể gây mưa trên 300 mm từ nay đến đêm 22/8 ở Đông Bắc Bộ và Thanh Hóa ..."`,
+	"body":             `"Áp thấp nhiệt đới gây mưa lớn cho miền Bắc và Bắc Trung Bộ - Báo VnExpress\n\n[![VnExpress](https://s1.vnecdn.net/vnexpress/restruct/i/v9903/v2_2019/pc/graphics/logo_tagline.svg)](https://vnexpress.net/) [Thứ sáu, 21/8/2026] ..."`,
+	"schema_version":   "2",
+	"source":           `"gao-crawl"`,
+	"source_locator":   `"warc/web-20260821-00000-00000.warc.gz@3983574+56654"`,
+	"url":              `"https://vnexpress.net/ap-thap-nhiet-doi-gay-mua-lon-cho-mien-bac-va-bac-trung-bo-5111566.html"`,
+	"host":             `"vnexpress.net"`,
+	"url_template":     `"vnexpress.net/ap-thap-nhiet-doi-gay-mua-lon-cho-mien-bac-va-bac-trung-bo-5111566.html"`,
+	"fetched_at":       `"2026-08-21 12:45:18.293+07"`,
+	"media_type":       `"text/html"`,
+	"extractor":        `"gao-crawl@1.0.0"`,
+	"pipeline_version": `"0.7.0"`,
+	"http_status":      "200",
+	"robots_decision":  `"allow"`,
+	"robots_rule":      `"Allow: /"`,
+	"consent":          `"open"`,
+	"lang":             `"vie"`,
+	"lang_score":       "0.947",
+	"diacritics":       `"present"`,
+	"license_class":    `"crawled"`,
+	"license_evidence": `"publicly reachable, allowed by robots.txt, and carrying no text and data mining reservation, so it is published as fetched with its address and a takedown path attached, which is the posture Common Crawl publishes under and the one every corpus derived from it inherits"`,
+	"n_chars":          "2401",
+	"n_syllables":      "515",
+	"heuristics":       `{"alpha_rate": 0.931, "bare_rate": 0.947, "bullet_rate": 0.0, "diacritic_rate": 0.827, "dup_line_rate": 0.0, "dup_line_runes": 0.0, "ellipsis_rate": 0.0, "mark_rate": 0.827, "mean_syllable": 3.245, "repeat_gram_max": 0.119, "stop_words": 17.0, "syllable_rate": 0.947, "syllables": 510.0, "symbol_rate": 0.0, "top_gram_max": 0.051}`,
+	"robots_hash":      `"0000000000000000000000000000000000000000000000000000000000000000"`,
+}
+
 var cardCleanRow = map[string]string{
 	"doc_id":            `"17612751ef1ed88b1b862e4cdd02d6f7984edc6ae8fe9b16ef7c9e138276e051"`,
 	"raw_id":            `"3a51c47208fe6dea1f6de5915c157227ae6c47fc379bcd01b2229599bc41964b"`,
@@ -597,7 +665,7 @@ func cardZero(t string) string {
 // to be fixed and which are the nature of the thing.
 func cardCaveats(b *strings.Builder, d Dataset, x []Indexed) {
 	if d.Crawled {
-		cardCaveatsCrawl(b)
+		cardCaveatsCrawl(b, d)
 		return
 	}
 	b.WriteString("## Things to know before you use it\n\n")

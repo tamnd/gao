@@ -58,14 +58,21 @@ func runCrawl(stdout, stderr io.Writer, args []string) int {
 Runs gao's own crawler: a frontier of URLs, a pool of polite fetchers, and two
 published datasets.
 
-What comes out is addresses and measurements rather than text. A crawled page
-carries no grant to pass its text on, so `+store.Org+`/vitweb holds one row per page
-that was kept, with the URL, the host, the fetch time, the robots rule that
-allowed it, and every score the page was judged on. `+store.Org+`/vitweb-rejects
-holds one row per page that was turned away, with the stage that turned it away
-and the reason, because a threshold that turns out to be wrong is only
-recoverable if what it removed can be found. The bytes stay here: the WARC is
-the only copy of the exchange and it is not something anybody else may have.
+What comes out is the pages. `+store.Org+`/vitweb holds one row per page that was
+kept, carrying the article as plain text, the same article as markdown, and the
+whole page as markdown, alongside the URL, the host, the fetch time, the robots
+rule that allowed it, and every score the page was judged on.
+`+store.Org+`/vitweb-rejects holds one row per page that was turned away, with the
+stage that turned it away and the reason, because a threshold that turns out to
+be wrong is only recoverable if what it removed can be found. The WARC stays
+here, because a dataset of extracted text is a thing to publish and a byte for
+byte recording of somebody's server is not.
+
+The pages ship under the posture in law/posture.go, which is the one Common
+Crawl fetches and publishes under: publicly reachable, robots.txt honored, text
+and data mining reservations honored, published as fetched with the address on
+every row, takedowns acted on. A page that reserved itself is fetched and
+measured and never published. Run `+"`gao law`"+` to print the table.
 
 Both repos are written incrementally. A part is filled, closed, pushed and
 deleted before the next one opens, so what the box holds is one part per repo

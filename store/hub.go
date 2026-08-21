@@ -157,16 +157,18 @@ func (d Dataset) Query(snapshot string) string {
 
 var datasets = []Dataset{
 	{
-		Name:    "vietnamese-web-text",
-		Tier:    Published,
-		Holds:   "the cleaned, deduplicated Vietnamese web, with Wikipedia kept out of it and anything that may not be redistributed kept out of it",
-		Text:    true,
-		Classes: []doc.LicenseClass{doc.LicenseOpen, doc.LicensePermissiveAttribution},
+		Name:  "vietnamese-web-text",
+		Tier:  Published,
+		Holds: "the cleaned, deduplicated Vietnamese web, with Wikipedia kept out of it and anything that may not be redistributed kept out of it",
+		Text:  true,
+		Classes: []doc.LicenseClass{
+			doc.LicenseOpen, doc.LicensePermissiveAttribution, doc.LicenseCrawled,
+		},
 	},
 	{
 		Name:    "vietnamese-web-urls",
 		Tier:    Published,
-		Holds:   "one row per restricted document: the URL, the crawl timestamp, every provenance column, every score, and the dedup cluster, with the text withheld",
+		Holds:   "one row per document whose terms keep its text out of the corpus: the URL, the crawl timestamp, every provenance column, every score, and the dedup cluster, with the text withheld so somebody else can rebuild it from their own lawful access",
 		Text:    false,
 		Classes: []doc.LicenseClass{doc.LicenseRestricted},
 	},
@@ -212,7 +214,7 @@ var datasets = []Dataset{
 		Text:   false,
 		Reject: true,
 		Classes: []doc.LicenseClass{
-			doc.LicenseOpen, doc.LicensePermissiveAttribution,
+			doc.LicenseOpen, doc.LicensePermissiveAttribution, doc.LicenseCrawled,
 			doc.LicenseRestricted, doc.LicenseUnredistributable,
 		},
 	},
@@ -228,14 +230,14 @@ var datasets = []Dataset{
 		Name:    "vitweb",
 		Tier:    Working,
 		Pretty:  "ViTweb",
-		Holds:   "one row per page gao's own crawler fetched and kept: the address, the host, the fetch time, the robots decision that allowed it, and every measurement the page was judged on, with the text withheld because a crawled page carries no grant to pass it on",
-		Text:    false,
+		Holds:   "one row per page gao's own crawler fetched and kept: the extracted article as plain text, the same article as markdown, the whole page as markdown, and the address, host, fetch time, robots decision and every measurement the page was judged on",
+		Text:    true,
 		Crawled: true,
-		// Everything a crawl of the open web keeps is restricted, and the row
-		// without the text is the whole artifact rather than a consolation
-		// prize: it is what lets somebody else fetch the same pages under their
-		// own lawful access and rebuild the same corpus.
-		Classes: []doc.LicenseClass{doc.LicenseRestricted},
+		// Published under the posture in law/posture.go, which is the one
+		// Common Crawl publishes under and the one FineWeb-2, HPLT and GlotCC
+		// inherit from it. A page that reserved itself is not in here, because
+		// it is unredistributable and this repo does not admit that class.
+		Classes: []doc.LicenseClass{doc.LicenseCrawled},
 	},
 	{
 		Name:    "vitweb-rejects",
@@ -246,7 +248,7 @@ var datasets = []Dataset{
 		Reject:  true,
 		Crawled: true,
 		Classes: []doc.LicenseClass{
-			doc.LicenseOpen, doc.LicensePermissiveAttribution,
+			doc.LicenseOpen, doc.LicensePermissiveAttribution, doc.LicenseCrawled,
 			doc.LicenseRestricted, doc.LicenseUnredistributable,
 		},
 	},

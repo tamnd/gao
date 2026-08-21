@@ -6,9 +6,11 @@ Bản tiếng Anh ở cuối trang.
 
 ## Tình trạng hiện tại
 
-`gaobot` chưa chạy. Dự án đang được xây dựng theo từng mốc công khai và chưa có lượt truy cập nào được gửi đi. Trang này được viết trước, vì một trình thu thập dữ liệu công bố cách liên hệ sau khi đã chạy là một trình thu thập dữ liệu đã thu thập xong rồi mới nói. Ngày bắt đầu và phạm vi của lượt thu thập đầu tiên sẽ được ghi tại đây và trong [các mốc công việc](https://github.com/tamnd/gao/milestones).
+`gaobot` đang chạy. Những gì nó tải về được công bố công khai tại [open-index/vitweb](https://huggingface.co/datasets/open-index/vitweb): địa chỉ trang, tên miền, thời điểm tải, quyết định của `robots.txt` và mọi số đo dùng để đánh giá trang. Những trang bị loại nằm tại [open-index/vitweb-rejects](https://huggingface.co/datasets/open-index/vitweb-rejects) kèm công đoạn và lý do đã loại chúng.
 
-Vì vậy, nếu hôm nay bạn thấy `gaobot` trong log, đó không phải chúng tôi.
+Kho `open-index/vitweb` nay mang theo cả nội dung trang: phần bài viết dạng văn bản thuần, chính bài viết đó dạng markdown, và toàn bộ trang dạng markdown. Ban đầu chúng tôi chỉ công bố địa chỉ và số đo, nay công bố cả nội dung, theo đúng cách Common Crawl và các kho ngữ liệu web dựng từ nó vẫn làm: trang truy cập được công khai, `robots.txt` được tôn trọng, khai báo giữ quyền TDM được tôn trọng, và mỗi dòng đều mang theo địa chỉ gốc để bất kỳ ai cũng kiểm chứng được và để chính bạn chỉ đích danh trang cần gỡ. Bản quyền vẫn thuộc về người viết, chúng tôi không nhận và không chuyển giao quyền gì cả.
+
+Nếu bạn không muốn nội dung của mình nằm trong đó, phần gỡ nội dung bên dưới là cách làm, và chúng tôi thực hiện chứ không đánh giá yêu cầu.
 
 ## Nhận diện
 
@@ -86,7 +88,9 @@ Nếu `gaobot` gây tải nặng cho máy chủ của bạn, đó là lỗi củ
 
 `gaobot` is the crawler for [gao](https://github.com/tamnd/gao), an open source project building a Vietnamese text corpus for language model training.
 
-**It is not running yet.** No request has been sent. This page is written ahead of the crawl, because a crawler that publishes its contact details afterwards is one that finished crawling before it said anything. The start date and the scope of the first crawl will be recorded here and in the [milestones](https://github.com/tamnd/gao/milestones). If you see `gaobot` in your logs today, it is not us.
+**It is running.** What it fetches is published at [open-index/vitweb](https://huggingface.co/datasets/open-index/vitweb): the address, the host, the fetch time, the robots decision and every measurement the page was judged on. Pages that were turned away are at [open-index/vitweb-rejects](https://huggingface.co/datasets/open-index/vitweb-rejects) with the stage and the reason that turned them away.
+
+**That repo now carries the page text too**, as plain text, as markdown, and as the whole page in markdown. We published addresses and measurements only to begin with and we publish the pages now, under the posture Common Crawl publishes under and the corpora built on it inherit: publicly reachable, `robots.txt` honored, TDM reservations honored, and the address on every row so the claim can be checked and so you can name the page you want removed. Copyright stays with whoever wrote the page. We are not claiming a grant and none was made to us. If you would rather your content was not in there, the takedown section below is how, and we act on requests rather than judge them.
 
 **Identifying it.** Every request sends one User-Agent string, `gaobot/VERSION (+https://github.com/tamnd/gao/blob/main/LIEN-HE.md)`. The version changes between builds and nothing else changes. We do not rotate user agents, spoof browsers, or rotate IP addresses to get around a block.
 

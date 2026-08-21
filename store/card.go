@@ -10,6 +10,7 @@ import (
 
 	"github.com/tamnd/gao/fleet"
 	"github.com/tamnd/gao/law"
+	"github.com/tamnd/gao/takedown"
 )
 
 // The dataset card, generated rather than written.
@@ -481,6 +482,19 @@ func cardShipping(b *strings.Builder, d Dataset) {
 		fmt.Fprintf(b, "| %s | %s | %s |\n", c, cardYes(p.Text && d.Text), cardYes(p.Metadata))
 	}
 	b.WriteString("\nEvery row carries its own class in the `license_class` column, so a reader who needs a narrower set than this repo holds can filter for it rather than trust the repo name.\n\n")
+
+	// The crawled class is the one that needs saying out loud, because it is
+	// the one where no license was granted and text ships anyway. A reader is
+	// entitled to know that before they build on it, and a publisher who will
+	// not write the reason down plainly should not be publishing.
+	if d.Crawled && d.Text {
+		b.WriteString("### Why a crawled page ships its text\n\n")
+		b.WriteString("No license was granted for these pages and none is claimed. What `crawled` records is a publication posture, and it is the one Common Crawl fetches and publishes under, which is the same posture fineweb-2, HPLT, GlotCC and MADLAD-400 inherit by being built from Common Crawl's archives. A page is here because it was publicly reachable without a login, `robots.txt` allowed the fetch, and the page carried no machine readable text and data mining reservation. It is published as it was fetched, with the address it was fetched from on the row.\n\n")
+		b.WriteString("Copyright in each page stays with whoever wrote it. Nothing here transfers it and nothing here grants it onward. Anybody using this dataset is making their own determination about their own use under their own law, exactly as they would be with any corpus built from a web crawl, and the columns to make that determination with are on every row: `url`, `host`, `fetched_at`, `robots_decision`, `robots_rule`, `consent` and `license_evidence`.\n\n")
+		b.WriteString("If you own a page in here and want it out, open an issue at " + Repository + "/issues. Say the host, and the paths if it is not the whole host, and say which of two things you want. `stop` means stop crawling it, and takes effect at the fetch and at every write into the store from then on. `erase` means that and rebuilding the published parts without it. The two are asked apart because they cost different things and guessing gets it wrong in both directions.\n\n")
+		b.WriteString("Every request is written into `" + takedown.Name + "` at the root of " + Repository + ", with when it was filed and when it was actually honored, and `gao takedown status` prints the worst case rather than the median, because a median hides the request that broke the promise. The response time we hold ourselves to is 72 hours and it is in `LIEN-HE.md` next to the register. A register with nothing in it reports that nothing has been measured rather than a clean record, since a takedown path nobody has used is a path nobody has tested.\n\n")
+	}
+
 	if d.Text {
 		b.WriteString("A page that reserved its text and data mining rights is not here, whatever its license says. The two are separate questions and the reservation is honored at the write, so a page that said no cannot reach a published file through a stage that forgot to ask. The `consent` column records what each page said, and an empty value means nobody was there to ask, which is true of every document that came out of somebody else's corpus.\n\n")
 	}
@@ -757,7 +771,8 @@ func cardSmallest(by []SourceIndex) (SourceIndex, bool) {
 func cardFields(b *strings.Builder, d Dataset) {
 	b.WriteString("## The columns\n\n")
 	cols, nested := Schema(), Nested()
-	fmt.Fprintf(b, "%s, in file order. Every part in this repo has all of them, and a column a stage has not run yet is null rather than absent, so a query written against one source works against the next.\n\n", plural(len(cols), "column"))
+	fmt.Fprintf(b, "%s, in file order. This is the schema as it stands, and within one schema version a column a stage has not run yet is null rather than absent, so a query written against one source works against the next.\n\n", plural(len(cols), "column"))
+	b.WriteString("Across versions that does not hold. Columns are added over time, and a part written before a column existed does not have it at all rather than having it empty, which is why `schema_version` is a column and why a query spanning the whole repo may need `union_by_name = true`. Grouping by `schema_version` is the way to see which shapes are actually in front of you.\n\n")
 
 	b.WriteString("| column | type | filled in by | meaning |\n| --- | --- | --- | --- |\n")
 	for _, c := range cols {
