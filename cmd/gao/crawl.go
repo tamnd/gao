@@ -52,6 +52,7 @@ func runCrawl(stdout, stderr io.Writer, args []string) int {
 	every := fs.Duration("every", time.Minute, "how often the frontier is flushed and a progress line printed")
 	report := fs.String("report", "", "write the run report to this file as JSON")
 	asJSON := fs.Bool("json", false, "print the report as JSON")
+	profile := fs.String("pprof", "", "serve profiles on this address, which turns on the block and mutex profilers")
 	fs.Usage = func() {
 		fmt.Fprint(stderr, `usage: gao crawl -dir DIR [-seed FILE] [-shard N -fleet N] [-pages N] [-push] [flags]
 
@@ -81,12 +82,17 @@ box, so three boxes writing at once write into one dataset without ever writing
 the same path. The WARC volumes are aged out by -keep, which is what makes a
 crawl bigger than the disk under it possible at all.
 
-A crawl's rows are metadata rather than text, so a part left to fill on size
-alone would take a million and a half pages to close, and everything written on
-the way there would sit on this disk and out of reach of anybody reading the
-dataset. -part is the other bound: a part that has been open that long is closed
-and pushed at the next row whether or not it is full. That is what makes the
-published dataset track a crawl that has not finished.
+-part is the other bound on a part, alongside its size. A part that has been
+open that long is closed and pushed at the next row whether or not it is full,
+which is what makes the published dataset track a crawl that has not finished
+rather than appear all at once when it does.
+
+-pprof turns on the block and mutex profilers and serves them, which is how a
+claim about this crawler's ceiling gets checked. A goroutine dump says where
+goroutines are parked, the mutex profile says which lock they waited on and for
+how long in total, and only the second one can tell you whether a change helped.
+A run with -pprof is being measured rather than counted, so do not quote its
+pages a second as the box's rate.
 
 A fleet splits on the host and not on the URL. Box two offering a link to a site
 box one owns writes it down as another box's and does not queue it, so every
@@ -117,6 +123,16 @@ flags:
 	}
 	if *snapshot == "" {
 		*snapshot = "web-" + time.Now().UTC().Format("20060102")
+	}
+	if *profile != "" {
+		// Before the crawl starts rather than alongside it. The profilers have
+		// to be on before the first lock is taken or the profile is missing the
+		// opening of the run, which is where a frontier that rebuilds its filter
+		// at open does its worst work.
+		if err := serveProfiles(stdout, *profile); err != nil {
+			fmt.Fprintln(stderr, err)
+			return 1
+		}
 	}
 
 	kept, _ := store.Lookup(crawl.KeptRepo)
