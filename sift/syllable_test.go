@@ -4,6 +4,8 @@ import (
 	"strings"
 	"testing"
 	"unicode"
+
+	"golang.org/x/text/unicode/norm"
 )
 
 // The syllables that break an inventory built carelessly. Every one of them is
@@ -189,4 +191,53 @@ func allLetters(s string) bool {
 		}
 	}
 	return s != ""
+}
+
+// TestTheASCIIShortcutAgreesWithTheLongWayRound holds down the fast path in
+// [untone], which claims that a token of ASCII letters is its own untoned form.
+//
+// The claim is about Unicode rather than about Vietnamese: NFD and NFC are both
+// the identity on ASCII, no tone mark is an ASCII byte, and no ASCII byte is a
+// combining mark. That is true and it is the kind of true that a later edit to
+// either function can quietly stop being, so it is checked against the loop it
+// replaced rather than against a list of expected answers.
+func TestTheASCIIShortcutAgreesWithTheLongWayRound(t *testing.T) {
+	toks := []string{
+		"hoa", "hòa", "tiếng", "Việt", "nguyễn", "đường", "ĐƯỜNG",
+		"abc", "HTTP", "x", "", "a1", "1234", "co2", "e-mail", "a.b",
+		"café", "naïve", "ȭ", "日本語", "hoa2", "  ", "\t",
+	}
+	for _, tok := range toks {
+		gotBare, gotTone, gotOK := untone(tok)
+		wantBare, wantTone, wantOK := untoneSlow(tok)
+		if gotBare != wantBare || gotTone != wantTone || gotOK != wantOK {
+			t.Errorf("untone(%q) = %q, %q, %v, want %q, %q, %v",
+				tok, gotBare, gotTone, gotOK, wantBare, wantTone, wantOK)
+		}
+	}
+}
+
+// untoneSlow is untone without the shortcut, kept here so the shortcut has
+// something to be checked against.
+func untoneSlow(tok string) (string, rune, bool) {
+	if tok == "" {
+		return "", 0, false
+	}
+	var b strings.Builder
+	tone := noTone
+	for _, c := range norm.NFD.String(tok) {
+		switch c {
+		case grave, acute, hook, tilde, dot:
+			if tone != noTone {
+				return "", 0, false
+			}
+			tone = c
+			continue
+		}
+		if !unicode.IsLetter(c) && !unicode.Is(unicode.Mn, c) {
+			return "", 0, false
+		}
+		b.WriteRune(c)
+	}
+	return norm.NFC.String(b.String()), tone, true
 }
