@@ -11,10 +11,7 @@ import (
 // The posture and the license class have to agree on what publishable means, or
 // the release step and the record disagree about the same document.
 func TestTextShipsExactlyForThePublishableClasses(t *testing.T) {
-	for _, c := range []doc.LicenseClass{
-		doc.LicenseUnknown, doc.LicenseOpen, doc.LicensePermissiveAttribution,
-		doc.LicenseRestricted, doc.LicenseUnredistributable,
-	} {
+	for _, c := range doc.LicenseClasses() {
 		p := Publishes(c)
 		if p.Text != c.Publishable() {
 			t.Errorf("%s ships text=%v and reads as publishable=%v", c, p.Text, c.Publishable())
@@ -25,9 +22,57 @@ func TestTextShipsExactlyForThePublishableClasses(t *testing.T) {
 	}
 }
 
-// The restricted class is most of the crawl and the whole reason the posture is
-// written down: the metadata ships and the text does not, which is what makes the
-// corpus reproducible by somebody else from their own lawful access.
+// The crawled class is most of the corpus and the whole reason the posture is
+// written down, so what it ships is pinned here rather than left to the table.
+//
+// The pairing is the point. A page ships its text and it ships the address it
+// was fetched from, and neither half is optional: text without the address is a
+// corpus nobody can check or ask for a removal from, and the address without
+// the text is the artifact this project spent a year deciding it did not have
+// to settle for.
+func TestCrawledPagesShipTheirTextAndTheirAddress(t *testing.T) {
+	p := Publishes(doc.LicenseCrawled)
+	if !p.Text {
+		t.Error("a crawled page ships no text, which is the whole corpus withheld")
+	}
+	if !p.Metadata {
+		t.Error("a crawled page ships text with no address on it, which is not attributable and not takedownable")
+	}
+	if !p.Counted {
+		t.Error("crawled pages are not counted, so the headline hides most of the corpus")
+	}
+	if !doc.LicenseCrawled.RequiresAttribution() {
+		t.Error("a crawled page carries no attribution obligation, so nothing forces the address to be there")
+	}
+}
+
+// A page that reserved itself is fetched by the same crawler down the same pipe
+// and must not come out the same end. This is the check that the crawled class
+// did not swallow the reservation.
+func TestAReservationOutranksTheCrawledClass(t *testing.T) {
+	var found bool
+	for _, d := range For(doc.SourceCrawl) {
+		if !strings.Contains(d.Subject, "reservation") {
+			continue
+		}
+		found = true
+		if d.Class != doc.LicenseUnredistributable {
+			t.Errorf("a page carrying a reservation reads as %s", d.Class)
+		}
+		if d.Class.Publishable() {
+			t.Error("a page carrying a reservation is publishable")
+		}
+	}
+	if !found {
+		t.Error("there is no row for a crawled page that reserved its rights")
+	}
+}
+
+// The restricted class no longer holds the crawl, and what is left in it is the
+// material with a real term attached: theses under institutional terms and
+// transcripts that inherit a recording's status. The metadata ships and the text
+// does not, which is what lets somebody else rebuild it from their own lawful
+// access.
 func TestRestrictedShipsMetadataAndNotText(t *testing.T) {
 	p := Publishes(doc.LicenseRestricted)
 	if p.Text {
@@ -87,10 +132,13 @@ func TestEveryLicenseClassHasAPosture(t *testing.T) {
 		}
 		have[p.Class] = true
 	}
-	for c := doc.LicenseUnknown; c <= doc.LicenseUnredistributable; c++ {
+	for _, c := range doc.LicenseClasses() {
 		if !have[c] {
 			t.Errorf("%s has no publication rule", c)
 		}
+	}
+	if len(have) != len(doc.LicenseClasses()) {
+		t.Errorf("the posture has %d rows and there are %d classes", len(have), len(doc.LicenseClasses()))
 	}
 }
 
@@ -117,8 +165,16 @@ func TestTheProjectedSplitIsBelowTheCorpusAndAboveNothing(t *testing.T) {
 		t.Errorf("the legal projection is against %d tokens and the plan targets %d",
 			ProjectedTotalTokens, fleet.TargetTokens)
 	}
+	// The band was 60 to 80 percent while the crawl was classed restricted and
+	// the whole of it was being withheld. It is 85 to 95 now for the same
+	// reason it was 60 to 80 then: it is the range the release plan assumes,
+	// and a projection outside it means the plan and the license table have
+	// stopped agreeing about what this corpus is. The upper bound is the one
+	// doing the work. Nothing here should ever reach 100 percent, because the
+	// theses, the transcripts and the pages that reserved themselves are real
+	// and a projection that forgot them would be the mistake this test is for.
 	share := float64(ProjectedPublishableTokens) / float64(ProjectedTotalTokens)
-	if share < 0.6 || share > 0.8 {
+	if share < 0.85 || share > 0.95 {
 		t.Errorf("the projection publishes %.0f%% of the corpus, which is outside what the release plan assumes", share*100)
 	}
 }

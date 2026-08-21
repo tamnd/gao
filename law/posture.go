@@ -7,11 +7,26 @@ import "github.com/tamnd/gao/doc"
 // One rule, and everything below is it applied to each license class: gao
 // publishes what it may publish and publishes the recipe for the rest.
 //
-// The restricted row is the one that matters, because that is where most of the
-// crawl lands. A restricted document ships as its URL and every column of its
-// metadata with the text withheld, which lets somebody else rebuild the same
-// corpus from the same sources under their own lawful access. That is not a
-// workaround, it is how corpora derived from the web have always been shared.
+// The crawled row is the one that matters, because that is where most of the
+// crawl lands. A crawled document ships as full text with its address on it,
+// under the posture Common Crawl fetches and publishes under and that every
+// corpus derived from Common Crawl inherits: publicly reachable, robots.txt
+// honored, reservations honored, published as fetched, takedowns acted on. gao
+// reads the same web the same way, so gao passes it on the same way.
+//
+// That row used to say restricted, and restricted used to mean the text was
+// withheld and the URL shipped so that somebody else could refetch the pages
+// under their own lawful access. Keeping it there would not have been the
+// careful choice, it would have been an inconsistent one: gao ingests FineWeb-2,
+// HPLT and GlotCC, all three of which are the bodies of crawled pages published
+// by somebody who made exactly the determination gao was declining to make.
+// Withholding gao's own crawl while training on everybody else's is a posture
+// that cannot be written down without embarrassment, which is the test this file
+// exists to apply.
+//
+// The restricted row is now what it says on the type: material with a term gao
+// cannot satisfy in bulk. Theses under institutional terms and transcripts that
+// inherit a recording's status are what is left in it.
 //
 // The consequence is that gao's headline token count includes tokens gao cannot
 // ship, so the release notes carry both numbers rather than the flattering one.
@@ -57,6 +72,13 @@ var publications = []Publication{
 		Note:     "full text, with the attribution in the record rather than in a notices file nobody reads",
 	},
 	{
+		Class:    doc.LicenseCrawled,
+		Text:     true,
+		Metadata: true,
+		Counted:  true,
+		Note:     "full text and full markup, with the address it was fetched from on every row, which is both the attribution and the takedown handle",
+	},
+	{
 		Class:    doc.LicenseRestricted,
 		Text:     false,
 		Metadata: true,
@@ -98,11 +120,24 @@ func Publishes(c doc.LicenseClass) Publication {
 }
 
 // The projected split between what the corpus holds and what the corpus can
-// ship. These are predictions rather than measurements, and the crawl and the
-// theses are where the difference is expected to come from.
+// ship. These are predictions rather than measurements, and the theses and the
+// pages that reserved themselves are where the difference is expected to come
+// from.
+//
+// The publishable projection was 210B while the crawl was classed restricted,
+// because the crawl is most of the corpus and the whole of it was being
+// withheld. Moving the crawl to [doc.LicenseCrawled] moved that block across,
+// and what is left on the other side is the material with a real term on it:
+// institutional repository theses, transcripts that inherit a recording's
+// status, and every page that carried a machine readable reservation. Those
+// three are a tenth of the plan, so the projection is a tenth withheld.
+//
+// It is a prediction and it is recorded here before the measurement, which is
+// the standing rule. The number to check it against is the one [cmd/gao law]
+// prints off a counted store, not this one.
 const (
 	ProjectedTotalTokens       int64 = 300_000_000_000
-	ProjectedPublishableTokens int64 = 210_000_000_000
+	ProjectedPublishableTokens int64 = 270_000_000_000
 )
 
 // Fallback is what gao does if a question comes back the wrong way. There is one

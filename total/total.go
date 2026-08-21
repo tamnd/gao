@@ -302,10 +302,7 @@ func (s Sheet) Classes() []Total {
 		at[g.Class] = t.add(g)
 	}
 	var out []Total
-	for _, c := range []doc.LicenseClass{
-		doc.LicenseOpen, doc.LicensePermissiveAttribution,
-		doc.LicenseRestricted, doc.LicenseUnredistributable, doc.LicenseUnknown,
-	} {
+	for _, c := range doc.LicenseClasses() {
 		if t, ok := at[c]; ok {
 			out = append(out, t)
 		}

@@ -44,7 +44,13 @@ func TestTheWorkingTierIsHeldToTheSameRuleAsARelease(t *testing.T) {
 		if !d.Text {
 			continue
 		}
-		for _, c := range []doc.LicenseClass{doc.LicenseRestricted, doc.LicenseUnredistributable} {
+		// Every class that does not publish, read off the class rather than
+		// listed here, so that the rule is the rule and not a copy of it that
+		// was accurate when it was written.
+		for _, c := range doc.LicenseClasses() {
+			if c.Publishable() {
+				continue
+			}
 			if d.Admits(c) {
 				t.Errorf("%s is a working repo carrying text and it admits %s", d.Repo(), c)
 			}

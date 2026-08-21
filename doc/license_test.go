@@ -7,8 +7,12 @@ func TestLicenseClassNames(t *testing.T) {
 		LicenseUnknown:               "unknown",
 		LicenseOpen:                  "open",
 		LicensePermissiveAttribution: "permissive-attribution",
+		LicenseCrawled:               "crawled",
 		LicenseRestricted:            "restricted",
 		LicenseUnredistributable:     "unredistributable",
+	}
+	if len(want) != len(LicenseClasses()) {
+		t.Errorf("%d classes have a name pinned here and there are %d", len(want), len(LicenseClasses()))
 	}
 	for c, name := range want {
 		if got := c.String(); got != name {
@@ -34,26 +38,89 @@ func TestLicenseClassNames(t *testing.T) {
 	}
 }
 
-func TestOnlyTwoClassesArePublishable(t *testing.T) {
-	// The unknown case is one of the three that is not, which is the whole point
-	// of making it the zero value.
-	publishable := 0
-	for _, c := range []LicenseClass{
-		LicenseUnknown, LicenseOpen, LicensePermissiveAttribution,
-		LicenseRestricted, LicenseUnredistributable,
-	} {
-		if c.Publishable() {
-			publishable++
+// Which classes publish is the most consequential fact in this package, so it is
+// pinned one class at a time rather than counted. The count is what this test
+// used to do, and a count is satisfied by any two classes: it would have gone on
+// passing if publishable had swapped restricted in for open.
+//
+// The list walks [LicenseClasses] so that adding a class fails here until
+// somebody decides which side it is on. That is the intended failure. A new
+// class defaulting quietly to unpublishable would be the safe direction and
+// still wrong, because nobody would have written down that it was a decision.
+func TestWhichClassesPublishIsPinnedOneAtATime(t *testing.T) {
+	want := map[LicenseClass]bool{
+		LicenseOpen:                  true,
+		LicensePermissiveAttribution: true,
+		LicenseCrawled:               true,
+		LicenseRestricted:            false,
+		LicenseUnredistributable:     false,
+		// The zero value, and not publishable, which is the whole point of
+		// making the failure to determine the zero value.
+		LicenseUnknown: false,
+	}
+	for _, c := range LicenseClasses() {
+		w, ok := want[c]
+		if !ok {
+			t.Errorf("%s is a class and nothing here says whether it publishes", c)
+			continue
+		}
+		if c.Publishable() != w {
+			t.Errorf("%s publishes=%v, want %v", c, c.Publishable(), w)
 		}
 	}
-	if publishable != 2 {
-		t.Errorf("%d license classes are publishable, want 2", publishable)
+}
+
+// Attribution is a separate question from publication and lands on the same
+// column either way, so the two are pinned apart.
+func TestAttributionIsPinnedOneClassAtATime(t *testing.T) {
+	want := map[LicenseClass]bool{
+		LicenseOpen:                  false,
+		LicensePermissiveAttribution: true,
+		// No clause requires it, and a page published as fetched still has to
+		// say where it was fetched from, or the claim cannot be checked and the
+		// page cannot be asked for back.
+		LicenseCrawled:           true,
+		LicenseRestricted:        false,
+		LicenseUnredistributable: false,
+		LicenseUnknown:           false,
 	}
-	if !LicensePermissiveAttribution.RequiresAttribution() {
-		t.Error("permissive-attribution does not require attribution")
+	for _, c := range LicenseClasses() {
+		w, ok := want[c]
+		if !ok {
+			t.Errorf("%s is a class and nothing here says whether it carries attribution", c)
+			continue
+		}
+		if c.RequiresAttribution() != w {
+			t.Errorf("%s requires attribution=%v, want %v", c, c.RequiresAttribution(), w)
+		}
 	}
-	if LicenseOpen.RequiresAttribution() {
-		t.Error("open requires attribution")
+}
+
+// Every class is in the list exactly once, since three tests and two tables walk
+// it as though that were true.
+func TestEveryClassIsListedOnce(t *testing.T) {
+	seen := map[LicenseClass]bool{}
+	for _, c := range LicenseClasses() {
+		if seen[c] {
+			t.Errorf("%s is listed twice", c)
+		}
+		if !c.Valid() {
+			t.Errorf("%s is listed and is not a valid class", c)
+		}
+		seen[c] = true
+	}
+	for c := range licenseNames {
+		if !seen[c] {
+			t.Errorf("%s has a name and is not in the list", c)
+		}
+	}
+}
+
+func TestLicenseClassesHandsOutACopy(t *testing.T) {
+	got := LicenseClasses()
+	got[0] = LicenseUnknown
+	if LicenseClasses()[0] == LicenseUnknown {
+		t.Error("editing the returned slice edited the list")
 	}
 }
 

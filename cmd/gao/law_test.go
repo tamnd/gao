@@ -41,9 +41,18 @@ func TestLawPrintsEveryDeterminationAndWhatShips(t *testing.T) {
 			t.Errorf("gao law did not print what ships for %s", p.Class)
 		}
 	}
-	// Both numbers, which is the whole rule about the headline.
-	if !strings.Contains(out, "210B") || !strings.Contains(out, "300B") {
-		t.Error("gao law printed one of the two token numbers rather than both")
+	// Both numbers, which is the whole rule about the headline. They are read
+	// off the constants rather than typed in here, because the claim is that
+	// the command prints both projections and not that either one holds a
+	// particular value, and a test that had to be edited every time a
+	// projection moved would eventually be edited to match whatever was
+	// printed.
+	for _, want := range []string{
+		tokens(law.ProjectedPublishableTokens), tokens(law.ProjectedTotalTokens),
+	} {
+		if !strings.Contains(out, want) {
+			t.Errorf("gao law did not print %s, so it printed one of the two token numbers rather than both", want)
+		}
 	}
 }
 
@@ -139,10 +148,15 @@ func TestLawPrintsOnePath(t *testing.T) {
 			t.Errorf("gao law -source did not print %s in full", d.Subject)
 		}
 	}
-	// The crawl fetches statutes and forum threads down the same pipe, and the
-	// command has to show both rather than the first one it finds.
-	if !strings.Contains(out, "open") || !strings.Contains(out, "restricted") {
-		t.Error("gao law -source printed one license class for the crawl")
+	// The crawl fetches statutes, forum threads and pages that reserved
+	// themselves down the same pipe, and the command has to show all three
+	// classes rather than the first one it finds.
+	for _, want := range []doc.LicenseClass{
+		doc.LicenseOpen, doc.LicenseCrawled, doc.LicenseUnredistributable,
+	} {
+		if !strings.Contains(out, want.String()) {
+			t.Errorf("gao law -source did not print the %s class for the crawl", want)
+		}
 	}
 }
 
