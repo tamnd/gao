@@ -81,6 +81,11 @@ type TransportOptions struct {
 	// Shards is how many transports to build. Zero means [DefaultShards].
 	Shards int
 
+	// Names is the name cache to dial through, shared by every shard. Nil
+	// means one built with the defaults. See [Names] for why a crawl wants
+	// one at all.
+	Names *Names
+
 	// Header, Dial and TLS are the three deadlines before the body starts.
 	// Zero means the defaults.
 	Header time.Duration
@@ -119,6 +124,12 @@ type TransportOptions struct {
 // connection.
 type Fleet struct {
 	shards []*http.Transport
+
+	// names is the cache every shard dials through. It is here rather than
+	// per shard because a host belongs to one shard and its address does not:
+	// two hosts on one address, which is most of the shared hosting in the
+	// seed, should be one entry and not two.
+	names *Names
 }
 
 // NewFleet builds the transports.
@@ -142,21 +153,26 @@ func NewFleet(o TransportOptions) *Fleet {
 		o.IdleTimeout = DefaultIdleTimeout
 	}
 
-	f := &Fleet{shards: make([]*http.Transport, o.Shards)}
+	if o.Names == nil {
+		o.Names = NewNames(NameOptions{})
+	}
+
+	f := &Fleet{shards: make([]*http.Transport, o.Shards), names: o.Names}
+	dial := o.Names.DialContext(&net.Dialer{
+		Timeout: o.Dial,
+		// Keep-alive probes on a socket the crawl is about to stop using are
+		// packets nobody reads, and a crawl's sockets are all about to stop
+		// being used.
+		KeepAlive: -1,
+	})
 	per := o.IdleConns / o.Shards
 	if per < 1 {
 		per = 1
 	}
 	for i := range f.shards {
 		f.shards[i] = &http.Transport{
-			Proxy: http.ProxyFromEnvironment,
-			DialContext: (&net.Dialer{
-				Timeout: o.Dial,
-				// Keep-alive probes on a socket the crawl is about to stop
-				// using are packets nobody reads, and a crawl's sockets are
-				// all about to stop being used.
-				KeepAlive: -1,
-			}).DialContext,
+			Proxy:                 http.ProxyFromEnvironment,
+			DialContext:           dial,
 			TLSHandshakeTimeout:   o.TLS,
 			ResponseHeaderTimeout: o.Header,
 			ExpectContinueTimeout: time.Second,
@@ -204,6 +220,10 @@ func (f *Fleet) shard(host string) int {
 // Shards is how many pools this fleet has, which is what a test asserts on and
 // what a report prints.
 func (f *Fleet) Shards() int { return len(f.shards) }
+
+// Names is the cache this fleet dials through, so a caller can report what it
+// has been doing.
+func (f *Fleet) Names() *Names { return f.names }
 
 // CloseIdle closes every idle connection in every shard, which is what a crawl
 // does when it has finished and wants its file descriptors back before it

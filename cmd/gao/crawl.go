@@ -284,6 +284,9 @@ func crawlSummary(w io.Writer, p crawl.Progress) {
 		thousands(p.Sink.Archived), p.Sink.Volumes, fleet.GB(p.Sink.WARCBytes), p.Sink.Aged)
 	fmt.Fprintf(w, "parts: %d written, %d pushed, %s given back to the disk\n",
 		p.Sink.Parts, p.Sink.Pushed, fleet.GB(p.Sink.Freed))
+	fmt.Fprintf(w, "names: %s asked of the resolver, %s answered from the cache, %s waited on a query already running, %s did not resolve, %s held\n",
+		thousands(p.Names.Misses), thousands(p.Names.Hits), thousands(p.Names.Joined),
+		thousands(p.Names.Failures), thousands(int64(p.Names.Held)))
 }
 
 // crawlSeeds reads the seed list and offers each URL to the frontier as it is

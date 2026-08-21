@@ -238,6 +238,18 @@ func NewCrawler(o CrawlOptions) *Crawler {
 	return c
 }
 
+// Names is the cache this crawler resolves through, or nil when it was handed a
+// client whose transport is not a [Fleet]. A caller reports what it says on the
+// progress line, since a crawl whose name cache is missing is a crawl paying for
+// a lookup on every dial.
+func (c *Crawler) Names() *Names {
+	f, ok := c.client.Transport.(*Fleet)
+	if !ok {
+		return nil
+	}
+	return f.Names()
+}
+
 // Get fetches one URL.
 //
 // It reads the host's robots.txt first, once per host, and refuses a path the

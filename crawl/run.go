@@ -155,6 +155,10 @@ type Progress struct {
 
 	Frontier Stats     `json:"frontier"`
 	Sink     SinkStats `json:"sink"`
+
+	// Names is what the crawler's name cache has been doing, zero when the
+	// crawler was built on a client that does not have one.
+	Names harvest.NameStats `json:"names"`
 }
 
 // Rate is pages fetched per second, which is the number a fleet is sized by.
@@ -492,6 +496,10 @@ func (r *loop) watch(ctx context.Context, done <-chan struct{}) {
 }
 
 func (r *loop) progress() Progress {
+	var names harvest.NameStats
+	if n := r.o.Crawler.Names(); n != nil {
+		names = n.Stats()
+	}
 	return Progress{
 		Elapsed:   time.Since(r.start),
 		Fetched:   r.fetched.Load(),
@@ -503,6 +511,7 @@ func (r *loop) progress() Progress {
 		Waited:    r.waited.Load(),
 		Frontier:  r.o.Frontier.Stats(),
 		Sink:      r.o.Sink.Stats(),
+		Names:     names,
 	}
 }
 
