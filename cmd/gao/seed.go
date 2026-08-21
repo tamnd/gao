@@ -7,6 +7,9 @@ import (
 	"flag"
 	"fmt"
 	"io"
+	// Aliased because this package has a function called net, in graft.go, and a
+	// file scoped import name collides with a package scoped declaration.
+	gonet "net"
 	"net/http"
 	"os"
 	"sort"
@@ -27,6 +30,8 @@ func runSeed(stdout, stderr io.Writer, args []string) int {
 		return runSeedCT(stdout, stderr, args[1:])
 	case "oai":
 		return runSeedOAI(stdout, stderr, args[1:])
+	case "live":
+		return runSeedLive(stdout, stderr, args[1:])
 	case "help", "-h", "--help":
 		seedUsage(stdout)
 		return 0
@@ -43,6 +48,7 @@ func seedUsage(w io.Writer) {
 subcommands:
   ct   read Certificate Transparency and print the hosts it names
   oai  ask university repositories for their catalogs, and say which of them answer
+  live screen a host list and print the ones that answer
 
 run 'gao seed <subcommand> -h' for the flags of a single subcommand.
 `)
@@ -305,4 +311,146 @@ func printRepository(stdout io.Writer, r seed.Repository) {
 		fmt.Fprintf(tw, "  contact\t%s\n", strings.Join(r.Admin, ", "))
 	}
 	_ = tw.Flush()
+}
+
+// runSeedLive screens a host list for hosts that answer.
+//
+// The reason this exists is a measurement rather than a tidiness argument. A
+// crawl seeded with 20,000 hosts out of the published corpus fetched 1,482 pages
+// and failed 4,924 times, and 3,548 of those failures were timeouts. At the 20
+// second fetch default that is 70,960 worker seconds against 100,000 available,
+// so roughly 71% of the run went on hosts that were never going to answer, and
+// throughput fell from 33 pages a second on a narrow seed list to 7.4 on the
+// wide one. Breadth cost more than it bought, and screening is what makes
+// breadth worth having.
+func runSeedLive(stdout, stderr io.Writer, args []string) int {
+	fs := flag.NewFlagSet("seed live", flag.ContinueOnError)
+	fs.SetOutput(stderr)
+	timeout := fs.Duration("timeout", seed.DefaultProbeTimeout, "how long one lookup and one connect each get")
+	workers := fs.Int("workers", 100, "how many hosts to probe at once")
+	batch := fs.Int("batch", seed.DefaultProbeBatch, "how many hosts to probe between pauses, which is a resolver limit rather than a speed one")
+	rest := fs.Duration("rest", seed.DefaultProbeRest, "how long to pause between batches")
+	resolver := fs.String("resolver", "", "ask this resolver, host:port, instead of the box's")
+	dead := fs.Bool("dead", false, "print the hosts that did not answer, with the reason, instead of the ones that did")
+	quiet := fs.Bool("quiet", false, "do not print progress while the pass runs")
+	fs.Usage = func() {
+		fmt.Fprint(stderr, `usage: gao seed live [flags] [FILE]
+
+Reads a host list, one per line, and prints the hosts that answer.
+
+A host answers if its name resolves and something accepts a TCP connection on
+443 or 80. Nothing is fetched. Whether the host serves Vietnamese, whether
+robots.txt allows the crawl, and whether the page is worth keeping are all
+questions for the crawler, and asking any of them here would mean making the
+requests this exists to avoid making.
+
+The cost it saves is large and one sided. A dead host costs the crawler a full
+fetch timeout, 20 seconds by default, with a worker held for all of it. It costs
+this a few milliseconds and no worker. On a seed list taken from the published
+corpus, screening is the difference between spending most of a run waiting on
+hosts that are gone and spending it fetching.
+
+Cutting the crawler's timeout instead does not work. The same list at
+-timeout 5s crawls at 0.8 pages a second rather than 7.4, because a short
+deadline turns slow but real hosts into failures too. Slow is not dead.
+
+-batch is a volume limit and not a speed limit, and it is the flag to reach for
+when the answers look wrong. Probing 2,000 hosts at 32, 100 and 400 at once
+gives 64.5%, 64.8% and 64.7% live, so how many run at once does not move the
+result. Probing 20,000 in one unbroken pass reports 95.6% with no DNS, which is
+not a fact about those hosts, it is the resolver giving up partway through and
+failing everything after. A pass that turns into a resolver outage is worse than
+no pass at all, because the short list it produces looks like a correct answer.
+Screening the whole inventory wants -resolver pointed at something that can take
+the volume.
+
+flags:
+`)
+		fs.PrintDefaults()
+	}
+	if err := fs.Parse(args); err != nil {
+		return 2
+	}
+	if fs.NArg() > 1 {
+		fs.Usage()
+		return 2
+	}
+
+	var hosts []string
+	var err error
+	if fs.NArg() == 1 {
+		hosts, err = readHosts(fs.Arg(0))
+	} else {
+		hosts, err = readHostLines(stdin)
+	}
+	if err != nil {
+		fmt.Fprintf(stderr, "gao seed live: %v\n", err)
+		return 1
+	}
+	if len(hosts) == 0 {
+		fmt.Fprintln(stderr, "gao seed live: no hosts on the input")
+		return 1
+	}
+
+	o := seed.ProbeOptions{
+		Timeout:     *timeout,
+		Concurrency: *workers,
+		Batch:       *batch,
+		Rest:        *rest,
+	}
+	if *resolver != "" {
+		addr := *resolver
+		if _, _, err := gonet.SplitHostPort(addr); err != nil {
+			addr = gonet.JoinHostPort(addr, "53")
+		}
+		o.Resolver = &gonet.Resolver{
+			PreferGo: true,
+			Dial: func(ctx context.Context, network, _ string) (gonet.Conn, error) {
+				d := gonet.Dialer{Timeout: *timeout}
+				return d.DialContext(ctx, network, addr)
+			},
+		}
+	}
+	if !*quiet && len(hosts) > *batch {
+		o.Progress = func(done, live int) {
+			fmt.Fprintf(stderr, "\r%d of %d probed, %d live", done, len(hosts), live)
+		}
+	}
+
+	found, err := seed.Probe(context.Background(), hosts, o)
+	if o.Progress != nil {
+		fmt.Fprintln(stderr)
+	}
+	if err != nil {
+		// Not a failure. A canceled pass returns what it had, and half a
+		// screened list is worth keeping.
+		fmt.Fprintf(stderr, "gao seed live: stopped after %d hosts: %v\n", len(found), err)
+	}
+
+	for _, r := range found {
+		switch {
+		case *dead && !r.Live:
+			fmt.Fprintf(stdout, "%s\t%s\n", r.Name, r.Why)
+		case !*dead && r.Live:
+			fmt.Fprintln(stdout, r.Name)
+		}
+	}
+
+	fmt.Fprint(stderr, "\n"+seed.Tally(found).String())
+	return 0
+}
+
+// readHostLines reads a host list off a reader, for standard input.
+func readHostLines(r io.Reader) ([]string, error) {
+	var out []string
+	s := bufio.NewScanner(r)
+	s.Buffer(make([]byte, 0, 64*1024), 1024*1024)
+	for s.Scan() {
+		line := strings.TrimSpace(s.Text())
+		if line == "" || strings.HasPrefix(line, "#") {
+			continue
+		}
+		out = append(out, line)
+	}
+	return out, s.Err()
 }
