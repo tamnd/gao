@@ -393,5 +393,12 @@ func plural(n int, noun string) string {
 	if strings.HasSuffix(noun, "y") {
 		return fmt.Sprintf("%d %sies", n, strings.TrimSuffix(noun, "y"))
 	}
+	// address gives addresses rather than addresss, and the same rule covers
+	// the rest of the sibilants a report here is likely to count.
+	for _, end := range []string{"s", "x", "z", "ch", "sh"} {
+		if strings.HasSuffix(noun, end) {
+			return fmt.Sprintf("%d %ses", n, noun)
+		}
+	}
 	return fmt.Sprintf("%d %ss", n, noun)
 }
