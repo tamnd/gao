@@ -173,6 +173,37 @@ type Frontier struct {
 	log     *os.File
 	logw    *bufio.Writer
 
+	// spilling is the map a spill has taken away from the crawl and is writing
+	// out, and nil when no spill is running.
+	//
+	// It is here because a hash has to stay findable for the whole of the write.
+	// A hash that has left pending and is not in a run yet is a hash the frontier
+	// has forgotten, and the URL behind it gets fetched a second time. So the map
+	// is set aside rather than cleared, every lookup asks both of them through
+	// [Frontier.held], and it is dropped in the same breath as the run being
+	// added to the slice.
+	//
+	// What it costs is that the resident half can hold twice Pending for as long
+	// as a write takes, since the crawl goes on offering into a fresh map
+	// meanwhile. That is the trade: memory for the two million hashes twice over,
+	// against every worker on the box stopping for the length of a merge.
+	spilling map[uint64]struct{}
+
+	// spillMu is held for the whole of a spill. Only one runs at a time by
+	// construction, since the map is set aside under mu and a second freeze finds
+	// spilling already set, so what this is actually for is [Frontier.Close]
+	// waiting for a spill to finish rather than closing the files under it.
+	//
+	// It is outside mu. A spill takes mu twice while holding this, and nothing
+	// takes this while holding mu.
+	spillMu sync.Mutex
+
+	// beforeRun, when set, is called at the top of a spill with the frontier's
+	// lock let go. It is the seam a test parks in to show that the crawl goes on
+	// offering while a run is being written, which is the whole claim this is
+	// being changed for and is not otherwise observable from outside.
+	beforeRun func()
+
 	// runsMu guards the runs slice and the files it names. It is separate from
 	// mu because looking a hash up in a run is a disk read, and a disk read is
 	// the one thing that must not happen with the frontier's lock held. It is
@@ -433,6 +464,10 @@ func OpenFrontier(o FrontierOptions) (*Frontier, error) {
 		_ = f.Close()
 		return nil, err
 	}
+	if err := f.dropStrayRuns(m); err != nil {
+		_ = f.Close()
+		return nil, err
+	}
 	if err := f.openLog(); err != nil {
 		_ = f.Close()
 		return nil, err
@@ -514,23 +549,24 @@ func (f *Frontier) loadRun(name string) (*run, error) {
 // openLog opens the append log of hashes that have not been written into a run
 // yet, and loads what is in it. This is the file that makes a kill safe: the
 // hashes in memory are also on disk within a flush of being offered.
+//
+// It also picks up the logs a spill rotated away and did not live to delete. A
+// crawl killed while it was writing a run leaves the hashes for that run in a
+// pending-NNNNNN.hashes and the run itself unfinished and unnamed by any
+// manifest, so those hashes are read back into memory, appended to the live log
+// and the rotated file removed. What comes out is one log again, holding exactly
+// what the resident half of the seen set holds, which is the state the frontier
+// expects to open on.
 func (f *Frontier) openLog() error {
 	path := filepath.Join(f.dir, "pending.hashes")
 	fh, err := os.OpenFile(path, os.O_RDWR|os.O_CREATE, 0o644)
 	if err != nil {
 		return fmt.Errorf("crawl: opening the pending hashes: %w", err)
 	}
-	br := bufio.NewReaderSize(fh, 1<<20)
-	var buf [8]byte
-	var n int64
-	for {
-		if _, err := io.ReadFull(br, buf[:]); err != nil {
-			break
-		}
-		h := binary.BigEndian.Uint64(buf[:])
-		f.pending[h] = struct{}{}
-		f.add(h)
-		n++
+	n, err := f.readLog(fh)
+	if err != nil {
+		_ = fh.Close()
+		return err
 	}
 	// Truncate to whole hashes, for the same reason a run is.
 	if err := fh.Truncate(n * 8); err != nil {
@@ -542,6 +578,117 @@ func (f *Frontier) openLog() error {
 		return fmt.Errorf("crawl: opening the pending hashes: %w", err)
 	}
 	f.log, f.logw = fh, bufio.NewWriterSize(fh, 1<<16)
+
+	if err := f.recoverLogs(); err != nil {
+		return err
+	}
+	return nil
+}
+
+// readLog loads whole hashes from an open log into the pending map and the
+// filter, and reports how many it read.
+//
+// The end of the file and a hash cut in half by a kill both end the read without
+// an error, because both are what a log written by a process that was killed
+// looks like and neither costs anything but the last URL. Anything else is a
+// disk that cannot be read, which is worth saying out loud rather than reporting
+// as a short frontier.
+func (f *Frontier) readLog(fh *os.File) (int64, error) {
+	br := bufio.NewReaderSize(fh, 1<<20)
+	var buf [8]byte
+	var n int64
+	for {
+		if _, err := io.ReadFull(br, buf[:]); err != nil {
+			if errors.Is(err, io.EOF) || errors.Is(err, io.ErrUnexpectedEOF) {
+				return n, nil
+			}
+			return n, fmt.Errorf("crawl: reading the pending hashes: %w", err)
+		}
+		h := binary.BigEndian.Uint64(buf[:])
+		f.pending[h] = struct{}{}
+		f.add(h)
+		n++
+	}
+}
+
+// recoverLogs folds the logs of spills that did not finish back into the live
+// one. See [Frontier.openLog] for when there are any.
+func (f *Frontier) recoverLogs() error {
+	names, err := filepath.Glob(filepath.Join(f.dir, "pending-*.hashes"))
+	if err != nil {
+		return fmt.Errorf("crawl: looking for rotated pending hashes: %w", err)
+	}
+	slices.Sort(names)
+	for _, name := range names {
+		fh, err := os.Open(name)
+		if err != nil {
+			return fmt.Errorf("crawl: opening %s: %w", filepath.Base(name), err)
+		}
+		n, err := f.readLog(fh)
+		_ = fh.Close()
+		if err != nil {
+			return err
+		}
+		// Written to the live log rather than left where they are, because the
+		// next spill writes its run from the map and deletes only its own rotated
+		// log. Anything left in an older one would be read again at every open
+		// from here on.
+		if n > 0 {
+			if err := f.appendLog(name); err != nil {
+				return err
+			}
+		}
+		if err := os.Remove(name); err != nil {
+			return fmt.Errorf("crawl: removing %s: %w", filepath.Base(name), err)
+		}
+	}
+	return nil
+}
+
+// appendLog copies a rotated log onto the end of the live one, whole hashes
+// only.
+func (f *Frontier) appendLog(name string) error {
+	b, err := os.ReadFile(name)
+	if err != nil {
+		return fmt.Errorf("crawl: reading %s: %w", filepath.Base(name), err)
+	}
+	if _, err := f.logw.Write(b[:len(b)-len(b)%8]); err != nil {
+		return fmt.Errorf("crawl: recovering %s: %w", filepath.Base(name), err)
+	}
+	return f.logw.Flush()
+}
+
+// dropStrayRuns removes run files no manifest names.
+//
+// A crawl killed inside a spill or a merge leaves a run part written, and the
+// manifest, which is the only thing that says which runs exist, does not name
+// it. Nothing reads those files again and they are the size of the run that was
+// being written, so on a box whose disk is the thing that runs out first they
+// are worth removing rather than leaving.
+//
+// Only done when a manifest was actually read. A frontier whose manifest is
+// missing is a frontier nobody can say anything about, and deleting its runs on
+// a guess is the one mistake here that cannot be undone by crawling again.
+func (f *Frontier) dropStrayRuns(m *manifest) error {
+	if m == nil {
+		return nil
+	}
+	named := make(map[string]struct{}, len(m.Runs))
+	for _, rm := range m.Runs {
+		named[rm.Name] = struct{}{}
+	}
+	names, err := filepath.Glob(filepath.Join(f.dir, "seen-*.hashes"))
+	if err != nil {
+		return fmt.Errorf("crawl: looking for stray runs: %w", err)
+	}
+	for _, name := range names {
+		if _, ok := named[filepath.Base(name)]; ok {
+			continue
+		}
+		if err := os.Remove(name); err != nil {
+			return fmt.Errorf("crawl: removing %s: %w", filepath.Base(name), err)
+		}
+	}
 	return nil
 }
 
@@ -643,7 +790,7 @@ func (f *Frontier) offer(ps []pending) (int, error) {
 		if ps[i].done || !ps[i].onDisk {
 			continue
 		}
-		if _, ok := f.pending[ps[i].hash]; ok {
+		if f.held(ps[i].hash) {
 			f.stats.Duplicate.Add(1)
 			ps[i].done, ps[i].why, ps[i].onDisk = true, "already offered", false
 		}
@@ -671,15 +818,33 @@ func (f *Frontier) offer(ps []pending) (int, error) {
 	}
 
 	f.mu.Lock()
-	defer f.mu.Unlock()
 	queued := 0
+	var admitErr error
 	for i := range ps {
 		ok, err := f.admit(&ps[i])
 		if err != nil {
-			return queued, err
+			admitErr = err
+			break
 		}
 		if ok {
 			queued++
+		}
+	}
+	s, spilling, err := f.freeze()
+	f.mu.Unlock()
+
+	if admitErr != nil {
+		return queued, admitErr
+	}
+	if err != nil {
+		return queued, err
+	}
+	// The spill happens here rather than inside the third pass, with the
+	// frontier's lock let go, which is the whole of [Frontier.freeze]'s reason to
+	// exist. See it for what that was costing.
+	if spilling {
+		if err := f.spill(s); err != nil {
+			return queued, err
 		}
 	}
 	return queued, nil
@@ -762,7 +927,7 @@ func (f *Frontier) admit(p *pending) (bool, error) {
 
 	// Looked at again because the runs were read with the lock let go, and
 	// another worker offering the same URL in that window has recorded it here.
-	if _, ok := f.pending[p.hash]; ok {
+	if f.held(p.hash) {
 		f.stats.Duplicate.Add(1)
 		p.done, p.why = true, "already offered"
 		return false, nil
@@ -932,8 +1097,20 @@ func (f *Frontier) Stats() Stats {
 // what it costs to lose is what happened since the last one.
 func (f *Frontier) Flush() error {
 	f.mu.Lock()
-	defer f.mu.Unlock()
-	return f.flush()
+	err := f.flush()
+	s, spilling, ferr := f.freeze()
+	f.mu.Unlock()
+
+	if err != nil {
+		return err
+	}
+	if ferr != nil {
+		return ferr
+	}
+	if spilling {
+		return f.spill(s)
+	}
+	return nil
 }
 
 func (f *Frontier) flush() error {
@@ -947,17 +1124,19 @@ func (f *Frontier) flush() error {
 			return fmt.Errorf("crawl: flushing the pending hashes: %w", err)
 		}
 	}
-	if len(f.pending) >= f.o.Pending {
-		if err := f.spill(); err != nil {
-			return err
-		}
-	}
 	return f.writeManifest()
 }
 
 // Close flushes and closes everything. A frontier that was closed cleanly opens
 // again with nothing lost.
 func (f *Frontier) Close() error {
+	// Taken before the frontier's own lock, and taken at all so that a spill
+	// still writing its run finishes before the files under it are closed. A
+	// close that did not wait would be a run half on the disk and a rotated log
+	// already deleted.
+	f.spillMu.Lock()
+	defer f.spillMu.Unlock()
+
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	if f.closed {
@@ -1034,6 +1213,7 @@ func (f *Frontier) writeManifest() error {
 }
 
 // record marks a hash as seen, in the filter, in the pending map and in the log.
+// The caller holds mu.
 func (f *Frontier) record(h uint64) error {
 	f.add(h)
 	f.pending[h] = struct{}{}
@@ -1042,13 +1222,21 @@ func (f *Frontier) record(h uint64) error {
 	if _, err := f.logw.Write(buf[:]); err != nil {
 		return fmt.Errorf("crawl: recording a URL: %w", err)
 	}
-	if len(f.pending) >= f.o.Pending {
-		if err := f.logw.Flush(); err != nil {
-			return fmt.Errorf("crawl: recording a URL: %w", err)
-		}
-		return f.spill()
-	}
 	return nil
+}
+
+// held reports whether a hash is in the resident half of the seen set, which is
+// the map being filled now and, while a spill is running, the one being written
+// out. The caller holds mu.
+func (f *Frontier) held(h uint64) bool {
+	if _, ok := f.pending[h]; ok {
+		return true
+	}
+	if f.spilling == nil {
+		return false
+	}
+	_, ok := f.spilling[h]
+	return ok
 }
 
 // push appends a canonical URL to its bucket. It takes that bucket's lock and no
@@ -1123,57 +1311,197 @@ func (f *Frontier) maybe(h uint64) bool {
 		f.filter[c/64].Load()&(1<<(c%64)) != 0
 }
 
-// spill writes the pending hashes out as a sorted run and then merges runs that
-// have grown to the same size.
+// A spill is one set of hashes on its way out of memory and onto the disk: the
+// map that was taken away from the crawl, the number the run and the rotated log
+// are both named with, and nothing else. It is what [Frontier.freeze] hands to
+// [Frontier.spill].
+type spill struct {
+	hashes map[uint64]struct{}
+	gen    int
+}
+
+func (s spill) run() string { return fmt.Sprintf("seen-%06d.hashes", s.gen) }
+func (s spill) log() string { return fmt.Sprintf("pending-%06d.hashes", s.gen) }
+
+// freeze takes the pending hashes away from the crawl when there are enough of
+// them to be worth a run, and hands back the work of writing them. The caller
+// holds mu and must call [Frontier.spill] with what it gets back, after letting
+// mu go.
+//
+// This split is the point of the whole arrangement. The writing used to happen
+// where the counting happens, which was inside record, inside admit, inside the
+// third pass of offer, which holds the frontier's lock across all of it. So once
+// every two million new hashes one unlucky worker sorted two million of them,
+// wrote a sixteen megabyte run, and then merged runs, which on a frontier the
+// size of the fleet's streams hundreds of megabytes and writes them back. Every
+// second of that was a second in which no other worker on the box could offer a
+// link. A goroutine dump of server3 at 130 pages a second had 1,098 of them
+// waiting on this lock, the largest group in the dump after the fetches
+// themselves, and the rate inside a single run decayed from 118 to 114 to lower
+// as the runs got bigger and the merges got longer.
+//
+// What is left here is a map swap, a file rename and an open, which is
+// microseconds, and the write happens with the lock let go while the rest of the
+// box goes on crawling.
+//
+// The log is rotated rather than truncated for the same reason the map is set
+// aside rather than cleared. Those hashes are only on the disk in that file
+// until the run lands, so a crash during the write has to find them there.
+func (f *Frontier) freeze() (spill, bool, error) {
+	if len(f.pending) < f.o.Pending || f.spilling != nil {
+		return spill{}, false, nil
+	}
+	f.gen++
+	s := spill{hashes: f.pending, gen: f.gen}
+
+	if err := f.rotateLog(s.log()); err != nil {
+		// Reported rather than swallowed. A log that will not rotate is a disk
+		// that will not take another file, and both boxes running this crawl are
+		// above 97% on the filesystem the frontier lives on, so this is the case
+		// that actually happens. A crawl that quietly went on offering here would
+		// grow the pending map without bound and lose the lot on the next kill.
+		//
+		// Nothing has been given away at this point: rotateLog puts a working
+		// log back on every path out of it, so the hashes are still in the map
+		// and still in a file called pending.hashes.
+		f.gen--
+		return spill{}, false, err
+	}
+	f.spilling = f.pending
+	f.pending = make(map[uint64]struct{}, f.o.Pending)
+	return s, true, nil
+}
+
+// rotateLog flushes the pending log, closes it, renames it out of the way under
+// the name the spill will delete it by, and opens a fresh one. The caller holds
+// mu.
+//
+// The close comes before the rename because Windows will not rename a file that
+// anybody has open, and every test in this file that spills said so at once on
+// the Windows runner. Unix does not care, and the version that renamed first was
+// nicer: a failure left the frontier writing to a descriptor that was still
+// good. Without that, every path out of here has to put a working log back, and
+// [Frontier.reopenLog] is what does it.
+func (f *Frontier) rotateLog(name string) error {
+	if err := f.logw.Flush(); err != nil {
+		return fmt.Errorf("crawl: rotating the pending hashes: %w", err)
+	}
+	if err := f.log.Close(); err != nil {
+		return fmt.Errorf("crawl: rotating the pending hashes: %w", err)
+	}
+	path := filepath.Join(f.dir, "pending.hashes")
+	rotated := filepath.Join(f.dir, name)
+	if err := os.Rename(path, rotated); err != nil {
+		return errors.Join(fmt.Errorf("crawl: rotating the pending hashes: %w", err), f.reopenLog())
+	}
+	fh, err := os.OpenFile(path, os.O_RDWR|os.O_CREATE|os.O_TRUNC, 0o644)
+	if err != nil {
+		// The rotated file goes back under the live name, so the hashes written
+		// since the last spill are still where a recovery looks for them, and
+		// then it is reopened for appending. Losing them here would be losing
+		// every URL this crawl has seen since it started.
+		if back := os.Rename(rotated, path); back != nil {
+			return errors.Join(fmt.Errorf("crawl: rotating the pending hashes: %w", err), back)
+		}
+		return errors.Join(fmt.Errorf("crawl: rotating the pending hashes: %w", err), f.reopenLog())
+	}
+	f.log, f.logw = fh, bufio.NewWriterSize(fh, 1<<16)
+	return nil
+}
+
+// reopenLog opens the pending log for appending and puts it back on the
+// frontier. It is the recovery path out of [Frontier.rotateLog], which has to
+// close the log before it can rename it and therefore has to be able to undo
+// that. The caller holds mu.
+//
+// A failure here is not recoverable and is not swallowed. The frontier would go
+// on offering with nothing writing the hashes down, and the crawl would find out
+// on the next restart, when a billion URLs it had already fetched came back as
+// unseen.
+func (f *Frontier) reopenLog() error {
+	fh, err := os.OpenFile(filepath.Join(f.dir, "pending.hashes"), os.O_RDWR|os.O_APPEND|os.O_CREATE, 0o644)
+	if err != nil {
+		return fmt.Errorf("crawl: reopening the pending hashes: %w", err)
+	}
+	f.log, f.logw = fh, bufio.NewWriterSize(fh, 1<<16)
+	return nil
+}
+
+// spill writes a frozen set of hashes out as a sorted run and then merges runs
+// that have grown to the same size. It is called with no lock held.
 //
 // The merging is what keeps a lookup cheap. Without it a crawl that spills five
 // hundred times has five hundred runs to search, and with it the runs double in
 // size as they merge, so a billion URLs is around nine of them and every hash is
 // rewritten around nine times rather than five hundred.
-func (f *Frontier) spill() error {
-	if len(f.pending) == 0 {
-		return nil
+//
+// The order of the last three steps is what a crash lands on. The run goes in
+// the slice, then the frozen map is dropped, so a hash is never out of both at
+// once. Then the manifest names the run, and only then is the rotated log
+// deleted, so a crash anywhere in here leaves the hashes either in a log that
+// gets read at open or in a run the manifest knows about, and never in a file
+// nobody looks at.
+func (f *Frontier) spill(s spill) error {
+	f.spillMu.Lock()
+	defer f.spillMu.Unlock()
+	if f.beforeRun != nil {
+		f.beforeRun()
 	}
-	hashes := make([]uint64, 0, len(f.pending))
-	for h := range f.pending {
+
+	hashes := make([]uint64, 0, len(s.hashes))
+	for h := range s.hashes {
 		hashes = append(hashes, h)
 	}
 	slices.Sort(hashes)
 
-	f.gen++
-	name := fmt.Sprintf("seen-%06d.hashes", f.gen)
-	r, err := f.writeRun(name, hashes)
+	r, err := f.writeRun(s.run(), hashes)
 	if err != nil {
 		return err
 	}
-	// The write is over by here, so what the readers are shut out of is a slice
-	// append rather than the several seconds it takes to put a run on the disk.
 	f.runsMu.Lock()
 	f.runs = append(f.runs, r)
 	f.runsMu.Unlock()
 
-	clear(f.pending)
-	if err := f.log.Truncate(0); err != nil {
-		return fmt.Errorf("crawl: clearing the pending hashes: %w", err)
-	}
-	if _, err := f.log.Seek(0, io.SeekStart); err != nil {
-		return fmt.Errorf("crawl: clearing the pending hashes: %w", err)
+	f.mu.Lock()
+	f.spilling = nil
+	err = f.writeManifest()
+	f.mu.Unlock()
+	if err != nil {
+		return err
 	}
 
+	if err := os.Remove(filepath.Join(f.dir, s.log())); err != nil {
+		return fmt.Errorf("crawl: removing a spilled log: %w", err)
+	}
 	return f.compactRuns()
+}
+
+// nextGen hands out the next number for a run file. Runs are named from it and a
+// name used twice is a file overwritten, so it is taken under mu even though
+// compaction is the only thing that asks for it off the offer path.
+func (f *Frontier) nextGen() int {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.gen++
+	return f.gen
 }
 
 // compactRuns merges the last two runs while the newer one is at least half the
 // size of the one before it, which is the binary counter that keeps the number
 // of runs logarithmic in the number of URLs.
 func (f *Frontier) compactRuns() error {
-	for len(f.runs) >= 2 {
-		a, b := f.runs[len(f.runs)-2], f.runs[len(f.runs)-1]
-		if b.count*2 < a.count {
+	for {
+		f.runsMu.RLock()
+		enough := len(f.runs) >= 2
+		var a, b *run
+		if enough {
+			a, b = f.runs[len(f.runs)-2], f.runs[len(f.runs)-1]
+		}
+		f.runsMu.RUnlock()
+		if !enough || b.count*2 < a.count {
 			return nil
 		}
-		f.gen++
-		name := fmt.Sprintf("seen-%06d.hashes", f.gen)
+		name := fmt.Sprintf("seen-%06d.hashes", f.nextGen())
 		merged, err := f.mergeRuns(name, a, b)
 		if err != nil {
 			return err
@@ -1194,7 +1522,6 @@ func (f *Frontier) compactRuns() error {
 			}
 		}
 	}
-	return nil
 }
 
 func (f *Frontier) writeRun(name string, hashes []uint64) (*run, error) {

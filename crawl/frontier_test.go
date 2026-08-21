@@ -8,6 +8,7 @@ import (
 	"sync"
 	"sync/atomic"
 	"testing"
+	"time"
 
 	"github.com/tamnd/gao/frontier"
 )
@@ -1097,4 +1098,248 @@ func TestSeveralBatchesFilledAtOnceHandOutEveryURLOnce(t *testing.T) {
 			t.Fatalf("%s was handed out %d times", u, n)
 		}
 	}
+}
+
+// The crawl goes on offering while a run is being written, which is what taking
+// the spill off the frontier's lock was for.
+//
+// Before the change, the worker whose offer tripped the threshold sorted the
+// hashes, wrote the run and merged runs with the frontier's lock held, so every
+// other worker on the box stopped for the length of it. A dump of server3 at 130
+// pages a second had 1,098 goroutines waiting there.
+//
+// The spill is parked at its seam, and then two things are asked of the frontier
+// with it parked. A URL it has never seen has to be queued, which is the claim
+// about the lock. A URL that is in the frozen map has to be refused, which is
+// the claim that setting the map aside did not lose anything: those hashes are
+// in neither pending nor a run for the length of the write.
+func TestTheCrawlGoesOnOfferingWhileARunIsBeingWritten(t *testing.T) {
+	f := open(t, FrontierOptions{Pending: 4})
+
+	parked := make(chan struct{})
+	release := make(chan struct{})
+	f.beforeRun = func() {
+		close(parked)
+		<-release
+	}
+
+	frozen := []string{
+		"https://one.example/a",
+		"https://two.example/b",
+		"https://three.example/c",
+		"https://four.example/d",
+	}
+	spilling := make(chan error, 1)
+	go func() {
+		_, err := f.OfferAll(frozen)
+		spilling <- err
+	}()
+
+	select {
+	case <-parked:
+	case err := <-spilling:
+		t.Fatalf("the offer finished without spilling, so this test is checking nothing: %v", err)
+	}
+
+	done := make(chan struct{})
+	var queued bool
+	var why string
+	var err error
+	go func() {
+		defer close(done)
+		queued, why, err = f.Offer("https://five.example/e")
+	}()
+	select {
+	case <-done:
+	case <-time.After(10 * time.Second):
+		close(release)
+		t.Fatal("an offer made while a run was being written never came back, so the spill is still holding the frontier's lock")
+	}
+	if err != nil {
+		t.Fatalf("Offer: %v", err)
+	}
+	if !queued {
+		t.Errorf("a new URL offered during a spill was refused: %s", why)
+	}
+
+	for _, u := range frozen {
+		ok, why, err := f.Offer(u)
+		if err != nil {
+			t.Fatalf("Offer(%s): %v", u, err)
+		}
+		if ok {
+			t.Errorf("%s was queued a second time while its hash was being spilled", u)
+		}
+		if why != "already offered" {
+			t.Errorf("%s was refused during a spill for %q rather than for having been offered", u, why)
+		}
+	}
+
+	close(release)
+	if err := <-spilling; err != nil {
+		t.Fatalf("OfferAll: %v", err)
+	}
+}
+
+// A crawl killed while it was writing a run opens again knowing the hashes that
+// run was going to hold.
+//
+// The state that leaves on the disk is a rotated pending-NNNNNN.hashes holding
+// them, a fresh pending.hashes holding whatever was offered after the freeze, a
+// manifest that does not name the run, and the run itself either missing or part
+// written. Copying the directory with the spill parked at its seam is that state
+// exactly, and the copy is opened rather than the original so the parked spill
+// is left alone to finish.
+func TestHashesSurviveACrawlKilledWhileItWasWritingARun(t *testing.T) {
+	dir := t.TempDir()
+	f := open(t, FrontierOptions{Dir: dir, Pending: 4})
+
+	parked := make(chan struct{})
+	release := make(chan struct{})
+	f.beforeRun = func() {
+		close(parked)
+		<-release
+	}
+
+	frozen := []string{
+		"https://one.example/a",
+		"https://two.example/b",
+		"https://three.example/c",
+		"https://four.example/d",
+	}
+	spilling := make(chan error, 1)
+	go func() {
+		_, err := f.OfferAll(frozen)
+		spilling <- err
+	}()
+	select {
+	case <-parked:
+	case err := <-spilling:
+		t.Fatalf("the offer finished without spilling, so this test is checking nothing: %v", err)
+	}
+
+	// Offered after the freeze, so it is in the fresh log rather than the
+	// rotated one, and it has to come back too.
+	after := "https://five.example/e"
+	if _, _, err := f.Offer(after); err != nil {
+		t.Fatalf("Offer(%s): %v", after, err)
+	}
+	if err := f.Flush(); err != nil {
+		t.Fatalf("Flush: %v", err)
+	}
+
+	killed := copyDir(t, dir)
+	if _, err := os.Stat(filepath.Join(killed, "pending-000001.hashes")); err != nil {
+		t.Fatalf("the killed frontier has no rotated log, so this test is checking nothing: %v", err)
+	}
+	close(release)
+	if err := <-spilling; err != nil {
+		t.Fatalf("OfferAll: %v", err)
+	}
+
+	again := open(t, FrontierOptions{Dir: killed, Pending: 4})
+	for _, u := range append(append([]string{}, frozen...), after) {
+		ok, _, err := again.Offer(u)
+		if err != nil {
+			t.Fatalf("Offer(%s): %v", u, err)
+		}
+		if ok {
+			t.Errorf("%s was queued again after a kill during a spill", u)
+		}
+	}
+
+	// And the rotated log is folded into the live one rather than left to be
+	// read at every open from here on.
+	left, err := filepath.Glob(filepath.Join(killed, "pending-*.hashes"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(left) != 0 {
+		t.Errorf("a rotated log was left behind after recovery: %v", left)
+	}
+}
+
+// A run file no manifest names is removed at open.
+//
+// It is what a kill during a write or a merge leaves, nothing reads it again,
+// and it is the size of the run that was being written, on boxes where the disk
+// is the thing that runs out first.
+func TestARunNoManifestNamesIsRemovedAtOpen(t *testing.T) {
+	dir := t.TempDir()
+	f := open(t, FrontierOptions{Dir: dir, Pending: 4})
+	for i := range 20 {
+		offer(t, f, fmt.Sprintf("https://h%02d.example/p%d", i, i))
+	}
+	if err := f.Flush(); err != nil {
+		t.Fatalf("Flush: %v", err)
+	}
+	if err := f.Close(); err != nil {
+		t.Fatalf("Close: %v", err)
+	}
+
+	real, err := filepath.Glob(filepath.Join(dir, "seen-*.hashes"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(real) == 0 {
+		t.Fatal("nothing spilled, so this test is checking nothing")
+	}
+	stray := filepath.Join(dir, "seen-999999.hashes")
+	if err := os.WriteFile(stray, make([]byte, 32), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	again := open(t, FrontierOptions{Dir: dir, Pending: 4})
+	if _, err := os.Stat(stray); !os.IsNotExist(err) {
+		t.Errorf("a run no manifest names survived an open: %v", err)
+	}
+	for _, name := range real {
+		if _, err := os.Stat(name); err != nil {
+			t.Errorf("%s was removed and the manifest names it: %v", filepath.Base(name), err)
+		}
+	}
+	if _, _, err := again.Offer("https://h00.example/p0"); err != nil {
+		t.Fatalf("Offer: %v", err)
+	}
+}
+
+// copyDir copies a frontier directory, which is how a test gets at the state a
+// kill would have left without killing anything.
+func copyDir(t *testing.T, dir string) string {
+	t.Helper()
+	to := t.TempDir()
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, e := range entries {
+		from := filepath.Join(dir, e.Name())
+		if e.IsDir() {
+			if err := os.MkdirAll(filepath.Join(to, e.Name()), 0o755); err != nil {
+				t.Fatal(err)
+			}
+			sub, err := os.ReadDir(from)
+			if err != nil {
+				t.Fatal(err)
+			}
+			for _, s := range sub {
+				b, err := os.ReadFile(filepath.Join(from, s.Name()))
+				if err != nil {
+					t.Fatal(err)
+				}
+				if err := os.WriteFile(filepath.Join(to, e.Name(), s.Name()), b, 0o644); err != nil {
+					t.Fatal(err)
+				}
+			}
+			continue
+		}
+		b, err := os.ReadFile(from)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(to, e.Name()), b, 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	return to
 }
