@@ -17,6 +17,7 @@ import (
 	"text/tabwriter"
 	"time"
 
+	"github.com/tamnd/gao/fleet"
 	"github.com/tamnd/gao/seed"
 )
 
@@ -32,6 +33,8 @@ func runSeed(stdout, stderr io.Writer, args []string) int {
 		return runSeedOAI(stdout, stderr, args[1:])
 	case "live":
 		return runSeedLive(stdout, stderr, args[1:])
+	case "pages":
+		return runSeedPages(stdout, stderr, args[1:])
 	case "help", "-h", "--help":
 		seedUsage(stdout)
 		return 0
@@ -46,9 +49,11 @@ func seedUsage(w io.Writer) {
 	fmt.Fprint(w, `usage: gao seed <subcommand> [flags]
 
 subcommands:
-  ct   read Certificate Transparency and print the hosts it names
-  oai  ask university repositories for their catalogs, and say which of them answer
-  live screen a host list and print the ones that answer
+  ct    read Certificate Transparency and print the hosts it names
+  oai   ask university repositories for their catalogs, and say which of them answer
+  live  screen a host list and print the ones that answer
+  pages read page addresses out of a published dataset, which is a seed of documents
+        rather than of front doors
 
 run 'gao seed <subcommand> -h' for the flags of a single subcommand.
 `)
@@ -437,6 +442,108 @@ flags:
 	}
 
 	fmt.Fprint(stderr, "\n"+seed.Tally(found).String())
+	return 0
+}
+
+// runSeedPages reads page addresses out of a dataset we already published.
+//
+// Every seed list this crawler has been handed until now has been hosts, and a
+// host means its home page. The crawl's own numbers say what that costs: a home
+// page is a masthead, a menu and a footer, so it usually fails the sift, and the
+// links on it lead to section fronts which fail it too. About one page in four
+// survives a crawl and the first minutes of a host seeded run are spent
+// establishing that front doors are not writing.
+//
+// open-index/vitco-clean is 16 million addresses of documents that already
+// passed this pipeline's Vietnamese filter, across about 970,000 hosts. Those
+// are articles and forum threads, the links on them go to sibling articles, and
+// entering a site at eight of them rather than at its front door is a different
+// crawl.
+func runSeedPages(stdout, stderr io.Writer, args []string) int {
+	fs := flag.NewFlagSet("seed pages", flag.ContinueOnError)
+	fs.SetOutput(stderr)
+	repo := fs.String("repo", seed.PagesRepo, "the published dataset to read addresses out of")
+	prefix := fs.String("source", "", "read one source of the dataset rather than all of them, by directory name")
+	perHost := fs.Int("per-host", seed.DefaultPerHost, "how many addresses one host contributes, or -1 for all of them")
+	shard := fs.Int("shard", 0, "this box's index in the fleet, which decides which hosts it takes")
+	boxes := fs.Int("fleet", 1, "how many boxes are crawling, under the same host split the crawler uses")
+	limit := fs.Int("max", 0, "stop after this many addresses, or read the whole dataset when zero")
+	timeout := fs.Duration("timeout", 2*time.Hour, "how long the whole read gets")
+	fs.Usage = func() {
+		fmt.Fprint(stderr, `usage: gao seed pages [flags]
+
+Prints page addresses, one per line, ready to be handed to 'gao crawl -seed'.
+
+The addresses come out of a dataset this project already published, so every one
+of them is a document that passed the same Vietnamese filter the crawl applies.
+That is the whole argument for it. A host list is a guess that a site has
+Vietnamese on it somewhere, and a page list is a record that a particular
+document did.
+
+Only the url column is moved. A part is Parquet and the column sits in its own
+chunk, so this reads byte ranges over HTTP and never asks for the pages the text
+is in, which is the difference between a few megabytes and the corpus.
+
+-per-host is a breadth control and not a volume one. The frontier hands out at
+most two URLs per host per batch, so a host contributing two hundred addresses
+is not crawled a hundred times faster, its extra addresses are deferred over and
+over. Breadth worth having is across hosts.
+
+-shard and -fleet split the output the way the crawler splits its frontier, on a
+hash of the host, so each box gets the addresses of the hosts it owns and none
+of the ones it would refuse.
+
+flags:
+`)
+		fs.PrintDefaults()
+	}
+	if err := fs.Parse(args); err != nil {
+		return 2
+	}
+	if *boxes < 1 || *shard < 0 || *shard >= *boxes {
+		fmt.Fprintf(stderr, "gao seed pages: shard %d of %d is not a box in the fleet\n", *shard, *boxes)
+		return 2
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), *timeout)
+	defer cancel()
+
+	w := bufio.NewWriterSize(stdout, 1<<20)
+	p := seed.Pages{
+		Repo:    *repo,
+		Token:   fleet.Token(),
+		API:     pushAPI(),
+		Prefix:  *prefix,
+		PerHost: *perHost,
+		Shard:   *shard,
+		Fleet:   *boxes,
+		Limit:   *limit,
+	}
+	report, err := p.Read(ctx, func(address string) error {
+		_, err := fmt.Fprintln(w, address)
+		return err
+	})
+	// The buffer is flushed before the error is reported, because a read that
+	// stopped partway still produced a seed list and throwing it away for the
+	// sake of a clean exit would be throwing away the whole run.
+	if ferr := w.Flush(); ferr != nil && err == nil {
+		err = ferr
+	}
+	if err != nil {
+		fmt.Fprintf(stderr, "gao seed pages: %v\n", err)
+		return 1
+	}
+
+	fmt.Fprintf(stderr, "\n%s over %s of %s\n",
+		plural(report.Kept, "address"), plural(report.Hosts, "host"), plural(report.Parts, "part"))
+	fmt.Fprintf(stderr, "%d rows read, %d past a host's share", report.Rows, report.Capped)
+	if *boxes > 1 {
+		fmt.Fprintf(stderr, ", %d on another box's hosts", report.Foreign)
+	}
+	if report.Bad > 0 {
+		fmt.Fprintf(stderr, ", %d not an http address", report.Bad)
+	}
+	fmt.Fprintln(stderr)
 	return 0
 }
 

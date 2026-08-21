@@ -77,6 +77,18 @@ func EachUint32(f *parquet.File, name string, yield func(uint32) error) error {
 	})
 }
 
+// EachString calls yield with every value of a text column.
+//
+// The value handed over is a copy. The decoder reuses its buffer between
+// batches, so a caller that kept the bytes would find them holding a different
+// row a thousand values later, and the callers of this keep them: that is what
+// reading a url column is for.
+func EachString(f *parquet.File, name string, yield func(string) error) error {
+	return eachValue(f, name, func(v parquet.Value) error {
+		return yield(string(v.ByteArray()))
+	})
+}
+
 // eachValue walks one named column of a part and yields every value in it, in
 // row order.
 func eachValue(f *parquet.File, name string, yield func(parquet.Value) error) error {

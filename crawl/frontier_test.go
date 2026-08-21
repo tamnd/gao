@@ -1395,3 +1395,34 @@ func TestAShortBatchIsReportedAsRunningOutOfHosts(t *testing.T) {
 		t.Errorf("a batch that was filled reported Exhausted %d", s.Exhausted)
 	}
 }
+
+// TestTheFleetSplitHereIsTheOneASeedListCanCompute pins the crawler's split
+// against [frontier.Box].
+//
+// There are two spellings of one rule and there have to be. The crawler already
+// holds the host's hash by the time it asks, because it computed it outside the
+// lock along with everything else an offer needs, and going through a function
+// that hashes it again would put a blake3 back on the path of every link on
+// every page. A seed list has no such hash and no reason to have one.
+//
+// Two spellings is a fleet where a third of the seed goes to the box that will
+// refuse it, unless something says they agree. This is that something.
+func TestTheFleetSplitHereIsTheOneASeedListCanCompute(t *testing.T) {
+	hosts := []string{
+		"vnexpress.net", "tuoitre.vn", "voz.vn", "otofun.net",
+		"example.com", "vi.wikipedia.org", "kenh14.vn", "baochinhphu.vn",
+	}
+	for _, fleet := range []int{2, 3, 5} {
+		for _, host := range hosts {
+			p := parseOffer("https://" + host + "/")
+			if p.bad {
+				t.Fatalf("parseOffer(%q): %s", host, p.why)
+			}
+			here := int(p.hostHash % uint64(fleet))
+			if there := frontier.Box(host, fleet); here != there {
+				t.Errorf("%s of %d: the crawler says box %d and a seed list says box %d",
+					host, fleet, here, there)
+			}
+		}
+	}
+}
