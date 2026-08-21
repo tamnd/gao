@@ -56,6 +56,8 @@ var meanings = map[string]struct{ stage, meaning string }{
 	"doc_id":         {"normalize", "blake3 of the normalized text, which is the document's identity: two documents with the same normalized text are the same document whichever path found them"},
 	"raw_id":         {"harvest", "blake3 of the bytes before extraction, which is what links this row back to the WARC record or the source file it came out of"},
 	"text":           {"normalize", "the document text, normalized to NFC with canonical tone mark placement and legacy encodings already transcoded"},
+	"markdown":       {"normalize", "the same content as text with the document's shape left in, as CommonMark: headings, lists, tables, links and emphasis, normalized the same way except for the whitespace, which in markdown is the markup"},
+	"body":           {"normalize", "the whole page as markdown, with only the elements that are not writing at all taken out, which is what a reader who disagrees with our extraction can run their own over, and what made an extractor bug recoverable without refetching the web"},
 	"schema_version": {"store", "the version of this layout, carried per row because a store appended to across a pipeline upgrade holds two versions at once and a reader has to be able to tell"},
 
 	"source":           {"harvest", "which acquisition path produced the document, one of the six gao runs"},

@@ -2,6 +2,7 @@ package normalize
 
 import (
 	"reflect"
+	"strings"
 	"testing"
 )
 
@@ -160,5 +161,45 @@ func TestTextThatIsNotVietnameseIsCarriedThrough(t *testing.T) {
 		if got := Normalize(s); got.Text != s {
 			t.Errorf("Normalize(%q) = %q, want it unchanged", s, got.Text)
 		}
+	}
+}
+
+// The layout of extracted text is a leftover of the markup it came out of, so
+// collapsing it is a repair. The layout of markdown is the markup, so collapsing
+// it is a corruption. Markup is Normalize without that one step and this is the
+// difference.
+func TestMarkupKeepsTheWhitespaceThatIsMarkup(t *testing.T) {
+	in := "# Tin trong ngay\n\n- mot\n  - mot mot\n- hai\n\nDong nay xuong dong.  \nDong tiep theo.\n"
+
+	if got := Markup(in); got != in {
+		t.Errorf("markup came back changed:\n%q\nwant\n%q", got, in)
+	}
+	// The same input through the text path loses the nesting and the hard break,
+	// which is what it is supposed to do.
+	if got := Normalize(in).Text; got == in {
+		t.Error("Normalize left the layout alone, so this test compares nothing")
+	}
+}
+
+// Everything Normalize does to characters, Markup does too. A page in a legacy
+// font encoding is not Vietnamese to any test that reads characters, and the
+// body column is the one somebody runs their own extractor over.
+func TestMarkupStillRepairsTheCharacters(t *testing.T) {
+	// Decomposed syllables, written as the bare letter and the combining mark,
+	// inside markdown that has to survive the repair.
+	in := "## Ti\u0301nh hi\u0300nh\n\n> Trich dan.\n"
+	got := Markup(in)
+
+	if strings.ContainsAny(got, "\u0300\u0301\u0303\u0309\u0323") {
+		t.Errorf("markup left the syllables decomposed: %q", got)
+	}
+	if !strings.Contains(got, "T\u00ednh h\u00ecnh") {
+		t.Errorf("markup did not compose the syllables: %q", got)
+	}
+	if !strings.HasPrefix(got, "## ") {
+		t.Errorf("markup lost the heading: %q", got)
+	}
+	if !strings.Contains(got, "> Trich dan.") {
+		t.Errorf("markup lost the block quote: %q", got)
 	}
 }

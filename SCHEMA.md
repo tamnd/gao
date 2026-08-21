@@ -10,13 +10,15 @@ The filled by column names the gao subcommand that puts the value there. It answ
 
 ## The columns
 
-All 42 of them, in the order the file holds them.
+All 44 of them, in the order the file holds them.
 
 | column | type | filled by | meaning |
 | --- | --- | --- | --- |
 | `doc_id` | `bytes(32)` | `normalize` | blake3 of the normalized text, which is the document's identity: two documents with the same normalized text are the same document whichever path found them |
 | `raw_id` | `bytes(32)` | `harvest` | blake3 of the bytes before extraction, which is what links this row back to the WARC record or the source file it came out of |
 | `text` | `string` | `normalize` | the document text, normalized to NFC with canonical tone mark placement and legacy encodings already transcoded |
+| `markdown` | `string` | `normalize` | the same content as text with the document's shape left in, as CommonMark: headings, lists, tables, links and emphasis, normalized the same way except for the whitespace, which in markdown is the markup |
+| `body` | `string` | `normalize` | the whole page as markdown, with only the elements that are not writing at all taken out, which is what a reader who disagrees with our extraction can run their own over, and what made an extractor bug recoverable without refetching the web |
 | `schema_version` | `uint16` | `store` | the version of this layout, carried per row because a store appended to across a pipeline upgrade holds two versions at once and a reader has to be able to tell |
 | `source` | `string` | `harvest` | which acquisition path produced the document, one of the six gao runs |
 | `source_locator` | `string` | `harvest` | where in that source it came from: shard and offset for an ingested corpus, file, offset and length for a WARC record |
@@ -80,6 +82,8 @@ message document {
 	required fixed_len_byte_array(32) doc_id;
 	required fixed_len_byte_array(32) raw_id;
 	required binary text (STRING);
+	required binary markdown (STRING);
+	required binary body (STRING);
 	required int32 schema_version (INT(16,false));
 	required binary source (STRING);
 	required binary source_locator (STRING);

@@ -58,6 +58,8 @@ type Row struct {
 	DocID         doc.Hash `parquet:"doc_id"`
 	RawID         doc.Hash `parquet:"raw_id"`
 	Text          string   `parquet:"text"`
+	Markdown      string   `parquet:"markdown"`
+	Body          string   `parquet:"body"`
 	SchemaVersion uint16   `parquet:"schema_version"`
 
 	Source          string    `parquet:"source,dict"`
@@ -158,6 +160,8 @@ func RowOf(d *doc.Document) Row {
 		DocID:         d.DocID,
 		RawID:         d.RawID,
 		Text:          valid(d.Text),
+		Markdown:      valid(d.Markdown),
+		Body:          valid(d.Body),
 		SchemaVersion: d.SchemaVersion,
 
 		Source:          string(d.Source),
@@ -278,6 +282,8 @@ func DocumentOf(r Row) *doc.Document {
 		DocID:         r.DocID,
 		RawID:         r.RawID,
 		Text:          r.Text,
+		Markdown:      r.Markdown,
+		Body:          r.Body,
 		SchemaVersion: r.SchemaVersion,
 	}
 	d.Source = doc.Source(r.Source)
@@ -328,8 +334,25 @@ func DocumentOf(r Row) *doc.Document {
 	return d
 }
 
-// TextColumn is the column a repo withholds when it does not carry text.
+// TextColumn is the column that carries the document. It is the one a reader
+// means by "the text" and the one a query selects when it wants sentences.
 const TextColumn = "text"
+
+// MarkdownColumn is the same content with the document's shape left in, and
+// BodyColumn is the whole page rather than the part the extractor picked.
+const (
+	MarkdownColumn = "markdown"
+	BodyColumn     = "body"
+)
+
+// TextColumns is every column that carries the document itself, which is the
+// set a repo withholds together.
+//
+// They are withheld as a set rather than one at a time because withholding is
+// about redistribution and not about size. A repo that may not pass on the text
+// may not pass on the same text with the headings left in, and the body column
+// is the whole page, so it is the least withholdable of the three.
+var TextColumns = []string{TextColumn, MarkdownColumn, BodyColumn}
 
 // DocIDColumn is the column that carries document identity, which is what a
 // pass measuring overlap between two sources reads and the only column it
@@ -382,12 +405,13 @@ var (
 	})
 )
 
-// elide returns the schema without its text column, which is the published
-// schema of a repo that carries everything about a document except the document.
+// elide returns the schema without the columns that carry the document, which is
+// the published schema of a repo that holds everything about a document except
+// the document.
 func elide(s *parquet.Schema) *parquet.Schema {
 	g := parquet.Group{}
 	for _, f := range s.Fields() {
-		if f.Name() == TextColumn {
+		if slices.Contains(TextColumns, f.Name()) {
 			continue
 		}
 		g[f.Name()] = f
@@ -488,8 +512,8 @@ var ErrNotAdmitted = errors.New("store: that dataset does not admit that license
 // than a scatter of small reads.
 const DefaultRowGroup = 50_000
 
-// RowGroupText is how much text a row group holds before it is flushed whatever
-// the row count says.
+// RowGroupText is how much document a row group holds before it is flushed
+// whatever the row count says.
 //
 // A row count alone is a memory bound only if the documents are the size the
 // row count was picked for. FinePDFs documents average 29.5 KB against the few
@@ -500,6 +524,12 @@ const DefaultRowGroup = 50_000
 //
 // Half a shard, so a part still gets at least two row groups and a column read
 // off the store is still sequential.
+//
+// What it counts is the text, the markdown and the body together, which is what
+// is actually buffered. Counting the text alone was right when the text was the
+// only large column, and once the body column landed it was undercounting by
+// about a factor of five: a crawled page averages a few kilobytes of extracted
+// text and twenty of body.
 //
 // A var rather than a const so a test can lower it. The alternative is a test
 // that writes most of a gigabyte to a temp directory to watch a row group
@@ -632,8 +662,9 @@ func (p *ParquetWriter) admits(d *doc.Document) error {
 // share.
 func (p *ParquetWriter) wrote(d *doc.Document) error {
 	p.n++
-	p.text += int64(len(d.Text))
-	p.group += int64(len(d.Text))
+	n := int64(len(d.Text) + len(d.Markdown) + len(d.Body))
+	p.text += n
+	p.group += n
 	p.groupRows++
 	// Both bounds are closed here rather than the row count being left to
 	// parquet.MaxRowsPerRowGroup, which would do it perfectly well, because a

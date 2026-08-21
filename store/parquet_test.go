@@ -72,6 +72,8 @@ func TestThePublishedColumnsAreTheOnesWrittenDown(t *testing.T) {
 		"doc_id",
 		"raw_id",
 		"text",
+		"markdown",
+		"body",
 		"schema_version",
 		"source",
 		"source_locator",
@@ -235,20 +237,24 @@ func TestARepoThatWithholdsTextShipsNoText(t *testing.T) {
 	}
 }
 
-// The withheld column is absent rather than empty. The distinction is the whole
-// point of the restricted pattern: an empty column reads as text that got lost.
-func TestTheWithheldColumnIsMissingAndNotEmpty(t *testing.T) {
+// The withheld columns are absent rather than empty. The distinction is the
+// whole point of the restricted pattern: an empty column reads as text that got
+// lost. All three go together, because a repo that may not pass on the text may
+// not pass on the same text with the headings left in.
+func TestTheWithheldColumnsAreMissingAndNotEmpty(t *testing.T) {
 	with := Columns(SchemaFor(Dataset{Text: true}))
 	without := Columns(SchemaFor(Dataset{Text: false}))
-	if len(with) != len(without)+1 {
-		t.Fatalf("the two schemas differ by %d columns, want exactly one", len(with)-len(without))
+	if len(with) != len(without)+len(TextColumns) {
+		t.Fatalf("the two schemas differ by %d columns, want %d", len(with)-len(without), len(TextColumns))
 	}
-	if slices.Contains(without, TextColumn) {
-		t.Error("the withholding schema still has a text column")
+	for _, c := range TextColumns {
+		if slices.Contains(without, c) {
+			t.Errorf("the withholding schema still has a %s column", c)
+		}
 	}
 	for _, c := range with {
-		if c != TextColumn && !slices.Contains(without, c) {
-			t.Errorf("withholding text also dropped %q", c)
+		if !slices.Contains(TextColumns, c) && !slices.Contains(without, c) {
+			t.Errorf("withholding the document also dropped %q", c)
 		}
 	}
 }
@@ -713,6 +719,8 @@ func TestARowComesBackAsTheDocumentItCameFrom(t *testing.T) {
 	in.GaoEdu = 0.44
 	in.HPLTBucket = 9
 	in.Register = "narrative"
+	in.Markdown = "# Tin trong ngay\n\n- mot\n- hai\n"
+	in.Body = "# Tin trong ngay\n\n[trang chu](https://tin.example/)\n"
 
 	got := DocumentOf(RowOf(in))
 

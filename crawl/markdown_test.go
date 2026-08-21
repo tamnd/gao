@@ -56,28 +56,29 @@ func TestTheBodyIsTheWholePageAndNotTheExtractorsOpinionOfIt(t *testing.T) {
 // A page whose article the extractor throws away still has a body.
 //
 // This is not a hypothetical. vnexpress.net wraps its articles in a div called
-// sidebar-1 inside one called header-content, and both of those words are on the
-// list of things this package treats as furniture, so the extractor returns two
-// bytes from a real article. Three articles fetched from the live site on the
-// day this was written all came back as the multiplication sign and nothing
-// else, while the body held the whole story with its links in place.
+// sidebar-1 inside one called header-content, and for as long as this package
+// existed both of those words were an outright ban, so three articles fetched
+// off the front page all came back as the multiplication sign from a close
+// button. That is issue 176, and it is fixed, and fixing it did not bring back
+// the pages already crawled.
 //
-// The extractor is worth fixing and is fixed elsewhere. What this covers is that
-// a corpus published with a body column survives the extractor being wrong,
-// which is the reason to have the column at all.
+// The extractor will be wrong again. What this covers is that a corpus with a
+// body column survives it being wrong, which is the reason to have the column.
+// The page here puts its writing inside an aside, which this package refuses
+// unconditionally and correctly, so the test does not depend on any threshold.
 func TestAPageTheExtractorGivesUpOnStillHasABody(t *testing.T) {
 	const page = `<!doctype html><html lang="vi"><head><title>Bao</title></head><body>
-	<div class="header-content"><div class="sidebar-1"><article class="fck_detail">
+	<aside>
 	<h1>Thu tuong phe duyet de an giao duc thu do</h1>
 	<p>Thu tuong ngay hai muoi thang tam phe duyet de an ve noi dung tren, voi
 	muc tieu den nam hai nghin khong tram ba muoi.</p>
 	<p>It nhat muoi hai truong se theo dinh huong xep hang hoac giu vai tro
 	trung tam ve dao tao tai nang va nghien cuu.</p>
-	</article></div></div></body></html>`
+	</aside></body></html>`
 
 	p := read(t, "https://vnexpress.net/de-an-giao-duc-5111470.html", page)
-	if p.Text != "" {
-		t.Logf("the extractor found %d bytes, so it has been fixed and this test is now checking less than it was", len(p.Text))
+	if strings.Contains(p.Text, "Thu tuong phe duyet") {
+		t.Errorf("the extractor read an aside as content, so this test no longer covers what it says:\n%s", p.Text)
 	}
 	for _, wanted := range []string{"Thu tuong phe duyet", "It nhat muoi hai truong"} {
 		if !strings.Contains(p.Body, wanted) {
