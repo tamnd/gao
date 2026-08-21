@@ -52,7 +52,7 @@ func openSink(t *testing.T, o SinkOptions) *Sink {
 // name bytes somebody can actually read back.
 func TestTheLocatorNamesTheRecordThePageCameFrom(t *testing.T) {
 	dir := t.TempDir()
-	s := openSink(t, SinkOptions{Dir: dir})
+	s := openSink(t, SinkOptions{Dir: dir, Record: true})
 
 	v := visit("https://baodongthap.example/tin-1.html", "<html><body><p>Xin chao</p></body></html>")
 	locator, err := s.Archive(v, time.Date(2026, 8, 19, 7, 0, 0, 0, time.UTC))
@@ -288,7 +288,7 @@ func TestASinkCarriesOnFromWhereItStopped(t *testing.T) {
 		return nil
 	}
 
-	first := openSink(t, SinkOptions{Dir: dir, BytesPerPart: 1, Push: push})
+	first := openSink(t, SinkOptions{Dir: dir, Record: true, BytesPerPart: 1, Push: push})
 	if err := first.Write(Verdict{Doc: sampleDoc(1), Kept: true}); err != nil {
 		t.Fatalf("Write: %v", err)
 	}
@@ -299,7 +299,7 @@ func TestASinkCarriesOnFromWhereItStopped(t *testing.T) {
 		t.Fatalf("Close: %v", err)
 	}
 
-	second := openSink(t, SinkOptions{Dir: dir, BytesPerPart: 1, Push: push})
+	second := openSink(t, SinkOptions{Dir: dir, Record: true, BytesPerPart: 1, Push: push})
 	if err := second.Write(Verdict{Doc: sampleDoc(2), Kept: true}); err != nil {
 		t.Fatalf("Write: %v", err)
 	}
@@ -328,7 +328,7 @@ func TestASinkCarriesOnFromWhereItStopped(t *testing.T) {
 // The disk under a crawler is cache. A run told to keep two volumes keeps two.
 func TestOldVolumesAreAgedOut(t *testing.T) {
 	dir := t.TempDir()
-	s := openSink(t, SinkOptions{Dir: dir, Volume: 1, Keep: 2})
+	s := openSink(t, SinkOptions{Dir: dir, Record: true, Volume: 1, Keep: 2})
 	for i := range 5 {
 		if _, err := s.Archive(visit("https://baodongthap.example/tin.html", "<html></html>"), time.Now()); err != nil {
 			t.Fatalf("Archive %d: %v", i, err)
@@ -356,7 +356,7 @@ func TestOldVolumesAreAgedOut(t *testing.T) {
 func TestARestartAgesOutTheVolumesItFound(t *testing.T) {
 	dir := t.TempDir()
 	for i := range 4 {
-		s := openSink(t, SinkOptions{Dir: dir, Volume: 1, Keep: 2})
+		s := openSink(t, SinkOptions{Dir: dir, Record: true, Volume: 1, Keep: 2})
 		if _, err := s.Archive(visit("https://baodongthap.example/tin.html", "<html></html>"), time.Now()); err != nil {
 			t.Fatalf("Archive on run %d: %v", i, err)
 		}
@@ -378,7 +378,7 @@ func TestARestartAgesOutTheVolumesItFound(t *testing.T) {
 	if err := os.WriteFile(other, []byte("not this box's"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	s := openSink(t, SinkOptions{Dir: dir, Volume: 1, Keep: 1})
+	s := openSink(t, SinkOptions{Dir: dir, Record: true, Volume: 1, Keep: 1})
 	if err := s.Close(); err != nil {
 		t.Fatalf("Close: %v", err)
 	}
@@ -443,7 +443,7 @@ func TestASinkThatIsClosedSaysSo(t *testing.T) {
 // archive back record by record, which is where an interleaved WARC shows up.
 func TestManyWorkersWritingAtOnceLeaveAReadableArchive(t *testing.T) {
 	dir := t.TempDir()
-	s := openSink(t, SinkOptions{Dir: dir})
+	s := openSink(t, SinkOptions{Dir: dir, Record: true})
 
 	const workers, each = 24, 20
 	var wg sync.WaitGroup
@@ -538,7 +538,7 @@ func TestANewSnapshotDoesNotStartTheVolumeCountOver(t *testing.T) {
 	dir := t.TempDir()
 	for _, snapshot := range []string{"web-20260819", "web-20260820", "web-20260820b"} {
 		for range 2 {
-			s := openSink(t, SinkOptions{Dir: dir, Snapshot: snapshot, Volume: 1, Keep: 2})
+			s := openSink(t, SinkOptions{Dir: dir, Record: true, Snapshot: snapshot, Volume: 1, Keep: 2})
 			if _, err := s.Archive(visit("https://baodongthap.example/tin.html", "<html></html>"), time.Now()); err != nil {
 				t.Fatalf("Archive under %s: %v", snapshot, err)
 			}

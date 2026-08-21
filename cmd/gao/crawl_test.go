@@ -64,7 +64,7 @@ func TestCrawlWritesBothRepos(t *testing.T) {
 	srv := crawlSite(t)
 	dir := t.TempDir()
 
-	out, errb, code := crawlRun(t, "-dir", dir, "-workers", "2", "-json", srv.URL+"/")
+	out, errb, code := crawlRun(t, "-dir", dir, "-workers", "2", "-warc", "-json", srv.URL+"/")
 	if code != 0 {
 		t.Fatalf("exit %d: %s%s", code, out, errb)
 	}
@@ -255,5 +255,59 @@ func TestCrawlSeedsLongerThanOneBatchArriveWhole(t *testing.T) {
 	}
 	if got := f.Stats().Admitted; got != n {
 		t.Fatalf("the frontier admitted %d, want %d", got, n)
+	}
+}
+
+// The WARC is off unless it is asked for, because writing it was a sixth of the
+// crawler's CPU on a crawler whose ceiling is CPU. This is the test that the
+// default really is off: the datasets still land, every fetch is still counted,
+// and there is no volume on the disk.
+func TestTheWARCIsOffUnlessItIsAskedFor(t *testing.T) {
+	srv := crawlSite(t)
+	dir := t.TempDir()
+
+	out, errb, code := crawlRun(t, "-dir", dir, "-workers", "2", "-json", srv.URL+"/")
+	if code != 0 {
+		t.Fatalf("exit %d: %s%s", code, out, errb)
+	}
+	i := strings.Index(out, "{")
+	if i < 0 {
+		t.Fatalf("no report in the output:\n%s", out)
+	}
+	var p struct {
+		Fetched int64 `json:"fetched"`
+		Kept    int64 `json:"kept"`
+		Sink    struct {
+			Archived  int64 `json:"archived"`
+			Volumes   int   `json:"volumes"`
+			WARCBytes int64 `json:"warc_bytes"`
+			Parts     int   `json:"parts"`
+		} `json:"sink"`
+	}
+	if err := json.Unmarshal([]byte(out[i:]), &p); err != nil {
+		t.Fatalf("reading the report: %v\n%s", err, out[i:])
+	}
+	if p.Kept != 1 || p.Sink.Parts != 2 {
+		t.Errorf("kept %d pages into %d parts, want the article and one part per repo", p.Kept, p.Sink.Parts)
+	}
+	if p.Sink.Volumes != 0 || p.Sink.WARCBytes != 0 {
+		t.Errorf("%d volumes and %d bytes of WARC were written with -warc off", p.Sink.Volumes, p.Sink.WARCBytes)
+	}
+	// Archived still counts the fetches, because the count is what was seen and
+	// not what was written down.
+	if p.Sink.Archived != p.Fetched {
+		t.Errorf("%d fetched and %d archived, want the count to hold with nothing recorded", p.Fetched, p.Sink.Archived)
+	}
+	if _, err := os.Stat(filepath.Join(dir, "warc")); !os.IsNotExist(err) {
+		t.Errorf("a volume directory was made with -warc off: %v", err)
+	}
+
+	// The rows still say where they came from, which is the thing the WARC
+	// locator was doing and the reason turning it off is safe.
+	for _, repo := range []string{"vitweb", "vitweb-rejects"} {
+		found, err := filepath.Glob(filepath.Join(dir, repo, "data", "*", "*.parquet"))
+		if err != nil || len(found) == 0 {
+			t.Errorf("%s has no part on the disk: %v", repo, err)
+		}
 	}
 }

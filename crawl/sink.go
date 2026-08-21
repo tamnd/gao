@@ -26,8 +26,10 @@ package crawl
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"sort"
@@ -103,8 +105,25 @@ type SinkOptions struct {
 	// closing over it is how a stopped run stops its uploads too.
 	Push func(d store.Dataset, local, path string) error
 
+	// Record, when set, keeps a WARC of every fetch beside the datasets.
+	//
+	// Off by default, which is a change of mind rather than a default nobody
+	// thought about. The argument for keeping one is that an extractor is a
+	// program we will change, and a page it got wrong is only worth having if
+	// the bytes are still here when the next version runs. The argument against
+	// it is the measurement: writing the WARC was 15.6% of a live crawl's CPU
+	// and gzipping it 13.3%, on a crawler whose ceiling is CPU, for a file that
+	// -keep deletes and that is not what gets published.
+	//
+	// Re-extraction was never what the WARC bought here anyway. It ages out
+	// after a few volumes, so by the time an extractor changes the bytes are
+	// already gone, and what re-extraction actually costs is another fetch of
+	// the same page. The published datasets carry the URL and the fetch time on
+	// every row, so that fetch is a thing anybody can do.
+	Record bool
+
 	// Volume is how large a WARC volume grows before the next one opens. Zero
-	// is [DefaultVolume].
+	// is [DefaultVolume]. It means nothing unless Record is set.
 	Volume int64
 
 	// Keep is how many finished WARC volumes stay on the disk. Zero keeps every
@@ -261,13 +280,19 @@ func OpenSink(o SinkOptions) (*Sink, error) {
 	if !ok {
 		return nil, fmt.Errorf("crawl: %s is not in the dataset table", RejectRepo)
 	}
-	if err := os.MkdirAll(filepath.Join(o.Dir, "warc"), 0o755); err != nil {
-		return nil, fmt.Errorf("crawl: making the volume directory: %w", err)
+	if o.Record {
+		if err := os.MkdirAll(filepath.Join(o.Dir, "warc"), 0o755); err != nil {
+			return nil, fmt.Errorf("crawl: making the volume directory: %w", err)
+		}
 	}
 	s := &Sink{o: o, kept: kept, drops: drops, streams: map[string]*stream{}}
 	if err := s.load(); err != nil {
 		return nil, err
 	}
+	// The volumes an earlier run left are still aged out even when this run is
+	// not writing any, because a box that has been restarted without -warc is
+	// exactly the box holding volumes nobody is going to add to and nobody is
+	// going to delete either.
 	if err := s.found(); err != nil {
 		return nil, err
 	}
@@ -304,6 +329,11 @@ func OpenSink(o SinkOptions) (*Sink, error) {
 func (s *Sink) found() error {
 	dir := filepath.Join(s.o.Dir, "warc")
 	ents, err := os.ReadDir(dir)
+	if errors.Is(err, fs.ErrNotExist) {
+		// No directory is the ordinary case now that -warc is off by default,
+		// and a run that has never recorded anything has nothing to age out.
+		return nil
+	}
 	if err != nil {
 		return fmt.Errorf("crawl: reading the volume directory: %w", err)
 	}
@@ -370,6 +400,16 @@ func (s *Sink) roll(d store.Dataset, first int) *store.Roll {
 func (s *Sink) Archive(v *harvest.Visit, at time.Time) (string, error) {
 	if s.closed.Load() {
 		return "", fmt.Errorf("crawl: that sink is closed")
+	}
+
+	// With no recording being kept there is nothing to point into, and the
+	// address is the whole of what points back. That is not a weaker locator
+	// than it looks: the page was fetched from there and the row carries the
+	// time it was fetched, so what it names is reachable by anybody, which is
+	// more than a WARC path on a disk that was aged out last Tuesday.
+	if !s.o.Record {
+		s.stats.archived.Add(1)
+		return v.URL, nil
 	}
 
 	// Built and compressed before the lock is taken, which is the whole of what

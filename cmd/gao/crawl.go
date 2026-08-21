@@ -45,7 +45,8 @@ func runCrawl(stdout, stderr io.Writer, args []string) int {
 	strikes := fs.Int("strikes", harvest.DefaultStrikes, "how many failures a host that has never answered gets, or -1 to keep asking")
 	verify := fs.Bool("verify", false, "check TLS certificates, which drops the sites whose certificates have expired")
 	expect := fs.Int64("expect", crawl.DefaultExpect, "how many URLs the frontier's resident filter is sized for")
-	volume := fs.Int64("volume", crawl.DefaultVolume, "how large a WARC volume grows before the next one opens")
+	warc := fs.Bool("warc", false, "keep a WARC recording of every fetch, which costs about a sixth of the crawl's CPU")
+	volume := fs.Int64("volume", crawl.DefaultVolume, "how large a WARC volume grows before the next one opens, with -warc")
 	keep := fs.Int("keep", 0, "how many finished WARC volumes stay on the disk, zero for all of them")
 	part := fs.Duration("part", crawl.DefaultPartEvery, "how long a part stays open before it is closed and pushed although it is not full")
 	push := fs.Bool("push", false, "push each part as it closes and delete the local copy")
@@ -65,9 +66,18 @@ whole page as markdown, alongside the URL, the host, the fetch time, the robots
 rule that allowed it, and every score the page was judged on.
 `+store.Org+`/vitweb-rejects holds one row per page that was turned away, with the
 stage that turned it away and the reason, because a threshold that turns out to
-be wrong is only recoverable if what it removed can be found. The WARC stays
-here, because a dataset of extracted text is a thing to publish and a byte for
-byte recording of somebody's server is not.
+be wrong is only recoverable if what it removed can be found.
+
+-warc keeps a byte for byte recording of every fetch beside those two, and it is
+off. The case for keeping one is that an extractor is a program we will change
+and a page it got wrong is only worth having if the bytes are still here when the
+next version runs. The case against it is what it costs: writing the WARC was
+15.6% of a live crawl's CPU and gzipping it 13.3%, on a crawler whose ceiling is
+CPU rather than bandwidth. It also does not buy what it appears to, because -keep
+ages the volumes out after a few gigabytes, so by the time an extractor changes
+the bytes are gone. What the published rows carry instead is the address and the
+time of the fetch, and going back to a page is a thing anybody with those two can
+do. Turn it on for a run whose extraction is the thing under test.
 
 The pages ship under the posture in law/posture.go, which is the one Common
 Crawl fetches and publishes under: publicly reachable, robots.txt honored, text
@@ -79,8 +89,8 @@ Both repos are written incrementally. A part is filled, closed, pushed and
 deleted before the next one opens, so what the box holds is one part per repo
 whatever the crawl weighs. The parts are partitioned by snapshot and sharded by
 box, so three boxes writing at once write into one dataset without ever writing
-the same path. The WARC volumes are aged out by -keep, which is what makes a
-crawl bigger than the disk under it possible at all.
+the same path. The WARC volumes, if there are any, are aged out by -keep, which
+is what makes a crawl bigger than the disk under it possible at all.
 
 -part is the other bound on a part, alongside its size. A part that has been
 open that long is closed and pushed at the next row whether or not it is full,
@@ -189,6 +199,7 @@ flags:
 		Shard:     *shard,
 		Box:       fleet.Label(),
 		Version:   version,
+		Record:    *warc,
 		Volume:    *volume,
 		Keep:      *keep,
 		PartEvery: *part,
@@ -303,8 +314,12 @@ func crawlSummary(w io.Writer, p crawl.Progress) {
 	fmt.Fprintf(w, "frontier: %s offered, %s queued, %s already seen, %s refused, %s another box's\n",
 		thousands(p.Frontier.Offered), thousands(p.Frontier.Queued()),
 		thousands(p.Frontier.Duplicate), thousands(p.Frontier.Refused), thousands(p.Frontier.Foreign))
-	fmt.Fprintf(w, "archive: %s records in %d volumes, %s written, %d aged out\n",
-		thousands(p.Sink.Archived), p.Sink.Volumes, fleet.GB(p.Sink.WARCBytes), p.Sink.Aged)
+	if p.Sink.Volumes > 0 || p.Sink.WARCBytes > 0 {
+		fmt.Fprintf(w, "archive: %s records in %d volumes, %s written, %d aged out\n",
+			thousands(p.Sink.Archived), p.Sink.Volumes, fleet.GB(p.Sink.WARCBytes), p.Sink.Aged)
+	} else {
+		fmt.Fprintf(w, "archive: %s pages fetched and not recorded, which is -warc off\n", thousands(p.Sink.Archived))
+	}
 	fmt.Fprintf(w, "parts: %d written, %d pushed, %s given back to the disk\n",
 		p.Sink.Parts, p.Sink.Pushed, fleet.GB(p.Sink.Freed))
 	fmt.Fprintf(w, "names: %s asked of the resolver, %s answered from the cache, %s waited on a query already running, %s did not resolve, %s held\n",
