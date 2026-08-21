@@ -130,6 +130,23 @@ type Page struct {
 	// answer for a category listing or a photo gallery and is not an error.
 	Text string
 
+	// Markdown is the same content as Text, rendered with the document's shape
+	// left in: headings, lists, tables, links and emphasis. It comes from the
+	// same container Text does, so the two are two renderings of one piece of
+	// the page rather than two guesses at which piece it was.
+	Markdown string
+
+	// Body is the whole document as markdown, with only the elements that are
+	// not writing at all taken out.
+	//
+	// It is here because Text and Markdown are an extractor's opinion, and an
+	// extractor is the part of a pipeline most likely to be wrong and least
+	// likely to be noticed being wrong. A reader who thinks the container was
+	// picked badly, or who wants the nav bar because they are studying nav bars,
+	// has the page. Nobody has to re-fetch ten million pages to disagree with
+	// this package.
+	Body string
+
 	// Links are every URL the page pointed at, absolute, in the order they
 	// appeared. They are not canonicalized or filtered here: that is the
 	// frontier's job and it has the seen set and the budget to do it with.
@@ -179,7 +196,11 @@ func Read(base *url.URL, r io.Reader) (*Page, error) {
 	resolve := base
 	p.readHead(root, &resolve)
 	p.readLinks(root, resolve)
-	p.Text = mainText(root)
+	if n := mainBlock(root); n != nil {
+		p.Text = render(n)
+		p.Markdown = markdown(n, resolve, skipped)
+	}
+	p.Body = markdown(root, resolve, nonContent)
 	return p, nil
 }
 
@@ -344,7 +365,7 @@ func (b block) score() int {
 	return s
 }
 
-// mainText picks the container that holds the page's content and renders it.
+// mainBlock picks the container that holds the page's content.
 //
 // Containers are scored from the deepest up, and the best one wins outright
 // rather than being merged with its neighbors. An article split across two divs
@@ -352,7 +373,7 @@ func (b block) score() int {
 // is how an extractor ends up with the article followed by the list of related
 // stories, and a document with a nav column glued to the end of it is worse than
 // a document that is short.
-func mainText(root *html.Node) string {
+func mainBlock(root *html.Node) *html.Node {
 	var best block
 	var scan func(n *html.Node) block
 	scan = func(n *html.Node) block {
@@ -395,9 +416,9 @@ func mainText(root *html.Node) string {
 	// A container that is mostly links is a listing page, and a listing page has
 	// no content of its own however much text is in the link titles.
 	if best.chars == 0 || best.links > best.chars {
-		return ""
+		return nil
 	}
-	return render(best.node)
+	return best.node
 }
 
 func container(n *html.Node) bool {
