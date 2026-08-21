@@ -129,7 +129,7 @@ func cardUsesCrawl(b *strings.Builder, d Dataset) {
 	b.WriteString("`schema_version` is the filter, and it is a column rather than a filename convention for exactly this reason. A version 1 row is a page recorded before the text columns existed, under the earlier posture that published the address and withheld the page, which is why it still reads `restricted`. A version 2 row carries the page and reads `crawled`. Every other column means the same thing in both, so a query about hosts or robots decisions or measurements should read the whole repo, and a query that wants text should carry `union_by_name = true` and say `WHERE schema_version >= 2`.\n\n")
 	b.WriteString("None of this is being backfilled. A version 1 row cannot be upgraded without fetching the page again, since the text was never stored, and rewriting the class on a row whose page we do not have would be a claim about material we are not holding. Those rows stay as they are and the crawl moves forward.\n\n")
 	b.WriteString("The text queries below all carry the flag and the filter, so they run against the repo as it stands.\n\n")
-	b.WriteString("One thing about the output boxes: they are real output, and they are from a small run rather than from this repo. 680 fetches off twelve Vietnamese news seeds, 148 pages kept. The point is not that 148 pages describe the corpus. It is that a reader who runs the query gets output shaped like the output shown, which is the thing an invented table cannot promise.\n\n")
+	b.WriteString("One thing about the output boxes below: every one of them is real output, and they do not all come from the same place. A query that reads text can only report on the parts that carry text, so those boxes are from a small run, 680 fetches off twelve Vietnamese news seeds keeping 148 pages, and they are labeled where it matters. A query that does not need text reads the whole repo and its box is the repo's own numbers. The point of printing measured output either way is not that 148 pages describe the corpus, it is that a reader who runs the query gets output shaped like the output shown, which is the thing an invented table cannot promise.\n\n")
 
 	b.WriteString("### Pretraining text\n\n")
 	b.WriteString("The plain reading. Every row passed the language test, the length test and the repetition test, so the filter here is about what you want rather than about what is usable.\n\n")
@@ -184,9 +184,10 @@ func cardUsesCrawl(b *strings.Builder, d Dataset) {
 	if rejects, ok := cardRejectGlob(d); ok {
 		b.WriteString("### Which Vietnamese sites are worth crawling\n\n")
 		b.WriteString("A host's yield is the thing every crawler wants and nobody publishes: of the pages we asked a site for, how many turned out to be worth keeping. This repo has the numerator and the rejects repo has the denominator, and the two together are the whole outcome of every request.\n\n")
+		b.WriteString("No `schema_version` filter on this one, and that matters. The query counts hosts rather than reading text, so both sides should span the whole crawl. Filtering the kept side to the parts that carry text while leaving the rejects side whole would divide a slice of the numerator by all of the denominator, and every rate would come out far too low.\n\n")
 		b.WriteString("```sql\n")
-		fmt.Fprintf(b, "WITH kept AS (SELECT host, count(*) n FROM read_parquet('%s', union_by_name = true)\n", glob)
-		b.WriteString("              WHERE schema_version >= 2 GROUP BY 1),\n")
+		fmt.Fprintf(b, "WITH kept AS (SELECT host, count(*) n FROM read_parquet('%s')\n", glob)
+		b.WriteString("              GROUP BY 1),\n")
 		fmt.Fprintf(b, "     rej  AS (SELECT host, count(*) n FROM read_parquet('%s') GROUP BY 1)\n", rejects)
 		b.WriteString("SELECT coalesce(kept.host, rej.host) AS host,\n")
 		b.WriteString("       coalesce(kept.n, 0) AS kept, coalesce(rej.n, 0) AS rejected,\n")
@@ -196,12 +197,13 @@ func cardUsesCrawl(b *strings.Builder, d Dataset) {
 		b.WriteString("ORDER BY kept DESC LIMIT 8;\n")
 		b.WriteString("```\n\n")
 		cardBox(b, []cardColumn{
-			{Head: "host", Type: "varchar", Cells: []string{"vtv.vn", "tuoitre.vn", "vietnamnet.vn", "websosanh.vn", "nhandan.vn", "vnexpress.net", "tinnhiemmang.vn", "radio.nhandan.vn"}},
-			{Head: "kept", Type: "int64", Right: true, Cells: []string{"18", "16", "16", "13", "12", "8", "8", "8"}},
-			{Head: "rejected", Type: "int64", Right: true, Cells: []string{"5", "4", "7", "0", "19", "11", "7", "3"}},
-			{Head: "keep_pct", Type: "double", Right: true, Cells: []string{"78.3", "80.0", "69.6", "100.0", "38.7", "42.1", "53.3", "72.7"}},
+			{Head: "host", Type: "varchar", Cells: []string{"tuoitre.vn", "cafef.vn", "kenh14.vn", "thuockichduc.org", "poliva.vn", "baoquangninh.vn", "baotiepthi.com", "ruoutot.net"}},
+			{Head: "kept", Type: "int64", Right: true, Cells: []string{"552", "448", "446", "377", "357", "352", "350", "344"}},
+			{Head: "rejected", Type: "int64", Right: true, Cells: []string{"219", "168", "148", "89", "99", "350", "122", "75"}},
+			{Head: "keep_pct", Type: "double", Right: true, Cells: []string{"71.6", "72.7", "75.1", "80.9", "78.3", "50.1", "74.2", "82.1"}},
 		})
-		b.WriteString("The spread is the useful part. `tuoitre.vn` returns four articles for every five requests and `nhandan.vn` returns two for every five, which is a real difference in what a crawler should spend on them, and neither number is guessable from the outside. A host at or near a hundred percent usually means we have barely touched it rather than that it is perfect, so read the `kept` column alongside the rate.\n\n")
+		b.WriteString("That output is from this repo rather than from a sample run, because this is a query about hosts and the whole crawl is in it.\n\n")
+		b.WriteString("The spread is the useful part and it is not guessable from outside. `ruoutot.net` returns four pages in five and `baoquangninh.vn` returns one in two, which is a real difference in what a crawler should spend on each of them. It also says something about the corpus that the top of this list is drink retailers and celebrity news sitting alongside `tuoitre.vn`: a high keep rate means a site publishes long Vietnamese prose reliably, not that the prose is worth reading. Nothing here is quality filtered, and this query is a good way to see that.\n\n")
 		b.WriteString("A `FULL JOIN` rather than an inner one because the interesting hosts are the lopsided ones: a site that is all rejections never appears in this repo at all, and a site that is all keeps has nothing on the other side.\n\n")
 	}
 
