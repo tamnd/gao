@@ -203,3 +203,122 @@ func TestAnArticleInATableIsStillAnArticle(t *testing.T) {
 		t.Errorf("the menu column came with it:\n%s", p.Text)
 	}
 }
+
+// vnexpress wraps its articles in a div called sidebar-1 inside one called
+// header-content. Both of those words used to be an outright ban, so this
+// package returned two bytes from a vnexpress article for as long as it had
+// existed: the multiplication sign off a close button. The three articles this
+// was found on are in issue 176 with their byte counts.
+const articleInASidebar = `<!doctype html>
+<html lang="vi">
+<head><title>Ap thap nhiet doi gay mua lon cho mien Bac - Bao VnExpress</title></head>
+<body>
+  <div class="header-content width_common">
+    <div class="sidebar-1">
+      <h1 class="title-detail">Ap thap nhiet doi gay mua lon cho mien Bac</h1>
+      <p class="description">Ap thap nhiet doi tren vinh Bac Bo co the gay mua
+      tren ba tram milimet tu nay den dem hai muoi hai thang tam o Dong Bac Bo
+      va Thanh Hoa, nguy co gay ngap ung, lu quet va sat lo dat.</p>
+      <p>Trung tam Du bao Khi tuong Thuy van quoc gia cho biet luc bay gio, ap
+      thap nhiet doi tren vinh Bac Bo, cach dac khu Bach Long Vi khoang mot tram
+      kilomet ve phia dong, suc gio manh nhat sau muoi mot kilomet mot gio, cap
+      bay, giat tang hai cap va dang theo huong tay bac.</p>
+      <p>Du bao den bay gio ngay mai, ap thap nhiet doi cach Hai Phong khoang
+      mot tram chin muoi kilomet ve phia dong, cach Bach Long Vi mot tram hai
+      muoi kilomet ve phia dong bac va co kha nang manh len thanh bao cap tam,
+      giat cap muoi.</p>
+      <p>Nganh phong chong thien tai khuyen cao cac dia phuong ven bien theo doi
+      sat dien bien, chuan bi phuong an so tan dan o nhung khu vuc co nguy co
+      sat lo va cam bien tu chieu nay.</p>
+    </div>
+  </div>
+  <div class="footer">Bao dien tu VnExpress. Giay phep so 548/GP-BTTTT.</div>
+</body>
+</html>`
+
+func TestAnArticleInAContainerCalledSidebarIsStillAnArticle(t *testing.T) {
+	p := read(t, "https://vnexpress.example/thoi-su/ap-thap-nhiet-doi-123.html", articleInASidebar)
+
+	for _, want := range []string{"tren ba tram milimet", "suc gio manh nhat", "cam bien tu chieu nay"} {
+		if !strings.Contains(p.Text, want) {
+			t.Errorf("the article is missing %q:\n%s", want, p.Text)
+		}
+	}
+	if strings.Contains(p.Text, "Giay phep so") {
+		t.Errorf("the footer is in the text:\n%s", p.Text)
+	}
+	if !strings.Contains(p.Markdown, "# Ap thap nhiet doi") {
+		t.Errorf("the markdown lost the headline:\n%s", p.Markdown)
+	}
+	// The two renderings come off the same block, so they agree about what the
+	// page is. A shape measured twice is a shape that can disagree with itself.
+	if len(p.Markdown) < len(p.Text) {
+		t.Errorf("the markdown is %d bytes and the text is %d", len(p.Markdown), len(p.Text))
+	}
+}
+
+// The case the word list was written for, and the reason the words are still
+// read at all. Forty teasers are forty headlines and a line of summary each,
+// which is real writing by any measure that counts characters. What tells it
+// from an article is that most of those characters are inside links.
+func TestASidebarOfTeasersIsStillASidebar(t *testing.T) {
+	var b strings.Builder
+	b.WriteString(`<html lang="vi"><body><div class="sidebar-news">`)
+	for i := range 40 {
+		b.WriteString(`<div class="item"><a href="/bai-`)
+		b.WriteString(string(rune('a' + i%26)))
+		b.WriteString(`.html">Nong dan mien Tay trung vu lua he thu nam nay</a>`)
+		b.WriteString(`<span> Nang suat cao hon cung ky.</span></div>`)
+	}
+	b.WriteString(`</div></body></html>`)
+
+	p := read(t, "https://tin.example/", b.String())
+	if p.Text != "" {
+		t.Errorf("a sidebar of teasers produced text:\n%s", p.Text)
+	}
+	if len(p.Links) < 20 {
+		t.Errorf("the sidebar gave up %d links, which is where the crawl goes next", len(p.Links))
+	}
+}
+
+// A word that names a thing rather than a position is still a verdict. An
+// advertisement is an advertisement at any length, and the ones that run long
+// are the ones written to read like an article.
+func TestAdvertisingIsNotContentHoweverMuchOfItThereIs(t *testing.T) {
+	var b strings.Builder
+	b.WriteString(`<html lang="vi"><body><div class="advert-block"><h2>Uu dai thang tam</h2>`)
+	for range 12 {
+		b.WriteString(`<p>Can ho cao cap ngay trung tam thanh pho, ban giao noi that
+		day du, chiet khau len den mot tram trieu dong cho khach hang dat coc trong
+		thang nay, ho tro vay ngan hang den bay muoi phan tram gia tri.</p>`)
+	}
+	b.WriteString(`</div></body></html>`)
+
+	p := read(t, "https://tin.example/quang-cao", b.String())
+	if p.Text != "" {
+		t.Errorf("an advertisement produced text:\n%s", p.Text)
+	}
+}
+
+// A masthead is a line of text and a phone number. It has few enough links in
+// it to pass the ratio, so the length is what keeps it out.
+func TestAMastheadIsTooShortToBeContent(t *testing.T) {
+	doc := `<html lang="vi"><body>
+	<div class="header-content">Bao Dong Thap. Duong so 1, phuong 1. Dien thoai 0277 3851 246.</div>
+	<div class="content">
+	  <p>Vu lua he thu nam nay o huyen Thap Muoi cho nang suat binh quan bay tan
+	  mot hecta, cao hon cung ky nam ngoai gan mot tan. Gia lua tuoi tai ruong
+	  dang duoc thuong lai mua vao khoang tam nghin dong mot kilogam.</p>
+	  <p>Theo Phong Nong nghiep huyen, toan huyen xuong giong hon ba muoi sau
+	  nghin hecta, trong do giong lua chat luong cao chiem tren tam muoi phan
+	  tram dien tich.</p>
+	</div></body></html>`
+
+	p := read(t, "https://baodongthap.example/tin-123.html", doc)
+	if strings.Contains(p.Text, "Dien thoai") {
+		t.Errorf("the masthead is in the text:\n%s", p.Text)
+	}
+	if !strings.Contains(p.Text, "nang suat binh quan bay tan") {
+		t.Errorf("the article is not in the text:\n%s", p.Text)
+	}
+}
