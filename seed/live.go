@@ -146,7 +146,7 @@ func (o *ProbeOptions) fill() {
 // the probes finished, so a caller can diff two passes over the same list and
 // see what changed rather than what got reordered.
 //
-// A cancelled context stops the pass and returns what was found so far along
+// A canceled context stops the pass and returns what was found so far along
 // with the context's error. That is deliberate: a screening pass over the whole
 // inventory runs for an hour, and half a screened list is worth keeping.
 func Probe(ctx context.Context, hosts []string, o ProbeOptions) ([]Liveness, error) {

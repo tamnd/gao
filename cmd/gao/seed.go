@@ -422,7 +422,7 @@ flags:
 		fmt.Fprintln(stderr)
 	}
 	if err != nil {
-		// Not a failure. A cancelled pass returns what it had, and half a
+		// Not a failure. A canceled pass returns what it had, and half a
 		// screened list is worth keeping.
 		fmt.Fprintf(stderr, "gao seed live: stopped after %d hosts: %v\n", len(found), err)
 	}

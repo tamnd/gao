@@ -149,7 +149,7 @@ func TestResultsComeBackInTheOrderTheHostsWereGiven(t *testing.T) {
 	}
 }
 
-func TestACancelledPassKeepsWhatItAlreadyFound(t *testing.T) {
+func TestACanceledPassKeepsWhatItAlreadyFound(t *testing.T) {
 	open := listen(t)
 	hosts := make([]string, 40)
 	for i := range hosts {
@@ -171,19 +171,19 @@ func TestACancelledPassKeepsWhatItAlreadyFound(t *testing.T) {
 		},
 	})
 	if !errors.Is(err, context.Canceled) {
-		t.Fatalf("a cancelled pass returned err %v", err)
+		t.Fatalf("a canceled pass returned err %v", err)
 	}
 	// Half a screened list is worth keeping, and an hour long pass that returns
 	// nothing when it is interrupted is an hour thrown away.
 	if len(got) == 0 {
-		t.Fatal("a cancelled pass threw away everything it had already probed")
+		t.Fatal("a canceled pass threw away everything it had already probed")
 	}
 	if len(got) >= len(hosts) {
-		t.Errorf("a cancelled pass returned all %d results, so it did not stop", len(got))
+		t.Errorf("a canceled pass returned all %d results, so it did not stop", len(got))
 	}
 	for i, r := range got {
 		if !r.Live {
-			t.Errorf("result %d of a cancelled pass is not live, so it was returned unprobed: %+v", i, r)
+			t.Errorf("result %d of a canceled pass is not live, so it was returned unprobed: %+v", i, r)
 		}
 	}
 }
