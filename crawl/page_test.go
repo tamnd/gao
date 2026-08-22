@@ -19,6 +19,14 @@ func read(t *testing.T, base, doc string) *Page {
 	return p
 }
 
+// render is the two markdown renderings of a page. They are a method rather
+// than a pair of fields so that a crawl which throws the page away never pays
+// for them, and a test that wants either one asks for both.
+func render(t *testing.T, base, doc string) (markdown, body string) {
+	t.Helper()
+	return read(t, base, doc).Render()
+}
+
 // The shape of nearly every Vietnamese news page: a masthead, a navigation bar
 // of every section on the site, the article, a column of related headlines, and
 // a footer with the license number in it.
@@ -247,13 +255,14 @@ func TestAnArticleInAContainerCalledSidebarIsStillAnArticle(t *testing.T) {
 	if strings.Contains(p.Text, "Giay phep so") {
 		t.Errorf("the footer is in the text:\n%s", p.Text)
 	}
-	if !strings.Contains(p.Markdown, "# Ap thap nhiet doi") {
-		t.Errorf("the markdown lost the headline:\n%s", p.Markdown)
+	md, _ := p.Render()
+	if !strings.Contains(md, "# Ap thap nhiet doi") {
+		t.Errorf("the markdown lost the headline:\n%s", md)
 	}
 	// The two renderings come off the same block, so they agree about what the
 	// page is. A shape measured twice is a shape that can disagree with itself.
-	if len(p.Markdown) < len(p.Text) {
-		t.Errorf("the markdown is %d bytes and the text is %d", len(p.Markdown), len(p.Text))
+	if len(md) < len(p.Text) {
+		t.Errorf("the markdown is %d bytes and the text is %d", len(md), len(p.Text))
 	}
 }
 
