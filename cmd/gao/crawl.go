@@ -51,6 +51,7 @@ func runCrawl(stdout, stderr io.Writer, args []string) int {
 	part := fs.Duration("part", crawl.DefaultPartEvery, "how long a part stays open before it is closed and pushed although it is not full")
 	push := fs.Bool("push", false, "push each part as it closes and delete the local copy")
 	every := fs.Duration("every", time.Minute, "how often the frontier is flushed and a progress line printed")
+	index := fs.Duration("index", 0, "how often the parts index and the card are rebuilt from the repo, off by default, and for exactly one box in a fleet")
 	report := fs.String("report", "", "write the run report to this file as JSON")
 	asJSON := fs.Bool("json", false, "print the report as JSON")
 	profile := fs.String("pprof", "", "serve profiles on this address, which turns on the block and mutex profilers")
@@ -96,6 +97,18 @@ is what makes a crawl bigger than the disk under it possible at all.
 open that long is closed and pushed at the next row whether or not it is full,
 which is what makes the published dataset track a crawl that has not finished
 rather than appear all at once when it does.
+
+-index rebuilds `+"`"+store.IndexName+"`"+` and the card from the repo on a timer, and it is
+off. The index is the one file in a working repo that says what is in it, and
+without this nothing writes it while a crawl is running, so a fleet that pushes
+for two days leaves an index describing the first afternoon. Give it to exactly
+one box. Three crawlers each reading the index, adding their own parts and
+writing it back is a lost update. The box that has it lists the repo and reads
+every part's footer rather than remembering its own, so it indexes the whole
+fleet's parts without hearing from the other boxes. A pass is a few kilobytes
+per part, which is 16.6MB of footers over a repo holding 474.3MB, and it grows
+with the repo rather than with the crawl, so an hour is a reasonable timer and a
+minute is not.
 
 -pprof turns on the block and mutex profilers and serves them, which is how a
 claim about this crawler's ceiling gets checked. A goroutine dump says where
@@ -155,6 +168,13 @@ flags:
 			fmt.Fprintf(stderr, "gao crawl: %s is not set, and both repos need it\n", fleet.TokenEnv)
 			return 2
 		}
+	}
+	// The index describes what is on the repo, so a run that puts nothing there
+	// has nothing to describe, and asking for one is a flag that was meant for
+	// another box.
+	if *index > 0 && !*push {
+		fmt.Fprintln(stderr, "gao crawl: -index rebuilds the index of the published repo, so it needs -push")
+		return 2
 	}
 
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
@@ -252,6 +272,22 @@ flags:
 		thousands(int64(queued)), thousands(int64(refused)), thousands(f.Stats().Duplicate))
 	if !*push {
 		fmt.Fprint(stdout, "nothing is being pushed, so the parts stay on this disk\n")
+	}
+
+	// The index runs alongside the crawl rather than after it, because a crawl
+	// that is stopped and started every few hours would otherwise never write
+	// one, and a crawl that is not stopped would never write one either.
+	if *index > 0 {
+		indexing, done := context.WithCancel(ctx)
+		stopped := make(chan struct{})
+		go func() {
+			defer close(stopped)
+			indexEvery(indexing, stdout, *index, token, []store.Dataset{kept, drops})
+		}()
+		defer func() {
+			done()
+			<-stopped
+		}()
 	}
 
 	p, runErr := crawl.Run(ctx, crawl.RunOptions{

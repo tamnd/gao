@@ -311,3 +311,16 @@ func TestTheWARCIsOffUnlessItIsAskedFor(t *testing.T) {
 		}
 	}
 }
+
+// The index describes the published repo, so asking for one on a run that
+// publishes nothing is a flag that was meant for another box, and it is worth
+// saying so before the crawl rather than after it.
+func TestCrawlRefusesToIndexARunThatIsNotPushing(t *testing.T) {
+	_, errb, code := crawlRun(t, "-dir", t.TempDir(), "-index", "1h")
+	if code != 2 {
+		t.Errorf("exit %d, want 2", code)
+	}
+	if !strings.Contains(errb, "needs -push") {
+		t.Errorf("the error does not say what is missing: %s", errb)
+	}
+}
