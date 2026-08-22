@@ -172,7 +172,12 @@ var stops = []string{"p", "t", "c", "ch"}
 // that carries its marks. Text that does not is a different question, and
 // [BareSyllable] is the one that answers it.
 func Syllable(tok string) bool {
-	tok = strings.ToLower(tok)
+	return syllable(strings.ToLower(tok))
+}
+
+// syllable is [Syllable] on a token already lowered, which is what the caller
+// walking a document has and what it would otherwise pay to produce twice.
+func syllable(tok string) bool {
 	bare, tone, ok := untone(tok)
 	if !ok || !syllables[bare] {
 		return false
