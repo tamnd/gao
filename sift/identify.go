@@ -107,34 +107,67 @@ const (
 // identifier ahead of it would file a large part of the older web under the
 // wrong language and never look at it again.
 func Identify(text string) Language {
-	var l Language
-	seen := make(map[string]bool)
-	marked := make(map[string]bool)
+	id := newIdentifier()
 	for _, tok := range strings.Fields(text) {
-		word := trimToLetters(tok)
-		if word == "" {
-			continue
-		}
-		l.Tokens++
-		lower := strings.ToLower(word)
-		if hasMark(lower) {
-			l.Marked++
-		}
-		if Syllable(lower) {
-			l.Syllables++
-		}
-		if BareSyllable(lower) {
-			l.Bare++
-		}
-		if bare := normalize.Bare(lower); bareStopWords[bare] {
-			seen[bare] = true
-			if stopWords[lower] {
-				marked[lower] = true
-			}
+		id.read(tok)
+	}
+	return id.done()
+}
+
+// identifier is the identifier's counts while a document is still being read.
+//
+// It is split out of [Identify] so that [Measure] can hand it the tokens it is
+// already walking instead of walking the document a second time. The sift and
+// the identifier ask different questions of the same tokens, and over real
+// crawled pages the identifier was a little under half of what measuring one
+// cost, most of it spent redoing what the token had already been through.
+type identifier struct {
+	l            Language
+	seen, marked map[string]bool
+}
+
+func newIdentifier() *identifier {
+	return &identifier{seen: make(map[string]bool), marked: make(map[string]bool)}
+}
+
+// read takes one whitespace separated token.
+//
+// The token is lowered once and has its marks taken off once, and every test
+// below reads those two strings. They used to each take the token and do it
+// again: Syllable lowered what was already lowered, BareSyllable lowered it a
+// third time and then stripped the marks, and the function word test stripped
+// them a second time, so a page paid for two mark strippings and three case
+// folds per token to ask four questions about one string. Stripping the marks
+// is an NFD and a rune walk behind a cache, which is the most expensive of
+// them and was the one being done twice.
+func (id *identifier) read(tok string) {
+	word := trimToLetters(tok)
+	if word == "" {
+		return
+	}
+	id.l.Tokens++
+	lower := strings.ToLower(word)
+	if hasMark(lower) {
+		id.l.Marked++
+	}
+	if syllable(lower) {
+		id.l.Syllables++
+	}
+	bare := normalize.Bare(lower)
+	if bareSyllables[bare] {
+		id.l.Bare++
+	}
+	if bareStopWords[bare] {
+		id.seen[bare] = true
+		if stopWords[lower] {
+			id.marked[lower] = true
 		}
 	}
-	l.StopWords, l.MarkedStopWords = len(seen), len(marked)
-	return l
+}
+
+func (id *identifier) done() Language {
+	id.l.StopWords, id.l.MarkedStopWords = len(id.seen), len(id.marked)
+	return id.l
 }
 
 // Vietnamese is the verdict, and it is built to be wrong in one direction.

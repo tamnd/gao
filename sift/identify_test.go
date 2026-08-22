@@ -206,3 +206,37 @@ const pinyin = `zhong guo you hen duo da cheng shi, mei ge cheng shi dou you zi 
 wo men zuo tian qu le bei jing, kan le gu gong he chang cheng, ren tai duo le, pai dui pai le hen jiu.
 jin tian wo men da suan qu shang hai, zuo huo che yao si ge xiao shi, peng you shuo shang hai de dong xi bi jiao gui.
 wo xiang qu kan kan wai tan, ting shuo wan shang de deng guang hen piao liang.`
+
+// The identifier answers the same whether it reads the document itself or is
+// fed the tokens the sift is already walking.
+//
+// [Measure] used to call [Identify] on the text, which meant tokenizing the
+// document twice, lowering every token twice and taking the marks off it twice.
+// It hands the tokens over now instead. That is only worth doing if the two
+// paths agree exactly, so this asks them both about every document in the
+// labeled set, which is real writing in Vietnamese and in eleven other
+// languages rather than a fixture built to pass.
+func TestTheIdentifierAgreesWithItselfWhicheverWayItIsFed(t *testing.T) {
+	files, err := filepath.Glob(filepath.Join("testdata", "langid", "*", "*.txt"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(files) == 0 {
+		t.Fatal("no documents in testdata/langid")
+	}
+	for _, f := range files {
+		text, err := os.ReadFile(f)
+		if err != nil {
+			t.Fatal(err)
+		}
+		alone := Identify(string(text))
+		together := Measure(string(text)).Language
+		if alone != together {
+			t.Errorf("%s: reading the document gives %+v and reading its tokens gives %+v",
+				filepath.Base(f), alone, together)
+		}
+		if alone.Tokens == 0 {
+			t.Errorf("%s: no tokens, so this document proves nothing", filepath.Base(f))
+		}
+	}
+}

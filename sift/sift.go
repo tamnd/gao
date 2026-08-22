@@ -264,8 +264,13 @@ func Measure(text string) Result {
 	var r Result
 	r.Runes = len([]rune(text))
 
+	// The identifier reads the same tokens this loop does, so it is fed here
+	// rather than handed the document to walk again.
+	id := newIdentifier()
+
 	syllables := make([]string, 0, 256)
 	for _, tok := range strings.Fields(text) {
+		id.read(tok)
 		r.Tokens++
 		letters, diacritic := 0, false
 		for _, c := range tok {
@@ -288,7 +293,7 @@ func Measure(text string) Result {
 	}
 	r.Symbols = countSymbols(text)
 	r.StopWords = countStopWords(syllables)
-	r.Language = Identify(text)
+	r.Language = id.done()
 
 	measureLines(&r, text)
 	measureGrams(&r, syllables)
@@ -392,17 +397,28 @@ type grams struct {
 	syllables []string
 
 	// id is the identifier of the syllable at each position, and runes is its
-	// length, which coverage would otherwise recount for every gram size.
+	// length, which coverage would otherwise recount for every gram size. sum is
+	// the running total of runes, so that the length of any window comes out of
+	// two lookups rather than out of a loop as long as the window.
 	id    []int32
 	runes []int32
+	sum   []int32
 	total int
 
 	word map[string]int32
 	pair map[uint64]int32
 	next int32
 
-	// buf is reused across gram sizes, since only one size is in flight.
-	buf []int32
+	// buf is the document folded to grams of level syllables, and it is carried
+	// from one size to the next rather than rebuilt, which is what makes the
+	// fold in ids incremental.
+	buf   []int32
+	level int
+
+	// counts and mark are scratch the two measures below refill per size. They
+	// live here so that six sizes allocate them once rather than six times.
+	counts map[int32]int
+	mark   []bool
 }
 
 func newGrams(syllables []string) *grams {
@@ -410,6 +426,7 @@ func newGrams(syllables []string) *grams {
 		syllables: syllables,
 		id:        make([]int32, len(syllables)),
 		runes:     make([]int32, len(syllables)),
+		sum:       make([]int32, len(syllables)+1),
 		word:      make(map[string]int32, len(syllables)),
 		pair:      make(map[uint64]int32, len(syllables)),
 	}
@@ -422,19 +439,44 @@ func newGrams(syllables []string) *grams {
 		}
 		g.id[i] = id
 		g.runes[i] = int32(utf8.RuneCountInString(s))
-		g.total += int(g.runes[i])
+		g.sum[i+1] = g.sum[i] + g.runes[i]
 	}
+	g.total = int(g.sum[len(syllables)])
 	return g
 }
 
 // ids fills buf with the identifier of the gram of n syllables starting at each
 // position, and returns it.
+//
+// The fold is incremental. Folding a gram of n syllables up from single ones
+// costs n-1 passes over the document, so the six sizes this package measures
+// used to cost 2+4+6+7+11+16 of them, and every pass but the last of each size
+// was redoing a fold the size before it had already done. The sizes are asked
+// for in increasing order, so buf is left at whatever length it last reached
+// and folded up from there, which is sixteen passes for the same six sizes.
+//
+// This is sound because a gram folds left a pair at a time, so the first steps
+// of the fold for a gram of n are the fold for a gram of n-1 and do not depend
+// on where it was going to stop. Two grams still carry the same identifier
+// exactly when they are the same sequence, which is the whole of what the
+// identifier is for. The numbers themselves come out different from what the
+// old fold handed out, because it stopped each size a few positions short of
+// the end of the document and this does not, so a few more pairs get named.
+// Nothing reads a gram identifier as a number.
 func (g *grams) ids(n int) []int32 {
-	count := len(g.id) - n + 1
-	g.buf = append(g.buf[:0], g.id[:count]...)
-	for j := 1; j < n; j++ {
+	if g.level > n {
+		// A caller that asks for sizes out of order gets the fold from the
+		// bottom again rather than a wrong answer.
+		g.level = 0
+	}
+	if g.level == 0 {
+		g.buf = append(g.buf[:0], g.id...)
+		g.level = 1
+	}
+	for g.level < n {
+		count := len(g.buf) - 1
 		for i := range count {
-			key := uint64(uint32(g.buf[i]))<<32 | uint64(uint32(g.id[i+j]))
+			key := uint64(uint32(g.buf[i]))<<32 | uint64(uint32(g.id[i+g.level]))
 			id, ok := g.pair[key]
 			if !ok {
 				id = g.next
@@ -443,8 +485,22 @@ func (g *grams) ids(n int) []int32 {
 			}
 			g.buf[i] = id
 		}
+		g.buf = g.buf[:count]
+		g.level++
 	}
 	return g.buf
+}
+
+// count is how often each identifier appears, in a map reused across sizes.
+func (g *grams) count(ids []int32) map[int32]int {
+	if g.counts == nil {
+		g.counts = make(map[int32]int, len(ids))
+	}
+	clear(g.counts)
+	for _, id := range ids {
+		g.counts[id]++
+	}
+	return g.counts
 }
 
 // top is the share of the document covered by the most frequent gram of n
@@ -463,20 +519,14 @@ func (g *grams) top(n int) float64 {
 		return 0
 	}
 	ids := g.ids(n)
-	counts := make(map[int32]int, len(ids))
-	for _, id := range ids {
-		counts[id]++
-	}
+	counts := g.count(ids)
 
 	// Walked in document order rather than in map order, so that two grams tied
 	// on both count and length resolve to the first one in the document instead
 	// of to whichever one the map happened to yield.
 	best, bestCount, bestRunes := int32(-1), 0, int32(0)
 	for i, id := range ids {
-		var runes int32
-		for j := i; j < i+n; j++ {
-			runes += g.runes[j]
-		}
+		runes := g.sum[i+n] - g.sum[i]
 		if c := counts[id]; c > bestCount || (c == bestCount && runes > bestRunes) {
 			best, bestCount, bestRunes = id, c, runes
 		}
@@ -496,17 +546,18 @@ func (g *grams) repeat(n int) float64 {
 		return 0
 	}
 	ids := g.ids(n)
-	counts := make(map[int32]int, len(ids))
-	for _, id := range ids {
-		counts[id]++
-	}
+	counts := g.count(ids)
 	return g.coverage(n, ids, func(id int32) bool { return counts[id] > 1 })
 }
 
 // coverage is how much of the text sits inside a gram the predicate accepts,
 // counting every syllable once however many grams cover it.
 func (g *grams) coverage(n int, ids []int32, want func(int32) bool) float64 {
-	covered := make([]bool, len(g.syllables))
+	if cap(g.mark) < len(g.syllables) {
+		g.mark = make([]bool, len(g.syllables))
+	}
+	covered := g.mark[:len(g.syllables)]
+	clear(covered)
 	for i, id := range ids {
 		if want(id) {
 			for j := i; j < i+n; j++ {
