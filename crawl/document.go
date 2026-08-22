@@ -148,8 +148,8 @@ func Build(v *harvest.Visit, p *Page, o BuildOptions) Verdict {
 		return out
 	}
 
-	// The two markdown renderings are normalized last, after the page is known
-	// to be one this crawl keeps.
+	// The two markdown renderings happen last, after the page is known to be one
+	// this crawl keeps.
 	//
 	// They used to run above, beside the text, and three quarters of every
 	// crawl's work on them was thrown away: the crawl keeps about one page in
@@ -159,16 +159,17 @@ func Build(v *harvest.Visit, p *Page, o BuildOptions) Verdict {
 	// produced for a rejected page was serialized to a local segment and dropped
 	// again at export.
 	//
-	// They are not cheap either. Over 500 real pages off a live crawl the two
-	// together are 13.9ms of a page's 46.3ms, and the body one alone is 9.4ms
-	// because it is the whole document rather than the part of it that reads as
-	// content.
+	// They are not cheap either. Over 500 real pages off a live crawl the render
+	// and the normalization together are 18.4ms of a page's 46.3ms, and the body
+	// one alone is more than half of that because it is the whole document rather
+	// than the part of it that reads as content.
 	//
-	// Nothing above this line reads either field, which is what makes the move
-	// safe: the language decision, the thresholds and the reservation all work
-	// on the text.
-	d.Markdown = normalize.Markup(p.Markdown)
-	d.Body = normalize.Markup(p.Body)
+	// Nothing above this line asks the page to render, which is what makes the
+	// move safe: the language decision, the thresholds and the reservation all
+	// work on the text.
+	markdown, body := p.Render()
+	d.Markdown = normalize.Markup(markdown)
+	d.Body = normalize.Markup(body)
 
 	if err := d.Admit(); err != nil {
 		out := refuse(d, StageContract, reject.ReasonContract, err.Error())

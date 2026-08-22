@@ -9,11 +9,12 @@ import (
 // text of the same page is the same words without it.
 func TestThePageComesBackAsMarkdownAndAsText(t *testing.T) {
 	p := read(t, "https://baodongthap.vn/nong-nghiep/nong-dan-trung-vu-lua-he-thu-123.html", newsPage)
+	md, _ := p.Render()
 
-	if !strings.HasPrefix(p.Markdown, "# Nong dan Dong Thap trung vu lua he thu") {
-		t.Errorf("the markdown does not start with the headline as a heading:\n%s", first(p.Markdown, 3))
+	if !strings.HasPrefix(md, "# Nong dan Dong Thap trung vu lua he thu") {
+		t.Errorf("the markdown does not start with the headline as a heading:\n%s", first(md, 3))
 	}
-	if strings.Contains(p.Markdown, "#") && !strings.Contains(p.Text, "Nong dan Dong Thap") {
+	if strings.Contains(md, "#") && !strings.Contains(p.Text, "Nong dan Dong Thap") {
 		t.Error("the text lost the headline the markdown kept")
 	}
 	if strings.Contains(p.Text, "# ") {
@@ -23,33 +24,57 @@ func TestThePageComesBackAsMarkdownAndAsText(t *testing.T) {
 	// Both renderings come from the container the extractor picked, so neither
 	// of them has the navigation or the related headlines in it.
 	for _, unwanted := range []string{"The thao", "Gia lua tang tro lai", "Giay phep so"} {
-		if strings.Contains(p.Markdown, unwanted) {
+		if strings.Contains(md, unwanted) {
 			t.Errorf("the markdown picked up %q from outside the article", unwanted)
 		}
 	}
 	for _, wanted := range []string{"bay tan", "Phong Nong nghiep huyen", "vu thu dong"} {
-		if !strings.Contains(p.Markdown, wanted) {
+		if !strings.Contains(md, wanted) {
 			t.Errorf("the markdown lost %q, which is in the article", wanted)
 		}
+	}
+}
+
+// Rendering twice renders once, and rendering at all lets the parse tree go.
+//
+// The second half is the price of the deferral. A page used to be done with its
+// tree the moment [Read] returned, and now it holds one until it is asked, so
+// the crawler has a tree alive for every page between the fetch and the verdict
+// instead of for none of them. Render dropping what it used is what keeps that
+// window as short as the sift.
+func TestAPageRendersOnceAndThenLetsGoOfTheDocument(t *testing.T) {
+	p := read(t, "https://baodongthap.vn/nong-nghiep/nong-dan-trung-vu-lua-he-thu-123.html", newsPage)
+
+	md, body := p.Render()
+	if md == "" || body == "" {
+		t.Fatalf("the renderings are %d and %d bytes", len(md), len(body))
+	}
+	if p.root != nil || p.content != nil || p.resolve != nil || p.shape != nil {
+		t.Error("the page is still holding the document it rendered from")
+	}
+
+	again, againBody := p.Render()
+	if again != md || againBody != body {
+		t.Error("rendering a second time gave a different answer")
 	}
 }
 
 // The body is the whole page, which is the column that does not depend on the
 // extractor having been right.
 func TestTheBodyIsTheWholePageAndNotTheExtractorsOpinionOfIt(t *testing.T) {
-	p := read(t, "https://baodongthap.vn/nong-nghiep/nong-dan-trung-vu-lua-he-thu-123.html", newsPage)
+	md, body := render(t, "https://baodongthap.vn/nong-nghiep/nong-dan-trung-vu-lua-he-thu-123.html", newsPage)
 
 	for _, wanted := range []string{"The thao", "Gia lua tang tro lai", "Giay phep so", "bay tan"} {
-		if !strings.Contains(p.Body, wanted) {
+		if !strings.Contains(body, wanted) {
 			t.Errorf("the body lost %q", wanted)
 		}
 	}
 	// Except the parts of a document that are not writing in any rendering.
-	if strings.Contains(p.Body, "var ads") {
+	if strings.Contains(body, "var ads") {
 		t.Error("the body kept a script")
 	}
-	if len(p.Body) <= len(p.Markdown) {
-		t.Errorf("the body is %d bytes and the article alone is %d, so it is not the whole page", len(p.Body), len(p.Markdown))
+	if len(body) <= len(md) {
+		t.Errorf("the body is %d bytes and the article alone is %d, so it is not the whole page", len(body), len(md))
 	}
 }
 
@@ -80,8 +105,9 @@ func TestAPageTheExtractorGivesUpOnStillHasABody(t *testing.T) {
 	if strings.Contains(p.Text, "Thu tuong phe duyet") {
 		t.Errorf("the extractor read an aside as content, so this test no longer covers what it says:\n%s", p.Text)
 	}
+	_, body := p.Render()
 	for _, wanted := range []string{"Thu tuong phe duyet", "It nhat muoi hai truong"} {
-		if !strings.Contains(p.Body, wanted) {
+		if !strings.Contains(body, wanted) {
 			t.Errorf("the body lost %q, which is the whole point of the column", wanted)
 		}
 	}
@@ -102,7 +128,7 @@ func TestTheShapeOfADocumentSurvives(t *testing.T) {
 	<pre>curl -s https://tuyensinh.example/api</pre>
 	</div></body></html>`
 
-	md := read(t, "https://tuyensinh.example/huong-dan", page).Markdown
+	md, _ := render(t, "https://tuyensinh.example/huong-dan", page)
 	for _, want := range []string{
 		"## Dieu kien du tuyen",
 		"- Tot nghiep trung hoc pho thong",
@@ -129,7 +155,7 @@ func TestLinksAndImagesKeepTheirAddresses(t *testing.T) {
 	<p>Xem them tai <a href="https://moet.gov.vn/">cong thong tin</a> cua bo.</p>
 	</div></body></html>`
 
-	md := read(t, "https://baogiaoduc.example/tin/2026/thong-tu.html", page).Markdown
+	md, _ := render(t, "https://baogiaoduc.example/tin/2026/thong-tu.html", page)
 	for _, want := range []string{
 		"[ban hanh thong tu](https://baogiaoduc.example/van-ban/thong-tu-29.html)",
 		"![Mot lop hoc buoi chieu](https://baogiaoduc.example/tin/anh/lop-hoc.jpg)",
@@ -153,7 +179,7 @@ func TestATableComesBackAsATable(t *testing.T) {
 	<tr><td>Kinh te</td><td>25,0</td></tr>
 	</table></div></body></html>`
 
-	md := read(t, "https://dhbk.example/diem-chuan", page).Markdown
+	md, _ := render(t, "https://dhbk.example/diem-chuan", page)
 	for _, want := range []string{
 		"| Nganh | Diem |",
 		"| --- | --- |",
@@ -175,7 +201,7 @@ func TestATableHoldingNothingRendersAsNothing(t *testing.T) {
 	trong khu vuc dong bang song Cuu Long tu nam hai nghin le sau den nay.</p>
 	</div></body></html>`
 
-	md := read(t, "https://vattu.example/", page).Markdown
+	md, _ := render(t, "https://vattu.example/", page)
 	if strings.Contains(md, "---") {
 		t.Errorf("a table with nothing in it was rendered:\n%s", md)
 	}
@@ -192,7 +218,7 @@ func TestTextThatLooksLikeMarkupIsNotMarkup(t *testing.T) {
 	<p># Khong phai tieu de</p>
 	</div></body></html>`
 
-	md := read(t, "https://ketoan.example/huong-dan", page).Markdown
+	md, _ := render(t, "https://ketoan.example/huong-dan", page)
 	if strings.Contains(md, "a*b*c") {
 		t.Errorf("a star in the middle of a word was left as emphasis:\n%s", md)
 	}
@@ -214,7 +240,7 @@ func TestEmptyEmphasisIsNotRendered(t *testing.T) {
 	va nam tram dong doi voi dau diesel.</p>
 	</div></body></html>`
 
-	md := read(t, "https://gia.example/xang-dau", page).Markdown
+	md, _ := render(t, "https://gia.example/xang-dau", page)
 	for _, bad := range []string{"****", "**  **", "* *", "__"} {
 		if strings.Contains(md, bad) {
 			t.Errorf("the markdown holds %q:\n%s", bad, md)

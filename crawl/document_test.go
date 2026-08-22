@@ -73,6 +73,62 @@ func TestADocumentCarriesTheTextTheMarkdownAndTheBody(t *testing.T) {
 	}
 }
 
+// A page this crawl throws away is never rendered as markdown.
+//
+// That is the whole reason the renderings are a method. About one page in four
+// survives, the published rejects carry no markdown column and no body column,
+// and the two renders together were a third of what reading a page cost, so the
+// work done for the other three pages was serialized to a local segment and
+// dropped again at export.
+//
+// This asserts on the page rather than on a duration, because a benchmark says
+// how long something took and only the page can say whether it happened.
+func TestAPageTheCrawlRefusesIsNeverRendered(t *testing.T) {
+	var b strings.Builder
+	b.WriteString(`<html lang="vi"><body><div class="list">`)
+	for i := range 40 {
+		b.WriteString(`<div><a href="/bai-`)
+		b.WriteString(string(rune('a' + i%26)))
+		b.WriteString(`.html">Mot tieu de bai bao kha dai de trong giong that</a></div>`)
+	}
+	b.WriteString(`</div></body></html>`)
+
+	const rawurl = "https://tin.example/thoi-su"
+	u, err := url.Parse(rawurl)
+	if err != nil {
+		t.Fatalf("parsing the URL: %v", err)
+	}
+	p, err := Read(u, strings.NewReader(b.String()))
+	if err != nil {
+		t.Fatalf("Read: %v", err)
+	}
+	if p.rendered {
+		t.Fatal("Read rendered the markdown, which is the cost this is here to keep off a rejected page")
+	}
+
+	v := Build(&harvest.Visit{
+		URL:    rawurl,
+		Body:   []byte(b.String()),
+		Status: http.StatusOK,
+		Header: http.Header{"Content-Type": []string{"text/html; charset=utf-8"}},
+	}, p, BuildOptions{Locator: "web-00000-00001.warc.gz:0:1024"})
+
+	if v.Kept {
+		t.Fatal("a page of links was kept as a document")
+	}
+	if p.rendered {
+		t.Error("a refused page was rendered anyway")
+	}
+
+	// And a page that is kept is rendered, so the deferral is a deferral rather
+	// than a way of losing two columns.
+	kept := build(t, "https://vnexpress.example/thoi-su/ap-thap-nhiet-doi-123.html", articleInASidebar)
+	if !kept.Kept || kept.Doc.Markdown == "" || kept.Doc.Body == "" {
+		t.Errorf("a kept page came back with markdown %d and body %d",
+			len(kept.Doc.Markdown), len(kept.Doc.Body))
+	}
+}
+
 // A page of links is refused, and the refusal names the stage that refused it
 // and keeps the address, because a host that is absent from the corpus is a
 // question somebody asks eventually.

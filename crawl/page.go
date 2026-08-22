@@ -130,23 +130,6 @@ type Page struct {
 	// answer for a category listing or a photo gallery and is not an error.
 	Text string
 
-	// Markdown is the same content as Text, rendered with the document's shape
-	// left in: headings, lists, tables, links and emphasis. It comes from the
-	// same container Text does, so the two are two renderings of one piece of
-	// the page rather than two guesses at which piece it was.
-	Markdown string
-
-	// Body is the whole document as markdown, with only the elements that are
-	// not writing at all taken out.
-	//
-	// It is here because Text and Markdown are an extractor's opinion, and an
-	// extractor is the part of a pipeline most likely to be wrong and least
-	// likely to be noticed being wrong. A reader who thinks the container was
-	// picked badly, or who wants the nav bar because they are studying nav bars,
-	// has the page. Nobody has to re-fetch ten million pages to disagree with
-	// this package.
-	Body string
-
 	// Links are every URL the page pointed at, absolute, in the order they
 	// appeared. They are not canonicalized or filtered here: that is the
 	// frontier's job and it has the seen set and the budget to do it with.
@@ -172,6 +155,55 @@ type Page struct {
 	// not be followed. The links are still returned, because the record of what
 	// a page pointed at is a fact about the page, and the caller drops them.
 	NoFollow bool
+
+	// What [Page.Render] needs to do its work later: the parsed document, the
+	// container the text came out of, the URL links resolve against, and the
+	// judgment of what counted as furniture. Render drops all four the moment it
+	// has used them.
+	root, content *html.Node
+	resolve       *url.URL
+	shape         shape
+
+	article, body string
+	rendered      bool
+}
+
+// Render returns the page as markdown twice: the article alone, rendered from
+// the same container [Page.Text] came out of, and then the whole document with
+// only the elements that are not writing at all taken out.
+//
+// The article is the empty string when nothing on the page looked like content,
+// which is the same answer Text gives and for the same reason.
+//
+// The second rendering is here because Text and the article are an extractor's
+// opinion, and an extractor is the part of a pipeline most likely to be wrong
+// and least likely to be noticed being wrong. A reader who thinks the container
+// was picked badly, or who wants the nav bar because they are studying nav bars,
+// has the page. Nobody has to re-fetch ten million pages to disagree with this
+// package.
+//
+// This is a method rather than two fields because the crawl keeps about one page
+// in four and the two renderings together are a third of what reading a page
+// costs. The sift only needs the text, so a page that fails it should never be
+// rendered at all, and the way to arrange that is to let the caller ask after it
+// has decided. The bargain is that a page holds its parse tree until it is asked,
+// where before the tree was garbage the moment Read returned. Rendering releases
+// it, so the cost is paid over the sift and not over the run.
+//
+// Asking twice renders once.
+func (p *Page) Render() (article, body string) {
+	if p.rendered {
+		return p.article, p.body
+	}
+	if p.content != nil {
+		p.article = markdown(p.content, p.resolve, p.shape.skipped)
+	}
+	if p.root != nil {
+		p.body = markdown(p.root, p.resolve, nonContent)
+	}
+	p.rendered = true
+	p.root, p.content, p.resolve, p.shape = nil, nil, nil, nil
+	return p.article, p.body
 }
 
 // Read parses an HTML document fetched from base.
@@ -199,9 +231,12 @@ func Read(base *url.URL, r io.Reader) (*Page, error) {
 	shape := measure(root)
 	if n := shape.mainBlock(root); n != nil {
 		p.Text = shape.render(n)
-		p.Markdown = markdown(n, resolve, shape.skipped)
+		p.content = n
 	}
-	p.Body = markdown(root, resolve, nonContent)
+
+	// The markdown is not rendered here. It is what [Page.Render] is for, and
+	// the caller calls that once it knows the page is one this crawl keeps.
+	p.root, p.resolve, p.shape = root, resolve, shape
 	return p, nil
 }
 

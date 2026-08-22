@@ -45,6 +45,12 @@ type fetched struct {
 	visit *harvest.Visit
 	base  *url.URL
 	page  *Page
+
+	// The two markdown renderings, taken once at load. The normalization
+	// benchmarks want the strings and not the render that produced them, and a
+	// page renders once, so the corpus holds the result rather than the page
+	// holding its parse tree for the length of the run.
+	markdown, body string
 }
 
 // pages reads the WARC named by GAO_BENCH_WARC.
@@ -165,7 +171,8 @@ func decode(rec *harvest.Record) (fetched, error) {
 		Body:   body,
 		At:     time.Now(),
 	}
-	return fetched{visit: v, base: base, page: page}, nil
+	md, whole := page.Render()
+	return fetched{visit: v, base: base, page: page, markdown: md, body: whole}, nil
 }
 
 // each runs fn over every page once per iteration and reports what one page
@@ -185,8 +192,37 @@ func each(b *testing.B, corpus []fetched, fn func(fetched)) {
 	b.ReportMetric(1000/ms, "pages/s/core")
 }
 
+// eachFresh is [each] with a page parsed afresh for every call and the parse
+// left out of the measurement.
+//
+// It exists because a page renders once. A benchmark that handed the same page
+// to Build five hundred times would measure one render and four hundred and
+// ninety nine reads of a cached string, which is a fine number and not the one
+// the crawler pays.
+func eachFresh(b *testing.B, corpus []fetched, fn func(fetched, *Page)) {
+	b.ReportAllocs()
+	b.ResetTimer()
+	for b.Loop() {
+		for _, p := range corpus {
+			b.StopTimer()
+			page, err := Read(p.base, bytes.NewReader(p.visit.Body))
+			if err != nil {
+				b.Fatal(err)
+			}
+			b.StartTimer()
+			fn(p, page)
+		}
+	}
+	b.StopTimer()
+	ms := float64(b.Elapsed().Nanoseconds()) / float64(b.N) / float64(len(corpus)) / 1e6
+	b.ReportMetric(ms, "ms/page")
+	b.ReportMetric(1000/ms, "pages/s/core")
+}
+
 // BenchmarkPhaseRead is the HTML parse and the extraction: html.Parse, the head
-// walk, the link walk, the container pick and three renders of it.
+// walk, the link walk, the container pick and the text render of it. The two
+// markdown renders are no longer in here, which is what [BenchmarkPhaseRender]
+// measures and what a rejected page no longer pays.
 func BenchmarkPhaseRead(b *testing.B) {
 	corpus := pages(b)
 	each(b, corpus, func(p fetched) {
@@ -205,12 +241,22 @@ func BenchmarkPhaseNormalizeText(b *testing.B) {
 	})
 }
 
-// BenchmarkPhaseMarkupMarkdown is the same pass over the markdown rendering of
-// the content, which carries the headings and the tables.
+// BenchmarkPhaseRender is the two markdown renderings, the article off the
+// container the text came from and the whole document. Only a page that passes
+// the sift pays for these, so the average page pays the keep rate times this.
+func BenchmarkPhaseRender(b *testing.B) {
+	corpus := pages(b)
+	eachFresh(b, corpus, func(_ fetched, page *Page) {
+		page.Render()
+	})
+}
+
+// BenchmarkPhaseMarkupMarkdown is the normalization pass over the markdown
+// rendering of the content, which carries the headings and the tables.
 func BenchmarkPhaseMarkupMarkdown(b *testing.B) {
 	corpus := pages(b)
 	each(b, corpus, func(p fetched) {
-		normalize.Markup(p.page.Markdown)
+		normalize.Markup(p.markdown)
 	})
 }
 
@@ -219,7 +265,7 @@ func BenchmarkPhaseMarkupMarkdown(b *testing.B) {
 func BenchmarkPhaseMarkupBody(b *testing.B) {
 	corpus := pages(b)
 	each(b, corpus, func(p fetched) {
-		normalize.Markup(p.page.Body)
+		normalize.Markup(p.body)
 	})
 }
 
@@ -255,10 +301,14 @@ func BenchmarkPhaseMeasure(b *testing.B) {
 
 // BenchmarkPhaseBuild is every phase above except the parse, in the order the
 // crawler runs them, so the sum of the parts can be checked against the whole.
+//
+// It is the one number here that carries the keep rate in it, because a page
+// the sift refuses leaves Build before the render and the corpus is whatever a
+// real crawl fetched.
 func BenchmarkPhaseBuild(b *testing.B) {
 	corpus := pages(b)
-	each(b, corpus, func(p fetched) {
-		Build(p.visit, p.page, BuildOptions{Locator: p.visit.URL})
+	eachFresh(b, corpus, func(p fetched, page *Page) {
+		Build(p.visit, page, BuildOptions{Locator: p.visit.URL})
 	})
 }
 
