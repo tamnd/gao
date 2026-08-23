@@ -1426,3 +1426,48 @@ func TestTheFleetSplitHereIsTheOneASeedListCanCompute(t *testing.T) {
 		}
 	}
 }
+
+// A lookup that walks the runs on disk should not allocate, because it is the
+// hottest thing in the crawl that touches the frontier: a page offers sixty
+// links and every one of them is a lookup, on a frontier that already holds
+// hundreds of millions of URLs so nearly every one of them walks every run.
+//
+// The number this guards is allocations rather than time. The read itself is a
+// syscall and dominates the wall clock, which is exactly why the block it reads
+// into is worth not allocating: it is invisible in a timing and it is the
+// largest allocator in the crawl's own code.
+func BenchmarkRunsHave(b *testing.B) {
+	f, err := OpenFrontier(FrontierOptions{Dir: b.TempDir()})
+	if err != nil {
+		b.Fatalf("OpenFrontier: %v", err)
+	}
+	b.Cleanup(func() { _ = f.Close() })
+
+	// Three runs rather than one. A miss walks all of them, and one run per
+	// lookup was the shape the allocation was paid in.
+	const per = 200_000
+	for gen := range 3 {
+		hashes := make([]uint64, per)
+		for i := range hashes {
+			// Interleaved rather than one range per run. Hashes are spread by a
+			// hash function, so every run on a real frontier covers the whole
+			// range, and a lookup reads a block from each of them. Runs that
+			// each held their own range would be answered by the fence without
+			// a read and the benchmark would measure nothing.
+			hashes[i] = uint64(i)*7919*3 + uint64(gen)
+		}
+		r, err := f.writeRun(fmt.Sprintf("seen-bench-%06d.hashes", gen), hashes)
+		if err != nil {
+			b.Fatalf("writeRun: %v", err)
+		}
+		f.runs = append(f.runs, r)
+	}
+
+	b.ReportAllocs()
+	b.ResetTimer()
+	for i := range b.N {
+		if _, err := f.runsHave(uint64(i) * 7919); err != nil {
+			b.Fatalf("runsHave: %v", err)
+		}
+	}
+}
