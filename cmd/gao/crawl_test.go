@@ -324,3 +324,16 @@ func TestCrawlRefusesToIndexARunThatIsNotPushing(t *testing.T) {
 		t.Errorf("the error does not say what is missing: %s", errb)
 	}
 }
+
+// The ceiling the collector works against is worth saying out loud. A run that
+// was given one and did not take it looks exactly like a run that was not given
+// one, until the box runs out of memory and only one of the two explains it.
+func TestCrawlSaysWhatCeilingTheCollectorGot(t *testing.T) {
+	out, _, code := crawlRun(t, "-dir", t.TempDir(), "-pages", "0", "-memlimit", "1073741824")
+	if code != 0 {
+		t.Fatalf("exit %d, want 0", code)
+	}
+	if !strings.Contains(out, "collector is working against 1.1 GB") {
+		t.Errorf("the run does not say what ceiling it took: %s", out)
+	}
+}
