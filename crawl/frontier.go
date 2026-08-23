@@ -1317,8 +1317,13 @@ func (f *Frontier) bucket(canonical string) *bucket {
 // Newest first, because a URL offered twice tends to be offered twice close
 // together.
 func (f *Frontier) runsHave(h uint64) (bool, error) {
+	if len(f.runs) == 0 {
+		return false, nil
+	}
+	b := blocks.Get().(*[]byte)
+	defer blocks.Put(b)
 	for i := len(f.runs) - 1; i >= 0; i-- {
-		ok, err := f.runs[i].has(h)
+		ok, err := f.runs[i].has(h, *b)
 		if err != nil {
 			return false, err
 		}
@@ -1328,6 +1333,25 @@ func (f *Frontier) runsHave(h uint64) (bool, error) {
 	}
 	return false, nil
 }
+
+// blocks holds the four kilobyte block a lookup reads into.
+//
+// A lookup used to allocate one, and a lookup that misses walks every run on
+// disk and allocated one per run. That is four kilobytes thrown away per run per
+// URL offered, on a crawl where a page offers sixty links and the frontier
+// already holds nine hundred million URLs, so nearly every offer is a lookup. On
+// server2 it was the largest single allocator in the crawl's own code: a heap
+// sample nine minutes apart had it holding 106 MB and growing by 83 MB between
+// the two, which is not a leak but garbage, and garbage is what the collector
+// sizes the heap against. The process was living in 2.4 GB against a live set of
+// 1.1 GB and being killed by the kernel on a box it shares.
+//
+// The block is a fixed size, which is what makes a pool the whole of the fix
+// rather than the beginning of one.
+var blocks = sync.Pool{New: func() any {
+	b := make([]byte, fanout*8)
+	return &b
+}}
 
 // The filter is a plain bloom filter with three probes taken from the one hash,
 // which is enough at ten bits per URL and one less thing to get wrong than a
@@ -1676,7 +1700,12 @@ func (f *Frontier) mergeRuns(name string, a, b *run) (*run, error) {
 // has reports whether a sorted run holds a hash. The fence says which four
 // kilobyte block it would be in and the block is read and searched, so a lookup
 // is one read whatever the run's size.
-func (r *run) has(h uint64) (bool, error) {
+//
+// buf is where the block is read, and it is the caller's so that a caller
+// walking several runs pays for one block rather than one per run. A buf too
+// small for the block is grown here rather than refused, which is what lets a
+// test call this with nil.
+func (r *run) has(h uint64, buf []byte) (bool, error) {
 	if r.count == 0 || len(r.fence) == 0 || h < r.fence[0] {
 		return false, nil
 	}
@@ -1689,7 +1718,10 @@ func (r *run) has(h uint64) (bool, error) {
 	if rest := r.count*8 - off; rest < n {
 		n = rest
 	}
-	buf := make([]byte, n)
+	if int64(cap(buf)) < n {
+		buf = make([]byte, n)
+	}
+	buf = buf[:n]
 	if _, err := r.f.ReadAt(buf, off); err != nil && !errors.Is(err, io.EOF) {
 		return false, fmt.Errorf("crawl: reading %s: %w", r.name, err)
 	}
