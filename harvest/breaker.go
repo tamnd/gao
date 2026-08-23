@@ -25,6 +25,7 @@ package harvest
 import (
 	"errors"
 	"sync"
+	"time"
 )
 
 // DefaultStrikes is how many failures a host that has never answered gets
@@ -48,6 +49,7 @@ var ErrDead = errors.New("harvest: the host has not answered")
 // host is reachable is a fact about the network rather than about a goroutine.
 type breaker struct {
 	strikes int
+	now     func() time.Time
 
 	mu    sync.Mutex
 	hosts map[string]*hostHealth
@@ -62,13 +64,20 @@ type hostHealth struct {
 	// 404 or a 500. It is never unset. A server that returns an error is a
 	// server, and the next URL on it may well be a page.
 	alive bool
+
+	// at is the last time anything asked about this host, which is what decides
+	// whether the entry is still worth its memory. See [breaker.forget].
+	at time.Time
 }
 
-func newBreaker(strikes int) *breaker {
+func newBreaker(strikes int, now func() time.Time) *breaker {
 	if strikes <= 0 {
 		strikes = DefaultStrikes
 	}
-	return &breaker{strikes: strikes, hosts: map[string]*hostHealth{}}
+	if now == nil {
+		now = time.Now
+	}
+	return &breaker{strikes: strikes, now: now, hosts: map[string]*hostHealth{}}
 }
 
 // dead reports whether the crawl has given up on a host.
@@ -77,7 +86,11 @@ func (b *breaker) dead(host string) bool {
 	defer b.mu.Unlock()
 
 	h, ok := b.hosts[host]
-	return ok && !h.alive && h.fails >= b.strikes
+	if !ok {
+		return false
+	}
+	h.at = b.now()
+	return !h.alive && h.fails >= b.strikes
 }
 
 // answered records that a host sent a response, which immunizes it for the rest
@@ -107,7 +120,30 @@ func (b *breaker) health(name string) *hostHealth {
 		h = &hostHealth{}
 		b.hosts[name] = h
 	}
+	h.at = b.now()
 	return h
+}
+
+// forget drops what is remembered about hosts nothing has asked about in older,
+// and reports how many it dropped. See [Crawler.Forget] for why.
+//
+// A forgotten host starts again with no strikes against it, which is the right
+// answer rather than a cost. The hosts this cuts off are ones that did not
+// answer, and a host that did not answer an hour ago deserves the three tries it
+// gets when the crawl next finds a link to it.
+func (b *breaker) forget(now time.Time, older time.Duration) int {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+
+	var dropped int
+	for name, h := range b.hosts {
+		if now.Sub(h.at) <= older {
+			continue
+		}
+		delete(b.hosts, name)
+		dropped++
+	}
+	return dropped
 }
 
 // Dropped is how many hosts the crawl has given up on, which is the number a
