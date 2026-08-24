@@ -10,6 +10,7 @@ import (
 	"io"
 	"os"
 	"os/signal"
+	"runtime/debug"
 	"strings"
 	"syscall"
 	"time"
@@ -55,6 +56,7 @@ func runCrawl(stdout, stderr io.Writer, args []string) int {
 	report := fs.String("report", "", "write the run report to this file as JSON")
 	asJSON := fs.Bool("json", false, "print the report as JSON")
 	profile := fs.String("pprof", "", "serve profiles on this address, which turns on the block and mutex profilers")
+	memlimit := fs.Int64("memlimit", 0, "the memory the collector works against in bytes, off by default, and the difference between a slow crawl and a killed one on a shared box")
 	fs.Usage = func() {
 		fmt.Fprint(stderr, `usage: gao crawl -dir DIR [-seed FILE] [-shard N -fleet N] [-pages N] [-push] [flags]
 
@@ -110,6 +112,24 @@ per part, which is 16.6MB of footers over a repo holding 474.3MB, and it grows
 with the repo rather than with the crawl, so an hour is a reasonable timer and a
 minute is not.
 
+-memlimit is the number the garbage collector sizes the heap against, and on a
+box the crawl shares it is the difference between a slow crawl and a killed one.
+Without it the collector aims at twice the live set and nothing stops it there
+except the kernel. server2 runs 2,000 workers against a live heap of about
+1.1GB, which without this grew to 2.4GB of resident memory in twelve minutes,
+went on to 4.3GB, and was killed by the out of memory killer every twenty to
+forty minutes, losing whatever the open part held each time. The box has about
+2.4GB free because other work on it holds 4.7GB of the 12GB. With -memlimit
+1800MiB the same run sat between 1.70GB and 1.79GB for twenty two minutes
+without a single climb, and did 58 to 64 pages a second against the 40.8 the
+unlimited run had fallen to by the same point.
+
+Pick it from what the box has free rather than from what it has. It is a
+ceiling the collector works against and not a cap it is refused at, so a run
+that needs more than it gets slower rather than failing, which is the trade
+worth making. GOMEMLIMIT in the environment does the same thing and this flag
+overrides it.
+
 -pprof turns on the block and mutex profilers and serves them, which is how a
 claim about this crawler's ceiling gets checked. A goroutine dump says where
 goroutines are parked, the mutex profile says which lock they waited on and for
@@ -156,6 +176,10 @@ flags:
 			fmt.Fprintln(stderr, err)
 			return 1
 		}
+	}
+	if *memlimit > 0 {
+		debug.SetMemoryLimit(*memlimit)
+		fmt.Fprintf(stdout, "the collector is working against %s\n", fleet.Size(*memlimit))
 	}
 
 	kept, _ := store.Lookup(crawl.KeptRepo)
