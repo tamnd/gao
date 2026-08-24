@@ -43,6 +43,24 @@ const DefaultStrikes = 3
 // ever answering. Nothing is sent.
 var ErrDead = errors.New("harvest: the host has not answered")
 
+// breakerShards is how many independent maps the breaker keeps, and it is the
+// difference between a crawl that scales with workers and one that does not.
+//
+// Every URL takes this lock twice, once to ask whether the host is worth trying
+// and once to record what came back, and it was one lock over one map for the
+// whole box. A goroutine dump of a 2,000 worker run on server2 had 1,456 workers
+// standing in it: 705 in dead, 686 in answered and 65 in failed, out of 1,670
+// waiting on any mutex anywhere in the process. It was the largest single group
+// in the dump, ahead of the 1,851 actually on the network, and it was larger
+// than every other lock in the crawl put together. The frontier, which is the
+// thing that looks expensive, had six.
+//
+// A host only ever needs its own record, so nothing here needs one lock. The
+// shard is picked by the host's name, which means two hosts collide only by
+// accident rather than by design, and 256 of them turn a queue two thousand deep
+// into a queue that is almost always empty.
+const breakerShards = 256
+
 // A breaker remembers which hosts have answered and which have only failed.
 //
 // It is safe for concurrent use and is shared by every worker, since whether a
@@ -51,8 +69,33 @@ type breaker struct {
 	strikes int
 	now     func() time.Time
 
+	shards [breakerShards]breakerShard
+}
+
+// breakerShard is one of the maps and the lock over it.
+//
+// The padding is not decoration. A mutex and a map header are sixteen bytes
+// between them, so four shards would share a cache line and a worker taking one
+// would be invalidating the line under three others it never touches. Filling
+// the line means a shard is contended only when two workers want the same one.
+type breakerShard struct {
 	mu    sync.Mutex
 	hosts map[string]*hostHealth
+	_     [40]byte
+}
+
+// shard is the map a host's record lives in.
+//
+// FNV-1a written out rather than through hash/fnv, because that returns an
+// interface holding a pointer and this is called twice for every URL the crawl
+// fetches. A host name is short and this is a few nanoseconds of arithmetic.
+func (b *breaker) shard(host string) *breakerShard {
+	h := uint32(2166136261)
+	for i := 0; i < len(host); i++ {
+		h ^= uint32(host[i])
+		h *= 16777619
+	}
+	return &b.shards[h%breakerShards]
 }
 
 type hostHealth struct {
@@ -77,50 +120,66 @@ func newBreaker(strikes int, now func() time.Time) *breaker {
 	if now == nil {
 		now = time.Now
 	}
-	return &breaker{strikes: strikes, now: now, hosts: map[string]*hostHealth{}}
+	b := &breaker{strikes: strikes, now: now}
+	for i := range b.shards {
+		b.shards[i].hosts = map[string]*hostHealth{}
+	}
+	return b
 }
 
 // dead reports whether the crawl has given up on a host.
 func (b *breaker) dead(host string) bool {
-	b.mu.Lock()
-	defer b.mu.Unlock()
+	// Read the clock before taking the lock rather than under it. It is the
+	// cheapest call in this file and it was still being made with the busiest
+	// lock in the crawl held.
+	now := b.now()
+	s := b.shard(host)
 
-	h, ok := b.hosts[host]
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	h, ok := s.hosts[host]
 	if !ok {
 		return false
 	}
-	h.at = b.now()
+	h.at = now
 	return !h.alive && h.fails >= b.strikes
 }
 
 // answered records that a host sent a response, which immunizes it for the rest
 // of the run.
 func (b *breaker) answered(host string) {
-	b.mu.Lock()
-	defer b.mu.Unlock()
+	now := b.now()
+	s := b.shard(host)
 
-	h := b.health(host)
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	h := s.health(host, now)
 	h.alive = true
 	h.fails = 0
 }
 
 // failed records that a request to a host produced no response at all.
 func (b *breaker) failed(host string) {
-	b.mu.Lock()
-	defer b.mu.Unlock()
+	now := b.now()
+	s := b.shard(host)
 
-	b.health(host).fails++
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	s.health(host, now).fails++
 }
 
 // health returns the record for a host, creating it on first sight. The caller
-// holds the lock.
-func (b *breaker) health(name string) *hostHealth {
-	h, ok := b.hosts[name]
+// holds the shard's lock and has already read the clock.
+func (s *breakerShard) health(name string, now time.Time) *hostHealth {
+	h, ok := s.hosts[name]
 	if !ok {
 		h = &hostHealth{}
-		b.hosts[name] = h
+		s.hosts[name] = h
 	}
-	h.at = b.now()
+	h.at = now
 	return h
 }
 
@@ -132,16 +191,21 @@ func (b *breaker) health(name string) *hostHealth {
 // answer, and a host that did not answer an hour ago deserves the three tries it
 // gets when the crawl next finds a link to it.
 func (b *breaker) forget(now time.Time, older time.Duration) int {
-	b.mu.Lock()
-	defer b.mu.Unlock()
-
 	var dropped int
-	for name, h := range b.hosts {
-		if now.Sub(h.at) <= older {
-			continue
+	// A shard at a time rather than all of them at once. Nothing here needs the
+	// shards to agree with each other, and holding one lock at a time means a
+	// worker whose host is in another shard never waits for this at all.
+	for i := range b.shards {
+		s := &b.shards[i]
+		s.mu.Lock()
+		for name, h := range s.hosts {
+			if now.Sub(h.at) <= older {
+				continue
+			}
+			delete(s.hosts, name)
+			dropped++
 		}
-		delete(b.hosts, name)
-		dropped++
+		s.mu.Unlock()
 	}
 	return dropped
 }
@@ -150,14 +214,16 @@ func (b *breaker) forget(now time.Time, older time.Duration) int {
 // long run watches: a crawl dropping a rising share of what it meets has either
 // found a bad neighborhood of the web or has broken its own networking.
 func (b *breaker) dropped() int {
-	b.mu.Lock()
-	defer b.mu.Unlock()
-
 	n := 0
-	for _, h := range b.hosts {
-		if !h.alive && h.fails >= b.strikes {
-			n++
+	for i := range b.shards {
+		s := &b.shards[i]
+		s.mu.Lock()
+		for _, h := range s.hosts {
+			if !h.alive && h.fails >= b.strikes {
+				n++
+			}
 		}
+		s.mu.Unlock()
 	}
 	return n
 }
