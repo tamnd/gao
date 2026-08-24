@@ -8,8 +8,6 @@ import (
 	"sync/atomic"
 	"unicode"
 	"unicode/utf8"
-
-	"golang.org/x/text/unicode/norm"
 )
 
 // Bare returns the text with its tone marks and vowel marks removed.
@@ -104,7 +102,7 @@ func plain(s string) bool {
 func bare(s string) string {
 	var b strings.Builder
 	b.Grow(len(s))
-	for _, c := range norm.NFD.String(s) {
+	for c := range Decomposed(s) {
 		switch {
 		case unicode.Is(unicode.Mn, c):
 		case c == 'đ':

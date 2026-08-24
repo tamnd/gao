@@ -22,6 +22,7 @@ package normalize
 // should be and quy with the mark moved to the u is not a word.
 
 import (
+	"iter"
 	"strings"
 	"unicode"
 	"unicode/utf8"
@@ -77,11 +78,14 @@ func compose(s string) string {
 	if settled(s) {
 		return s
 	}
-	d := norm.NFD.String(s)
-	if units, ok := split(d); ok {
-		d = join(units)
+	if units, ok := split(Decomposed(s)); ok {
+		return norm.NFC.String(join(units))
 	}
-	return norm.NFC.String(d)
+	// split refuses a syllable it cannot read, and what it refuses is text that
+	// is damaged rather than text this stage disagrees with, so it goes on as it
+	// came apart from being composed. Composing it directly is the same string
+	// the decompose and recompose used to hand back, because NFC of NFD is NFC.
+	return norm.NFC.String(s)
 }
 
 // settled reports whether a syllable already carries its marks inside its
@@ -121,7 +125,7 @@ func retone(s string) (string, bool) {
 	if !mayRetone(s) {
 		return s, false
 	}
-	units, ok := split(norm.NFD.String(s))
+	units, ok := split(Decomposed(s))
 	if !ok {
 		return s, false
 	}
@@ -213,9 +217,12 @@ func mayRetone(s string) bool {
 // split takes a decomposed syllable apart into letters and their marks. It
 // refuses a syllable that starts with a combining mark or carries two tones,
 // because both mean the text is damaged in a way this stage does not repair.
-func split(s string) ([]unit, bool) {
+//
+// It reads the decomposition rather than a decomposed string so that the caller
+// never has to make one: see [Decomposed].
+func split(seq iter.Seq[rune]) ([]unit, bool) {
 	var units []unit
-	for _, c := range s {
+	for c := range seq {
 		if unicode.Is(unicode.Mn, c) {
 			if len(units) == 0 {
 				return nil, false

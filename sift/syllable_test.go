@@ -202,12 +202,7 @@ func allLetters(s string) bool {
 // either function can quietly stop being, so it is checked against the loop it
 // replaced rather than against a list of expected answers.
 func TestTheASCIIShortcutAgreesWithTheLongWayRound(t *testing.T) {
-	toks := []string{
-		"hoa", "hòa", "tiếng", "Việt", "nguyễn", "đường", "ĐƯỜNG",
-		"abc", "HTTP", "x", "", "a1", "1234", "co2", "e-mail", "a.b",
-		"café", "naïve", "ȭ", "日本語", "hoa2", "  ", "\t",
-	}
-	for _, tok := range toks {
+	for _, tok := range untoneCases {
 		gotBare, gotTone, gotOK := untone(tok)
 		wantBare, wantTone, wantOK := untoneSlow(tok)
 		if gotBare != wantBare || gotTone != wantTone || gotOK != wantOK {
@@ -240,4 +235,65 @@ func untoneSlow(tok string) (string, rune, bool) {
 		b.WriteRune(c)
 	}
 	return norm.NFC.String(b.String()), tone, true
+}
+
+// untoneCases is what [untone] is checked against [untoneSlow] over.
+//
+// The last group is the reason it is a variable rather than a literal inside one
+// test. [untone] used to range over norm.NFD.String and now ranges over
+// normalize.Decomposed, which walks the same runes without building the string
+// and cannot put combining marks into canonical order. Those are the tokens
+// where that distinction is capable of showing, so they are the ones a reader
+// should look at when this test fails.
+var untoneCases = []string{
+	"hoa", "hòa", "tiếng", "Việt", "nguyễn", "đường", "ĐƯỜNG",
+	"abc", "HTTP", "x", "", "a1", "1234", "co2", "e-mail", "a.b",
+	"café", "naïve", "ȭ", "日本語", "hoa2", "  ", "\t",
+
+	"é",      // a loose acute rather than é
+	"tiếng", // tieng decomposed the whole way down
+	"tié̂ng", // the same marks in the order NFD would swap
+	"Việt",  // a mark of one class ahead of a mark of another
+	"한국어",     // Hangul, which decomposes by arithmetic
+	"ệ", "đ",  // precomposed ệ and đ
+	"ạ́",       // two marks where one of them is a tone
+	"̀", "̣hoa", // a token that begins with a mark
+}
+
+// TestUntoneAgreesWithTheLongWayRoundOverRealText is the same claim as the test
+// above over prose rather than over a list, because the list is the cases
+// somebody thought of.
+func TestUntoneAgreesWithTheLongWayRoundOverRealText(t *testing.T) {
+	t.Parallel()
+	for tok := range strings.FieldsSeq(untoneCorpus) {
+		gotBare, gotTone, gotOK := untone(tok)
+		wantBare, wantTone, wantOK := untoneSlow(tok)
+		if gotBare != wantBare || gotTone != wantTone || gotOK != wantOK {
+			t.Errorf("untone(%q) = %q, %q, %v, want %q, %q, %v",
+				tok, gotBare, gotTone, gotOK, wantBare, wantTone, wantOK)
+		}
+	}
+}
+
+// untoneCorpus is Vietnamese prose with the Latin, brand and number noise a real
+// page carries, because a token stream that is all Vietnamese is not one.
+const untoneCorpus = `Hà Nội là thủ đô của Việt Nam và là trung tâm chính trị của cả nước.
+Thành phố Hồ Chí Minh có dân số đông nhất, khoảng 9 triệu người theo thống kê 2019.
+Tiếng Việt được viết bằng chữ Quốc ngữ, một hệ chữ dựa trên bảng chữ cái Latinh.
+Nhiều trang web tiếng Việt dùng WordPress, Shopify hoặc Google Analytics.
+Giá vé máy bay từ SGN đi HAN khoảng 1.200.000 đồng vào mùa thấp điểm.
+Đội tuyển bóng đá quốc gia đã thi đấu tại vòng loại World Cup 2022.
+Công nghệ AI và machine learning đang được ứng dụng rộng rãi trong y tế.
+Chợ Bến Thành mở cửa từ 6h sáng đến 18h hàng ngày, trừ dịp Tết Nguyên đán.
+Sinh viên đại học Bách khoa nghiên cứu về năng lượng tái tạo và pin lithium.
+Bài viết này được cập nhật lần cuối vào ngày 15 tháng 3 năm 2024 lúc 14:30.`
+
+func BenchmarkUntone(b *testing.B) {
+	toks := strings.Fields(untoneCorpus)
+	b.ReportAllocs()
+	for b.Loop() {
+		for _, tok := range toks {
+			untone(tok)
+		}
+	}
 }
