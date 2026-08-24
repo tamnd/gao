@@ -108,6 +108,13 @@ type politeHost struct {
 
 	// next is the earliest a request to this host may start.
 	next time.Time
+
+	// used is the last time anything asked for this host, stamped where the
+	// pointer is handed out rather than where a request goes out. That is what
+	// makes [Polite.Forget] safe: a worker holding this pointer and not yet
+	// holding a slot has stamped it, so the entry it is about to use cannot be
+	// dropped out from under it and replaced by a fresh one.
+	used time.Time
 }
 
 // NewPolite returns a scheduler with these options.
@@ -336,7 +343,38 @@ func (p *Polite) host(name string) *politeHost {
 		h = &politeHost{slots: make(chan struct{}, p.perHost), delay: p.delay}
 		p.hosts[name] = h
 	}
+	h.used = p.now()
 	return h
+}
+
+// Forget drops the schedule for hosts nothing has asked for in older, and
+// reports how many it dropped.
+//
+// A schedule is one map entry per host for as long as the process runs, and on a
+// crawl that is finding hosts it has never seen the number of hosts is the
+// number of hosts on the web. See [Crawler.Forget] for why this is the thing to
+// do rather than a size cap.
+//
+// Forgetting a host cannot make the crawl impolite. The gap is a second and the
+// window is hours, so a host old enough to drop is a host whose next request was
+// due long ago, and one with a request in flight is skipped whatever its age.
+func (p *Polite) Forget(older time.Duration) int {
+	if older <= 0 {
+		return 0
+	}
+	p.mu.Lock()
+	defer p.mu.Unlock()
+
+	now := p.now()
+	var dropped int
+	for name, h := range p.hosts {
+		if now.Sub(h.used) <= older || len(h.slots) > 0 {
+			continue
+		}
+		delete(p.hosts, name)
+		dropped++
+	}
+	return dropped
 }
 
 // Hosts is how many hosts this scheduler is tracking, which is the number a long

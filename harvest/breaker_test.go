@@ -5,7 +5,7 @@ import "testing"
 func TestAHostGetsMoreThanOneChance(t *testing.T) {
 	t.Parallel()
 
-	b := newBreaker(0)
+	b := newBreaker(0, nil)
 	for i := range DefaultStrikes - 1 {
 		b.failed("nobody.example")
 		if b.dead("nobody.example") {
@@ -21,7 +21,7 @@ func TestAHostGetsMoreThanOneChance(t *testing.T) {
 func TestAHostThatAnsweredOnceIsNeverGivenUpOn(t *testing.T) {
 	t.Parallel()
 
-	b := newBreaker(0)
+	b := newBreaker(0, nil)
 	b.answered("busy.example")
 	for range 50 {
 		b.failed("busy.example")
@@ -34,7 +34,7 @@ func TestAHostThatAnsweredOnceIsNeverGivenUpOn(t *testing.T) {
 func TestAnAnswerAfterFailuresClearsThem(t *testing.T) {
 	t.Parallel()
 
-	b := newBreaker(0)
+	b := newBreaker(0, nil)
 	b.failed("slow.example")
 	b.failed("slow.example")
 	b.answered("slow.example")
@@ -48,7 +48,7 @@ func TestAnAnswerAfterFailuresClearsThem(t *testing.T) {
 func TestAHostNobodyHasAskedAboutIsFine(t *testing.T) {
 	t.Parallel()
 
-	if newBreaker(0).dead("unseen.example") {
+	if newBreaker(0, nil).dead("unseen.example") {
 		t.Fatal("gave up on a host before asking it anything")
 	}
 }
@@ -56,7 +56,7 @@ func TestAHostNobodyHasAskedAboutIsFine(t *testing.T) {
 func TestTheStrikeCountCanBeSet(t *testing.T) {
 	t.Parallel()
 
-	b := newBreaker(1)
+	b := newBreaker(1, nil)
 	b.failed("once.example")
 	if !b.dead("once.example") {
 		t.Fatal("asked for one strike and got the default")
@@ -66,7 +66,7 @@ func TestTheStrikeCountCanBeSet(t *testing.T) {
 func TestDroppedCountsOnlyTheHostsGivenUpOn(t *testing.T) {
 	t.Parallel()
 
-	b := newBreaker(2)
+	b := newBreaker(2, nil)
 	b.failed("gone.example")
 	b.failed("gone.example")
 	b.failed("flaky.example")
@@ -82,7 +82,7 @@ func TestDroppedCountsOnlyTheHostsGivenUpOn(t *testing.T) {
 func TestManyWorkersReportingOneHostAgree(t *testing.T) {
 	t.Parallel()
 
-	b := newBreaker(1000)
+	b := newBreaker(1000, nil)
 	done := make(chan struct{})
 	for range 20 {
 		go func() {

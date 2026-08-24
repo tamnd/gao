@@ -42,6 +42,17 @@ const MaxBody = 8 << 20
 // did not say for how long.
 const DefaultBackoff = 5 * time.Minute
 
+// ForgetAfter is how long a host the crawl is not working on keeps its place in
+// memory. See [Crawler.Forget].
+//
+// An hour rather than a few minutes. The cost of forgetting a host is one
+// robots.txt fetched twice, and a crawl that came back to a host ten minutes
+// later would be paying that on hosts it is plainly still working through. The
+// clock is reset by any fetch on the host, so a site being crawled for a day is
+// never forgotten while it is being crawled: the hour is an hour of silence, not
+// an hour of age.
+const ForgetAfter = time.Hour
+
 // The reasons a fetch did not produce a page. They are errors rather than a
 // status field because every one of them means the caller must not read a body,
 // and a field can be ignored.
@@ -160,6 +171,11 @@ type CrawlOptions struct {
 
 	// MaxBody overrides [MaxBody].
 	MaxBody int64
+
+	// Now is the clock, injected so that a test of what gets forgotten is a
+	// test of what gets forgotten rather than a test that waits an hour. Zero
+	// means the real one.
+	Now func() time.Time
 }
 
 // A Crawler fetches pages from sites that did not ask to be fetched.
@@ -173,6 +189,7 @@ type Crawler struct {
 	dead    *breaker
 	agent   string
 	maxBody int64
+	now     func() time.Time
 
 	mu      sync.Mutex
 	sites   map[string]*published
@@ -206,6 +223,10 @@ type published struct {
 	// into the record of every page fetched from the host, because a
 	// reservation we could not read is a fact about the fetch.
 	tdmNote string
+
+	// used is the last time a fetch asked for this host, which is what decides
+	// whether the entry is still worth its memory. See [Crawler.Forget].
+	used time.Time
 }
 
 // NewCrawler returns a crawler with these options.
@@ -214,9 +235,13 @@ func NewCrawler(o CrawlOptions) *Crawler {
 		client:  o.Client,
 		polite:  o.Polite,
 		maxBody: o.MaxBody,
+		now:     o.Now,
 		sites:   map[string]*published{},
 		blocked: map[string]string{},
 		reading: map[string]chan struct{}{},
+	}
+	if c.now == nil {
+		c.now = time.Now
 	}
 	if c.client == nil {
 		c.client = NewClient(o.Transport, o.Timeout)
@@ -225,7 +250,7 @@ func NewCrawler(o CrawlOptions) *Crawler {
 		c.polite = NewPolite(PoliteOptions{})
 	}
 	if o.Strikes >= 0 {
-		c.dead = newBreaker(o.Strikes)
+		c.dead = newBreaker(o.Strikes, c.now)
 	}
 	if c.maxBody <= 0 {
 		c.maxBody = MaxBody
@@ -404,6 +429,7 @@ func (c *Crawler) readPublished(ctx context.Context, u *url.URL) (*published, er
 	}
 
 	c.mu.Lock()
+	site.used = c.now()
 	c.sites[host] = site
 	c.mu.Unlock()
 	return site, nil
@@ -463,7 +489,62 @@ func (c *Crawler) cached(host string) (*published, bool) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	site, ok := c.sites[host]
+	if ok {
+		site.used = c.now()
+	}
 	return site, ok
+}
+
+// Forget drops what the crawler remembers about hosts it has not been asked for
+// in older, and reports how many it dropped.
+//
+// It exists because everything else here is kept for the rest of the run, and a
+// crawl whose whole purpose is to find hosts it has not seen before has no rest
+// of the run. Every host the crawl touches costs a parsed robots.txt, a
+// schedule, a gate and a failure count, forever, and on server2 that was around
+// a hundred megabytes an hour on a box with two and a half gigabytes to spare.
+//
+// A forgotten host is not a host we have decided anything about. The next URL on
+// it fetches robots.txt again, which is a request we would rather not repeat and
+// is the correct thing to do anyway: the file is hours old by then and sites
+// change it. What it must not do is make us impolite, and it does not. A host is
+// only dropped when nothing has asked for it in older, so its gap has long since
+// elapsed, and a host with a request in flight is never dropped whatever its
+// age.
+//
+// The hosts that have blocked us are not forgotten. That map is one short string
+// per site that said no, it grows with refusals rather than with discovery, and
+// dropping an entry means asking a site that has already refused, which is the
+// one direction here that costs somebody other than us.
+func (c *Crawler) Forget(older time.Duration) int {
+	if older <= 0 {
+		return 0
+	}
+	now := c.now()
+
+	c.mu.Lock()
+	var dropped int
+	for host, site := range c.sites {
+		if now.Sub(site.used) <= older {
+			continue
+		}
+		// A gate with something in it is a worker part way through fetching
+		// this host's files. Dropping the entry would hand the next worker a
+		// fresh gate and the two would fetch them at once.
+		if g, ok := c.reading[host]; ok && len(g) > 0 {
+			continue
+		}
+		delete(c.sites, host)
+		delete(c.reading, host)
+		dropped++
+	}
+	c.mu.Unlock()
+
+	c.polite.Forget(older)
+	if c.dead != nil {
+		c.dead.forget(now, older)
+	}
+	return dropped
 }
 
 func (c *Crawler) gate(host string) chan struct{} {

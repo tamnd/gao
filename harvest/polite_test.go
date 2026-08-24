@@ -517,3 +517,61 @@ func TestAShortGapIsStillWaitedFor(t *testing.T) {
 		t.Errorf("the second request to a host on a five second gap waited %v", got)
 	}
 }
+
+// The schedule is one map entry per host for as long as the process runs, and
+// on a crawl whose purpose is to find hosts it has not seen before that is one
+// map entry per host on the web. Hosts nothing has asked for in a while go.
+func TestPoliteForgetsHostsNothingHasAskedFor(t *testing.T) {
+	c := newClock()
+	p := polite(c, harvest.PoliteOptions{})
+
+	fetch(t, p, "old.example")
+	c.pass(2 * time.Hour)
+	fetch(t, p, "fresh.example")
+
+	if n := p.Forget(time.Hour); n != 1 {
+		t.Errorf("forgot %d hosts, want 1", n)
+	}
+	if n := p.Hosts(); n != 1 {
+		t.Errorf("%d hosts left, want 1", n)
+	}
+}
+
+// A host that is being fetched right now is a host a worker is holding a slot
+// on, and dropping it would hand the next worker a fresh slot and let two
+// requests go to one site at once. Age is not the only question.
+func TestPoliteKeepsAHostWithARequestInFlight(t *testing.T) {
+	c := newClock()
+	p := polite(c, harvest.PoliteOptions{})
+
+	done, err := p.Wait(context.Background(), "busy.example")
+	if err != nil {
+		t.Fatalf("waiting: %v", err)
+	}
+	c.pass(2 * time.Hour)
+
+	if n := p.Forget(time.Hour); n != 0 {
+		t.Errorf("forgot %d hosts, want 0", n)
+	}
+	done()
+	if n := p.Forget(time.Hour); n != 1 {
+		t.Errorf("forgot %d hosts after the request finished, want 1", n)
+	}
+}
+
+// A window of zero is not a window of nothing. A caller that has not decided how
+// long to keep hosts should keep them, rather than drop every one on every pass.
+func TestPoliteForgetsNothingWithoutAWindow(t *testing.T) {
+	c := newClock()
+	p := polite(c, harvest.PoliteOptions{})
+
+	fetch(t, p, "one.example")
+	c.pass(2 * time.Hour)
+
+	if n := p.Forget(0); n != 0 {
+		t.Errorf("forgot %d hosts, want 0", n)
+	}
+	if n := p.Hosts(); n != 1 {
+		t.Errorf("%d hosts left, want 1", n)
+	}
+}

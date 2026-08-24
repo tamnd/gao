@@ -482,6 +482,10 @@ func (r *loop) watch(ctx context.Context, done <-chan struct{}) {
 				r.fail(err)
 				return
 			}
+			// On the same timer as the flush, because both are the same thing:
+			// what a run that never ends has to put down in order to keep
+			// going. The frontier puts down URLs and this puts down hosts.
+			r.o.Crawler.Forget(harvest.ForgetAfter)
 			p := r.progress()
 			if r.o.Report != nil {
 				r.o.Report(p)

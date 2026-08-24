@@ -104,6 +104,9 @@ func crawler(t *testing.T, o harvest.CrawlOptions) (*harvest.Crawler, *clock) {
 	if o.Polite == nil {
 		o.Polite = polite(c, harvest.PoliteOptions{})
 	}
+	if o.Now == nil {
+		o.Now = c.Now
+	}
 	if o.Client == nil {
 		o.Client = &http.Client{
 			Timeout:       5 * time.Second,
@@ -971,5 +974,99 @@ func TestTheHeaderAndTheWellKnownFileCombineTheRestrictiveWay(t *testing.T) {
 	signals := v.Reserve.Signals()
 	if signals["tdmrep"] == "" || signals["robots"] == "" {
 		t.Errorf("the record kept one of the two statements and not the other: %v", signals)
+	}
+}
+
+// A crawler keeps a host's robots.txt for the rest of the run, and a crawl that
+// is looking for hosts it has never seen has no rest of the run. Hosts nothing
+// has asked for in a while are put down, and the proof is that the file is
+// fetched again rather than that a counter went down.
+func TestACrawlerForgetsHostsItHasNotBeenAskedFor(t *testing.T) {
+	s := newSite(t, map[string]http.HandlerFunc{
+		"/robots.txt": text("User-agent: *\nAllow: /\n"),
+		"/one":        text("<p>mot</p>"),
+		"/two":        text("<p>hai</p>"),
+	})
+	c, clk := crawler(t, harvest.CrawlOptions{})
+
+	if _, err := get(t, c, s.URL+"/one"); err != nil {
+		t.Fatalf("first page: %v", err)
+	}
+	seen, _ := c.Hosts()
+	if seen != 1 {
+		t.Fatalf("%d hosts remembered after one fetch, want 1", seen)
+	}
+
+	clk.pass(2 * time.Hour)
+	if n := c.Forget(time.Hour); n != 1 {
+		t.Fatalf("forgot %d hosts, want 1", n)
+	}
+	if seen, _ := c.Hosts(); seen != 0 {
+		t.Errorf("%d hosts remembered after forgetting, want 0", seen)
+	}
+
+	if _, err := get(t, c, s.URL+"/two"); err != nil {
+		t.Fatalf("second page: %v", err)
+	}
+	if files := s.askedFor("/robots.txt"); files != 2 {
+		t.Errorf("robots.txt was fetched %d times, want 2: a forgotten host is a host we have to ask again", files)
+	}
+}
+
+// A host the crawl is working through is not a host it has stopped asking for.
+// The clock that decides is a clock of silence, so a site being crawled for a
+// day keeps its place for the day.
+func TestACrawlerKeepsAHostItIsStillFetching(t *testing.T) {
+	s := newSite(t, map[string]http.HandlerFunc{
+		"/robots.txt": text("User-agent: *\nAllow: /\n"),
+		"/one":        text("<p>mot</p>"),
+		"/two":        text("<p>hai</p>"),
+	})
+	c, clk := crawler(t, harvest.CrawlOptions{})
+
+	if _, err := get(t, c, s.URL+"/one"); err != nil {
+		t.Fatalf("first page: %v", err)
+	}
+	clk.pass(50 * time.Minute)
+	if _, err := get(t, c, s.URL+"/two"); err != nil {
+		t.Fatalf("second page: %v", err)
+	}
+	clk.pass(50 * time.Minute)
+
+	// Ninety minutes since the first fetch and fifty since the second, against
+	// a window of an hour. The second fetch is what counts.
+	if n := c.Forget(time.Hour); n != 0 {
+		t.Errorf("forgot %d hosts, want 0", n)
+	}
+	if seen, _ := c.Hosts(); seen != 1 {
+		t.Errorf("%d hosts remembered, want 1", seen)
+	}
+}
+
+// A site that has refused us is not forgotten. That map grows with refusals
+// rather than with discovery, and dropping an entry means going back to a site
+// that has already said no.
+func TestACrawlerDoesNotForgetASiteThatBlockedIt(t *testing.T) {
+	s := newSite(t, map[string]http.HandlerFunc{
+		"/robots.txt": text("User-agent: *\nAllow: /\n"),
+		"/one":        func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(http.StatusForbidden) },
+	})
+	c, clk := crawler(t, harvest.CrawlOptions{})
+
+	if _, err := get(t, c, s.URL+"/one"); err == nil {
+		t.Fatal("a 403 came back without an error")
+	}
+	clk.pass(4 * time.Hour)
+	c.Forget(time.Hour)
+
+	if _, blocked := c.Hosts(); blocked != 1 {
+		t.Errorf("%d blocked hosts, want 1", blocked)
+	}
+	before := len(s.asked())
+	if _, err := get(t, c, s.URL+"/one"); err == nil {
+		t.Fatal("a blocked host was fetched again")
+	}
+	if n := len(s.asked()); n != before {
+		t.Errorf("%d requests arrived at a blocked site, want 0", n-before)
 	}
 }
