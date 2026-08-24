@@ -207,10 +207,36 @@ func TestAPartIsPushedAndTheDiskIsGivenBack(t *testing.T) {
 // what stops both, so a part that has been open too long is closed by the next
 // row that arrives rather than by the size it never reaches.
 func TestAPartIsCutOnTheClock(t *testing.T) {
+	// Under a lock, and read through pushes, because the upload no longer
+	// happens on the goroutine that wrote the row. A part goes to the hub while
+	// the crawl carries on fetching, so what the sink promises is that a part
+	// cut on the clock goes up, not that it has gone up by the time Write
+	// returns.
+	var mu sync.Mutex
 	var pushed []string
+	pushes := func() []string {
+		mu.Lock()
+		defer mu.Unlock()
+		return append([]string(nil), pushed...)
+	}
+	// waitFor gives the uploader a moment to get to a part. It polls rather than
+	// sleeping a fixed time so that a slow machine does not fail it and a fast
+	// one does not wait.
+	waitFor := func(n int) []string {
+		t.Helper()
+		for range 200 {
+			if got := pushes(); len(got) >= n {
+				return got
+			}
+			time.Sleep(5 * time.Millisecond)
+		}
+		return pushes()
+	}
 	s := openSink(t, SinkOptions{
 		PartEvery: 20 * time.Millisecond,
 		Push: func(d store.Dataset, local, path string) error {
+			mu.Lock()
+			defer mu.Unlock()
 			pushed = append(pushed, path)
 			return nil
 		},
@@ -222,24 +248,24 @@ func TestAPartIsCutOnTheClock(t *testing.T) {
 			t.Fatalf("Write %d: %v", i, err)
 		}
 	}
-	if len(pushed) != 0 {
-		t.Fatalf("a part was pushed before the interval was up: %v", pushed)
+	if got := pushes(); len(got) != 0 {
+		t.Fatalf("a part was pushed before the interval was up: %v", got)
 	}
 
 	time.Sleep(30 * time.Millisecond)
 	if err := s.Write(Verdict{Doc: sampleDoc(3), Kept: true}); err != nil {
 		t.Fatalf("Write after the interval: %v", err)
 	}
-	if len(pushed) != 1 {
-		t.Fatalf("%d parts pushed after the interval was up, want the one that was open: %v", len(pushed), pushed)
+	if got := waitFor(1); len(got) != 1 {
+		t.Fatalf("%d parts pushed after the interval was up, want the one that was open: %v", len(got), got)
 	}
 	// The row that closed the part is in it, and the part after it is empty
 	// until something else arrives, so a run that stops here pushes one more.
 	if err := s.Close(); err != nil {
 		t.Fatalf("Close: %v", err)
 	}
-	if len(pushed) != 1 {
-		t.Errorf("closing pushed a part with no rows in it: %v", pushed)
+	if got := pushes(); len(got) != 1 {
+		t.Errorf("closing pushed a part with no rows in it: %v", got)
 	}
 	if st := s.Stats(); st.Kept != 4 {
 		t.Errorf("the sink counted %d kept, want 4", st.Kept)
@@ -634,4 +660,69 @@ func partNumber(t *testing.T, path string) int {
 		t.Fatalf("%q is not a part path: %v", path, err)
 	}
 	return n
+}
+
+// A part on its way to the hub must not stop the crawl.
+//
+// A part is half a gigabyte on a real box and the hub takes about a minute to
+// accept one. That upload used to happen inside Write, under the lock that
+// serializes the repo, so for the whole of that minute every worker that
+// finished a page and wanted to write its row stopped. A dump of the 2,000
+// worker run on server2 had 449 of them standing there.
+//
+// The push here blocks until the test lets it go, which is the same shape as a
+// slow hub and takes no time to run.
+func TestAWriteDoesNotWaitForAnUpload(t *testing.T) {
+	release := make(chan struct{})
+	started := make(chan struct{}, 1)
+	s := openSink(t, SinkOptions{
+		PartEvery: 20 * time.Millisecond,
+		Push: func(d store.Dataset, local, path string) error {
+			select {
+			case started <- struct{}{}:
+			default:
+			}
+			<-release
+			return nil
+		},
+	})
+
+	for i := range 3 {
+		if err := s.Write(Verdict{Doc: sampleDoc(i), Kept: true}); err != nil {
+			t.Fatalf("Write %d: %v", i, err)
+		}
+	}
+	// Past the interval, so this row closes the part and sends it.
+	time.Sleep(30 * time.Millisecond)
+	if err := s.Write(Verdict{Doc: sampleDoc(3), Kept: true}); err != nil {
+		t.Fatalf("the write that cuts the part: %v", err)
+	}
+	select {
+	case <-started:
+	case <-time.After(5 * time.Second):
+		t.Fatal("no upload started, so this test is not measuring what it says")
+	}
+
+	// An upload is in flight and stuck. The part it left behind is new, so this
+	// row does not cut another one and has nothing to wait for.
+	done := make(chan error, 1)
+	go func() { done <- s.Write(Verdict{Doc: sampleDoc(4), Kept: true}) }()
+	select {
+	case err := <-done:
+		if err != nil {
+			t.Fatalf("the write during the upload: %v", err)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("a write waited for a part to finish uploading")
+	}
+
+	// And a close still waits for it, which is the half of the bargain that
+	// keeps a stopped run from leaving a part behind.
+	close(release)
+	if err := s.Close(); err != nil {
+		t.Fatalf("Close: %v", err)
+	}
+	if st := s.Stats(); st.Pushed < 1 {
+		t.Errorf("the sink says %d parts pushed, so the close did not wait", st.Pushed)
+	}
 }

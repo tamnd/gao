@@ -244,8 +244,49 @@ type Sink struct {
 	// they can now do because they no longer share a lock.
 	outMu sync.Mutex
 
+	// uploads is where a finished part goes, and sending is the goroutine that
+	// empties it. Both are nil when there is nowhere to push to.
+	//
+	// A part is half a gigabyte and the hub takes about a minute to accept one.
+	// That upload used to happen inside [Sink.Write], under the lock that
+	// serializes the repo, so for the whole of that minute every worker on the
+	// box that finished a page and wanted to write its row stopped. A goroutine
+	// dump of the 2,000 worker run on server2 had 449 workers standing in that
+	// one lock, the largest group left in the crawl once #197 had cleared the
+	// breaker out of the way.
+	//
+	// The file is closed and on the disk before it is sent, so nothing about
+	// sending it needs the writer to wait. What still happens inside the lock is
+	// the part number going to the disk, which is cheap and has to stay where it
+	// is: see [Sink.finished] for why that order is the one that costs a gap
+	// rather than a duplicate.
+	uploads chan upload
+	sending sync.WaitGroup
+
+	// sendErr is the first upload that failed. It is reported by the next Write
+	// and again by Close, because an upload nobody is waiting for is an upload
+	// whose error nobody would otherwise ever see.
+	sendErr atomic.Pointer[error]
+
 	closed atomic.Bool
 	stats  sinkCount
+}
+
+// uploadQueue is how many finished parts may be waiting to go up.
+//
+// Small on purpose. It is not a buffer, it is the slack that lets the writer
+// carry on through one upload, and a queue deep enough to hide a hub that has
+// stopped accepting parts is a queue that fills the disk instead. Past this the
+// writer waits, which is the right thing to do and is still no worse than what
+// it did before.
+const uploadQueue = 2
+
+// upload is one finished part on its way to the hub.
+type upload struct {
+	dataset store.Dataset
+	local   string
+	path    string
+	file    store.PartFile
 }
 
 // VolumePath is where one WARC volume lives under the working directory.
@@ -298,7 +339,58 @@ func OpenSink(o SinkOptions) (*Sink, error) {
 	}
 	s.streams[KeptRepo] = &stream{roll: s.roll(kept, s.state.Kept)}
 	s.streams[RejectRepo] = &stream{roll: s.roll(drops, s.state.Reject)}
+	// Only when there is somewhere to push to. A sink writing to the disk and
+	// nowhere else does the whole of finished in no time at all, and handing
+	// that to another goroutine would buy nothing and would reorder the lines it
+	// prints.
+	if o.Push != nil {
+		s.uploads = make(chan upload, uploadQueue)
+		s.sending.Add(1)
+		go s.send()
+	}
 	return s, nil
+}
+
+// send is the goroutine that puts finished parts on the hub. It is the whole of
+// what [Sink.finished] used to do with a repo's write lock held.
+func (s *Sink) send() {
+	defer s.sending.Done()
+	for u := range s.uploads {
+		if err := s.upload(u); err != nil {
+			s.sendErr.CompareAndSwap(nil, &err)
+		}
+	}
+}
+
+// upload sends one part and takes the local copy away once the hub has it.
+func (s *Sink) upload(u upload) error {
+	if err := s.o.Push(u.dataset, u.local, u.path); err != nil {
+		// Named with the path it is still at, because the part number has
+		// already moved on and the next run will not write this file again.
+		// Somebody has to push it by hand and this is where they find out which
+		// file and where.
+		return fmt.Errorf("crawl: %s is written and still at %s: %w", u.path, u.local, err)
+	}
+	if err := os.Remove(u.local); err != nil {
+		return fmt.Errorf("crawl: %s is in the store and still here: %w", u.path, err)
+	}
+	// The directory a part sat in is empty once the last part has gone, and
+	// this fails while it is not, which is the condition to check.
+	_ = os.Remove(filepath.Dir(u.local))
+	s.stats.pushed.Add(1)
+	s.stats.freed.Add(u.file.Bytes)
+	s.say("pushed", u.dataset, u.file)
+	return nil
+}
+
+// say prints the line one finished part leaves behind.
+func (s *Sink) say(verb string, d store.Dataset, f store.PartFile) {
+	if s.o.Out == nil {
+		return
+	}
+	s.outMu.Lock()
+	defer s.outMu.Unlock()
+	fmt.Fprintf(s.o.Out, "%-8s %-52s %8s  %d rows\n", verb, d.Repo()+"/"+f.Path, fleet.GB(f.Bytes), f.Documents)
 }
 
 // found picks up the volumes an earlier run left on the disk, so that Keep
@@ -568,6 +660,21 @@ func (s *Sink) Close() error {
 	}
 	s.warcMu.Unlock()
 
+	// After both rolls are closed, because closing a roll is what puts its last
+	// part on the queue, and before the save, because a part that has not gone
+	// up yet is a part this run is not finished with.
+	//
+	// A close waits for the uploads the way it always did. What changed is only
+	// that the crawl went on fetching while they happened rather than stopping
+	// for each one.
+	if s.uploads != nil {
+		close(s.uploads)
+		s.sending.Wait()
+		if err := s.sendErr.Load(); err != nil && first == nil {
+			first = *err
+		}
+	}
+
 	if err := s.save(); err != nil && first == nil {
 		first = err
 	}
@@ -707,30 +814,22 @@ func (s *Sink) finished(d store.Dataset, f store.PartFile) error {
 		return err
 	}
 
-	verb := "wrote"
-	if s.o.Push != nil {
-		local := filepath.Join(s.o.Dir, d.Name, filepath.FromSlash(f.Path))
-		if err := s.o.Push(d, local, f.Path); err != nil {
-			// Named with the path it is still at, because the part number has
-			// already moved on and the next run will not write this file again.
-			// Somebody has to push it by hand and this is where they find out
-			// which file and where.
-			return fmt.Errorf("crawl: %s is written and still at %s: %w", f.Path, local, err)
-		}
-		if err := os.Remove(local); err != nil {
-			return fmt.Errorf("crawl: %s is in the store and still here: %w", f.Path, err)
-		}
-		// The directory a part sat in is empty once the last part has gone, and
-		// this fails while it is not, which is the condition to check.
-		_ = os.Remove(filepath.Dir(local))
-		s.stats.pushed.Add(1)
-		s.stats.freed.Add(f.Bytes)
-		verb = "pushed"
+	if s.uploads == nil {
+		s.say("wrote", d, f)
+		return nil
 	}
-	if s.o.Out != nil {
-		s.outMu.Lock()
-		fmt.Fprintf(s.o.Out, "%-8s %-52s %8s  %d rows\n", verb, d.Repo()+"/"+f.Path, fleet.GB(f.Bytes), f.Documents)
-		s.outMu.Unlock()
+
+	// An upload that already failed is reported here rather than swallowed. The
+	// goroutine that hit it has nobody waiting on it, so this is the first place
+	// anybody asks.
+	if err := s.sendErr.Load(); err != nil {
+		return *err
+	}
+	s.uploads <- upload{
+		dataset: d,
+		local:   filepath.Join(s.o.Dir, d.Name, filepath.FromSlash(f.Path)),
+		path:    f.Path,
+		file:    f,
 	}
 	return nil
 }
