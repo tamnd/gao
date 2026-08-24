@@ -244,7 +244,7 @@ func untone(tok string) (string, rune, bool) {
 	}
 	var b strings.Builder
 	tone := noTone
-	for _, c := range norm.NFD.String(tok) {
+	for c := range normalize.Decomposed(tok) {
 		switch c {
 		case grave, acute, hook, tilde, dot:
 			if tone != noTone {

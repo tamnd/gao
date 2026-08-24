@@ -1,6 +1,7 @@
 package normalize
 
 import (
+	"iter"
 	"strings"
 	"testing"
 	"unicode/utf8"
@@ -182,10 +183,23 @@ func TestSettledIsOnlyClaimedForSyllablesComposeWouldNotTouch(t *testing.T) {
 // for it.
 func slow(s string) string {
 	d := norm.NFD.String(s)
-	if units, ok := split(d); ok {
+	if units, ok := split(runesOf(d)); ok {
 		d = join(units)
 	}
 	return norm.NFC.String(d)
+}
+
+// runesOf hands split the runes of a string it has already decomposed, which is
+// what keeps [slow] an independent answer rather than a second call into the
+// thing it is checking.
+func runesOf(s string) iter.Seq[rune] {
+	return func(yield func(rune) bool) {
+		for _, c := range s {
+			if !yield(c) {
+				return
+			}
+		}
+	}
 }
 
 // mayRetoneSlow is what [mayRetone] used to be: decompose the syllable and look
@@ -230,8 +244,8 @@ func TestTheCheapToneTestAgreesWithDecomposingEveryCodepoint(t *testing.T) {
 func TestTheCheapToneTestAgreesWithDecomposingOverRealText(t *testing.T) {
 	t.Parallel()
 
-	for _, line := range strings.Split(toneCorpus, "\n") {
-		for _, word := range strings.Fields(line) {
+	for line := range strings.SplitSeq(toneCorpus, "\n") {
+		for word := range strings.FieldsSeq(line) {
 			if got, want := mayRetone(word), mayRetoneSlow(word); got != want {
 				t.Fatalf("mayRetone(%q) = %v, and decomposing it says %v", word, got, want)
 			}
