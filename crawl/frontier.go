@@ -843,6 +843,23 @@ func (f *Frontier) offer(ps []pending) (int, error) {
 		return 0, err
 	}
 
+	// take is the URLs this batch admitted, collected under the lock and written
+	// to the queue after it. A queue write is a line into one bucket's own
+	// buffer, and the bucket has its own lock for exactly that, so doing it here
+	// put a file write behind the one mutex every worker on the box needs for
+	// every one of the sixty links on every page it fetches.
+	//
+	// It is the same change [Frontier.Requeue] already made for the hand backs,
+	// for the same reason and on the evidence of the same kind of dump: with the
+	// breaker sharded in #197, offer went from six goroutines waiting on it to
+	// 421, second only to the sink.
+	//
+	// A URL is recorded as seen before it is queued, and a crash between the two
+	// loses it. That window is not new. record writes into a buffered log that a
+	// crash loses the tail of anyway, so the URL was already only as durable as
+	// the next flush, and the frontier is built to be told about a URL twice.
+	take := make([]string, 0, len(ps))
+
 	f.mu.Lock()
 	queued := 0
 	var admitErr error
@@ -854,10 +871,17 @@ func (f *Frontier) offer(ps []pending) (int, error) {
 		}
 		if ok {
 			queued++
+			take = append(take, ps[i].canonical)
 		}
 	}
 	s, spilling, err := f.freeze()
 	f.mu.Unlock()
+
+	for _, canonical := range take {
+		if perr := f.push(canonical); perr != nil {
+			return queued, perr
+		}
+	}
 
 	if admitErr != nil {
 		return queued, admitErr
@@ -1001,9 +1025,9 @@ func (f *Frontier) admit(p *pending) (bool, error) {
 	if err := f.record(p.hash); err != nil {
 		return false, err
 	}
-	if err := f.push(p.canonical); err != nil {
-		return false, err
-	}
+	// The queue write is not done here. It is the one thing this function used
+	// to do that does not need the frontier's lock, and [Frontier.offer] does it
+	// once the lock is let go. See the loop there.
 	f.stats.Admitted.Add(1)
 	p.done, p.queued = true, true
 	return true, nil

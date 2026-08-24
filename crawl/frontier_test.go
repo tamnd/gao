@@ -1471,3 +1471,36 @@ func BenchmarkRunsHave(b *testing.B) {
 		}
 	}
 }
+
+// BenchmarkOfferParallel measures offers the way a crawl makes them, which is
+// every worker on the box handing in the links off the page it just fetched
+// while every other worker does the same.
+//
+// The batch is sixty because that is what a page gives, and the URLs are
+// distinct across workers because two workers are never on the same page. What
+// it is watching is the frontier's own lock: the parse, the hashes and the
+// filter probes are already outside it, and what was left inside was a write
+// into a queue file that has a lock of its own.
+func BenchmarkOfferParallel(b *testing.B) {
+	dir := b.TempDir()
+	f, err := OpenFrontier(FrontierOptions{Dir: dir, Expect: 10_000_000})
+	if err != nil {
+		b.Fatalf("OpenFrontier: %v", err)
+	}
+	b.Cleanup(func() { _ = f.Close() })
+
+	var next atomic.Uint64
+	b.ResetTimer()
+	b.RunParallel(func(pb *testing.PB) {
+		batch := make([]string, 60)
+		for pb.Next() {
+			page := next.Add(1)
+			for i := range batch {
+				batch[i] = fmt.Sprintf("http://host%d.example/p/%d/%d", page%50_000, page, i)
+			}
+			if _, err := f.OfferAll(batch); err != nil {
+				b.Fatalf("OfferAll: %v", err)
+			}
+		}
+	})
+}
