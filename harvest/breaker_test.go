@@ -1,6 +1,9 @@
 package harvest
 
-import "testing"
+import (
+	"fmt"
+	"testing"
+)
 
 func TestAHostGetsMoreThanOneChance(t *testing.T) {
 	t.Parallel()
@@ -96,10 +99,76 @@ func TestManyWorkersReportingOneHostAgree(t *testing.T) {
 	for range 20 {
 		<-done
 	}
-	b.mu.Lock()
-	got := b.hosts["loud.example"].fails
-	b.mu.Unlock()
+	s := b.shard("loud.example")
+	s.mu.Lock()
+	got := s.hosts["loud.example"].fails
+	s.mu.Unlock()
 	if got != 1000 {
 		t.Fatalf("counted %d of 1000 failures, so the count is not shared safely", got)
+	}
+}
+
+// BenchmarkBreaker measures the breaker the way a crawl uses it, which is every
+// worker on the box asking about a different host at the same time.
+//
+// The pair is what one URL costs: dead before the request goes out and answered
+// when it comes back. The hosts are distinct because a crawl's hosts are
+// distinct, and that is the whole point of sharding by name: two workers on two
+// hosts have no reason to wait for each other and used to anyway.
+func BenchmarkBreaker(b *testing.B) {
+	br := newBreaker(3, nil)
+	hosts := make([]string, 4096)
+	for i := range hosts {
+		hosts[i] = fmt.Sprintf("host%d.example", i)
+	}
+
+	b.ResetTimer()
+	b.RunParallel(func(pb *testing.PB) {
+		i := 0
+		for pb.Next() {
+			h := hosts[i%len(hosts)]
+			i++
+			br.dead(h)
+			br.answered(h)
+		}
+	})
+}
+
+// A record has to be found in the shard it was written to, which is the one
+// thing sharding can get wrong and the one thing no behavior test would catch:
+// a breaker that wrote to one map and read from another would simply forget
+// every host, and forgetting a host is allowed.
+func TestABreakerFindsAHostInTheShardItPutItIn(t *testing.T) {
+	t.Parallel()
+
+	b := newBreaker(3, nil)
+	hosts := make([]string, 2000)
+	for i := range hosts {
+		hosts[i] = fmt.Sprintf("host%d.example", i)
+	}
+	for _, h := range hosts {
+		for range 3 {
+			b.failed(h)
+		}
+	}
+	if got := b.dropped(); got != len(hosts) {
+		t.Fatalf("dropped %d of %d, so a record went into one shard and was looked for in another", got, len(hosts))
+	}
+	for _, h := range hosts {
+		if !b.dead(h) {
+			t.Fatalf("%s struck out three times and is not dead", h)
+		}
+	}
+
+	// And the spread is worth asserting rather than assuming. A hash that sent
+	// every host to one shard would pass every test above and fix nothing.
+	used := 0
+	for i := range b.shards {
+		if len(b.shards[i].hosts) > 0 {
+			used++
+		}
+	}
+	if used != breakerShards {
+		t.Errorf("2,000 hosts landed in %d of %d shards", used, breakerShards)
 	}
 }
