@@ -24,6 +24,7 @@ package normalize
 import (
 	"strings"
 	"unicode"
+	"unicode/utf8"
 
 	"golang.org/x/text/unicode/norm"
 )
@@ -163,11 +164,48 @@ func retone(s string) (string, bool) {
 // mayRetone is the cheap test that keeps the decomposition off the great
 // majority of syllables. A syllable with no tone mark in it has nothing to move,
 // and a document is mostly those.
+//
+// It was not cheap. It was written as a walk over norm.NFD.String(s), which is
+// the decomposition it exists to avoid, and it paid for one on every non-ASCII
+// syllable of every page in order to answer a question about five codepoints. On
+// a live crawl that made it the largest single source of garbage in the whole
+// program: an allocation profile of server2 mid-run had norm.Form.String holding
+// 34.68 GB of the 139.01 GB the process had ever allocated, a quarter of every
+// byte, reached from here and from [retone]. Around 40% of that box's CPU was
+// going to the collector, so the string this function threw away was being paid
+// for twice.
+//
+// The question does not need the string. A tone mark is in the decomposition of
+// a syllable when some rune of it either is one or decomposes to one, and
+// [norm.Properties.Decomposition] hands back the decomposition of a single rune
+// as a slice of the package's own tables rather than as a new string. So the
+// walk is over the syllable as it arrived, and the only thing consulted per rune
+// is a table this program does not own and does not copy.
+//
+// ASCII is skipped without asking, because no ASCII rune decomposes to anything
+// and a Vietnamese page carries a great many of them. Hangul is the one case
+// where Decomposition returns nothing although the rune does decompose, since
+// that decomposition is arithmetic rather than a table, and it is correct to
+// skip: a Hangul syllable has no Vietnamese tone in it.
 func mayRetone(s string) bool {
-	for _, c := range norm.NFD.String(s) {
+	for i := 0; i < len(s); {
+		c, w := utf8.DecodeRuneInString(s[i:])
+		if c < utf8.RuneSelf {
+			i++
+			continue
+		}
 		if tone(c) {
 			return true
 		}
+		d := norm.NFD.PropertiesString(s[i:]).Decomposition()
+		for j := 0; j < len(d); {
+			r, n := utf8.DecodeRune(d[j:])
+			if tone(r) {
+				return true
+			}
+			j += n
+		}
+		i += w
 	}
 	return false
 }

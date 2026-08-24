@@ -1,7 +1,9 @@
 package normalize
 
 import (
+	"strings"
 	"testing"
+	"unicode/utf8"
 
 	"golang.org/x/text/unicode/norm"
 )
@@ -184,4 +186,87 @@ func slow(s string) string {
 		d = join(units)
 	}
 	return norm.NFC.String(d)
+}
+
+// mayRetoneSlow is what [mayRetone] used to be: decompose the syllable and look
+// through it. It is kept here as the definition of the right answer, because the
+// fast one is only worth having if it never disagrees with this.
+func mayRetoneSlow(s string) bool {
+	for _, c := range norm.NFD.String(s) {
+		if tone(c) {
+			return true
+		}
+	}
+	return false
+}
+
+// The fast test has to give the same answer as decomposing, for every rune there
+// is rather than for the Vietnamese ones somebody thought of.
+//
+// It walks the assigned codepoints one at a time, and then again with a
+// consonant on either side, because a syllable is a run rather than a letter and
+// the loop that skips ASCII is the part most likely to walk off the end of a
+// rune.
+func TestTheCheapToneTestAgreesWithDecomposingEveryCodepoint(t *testing.T) {
+	t.Parallel()
+
+	for r := rune(0); r <= 0x10FFFF; r++ {
+		if r >= 0xD800 && r <= 0xDFFF {
+			continue // surrogates are not runes
+		}
+		if !utf8.ValidRune(r) {
+			continue
+		}
+		for _, s := range []string{string(r), "n" + string(r), string(r) + "g", "ngh" + string(r) + "ng"} {
+			if got, want := mayRetone(s), mayRetoneSlow(s); got != want {
+				t.Fatalf("mayRetone(%q) = %v, and decomposing it says %v (U+%04X)", s, got, want, r)
+			}
+		}
+	}
+}
+
+// And over real text rather than over synthetic syllables, since what the crawl
+// hands this is prose.
+func TestTheCheapToneTestAgreesWithDecomposingOverRealText(t *testing.T) {
+	t.Parallel()
+
+	for _, line := range strings.Split(toneCorpus, "\n") {
+		for _, word := range strings.Fields(line) {
+			if got, want := mayRetone(word), mayRetoneSlow(word); got != want {
+				t.Fatalf("mayRetone(%q) = %v, and decomposing it says %v", word, got, want)
+			}
+		}
+	}
+}
+
+// toneCorpus is Vietnamese prose in both conventions, some of it decomposed on
+// purpose, with the Latin and the punctuation a real page carries mixed in.
+const toneCorpus = `Hoà bình và thống nhất đất nước là nguyện vọng của toàn dân.
+Hòa bình và thống nhất đất nước là nguyện vọng của toàn dân.
+Chị ấy khoẻ mạnh, còn anh Thuý thì đang nguỵ trang giữa rừng.
+Chị ấy khỏe mạnh, còn anh Thúy thì đang ngụy trang giữa rừng.
+Công ty TNHH Thương mại Dịch vụ ABC Việt Nam, 2026, HTML5 và CSS3.
+Quý khách vui lòng liên hệ hotline 1900 1234 để được hỗ trợ.
+Trường Đại học Bách khoa Hà Nội tuyển sinh năm học 2026-2027.
+Giá vàng SJC hôm nay tăng 500.000 đồng mỗi lượng so với phiên trước.
+Thủ tướng yêu cầu đẩy nhanh tiến độ giải ngân vốn đầu tư công.
+Bà con nông dân huyện Cao Lãnh thu hoạch lúa hè thu sớm hơn mọi năm.`
+
+// BenchmarkMayRetone is the gate every non-ASCII syllable of every page goes
+// through, which is why it is worth a benchmark of its own.
+func BenchmarkMayRetone(b *testing.B) {
+	words := strings.Fields(toneCorpus)
+
+	b.Run("fast", func(b *testing.B) {
+		b.ReportAllocs()
+		for i := 0; b.Loop(); i++ {
+			mayRetone(words[i%len(words)])
+		}
+	})
+	b.Run("decomposing", func(b *testing.B) {
+		b.ReportAllocs()
+		for i := 0; b.Loop(); i++ {
+			mayRetoneSlow(words[i%len(words)])
+		}
+	})
 }

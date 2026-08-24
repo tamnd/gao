@@ -1,6 +1,7 @@
 package store
 
 import (
+	"context"
 	"crypto/sha1" //nolint:gosec // the hub names small files the way git does and this reproduces that
 	"crypto/sha256"
 	"encoding/base64"
@@ -769,5 +770,52 @@ func TestACardWithNewCountsReplacesTheOneUpThere(t *testing.T) {
 
 	if body := string(h.stored(CardName)); !strings.Contains(body, "412000000") {
 		t.Errorf("the card up there is not the one with the counts:\n%s", body)
+	}
+}
+
+// A refusal the hub explained has to arrive with the explanation on it. This is
+// the storage quota case, which read as a scope problem for a day because the
+// body was thrown away.
+func TestARefusalRepeatsWhatTheHubSaid(t *testing.T) {
+	t.Parallel()
+
+	const said = "You have exceeded your public storage space."
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusForbidden)
+		_, _ = io.WriteString(w, `{"message":"`+said+`","request_id":"Root=1-abc"}`)
+	}))
+	defer srv.Close()
+
+	p := &Pusher{Repo: Org + "/vitweb", Token: "t", API: srv.URL}
+	_, err := p.batch(context.Background(), strings.Repeat("0", 64), 123)
+	if !errors.Is(err, ErrUnauthorized) {
+		t.Fatalf("a 403 came back as %v", err)
+	}
+	if !strings.Contains(err.Error(), said) {
+		t.Errorf("the hub explained itself and the error does not repeat it: %v", err)
+	}
+	if strings.Contains(err.Error(), "needs write access") {
+		t.Errorf("the error guesses at scopes although the hub gave a reason: %v", err)
+	}
+}
+
+// And a refusal with nothing in it still gets the guess, because a bare 403 is
+// usually a token and somebody has to be told where to look.
+func TestARefusalWithNoReasonStillSaysWhereToLook(t *testing.T) {
+	t.Parallel()
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusForbidden)
+	}))
+	defer srv.Close()
+
+	p := &Pusher{Repo: Org + "/vitweb", Token: "t", API: srv.URL}
+	_, err := p.batch(context.Background(), strings.Repeat("0", 64), 123)
+	if !errors.Is(err, ErrUnauthorized) {
+		t.Fatalf("a 403 came back as %v", err)
+	}
+	if !strings.Contains(err.Error(), "write access") {
+		t.Errorf("a bare 403 says nothing about what to check: %v", err)
 	}
 }
