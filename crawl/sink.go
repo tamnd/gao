@@ -146,6 +146,10 @@ type SinkOptions struct {
 	// publish while it runs.
 	PartEvery time.Duration
 
+	// Hold is how many bytes of parts the hub refused may sit on the disk before
+	// the run stops. Zero is [DefaultHold].
+	Hold int64
+
 	// Out, when set, gets one line per part as it lands.
 	Out io.Writer
 }
@@ -165,6 +169,13 @@ type SinkStats struct {
 	PartBytes int64 `json:"part_bytes"`
 	Pushed    int   `json:"pushed"`
 	Freed     int64 `json:"freed"`
+
+	// Held is how many finished parts the hub would not take and are still on
+	// the disk, and HeldBytes is what they come to. Both are zero on a run that
+	// published everything it wrote, which is the only state worth not reading
+	// twice.
+	Held      int   `json:"held"`
+	HeldBytes int64 `json:"held_bytes"`
 }
 
 // sinkState is the counters that survive a restart.
@@ -202,6 +213,7 @@ type sinkCount struct {
 	archived, kept, dropped         atomic.Int64
 	volumes, warcBytes, aged        atomic.Int64
 	parts, partBytes, pushed, freed atomic.Int64
+	held, heldBytes                 atomic.Int64
 }
 
 // A Sink is the output side of one crawl on one box.
@@ -263,10 +275,18 @@ type Sink struct {
 	uploads chan upload
 	sending sync.WaitGroup
 
-	// sendErr is the first upload that failed. It is reported by the next Write
-	// and again by Close, because an upload nobody is waiting for is an upload
-	// whose error nobody would otherwise ever see.
+	// sendErr is the first upload that failed in a way the run cannot carry on
+	// through, which now means only that the held parts have filled their share
+	// of the disk. It is reported by the next Write and again by Close, because
+	// an upload nobody is waiting for is an upload whose error nobody would
+	// otherwise ever see.
 	sendErr atomic.Pointer[error]
+
+	// held is the parts the hub would not take, oldest first, and heldBytes is
+	// what they come to. Both belong to the sending goroutine and are touched by
+	// nothing else, so neither needs a lock: see [Sink.send].
+	held      []upload
+	heldBytes int64
 
 	closed atomic.Bool
 	stats  sinkCount
@@ -288,6 +308,28 @@ type upload struct {
 	path    string
 	file    store.PartFile
 }
+
+// DefaultHold is how many bytes of parts the hub would not take may sit on the
+// disk before the crawl gives up and says so.
+//
+// There is a number here at all because the alternative was to end the run on
+// the first refusal, and a day of crawling was lost finding out how bad that is.
+// open-index went over its storage quota on the hub, every part came back 403,
+// and each 403 killed a crawl that then restarted and paid ten minutes to reopen
+// its frontier before dying on the next part. The pages were fetched, extracted
+// and written, and they were deleted along with the run.
+//
+// A refusal is usually temporary and it is never worth a fetched page. So a part
+// the hub would not take stays where it is and the crawl carries on, and the
+// next finished part tries the held ones again before itself, which is what
+// empties the backlog on its own once the hub comes back.
+//
+// Sixteen gigabytes because the disk here is cache and not storage. At the rate
+// one box crawls, a part is tens of thousands of rows of metadata and this is
+// days of refusals rather than hours, which is long enough to notice and fix.
+// Past it the run does stop, because a box whose disk is full stops being a
+// crawler in a way that is much harder to undo.
+const DefaultHold = 16 << 30
 
 // VolumePath is where one WARC volume lives under the working directory.
 //
@@ -353,13 +395,81 @@ func OpenSink(o SinkOptions) (*Sink, error) {
 
 // send is the goroutine that puts finished parts on the hub. It is the whole of
 // what [Sink.finished] used to do with a repo's write lock held.
+// send empties the upload queue, and is the only goroutine that touches held.
+//
+// Each part gets the backlog tried in front of it. That ordering is what makes a
+// hub coming back fix itself: the first part accepted after an outage is the
+// oldest held one, and the queue drains from the front without anybody having to
+// notice the outage ended.
 func (s *Sink) send() {
 	defer s.sending.Done()
 	for u := range s.uploads {
-		if err := s.upload(u); err != nil {
-			s.sendErr.CompareAndSwap(nil, &err)
-		}
+		s.drain()
+		s.attempt(u)
 	}
+	// One more go at the backlog on the way out. A run that is stopping has
+	// nothing to lose by asking, and an outage that ended while the last parts
+	// were being written is common enough to be worth the one attempt.
+	s.drain()
+	s.stats.held.Store(int64(len(s.held)))
+	s.stats.heldBytes.Store(s.heldBytes)
+}
+
+// drain retries the held parts, oldest first, and stops at the first one the hub
+// still will not take. Stopping rather than carrying on keeps the parts in the
+// order they were written and keeps one bad part from being retried behind every
+// other part for the rest of the run.
+func (s *Sink) drain() {
+	for len(s.held) > 0 {
+		u := s.held[0]
+		if err := s.upload(u); err != nil {
+			return
+		}
+		s.held = s.held[1:]
+		s.heldBytes -= u.file.Bytes
+	}
+}
+
+// attempt pushes a part and holds it where it is if that does not work.
+func (s *Sink) attempt(u upload) {
+	if err := s.upload(u); err == nil {
+		return
+	} else if len(s.held) == 0 {
+		// Said once, on the first refusal, with the hub's own reason on it. The
+		// rest are counted rather than printed, because a hub that is refusing
+		// everything would otherwise write a line per part until the disk it is
+		// filling has no room for the log either.
+		s.note("holding %s here because the hub would not take it: %v", u.path, err)
+	}
+	s.held = append(s.held, u)
+	s.heldBytes += u.file.Bytes
+	s.stats.held.Store(int64(len(s.held)))
+	s.stats.heldBytes.Store(s.heldBytes)
+	s.say("held", u.dataset, u.file)
+
+	if s.heldBytes > s.hold() {
+		err := fmt.Errorf("crawl: %d parts the hub would not take are on the disk at %s and come to %s, which is over the %s this run keeps for them, so they are still here and the run stops rather than filling the disk",
+			len(s.held), s.o.Dir, fleet.GB(s.heldBytes), fleet.GB(s.hold()))
+		s.sendErr.CompareAndSwap(nil, &err)
+	}
+}
+
+// hold is how many bytes of refused parts may sit on the disk.
+func (s *Sink) hold() int64 {
+	if s.o.Hold > 0 {
+		return s.o.Hold
+	}
+	return DefaultHold
+}
+
+// note writes a line that is about the run rather than about a part.
+func (s *Sink) note(format string, a ...any) {
+	if s.o.Out == nil {
+		return
+	}
+	s.outMu.Lock()
+	defer s.outMu.Unlock()
+	fmt.Fprintf(s.o.Out, format+"\n", a...)
 }
 
 // upload sends one part and takes the local copy away once the hub has it.
@@ -616,6 +726,8 @@ func (s *Sink) Stats() SinkStats {
 		PartBytes: s.stats.partBytes.Load(),
 		Pushed:    int(s.stats.pushed.Load()),
 		Freed:     s.stats.freed.Load(),
+		Held:      int(s.stats.held.Load()),
+		HeldBytes: s.stats.heldBytes.Load(),
 	}
 }
 

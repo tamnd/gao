@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -725,4 +726,163 @@ func TestAWriteDoesNotWaitForAnUpload(t *testing.T) {
 	if st := s.Stats(); st.Pushed < 1 {
 		t.Errorf("the sink says %d parts pushed, so the close did not wait", st.Pushed)
 	}
+}
+
+// A part the hub refuses stays on the disk and the crawl carries on. This is
+// the case that cost a day of crawling: open-index went over its storage quota,
+// every part came back 403, and each 403 ended the run.
+func TestAPartTheHubRefusesStaysOnTheDiskAndTheCrawlCarriesOn(t *testing.T) {
+	dir := t.TempDir()
+	var mu sync.Mutex
+	var tried []string
+	s := openSink(t, SinkOptions{
+		Dir:          dir,
+		BytesPerPart: 1, // every row closes a part
+		Push: func(d store.Dataset, local, path string) error {
+			mu.Lock()
+			tried = append(tried, path)
+			mu.Unlock()
+			return fmt.Errorf("403 Forbidden: You have exceeded your public storage space")
+		},
+	})
+
+	for i := range 3 {
+		if err := s.Write(Verdict{Doc: sampleDoc(i), Kept: true}); err != nil {
+			t.Fatalf("Write %d after a refused push: %v", i, err)
+		}
+	}
+	if err := s.Close(); err != nil {
+		t.Fatalf("Close: %v", err)
+	}
+
+	mu.Lock()
+	n := len(tried)
+	mu.Unlock()
+	if n == 0 {
+		t.Fatal("nothing was ever offered to the hub")
+	}
+	st := s.Stats()
+	if st.Held == 0 {
+		t.Error("the hub refused every part and the sink says it is holding none")
+	}
+	if st.Pushed != 0 {
+		t.Errorf("the hub refused every part and the sink counted %d pushed", st.Pushed)
+	}
+	// The whole point: the rows are still here to push later.
+	left, err := filepath.Glob(filepath.Join(dir, "*", "data", "*", "*.parquet"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(left) == 0 {
+		t.Error("the parts the hub would not take were deleted anyway")
+	}
+	if st.HeldBytes <= 0 {
+		t.Errorf("the sink is holding %d parts and says they come to %d bytes", st.Held, st.HeldBytes)
+	}
+}
+
+// And when the hub comes back, the backlog goes up on its own, oldest first.
+func TestTheHeldPartsGoUpWhenTheHubComesBack(t *testing.T) {
+	dir := t.TempDir()
+	var mu sync.Mutex
+	var pushed []string
+	refusing := true
+	s := openSink(t, SinkOptions{
+		Dir:          dir,
+		BytesPerPart: 1,
+		Push: func(d store.Dataset, local, path string) error {
+			mu.Lock()
+			defer mu.Unlock()
+			if refusing {
+				return fmt.Errorf("403 Forbidden: You have exceeded your public storage space")
+			}
+			pushed = append(pushed, path)
+			return nil
+		},
+	})
+
+	for i := range 3 {
+		if err := s.Write(Verdict{Doc: sampleDoc(i), Kept: true}); err != nil {
+			t.Fatalf("Write %d: %v", i, err)
+		}
+	}
+	// Wait for the refusals to have been taken, so the parts really are held
+	// rather than still in the queue.
+	waitFor(t, func() bool { return s.Stats().Held > 0 })
+
+	mu.Lock()
+	refusing = false
+	mu.Unlock()
+
+	// One more part, which is what makes the sender look at the backlog again.
+	if err := s.Write(Verdict{Doc: sampleDoc(9), Kept: true}); err != nil {
+		t.Fatalf("Write after the hub came back: %v", err)
+	}
+	if err := s.Close(); err != nil {
+		t.Fatalf("Close: %v", err)
+	}
+
+	mu.Lock()
+	got := append([]string(nil), pushed...)
+	mu.Unlock()
+	if len(got) < 3 {
+		t.Fatalf("the hub came back and only %d of the held parts went up: %v", len(got), got)
+	}
+	if st := s.Stats(); st.Held != 0 {
+		t.Errorf("the hub came back and the sink is still holding %d parts", st.Held)
+	}
+	if !sort.SliceIsSorted(got, func(i, j int) bool { return got[i] < got[j] }) {
+		t.Errorf("the backlog went up out of order: %v", got)
+	}
+	left, err := filepath.Glob(filepath.Join(dir, "*", "data", "*", "*.parquet"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(left) != 0 {
+		t.Errorf("%d parts are still on the disk after the hub took them: %v", len(left), left)
+	}
+}
+
+// Holding is bounded. The disk here is cache, so a hub that never comes back
+// has to stop the run rather than fill it.
+func TestHoldingStopsWhenTheHeldPartsFillTheirShareOfTheDisk(t *testing.T) {
+	s := openSink(t, SinkOptions{
+		BytesPerPart: 1,
+		Hold:         1, // one byte, so the first held part is already over
+		Push: func(d store.Dataset, local, path string) error {
+			return fmt.Errorf("403 Forbidden: You have exceeded your public storage space")
+		},
+	})
+
+	var err error
+	for i := range 40 {
+		if err = s.Write(Verdict{Doc: sampleDoc(i), Kept: true}); err != nil {
+			break
+		}
+		time.Sleep(2 * time.Millisecond)
+	}
+	if err == nil {
+		err = s.Close()
+	} else {
+		_ = s.Close()
+	}
+	if err == nil {
+		t.Fatal("the hub refused everything and the run never stopped, so the disk is the limit rather than the setting")
+	}
+	if !strings.Contains(err.Error(), "hub would not take") {
+		t.Errorf("the run stopped saying %v, which does not say the parts are on the disk", err)
+	}
+}
+
+// waitFor polls until cond holds, because the sending is on its own goroutine
+// and the writer no longer waits for it.
+func waitFor(t *testing.T, cond func() bool) {
+	t.Helper()
+	for range 400 {
+		if cond() {
+			return
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+	t.Fatal("timed out waiting for the sink to catch up")
 }

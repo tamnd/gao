@@ -382,6 +382,13 @@ func crawlSummary(w io.Writer, p crawl.Progress) {
 	}
 	fmt.Fprintf(w, "parts: %d written, %d pushed, %s given back to the disk\n",
 		p.Sink.Parts, p.Sink.Pushed, fleet.GB(p.Sink.Freed))
+	// Only when there are some, and last of the three, because a part still on
+	// the disk is the one line in this summary that is asking for something to
+	// be done rather than reporting what was.
+	if p.Sink.Held > 0 {
+		fmt.Fprintf(w, "parts: %d holding %s the hub would not take, still under the working directory and not published\n",
+			p.Sink.Held, fleet.GB(p.Sink.HeldBytes))
+	}
 	fmt.Fprintf(w, "names: %s asked of the resolver, %s answered from the cache, %s waited on a query already running, %s did not resolve, %s held\n",
 		thousands(p.Names.Misses), thousands(p.Names.Hits), thousands(p.Names.Joined),
 		thousands(p.Names.Failures), thousands(int64(p.Names.Held)))
