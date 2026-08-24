@@ -135,7 +135,7 @@ func BenchmarkBreaker(b *testing.B) {
 }
 
 // A record has to be found in the shard it was written to, which is the one
-// thing sharding can get wrong and the one thing no behaviour test would catch:
+// thing sharding can get wrong and the one thing no behavior test would catch:
 // a breaker that wrote to one map and read from another would simply forget
 // every host, and forgetting a host is allowed.
 func TestABreakerFindsAHostInTheShardItPutItIn(t *testing.T) {
