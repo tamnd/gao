@@ -617,13 +617,49 @@ func (p *Pusher) authorize(req *http.Request) {
 
 // refused turns a 401 or a 403 into the sentence somebody needs, which is not
 // "forbidden" but which token and which scope.
+//
+// What the hub said comes first and the guess about scopes only comes when it
+// said nothing. The guess was there on its own and it was wrong in the one case
+// that mattered: a crawl pushing to open-index failed every part for a day
+// reading "the token needs write access to open-index", the token had write
+// access to open-index the whole time, and the hub had been answering "you have
+// exceeded your public storage space" into a body this function dropped on the
+// floor. A refusal that explains itself is worth repeating verbatim rather than
+// replacing with a theory.
 func (p *Pusher) refused(resp *http.Response) error {
+	if said := hubSaid(resp.Body); said != "" {
+		return fmt.Errorf("%w: %s for %s: %s", ErrUnauthorized, resp.Status, p.Repo, said)
+	}
 	if p.Token == "" {
 		return fmt.Errorf("%w: %s for %s and no token was set, so set %s to one with write access to %s",
 			ErrUnauthorized, resp.Status, p.Repo, fleet.TokenEnv, Org)
 	}
 	return fmt.Errorf("%w: %s for %s, so the token needs write access to %s and read access to its contents",
 		ErrUnauthorized, resp.Status, p.Repo, Org)
+}
+
+// hubSaid is the explanation out of a refusal's body. The hub sends JSON with a
+// message in it, and whatever is standing in front of the hub on a bad day sends
+// something else, so an unparseable body is repeated as it came rather than
+// dropped.
+func hubSaid(r io.Reader) string {
+	b, err := io.ReadAll(io.LimitReader(r, 4<<10))
+	if err != nil || len(b) == 0 {
+		return ""
+	}
+	var out struct {
+		Message string `json:"message"`
+		Error   string `json:"error"`
+	}
+	if err := json.Unmarshal(b, &out); err == nil {
+		if out.Message != "" {
+			return out.Message
+		}
+		if out.Error != "" {
+			return out.Error
+		}
+	}
+	return strings.TrimSpace(string(b))
 }
 
 func closeBody(resp *http.Response) {
